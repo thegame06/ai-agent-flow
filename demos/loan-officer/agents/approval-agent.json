@@ -1,0 +1,62 @@
+{
+  "agent": {
+    "key": "approval-agent",
+    "version": "1.0.0",
+    "role": "Loan Approval Decision Maker",
+    "runtime": {
+      "mode": "deterministic",
+      "temperature": 0.0,
+      "maxIterations": 3,
+      "maxExecutionSeconds": 30,
+      "toolCallTimeoutSeconds": 20
+    },
+    "modelRouting": {
+      "strategy": "static",
+      "default": "gpt-4o"
+    },
+    "promptProfile": "approval-specialist",
+    "authorizedTools": [
+      "email-notification"
+    ],
+    "flows": [
+      {
+        "name": "finalize_loan_decision",
+        "trigger": {
+          "type": "intent",
+          "value": "*"
+        },
+        "steps": [
+          {
+            "tool": "email-notification",
+            "required": false,
+            "timeoutMs": 15000,
+            "retries": 2,
+            "onError": "skip"
+          }
+        ],
+        "guardrails": {
+          "maxToolCalls": 5,
+          "maxLLMCalls": 3,
+          "maxCost": 0.3,
+          "piiDetection": true,
+          "contentModeration": true,
+          "requireHumanApproval": true,
+          "humanApprovalThreshold": 0.0,
+          "humanApprovalReason": "Final loan approval requires human review for compliance"
+        }
+      }
+    ],
+    "policies": {
+      "allowedPolicyGroups": ["loan-approval", "customer-communication"],
+      "requiredPolicies": ["dual-approval-required", "customer-contact-authorized", "external-communication"]
+    },
+    "evaluation": {
+      "enabled": true,
+      "strategy": "post-hoc",
+      "evaluators": ["accuracy", "compliance"]
+    },
+    "experiment": {
+      "canaryWeight": 0.0
+    }
+  }
+}

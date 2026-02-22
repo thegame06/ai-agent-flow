@@ -1,0 +1,43 @@
+# Build results
+bin/
+obj/
+
+# NuGet packages
+*.nupkg
+*.snupkg
+.nuget/
+
+# User-specific files
+*.user
+*.userosscache
+*.suo
+.vs/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment secrets (NEVER commit)
+appsettings.Production.json
+appsettings.*.local.json
+secrets.json
+.env
+.env.*
+
+# Docker
+docker-compose.override.yml
+
+# Test results
+TestResults/
+coverage/
+*.trx
+
+# Rider
+.idea/
+
+# VS Code
+.vscode/settings.json
+
+# Logs
+logs/
+*.log

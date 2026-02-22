@@ -1,0 +1,84 @@
+import type { RouteObject } from 'react-router';
+
+import { Outlet } from 'react-router';
+import { lazy, Suspense } from 'react';
+
+import { CONFIG } from 'src/global-config';
+import { DashboardLayout } from 'src/layouts/dashboard';
+
+import { LoadingScreen } from 'src/components/loading-screen';
+
+import { AuthGuard } from 'src/auth/guard';
+
+import { usePathname } from '../hooks';
+
+// ----------------------------------------------------------------------
+// Lazy-loaded pages
+// ----------------------------------------------------------------------
+
+const OverviewPage = lazy(() => import('src/aiagentflow/pages/overview/OverviewPage'));
+const AgentsPage = lazy(() => import('src/aiagentflow/pages/agents/AgentsPage'));
+const AgentDetailPage = lazy(() => import('src/aiagentflow/pages/agents/Detail/AgentDetailPage'));
+const AgentDesignerPage = lazy(() => import('src/aiagentflow/pages/agents/Designer/AgentDesignerPage'));
+const ChatPage = lazy(() => import('src/aiagentflow/pages/ChatPage'));
+const ExecutionsPage = lazy(() => import('src/aiagentflow/pages/executions/ExecutionsPage'));
+const ExecutionDetailPage = lazy(() => import('src/aiagentflow/pages/executions/Detail/ExecutionDetailPage'));
+const CheckpointsPage = lazy(() => import('src/aiagentflow/pages/checkpoints/CheckpointsPage'));
+const ToolsPage = lazy(() => import('src/aiagentflow/pages/tools/ToolsPage'));
+const PoliciesPage = lazy(() => import('src/aiagentflow/pages/policies/PoliciesPage'));
+const AuditLogPage = lazy(() => import('src/aiagentflow/pages/audit/AuditPage'));
+const ModelsPage = lazy(() => import('src/aiagentflow/pages/models/ModelsPage'));
+const SettingsPage = lazy(() => import('src/aiagentflow/pages/settings/SettingsPage'));
+
+// ----------------------------------------------------------------------
+
+function SuspenseOutlet() {
+  const pathname = usePathname();
+  return (
+    <Suspense key={pathname} fallback={<LoadingScreen />}>
+      <Outlet />
+    </Suspense>
+  );
+}
+
+const dashboardLayout = () => (
+  <DashboardLayout>
+    <SuspenseOutlet />
+  </DashboardLayout>
+);
+
+export const dashboardRoutes: RouteObject[] = [
+  {
+    path: 'dashboard',
+    element: CONFIG.auth.skip ? dashboardLayout() : <AuthGuard>{dashboardLayout()}</AuthGuard>,
+    children: [
+      { element: <OverviewPage />, index: true },
+      { path: 'overview', element: <OverviewPage /> },
+      { path: 'agents', element: <AgentsPage /> },
+      { path: 'agents/:id', element: <AgentDetailPage /> },
+      { path: 'agents/:agentId/chat', element: <ChatPage /> },
+      { path: 'agents/designer', element: <AgentDesignerPage /> },
+      { path: 'agents/designer/:agentId', element: <AgentDesignerPage /> },
+      { path: 'executions', element: <ExecutionsPage /> },
+      { path: 'executions/:executionId', element: <ExecutionDetailPage /> },
+      { path: 'checkpoints', element: <CheckpointsPage /> },
+      { path: 'tools', element: <ToolsPage /> },
+      {
+        path: 'governance',
+        children: [
+          { element: <PoliciesPage />, index: true },
+          { path: 'policies', element: <PoliciesPage /> },
+          { path: 'audit', element: <AuditLogPage /> },
+        ],
+      },
+      {
+        path: 'system',
+        children: [
+          { element: <ModelsPage />, index: true },
+          { path: 'models', element: <ModelsPage /> },
+          { path: 'settings', element: <SettingsPage /> },
+        ],
+      },
+    ],
+  },
+];

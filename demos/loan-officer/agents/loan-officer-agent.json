@@ -1,0 +1,59 @@
+{
+  "agent": {
+    "key": "loan-officer",
+    "version": "1.0.0",
+    "role": "Loan Officer Manager",
+    "runtime": {
+      "mode": "autonomous",
+      "temperature": 0.3,
+      "maxIterations": 10,
+      "maxExecutionSeconds": 180,
+      "toolCallTimeoutSeconds": 45
+    },
+    "modelRouting": {
+      "strategy": "static",
+      "default": "gpt-4o"
+    },
+    "promptProfile": "loan-officer-manager",
+    "authorizedTools": [
+      "agent-as-tool"
+    ],
+    "flows": [
+      {
+        "name": "process_loan_application",
+        "trigger": {
+          "type": "intent",
+          "value": "*"
+        },
+        "steps": [
+          {
+            "tool": "agent-as-tool",
+            "required": true,
+            "timeoutMs": 30000,
+            "retries": 1,
+            "onError": "halt"
+          }
+        ],
+        "guardrails": {
+          "maxToolCalls": 10,
+          "maxLLMCalls": 15,
+          "maxCost": 2.0,
+          "piiDetection": true,
+          "contentModeration": false
+        }
+      }
+    ],
+    "policies": {
+      "allowedPolicyGroups": ["bank-operations", "customer-service"],
+      "requiredPolicies": ["pii-protection", "audit-trail"]
+    },
+    "evaluation": {
+      "enabled": true,
+      "strategy": "post-hoc",
+      "evaluators": ["accuracy", "latency"]
+    },
+    "experiment": {
+      "canaryWeight": 0.0
+    }
+  }
+}

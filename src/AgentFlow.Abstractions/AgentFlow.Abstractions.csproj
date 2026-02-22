@@ -1,0 +1,12 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <PackageId>AgentFlow.Abstractions</PackageId>
+    <Version>2.0.0</Version>
+    <Authors>AgentFlow Contributors</Authors>
+    <Description>The Backbone of Trust. Defines the immutable contracts and interfaces for Enterprise-Grade AI Agent Orchestration and Governance.</Description>
+  </PropertyGroup>
+</Project>

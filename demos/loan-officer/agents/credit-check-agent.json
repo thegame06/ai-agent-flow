@@ -1,0 +1,59 @@
+{
+  "agent": {
+    "key": "credit-check-agent",
+    "version": "1.0.0",
+    "role": "Credit Verification Specialist",
+    "runtime": {
+      "mode": "hybrid",
+      "temperature": 0.1,
+      "maxIterations": 5,
+      "maxExecutionSeconds": 60,
+      "toolCallTimeoutSeconds": 30
+    },
+    "modelRouting": {
+      "strategy": "static",
+      "default": "gpt-4o-mini"
+    },
+    "promptProfile": "credit-specialist",
+    "authorizedTools": [
+      "bureau-api"
+    ],
+    "flows": [
+      {
+        "name": "check_credit_score",
+        "trigger": {
+          "type": "intent",
+          "value": "*"
+        },
+        "steps": [
+          {
+            "tool": "bureau-api",
+            "required": true,
+            "timeoutMs": 20000,
+            "retries": 2,
+            "onError": "halt"
+          }
+        ],
+        "guardrails": {
+          "maxToolCalls": 3,
+          "maxLLMCalls": 5,
+          "maxCost": 0.5,
+          "piiDetection": true,
+          "contentModeration": false
+        }
+      }
+    ],
+    "policies": {
+      "allowedPolicyGroups": ["credit-operations"],
+      "requiredPolicies": ["pii-protection", "credit-check-authorized", "financial-data-access"]
+    },
+    "evaluation": {
+      "enabled": true,
+      "strategy": "post-hoc",
+      "evaluators": ["accuracy"]
+    },
+    "experiment": {
+      "canaryWeight": 0.0
+    }
+  }
+}

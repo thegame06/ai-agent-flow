@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="9.0.2" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.12" />
+    <PackageReference Include="Microsoft.SemanticKernel.Connectors.OpenAI" Version="1.33.0" />
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="7.3.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AgentFlow.Application\AgentFlow.Application.csproj" />
+    <ProjectReference Include="..\AgentFlow.Infrastructure\AgentFlow.Infrastructure.csproj" />
+    <ProjectReference Include="..\AgentFlow.Core.Engine\AgentFlow.Core.Engine.csproj" />
+    <ProjectReference Include="..\AgentFlow.Security\AgentFlow.Security.csproj" />
+    <ProjectReference Include="..\AgentFlow.Observability\AgentFlow.Observability.csproj" />
+    <ProjectReference Include="..\AgentFlow.Extensions\AgentFlow.Extensions.csproj" />
+    <ProjectReference Include="..\AgentFlow.DSL\AgentFlow.DSL.csproj" />
+    <ProjectReference Include="..\AgentFlow.Policy\AgentFlow.Policy.csproj" />
+    <ProjectReference Include="..\AgentFlow.Evaluation\AgentFlow.Evaluation.csproj" />
+    <ProjectReference Include="..\AgentFlow.ModelRouting\AgentFlow.ModelRouting.csproj" />
+    <ProjectReference Include="..\AgentFlow.TestRunner\AgentFlow.TestRunner.csproj" />
+    <ProjectReference Include="..\AgentFlow.Events\AgentFlow.Events.csproj" />
+    <ProjectReference Include="..\AgentFlow.Caching.Redis\AgentFlow.Caching.Redis.csproj" />
+  </ItemGroup>
+
+</Project>

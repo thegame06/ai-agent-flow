@@ -1,0 +1,59 @@
+{
+  "agent": {
+    "key": "risk-calculator-agent",
+    "version": "1.0.0",
+    "role": "Financial Risk Assessment Specialist",
+    "runtime": {
+      "mode": "hybrid",
+      "temperature": 0.05,
+      "maxIterations": 5,
+      "maxExecutionSeconds": 60,
+      "toolCallTimeoutSeconds": 30
+    },
+    "modelRouting": {
+      "strategy": "static",
+      "default": "gpt-4o-mini"
+    },
+    "promptProfile": "risk-analyst",
+    "authorizedTools": [
+      "financial-risk-model"
+    ],
+    "flows": [
+      {
+        "name": "calculate_loan_risk",
+        "trigger": {
+          "type": "intent",
+          "value": "*"
+        },
+        "steps": [
+          {
+            "tool": "financial-risk-model",
+            "required": true,
+            "timeoutMs": 25000,
+            "retries": 1,
+            "onError": "halt"
+          }
+        ],
+        "guardrails": {
+          "maxToolCalls": 3,
+          "maxLLMCalls": 5,
+          "maxCost": 0.5,
+          "piiDetection": false,
+          "contentModeration": false
+        }
+      }
+    ],
+    "policies": {
+      "allowedPolicyGroups": ["risk-assessment"],
+      "requiredPolicies": ["financial-risk-assessment", "loan-decision-authority"]
+    },
+    "evaluation": {
+      "enabled": true,
+      "strategy": "post-hoc",
+      "evaluators": ["accuracy", "latency"]
+    },
+    "experiment": {
+      "canaryWeight": 0.0
+    }
+  }
+}
