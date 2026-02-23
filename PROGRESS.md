@@ -48,6 +48,11 @@ El proyecto ya cuenta con una base sólida para construir agentes de IA empresar
    - trazas distribuidas y correlación cross-service,
    - reportes comparativos para champion/challenger.
 
+## Validación estratégica reciente
+
+- [2026-02-23] Se agregó evaluación formal de migración de **Semantic Kernel** a **Microsoft Agent Framework (MAF + MCP)** con impactos, riesgos, y plan por fases en `docs/MAF-MIGRATION-ASSESSMENT.md`.
+- [2026-02-23] Se agregó blueprint de arquitectura modular para coexistencia **SK + MAF** con **MCP como estándar** y estrategia `Add/Use` por extensiones en `docs/MCP-SK-MAF-MODULAR-ARCHITECTURE.md`.
+
 ## Qué falta (backlog priorizado)
 
 - Flujos de migración/versionado de DSL más automáticos.
