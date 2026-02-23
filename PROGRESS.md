@@ -1,39 +1,76 @@
-# AgentFlow — Project Progress & Changelog
+# AgentFlow — Progress, Roadmap y colaboración
 
-## [2026-02-21] — Phase 2/3: Core Logic & Enterprise Governance
+> Última actualización: 2026-02-23
 
-### 🚀 New Features & Enhancements
+## Estado actual
 
-#### 1. Human-in-the-Loop (HITL) system
-- **State Machine Integration**: Added `PausedForReview` state to `AgentExecution`.
-- **Checkpoint Store**: Implemented `MongoCheckpointStore` for persistent storage of pending reviews.
-- **Contextual Review**: Checkpoints now capture LLM rationale, tool name, and proposed inputs.
-- **Resume Capability**: Added `/api/v1/tenants/{tenantId}/checkpoints/{executionId}/decide` endpoint to allow manual approval or rejection.
+El proyecto ya cuenta con una base sólida para construir agentes de IA empresariales:
+- motor de ejecución multi-step,
+- políticas y guardrails,
+- evaluación continua (incluyendo shadow),
+- capacidad HITL,
+- y un frontend operativo tipo command center.
 
-#### 2. Segment-Based Policy Rules
-- **Granular Control**: Policies can now be targeted to specific user segments (e.g., `VIP`, `Standard`, `Trial`).
-- **Context Awareness**: `PolicyEvaluationContext` now includes `UserSegments`, derived from JWT claims.
-- **Automatic Matching**: The `CompositePolicyEngine` automatically filters rules based on the user's segments.
+## Hitos recientes completados
 
-#### 3. Shadow Evaluation (A/B Testing)
-- **Champion/Challenger Model**: Added `ShadowAgentId` to `AgentDefinition`.
-- **Parallel Trace**: The `EvaluationBackgroundWorker` now triggers shadow executions when a "Champion" agent completes.
-- **Risk-Free Deployment**: Allows comparing performance scores between an active agent and a candidate version without affecting real production output.
+### [2026-02-21] — Fase 2/3: Core Logic & Enterprise Governance
 
-#### 4. Persistent Prompt Engine
-- **Profile Store**: Implemented `MongoPromptProfileStore` for versioned prompt templates.
-- **Dynamic Rendering**: Integrated `PromptRenderer` into the execution loop, ensuring prompts are composed from persistent profiles.
+- **HITL**:
+  - estado `PausedForReview` en `AgentExecution`,
+  - almacenamiento persistente de checkpoints,
+  - endpoint para aprobar/rechazar decisiones pausadas.
+- **Políticas por segmento**:
+  - contexto de evaluación con `UserSegments`,
+  - matching automático por perfil/segmento.
+- **Evaluación shadow**:
+  - soporte champion/challenger con `ShadowAgentId`,
+  - ejecución paralela para comparación sin impacto en salida principal.
+- **Prompting persistente**:
+  - perfiles versionados de prompt,
+  - render dinámico en el loop de ejecución.
+- **Frontend MVP (Command Center)**:
+  - dashboard, cola de revisión HITL y vista de decision trace.
 
-#### 5. Frontend — Command Center (MVP)
-- **Overview Dashboard**: Added "Command Center" with real-time metrics (Agent count, Executions, Quality Score).
-- **Review Queue**: Created a dedicated HITL interface for approving/rejecting paused executions.
-- **Decision Trace Detail**: Implemented a rich timeline view for execution history, showing every "Think-Plan-Act-Observe" step with LLM reasoning and data payloads.
+## Prioridades actuales (Q1–Q2 2026)
 
-### 🔧 Architecture Updates
-- Updated `AgentFlow.Abstractions` with new contracts: `ICheckpointStore`, `IPromptProfileStore`, and enhanced `PolicyDefinition`.
-- Registered new services in `AgentFlow.Api` and `AgentFlow.Worker`.
-- Updated `docs/architecture.md` and `docs/mongodb-data-model.md`.
+1. **Estabilidad y hardening de producción**
+   - mejorar manejo de errores transitorios,
+   - reforzar circuit breakers y políticas de retry,
+   - ampliar tests de integración end-to-end.
 
-### ✅ Build Status
-- **Backend**: `dotnet build AgentFlow.sln` — Passing.
-- **Frontend**: `npm run build` (aiagent_flow) — Passing (after lint fixes).
+2. **Experiencia de desarrollo (DX)**
+   - plantillas de agentes y herramientas listas para usar,
+   - documentación de onboarding más guiada,
+   - ejemplos reproducibles por dominio (soporte, riesgo, ops).
+
+3. **Observabilidad avanzada**
+   - dashboards operativos más detallados,
+   - trazas distribuidas y correlación cross-service,
+   - reportes comparativos para champion/challenger.
+
+## Qué falta (backlog priorizado)
+
+- Flujos de migración/versionado de DSL más automáticos.
+- Set extendido de plugins de referencia (CRM, ERP, colas).
+- Mayor cobertura de pruebas de regresión para frontend.
+- Guías de despliegue en cloud (Kubernetes/Azure/AWS).
+
+## ¿Cómo puede ayudar un contribuidor externo?
+
+### Aportes de alto impacto
+- agregar pruebas unitarias/integración en módulos críticos,
+- crear plugins de herramientas bajo `src/AgentFlow.Extensions` o `src/AgentFlow.ToolSDK`,
+- mejorar documentación y quickstarts por caso de uso,
+- reportar bugs con pasos de reproducción claros.
+
+### Flujo recomendado de contribución
+1. Abrir issue con contexto de problema/propuesta.
+2. Proponer enfoque técnico mínimo (alcance + archivos).
+3. Enviar PR pequeño y testeable.
+4. Incluir evidencia de pruebas (`dotnet test`, build, screenshots si aplica UI).
+
+## Señales de avance esperadas en próximos sprints
+
+- Incremento de cobertura en tests de integración.
+- Menor tiempo de onboarding para correr demo local.
+- Mejor visibilidad de métricas de calidad y costo por ejecución.
