@@ -3,6 +3,7 @@ using AgentFlow.Domain.Aggregates;
 using AgentFlow.Domain.Common;
 using AgentFlow.Domain.Repositories;
 using MongoDB.Driver;
+using Microsoft.Extensions.Logging;
 
 namespace AgentFlow.Infrastructure.Persistence;
 
@@ -14,10 +15,12 @@ namespace AgentFlow.Infrastructure.Persistence;
 public sealed class MongoConversationThreadRepository : IConversationThreadRepository
 {
     private readonly IMongoCollection<ConversationThread> _collection;
+    private readonly ILogger<MongoConversationThreadRepository> _logger;
     
-    public MongoConversationThreadRepository(IMongoDatabase database)
+    public MongoConversationThreadRepository(IMongoDatabase database, ILoggerFactory loggerFactory)
     {
         _collection = database.GetCollection<ConversationThread>("conversation_threads");
+        _logger = loggerFactory.CreateLogger<MongoConversationThreadRepository>();
         
         // TTL Index: Auto-delete expired threads
         _collection.Indexes.CreateOne(new CreateIndexModel<ConversationThread>(
@@ -118,6 +121,10 @@ public sealed class MongoConversationThreadRepository : IConversationThreadRepos
     {
         try
         {
+            // 🔍 DEBUG: Log what we're about to persist
+            _logger.LogDebug("Updating thread {ThreadId}: TurnCount={TurnCount}, ExecutionIds.Count={Count}",
+                thread.Id, thread.TurnCount, thread.ExecutionIds.Count);
+
             var result = await _collection.ReplaceOneAsync(
                 x => x.Id == thread.Id && x.TenantId == thread.TenantId,
                 thread,
@@ -126,6 +133,14 @@ public sealed class MongoConversationThreadRepository : IConversationThreadRepos
             
             if (result.MatchedCount == 0)
                 return Result.Failure(Error.NotFound("Thread not found"));
+            
+            // 🔍 DEBUG: Verify what was saved by reading it back
+            var reloaded = await _collection.Find(x => x.Id == thread.Id).FirstOrDefaultAsync(ct);
+            if (reloaded != null)
+            {
+                _logger.LogDebug("After update, reloaded thread has TurnCount={TurnCount}, ExecutionIds.Count={Count}",
+                    reloaded.TurnCount, reloaded.ExecutionIds.Count);
+            }
             
             return Result.Success();
         }

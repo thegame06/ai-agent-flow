@@ -8,6 +8,8 @@ using AgentFlow.DSL;
 using AgentFlow.Policy;
 using AgentFlow.Evaluation;
 using AgentFlow.ModelRouting;
+using AgentFlow.Domain.Aggregates;
+using MongoDB.Bson.Serialization;
 using AgentFlow.TestRunner;
 using AgentFlow.Events;
 using AgentFlow.Prompting;
@@ -64,6 +66,25 @@ public static class DependencyInjection
             ?? throw new InvalidOperationException("MongoDB connection string not configured.");
 
         var databaseName = configuration["MongoDB:DatabaseName"] ?? "agentflow";
+
+        // ✅ CRITICAL FIX: Configure BsonClassMap for ConversationThread to serialize private fields
+        if (!BsonClassMap.IsClassMapRegistered(typeof(ConversationThread)))
+        {
+            BsonClassMap.RegisterClassMap<ConversationThread>(cm =>
+            {
+                cm.AutoMap();
+                
+                // Ignore computed property TurnCount (it's derived from _executionIds.Count)
+                cm.UnmapProperty(nameof(ConversationThread.TurnCount));
+                
+                // Ignore readonly wrapper ExecutionIds (we'll serialize _executionIds directly)
+                cm.UnmapProperty(nameof(ConversationThread.ExecutionIds));
+                
+                // Map private field _executionIds to MongoDB using its natural field name
+                cm.MapField("_executionIds")
+                  .SetElementName("_executionIds");  // Use the actual field name with underscore
+            });
+        }
 
         services.AddSingleton<IMongoClient>(_ =>
         {

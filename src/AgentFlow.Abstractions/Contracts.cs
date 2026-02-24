@@ -64,6 +64,12 @@ public sealed record AgentExecutionResult
     public string? ErrorCode { get; init; }
     public string? ErrorMessage { get; init; }
     public AgentRuntimeSnapshot RuntimeSnapshot { get; init; } = new();
+    
+    /// <summary>
+    /// Thread ID for multi-turn conversations.
+    /// Populated when the execution is part of a persistent conversation thread.
+    /// </summary>
+    public string? ThreadId { get; init; }
 }
 
 /// <summary>
@@ -631,6 +637,7 @@ public sealed record ModelSelection
     public required IModelProvider Provider { get; init; }
     public bool IsFallback { get; init; }
     public string? FallbackReason { get; init; }
+    public string? Reason { get; init; }
 }
 
 public sealed record LlmRequest

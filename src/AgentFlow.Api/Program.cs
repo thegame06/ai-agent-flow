@@ -62,12 +62,13 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+// CORS must be early in the pipeline, before any middleware that might short-circuit
+app.UseCors();
+
 // Global exception handler
 app.UseExceptionHandler();
 
-app.UseCors();
-
-// Security headers
+// Security headers (after CORS to avoid interfering with preflight)
 app.Use(async (ctx, next) =>
 {
     ctx.Response.Headers.Append("X-Content-Type-Options", "nosniff");
@@ -77,7 +78,12 @@ app.Use(async (ctx, next) =>
     await next();
 });
 
-app.UseHttpsRedirection();
+// Only redirect to HTTPS in production
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHttpsRedirection();
+}
+
 app.UseTenantContext(); // Extract userId/tenantId from JWT
 app.UseAuthentication();
 app.UseAuthorization();

@@ -1,19 +1,43 @@
 import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from '../store';
 import { updateNodeData } from '../store/slices/designerSlice';
-import { X, Info } from 'lucide-react';
+import { X, Settings, GitBranch } from 'lucide-react';
+import { useParams } from 'react-router-dom';
+import { SegmentRoutingPanel } from '../components/evaluation/SegmentRoutingPanel';
 
 export const PropertiesPanel = () => {
   const dispatch = useDispatch();
+  const { id: agentId } = useParams<{ id: string }>();
   const { nodes, selectedNodeId } = useSelector((state: RootState) => state.designer);
   const selectedNode = nodes.find((n: any) => n.id === selectedNodeId);
 
+  // If no node is selected, show Agent-Level configuration (Routing, Experimentation)
   if (!selectedNode) {
     return (
-      <aside className="properties-panel empty">
-        <div className="empty-state">
-          <Info size={32} />
-          <p>Select a node to edit its properties</p>
+      <aside className="properties-panel agent-config">
+        <div className="panel-header">
+           <h3 className="flex items-center gap-2">
+             <Settings size={16} />
+             Agent Configuration
+           </h3>
+        </div>
+        
+        <div className="scroll-content">
+           <div className="prop-section">
+             <label className="flex items-center gap-1.5 text-purple-600">
+               <GitBranch size={12} />
+               Experimentation & Routing
+             </label>
+             <p className="text-xs text-gray-500 mb-2">
+               Control which users see which version of this agent.
+             </p>
+             
+             {agentId ? (
+               <SegmentRoutingPanel tenantId="default-tenant" agentId={agentId} />
+             ) : (
+               <div className="text-sm text-gray-400 italic">Save agent to enable routing.</div>
+             )}
+           </div>
         </div>
         <style>{styles}</style>
       </aside>

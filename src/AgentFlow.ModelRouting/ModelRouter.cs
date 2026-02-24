@@ -110,22 +110,65 @@ public sealed class ModelRouter : IModelRouter
         {
             ModelRoutingStrategy.TaskBased    => await SelectByTaskAsync(config, request.TaskType, ct),
             ModelRoutingStrategy.FallbackChain => await SelectByFallbackChainAsync(config, ct),
-            _                                 => SelectStatic(config)
+            _                                 => await SelectStaticAsync(config, ct)
         };
     }
 
-    private ModelSelection SelectStatic(ModelRoutingConfig config)
+    private async Task<ModelSelection> SelectStaticAsync(
+        ModelRoutingConfig config,
+        CancellationToken ct)
     {
+        // 1. Try default model
         var provider = _registry.GetProvider(config.DefaultModelId);
-        if (provider is null)
-            throw new InvalidOperationException(
-                $"Default model '{config.DefaultModelId}' is not registered.");
-
-        return new ModelSelection
+        
+        if (provider is not null)
         {
-            ModelId = config.DefaultModelId,
-            Provider = provider
-        };
+            try 
+            {
+                if (await provider.IsHealthyAsync(ct))
+                {
+                    return new ModelSelection
+                    {
+                        ModelId = config.DefaultModelId,
+                        Provider = provider,
+                        Reason = "Default configuration (Healthy)"
+                    };
+                }
+                _logger.LogWarning("Default model '{ModelId}' is unhealthy. Entering panic mode.", 
+                    config.DefaultModelId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Health check failed for default model '{ModelId}'", config.DefaultModelId);
+            }
+        }
+        else
+        {
+            _logger.LogCritical("Default model '{ModelId}' is not registered! This is a configuration error.", 
+                config.DefaultModelId);
+        }
+
+        // 2. PANIC MODE: Find ANY healthy provider
+        var healthyIds = await _registry.GetHealthyModelIdsAsync(ct);
+        var saviourId = healthyIds.FirstOrDefault();
+
+        if (saviourId is not null)
+        {
+            var saviour = _registry.GetProvider(saviourId)!;
+            _logger.LogWarning("PANIC MODE ACTIVATED: Routing to '{SaviourId}' because default is broken.", saviourId);
+            
+            return new ModelSelection
+            {
+                ModelId = saviourId,
+                Provider = saviour,
+                IsFallback = true,
+                FallbackReason = "PANIC: Default model unavailable",
+                Reason = "Panic Mode Selection"
+            };
+        }
+
+        throw new InvalidOperationException(
+            $"Routing failure: Default model '{config.DefaultModelId}' is dead and no healthy substitutes found.");
     }
 
     private async Task<ModelSelection> SelectByTaskAsync(
@@ -149,7 +192,7 @@ public sealed class ModelRouter : IModelRouter
         }
 
         // Fallback to static if no rule matches or model is unhealthy
-        return SelectStatic(config);
+        return await SelectStaticAsync(config, ct);
     }
 
     private async Task<ModelSelection> SelectByFallbackChainAsync(

@@ -24,6 +24,9 @@ public sealed record AgentDesignerDto
     // Memory configuration 
     public MemoryConfigDto Memory { get; init; } = new();
 
+    // Session configuration
+    public SessionConfigDto Session { get; init; } = new();
+
     // Designer steps (visual step builder)
     public IReadOnlyList<DesignerStepDto> Steps { get; init; } = [];
 
@@ -62,6 +65,17 @@ public sealed record MemoryConfigDto
     public bool LongTermMemory { get; init; } = false;
     public bool VectorMemory { get; init; } = false;
     public bool AuditMemory { get; init; } = true;
+}
+
+public sealed record SessionConfigDto
+{
+    public bool EnableThreads { get; init; } = false;
+    public int DefaultThreadTtlHours { get; init; } = 168; // 7 days default
+    public int MaxTurnsPerThread { get; init; } = 100;
+    public int ContextWindowSize { get; init; } = 10;
+    public bool AutoCreateThread { get; init; } = true;
+    public bool EnableSummarization { get; init; } = false;
+    public string ThreadKeyPattern { get; init; } = "{agentName}-{guid}";
 }
 
 /// <summary>
@@ -132,6 +146,7 @@ public sealed record AgentDetailDto
     public BrainConfigDto Brain { get; init; } = new();
     public LoopConfigDto Loop { get; init; } = new();
     public MemoryConfigDto Memory { get; init; } = new();
+    public SessionConfigDto Session { get; init; } = new();
     public IReadOnlyList<DesignerStepDto> Steps { get; init; } = [];
     public IReadOnlyList<ToolBindingDto> Tools { get; init; } = [];
 }

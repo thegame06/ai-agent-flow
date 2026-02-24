@@ -87,8 +87,9 @@ public sealed class SemanticKernelBrain : IAgentBrain
         {
             ExtensionData = new Dictionary<string, object>
             {
-                ["temperature"] = 0.1, // Low temp for structured output
-                ["response_format"] = new { type = "json_object" }
+                ["temperature"] = 0.1 // Low temp for structured output
+                // NOTE: response_format removed - relying on prompt instructions for JSON
+                // OpenAI API has strict requirements for response_format that vary by model
             }
         };
 

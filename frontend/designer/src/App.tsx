@@ -4,6 +4,8 @@ import { store } from './store';
 import AppLayout from './layouts/AppLayout';
 import DesignerPage from './pages/DesignerPage';
 import AgentsPage from './pages/AgentsPage';
+import PoliciesPage from './pages/PoliciesPage';
+import PolicyDetailsPage from './pages/PolicyDetailsPage';
 import '@xyflow/react/dist/style.css';
 
 // Placeholder pages for other modules
@@ -23,7 +25,8 @@ function ApplicationRouter() {
           <Route path="/agents" element={<AgentsPage />} />
           <Route path="/dashboard" element={<Placeholder title="Dashboard" />} />
           <Route path="/tools" element={<Placeholder title="Tools Library" />} />
-          <Route path="/policies" element={<Placeholder title="Policy Sets" />} />
+          <Route path="/policies" element={<PoliciesPage />} />
+          <Route path="/policies/:id" element={<PolicyDetailsPage />} />
           <Route path="/monitoring" element={<Placeholder title="Monitoring" />} />
           <Route path="/settings" element={<Placeholder title="Settings" />} />
         </Route>

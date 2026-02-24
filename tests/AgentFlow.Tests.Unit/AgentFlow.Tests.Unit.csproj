@@ -24,6 +24,7 @@
     <ProjectReference Include="..\..\src\AgentFlow.Evaluation\AgentFlow.Evaluation.csproj" />
     <ProjectReference Include="..\..\src\AgentFlow.Core.Engine\AgentFlow.Core.Engine.csproj" />
     <ProjectReference Include="..\..\src\AgentFlow.ToolSDK\AgentFlow.ToolSDK.csproj" />
+    <ProjectReference Include="..\..\src\AgentFlow.ModelRouting\AgentFlow.ModelRouting.csproj" />
   </ItemGroup>
 
   <ItemGroup>

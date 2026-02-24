@@ -16,10 +16,10 @@ public static class SeedData
 
         // Check if we already have demo data
         var existingAgents = await agentRepo.GetAllAsync(tenantId, 0, 10);
-        if (existingAgents.Any(a => a.Name.Contains("Demo"))) return; // Already seeded
+        if (existingAgents.Any(a => a.Name.Contains("Demo v2"))) return; // Already seeded
 
         // ═══════════════════════════════════════════════════════════════════
-        // DEMO AGENT 1: Customer Support Agent
+        // DEMO AGENT 1: Conversational AI Assistant (No Tools - Pure Chat)
         // ═══════════════════════════════════════════════════════════════════
        
         var brain1 = new BrainConfiguration
@@ -28,16 +28,22 @@ public static class SeedData
             Provider = "OpenAI",
             Temperature = 0.7f,
             MaxResponseTokens = 2000,
-            SystemPromptTemplate = @"You are a helpful customer support agent for AgentFlow platform.
+            SystemPromptTemplate = @"You are AgentFlow Assistant, a helpful and conversational AI assistant.
 
-Your role:
-1. Answer questions about the AgentFlow platform features
-2. Troubleshoot common technical issues
-3. Guide users through configuration and setup
-4. Escalate complex issues to human support when needed
+Your capabilities:
+1. Answer questions about AgentFlow platform features and capabilities
+2. Explain concepts in AI agents, orchestration, and workflow automation
+3. Provide guidance on best practices for building reliable AI systems
+4. Maintain context throughout the conversation and remember what we've discussed
 
-Always be professional, friendly, and helpful. If you're unsure, it's better to escalate than to provide incorrect information.",
-            RequiresToolExecution = true
+Communication style:
+- Be friendly, professional, and helpful
+- Use clear, concise language
+- Ask clarifying questions when needed
+- Remember the conversation history to provide contextual responses
+
+If users ask about something outside your knowledge, be honest about your limitations.",
+            RequiresToolExecution = false // Pure conversational agent
         };
 
         var loop1 = new AgentLoopConfig
@@ -58,77 +64,75 @@ Always be professional, friendly, and helpful. If you're unsure, it's better to 
             EnableVectorMemory = false
         };
 
-        var tools1 = new List<ToolBinding>
+        // 🎯 SESSION CONFIG - Enable conversation history
+        var session1 = new SessionConfig
         {
-            new()
-            {
-                ToolId = "search-knowledge-base",
-                ToolName = "Search Knowledge Base",
-                ToolVersion = "1.0.0",
-                IsEnabled = true,
-                MaxCallsPerExecution = 5
-            },
-            new()
-            {
-                ToolId = "create-support-ticket",
-                ToolName = "Create Support Ticket",
-                ToolVersion = "1.0.0",
-                IsEnabled = true,
-                MaxCallsPerExecution = 2
-            }
-        }.AsReadOnly();
+            EnableThreads = true,
+            DefaultThreadTtl = TimeSpan.FromHours(1), // 1 hour
+            MaxTurnsPerThread = 50,
+            ContextWindowSize = 10,
+            AutoCreateThread = true,
+            EnableSummarization = true
+        };
 
-        var tags1 = new[] { "demo", "customer-support", "production-ready" }.ToList().AsReadOnly();
+        var tags1 = new[] { "demo", "conversational", "production-ready", "no-tools" }.ToList().AsReadOnly();
 
         var agent1Result = AgentDefinition.Create(
             tenantId: tenantId,
-            name: "Customer Support Agent - Demo",
-            description: "AI-powered customer support agent that handles inquiries, troubleshoots issues, and escalates to humans when needed.",
+            name: "AgentFlow Assistant - Demo v2",
+            description: "Conversational AI assistant with Thread support for maintaining conversation history. Provides helpful information about AgentFlow platform. No tools required - pure chat interface.",
             brain: brain1,
             loopConfig: loop1,
             memory: memory1,
-            session: null,
+            session: session1, // ✅ Session enabled
             ownerUserId: demoUser
         );
 
         if (!agent1Result.IsSuccess)
         {
-            Console.WriteLine($"❌ Failed to create Customer Support Agent: {agent1Result.Error!.Message}");
+            Console.WriteLine($"❌ Failed to create AgentFlow Assistant: {agent1Result.Error!.Message}");
             return;
         }
 
         var agent1 = agent1Result.Value;
-        agent1.ReplaceTools(tools1);
         agent1.SetTags(tags1);
         agent1.Publish(demoUser);
 
         await agentRepo.InsertAsync(agent1);
 
         // ═══════════════════════════════════════════════════════════════════
-        // DEMO AGENT 2: Code Review Agent
+        // DEMO AGENT 2: Technical Q&A Expert
         // ═══════════════════════════════════════════════════════════════════
         
         var brain2 = new BrainConfiguration
         {
-            ModelId = "gpt-4o",
+            ModelId = "gpt-4o-mini",
             Provider = "OpenAI",
             Temperature = 0.3f,
-            MaxResponseTokens = 4000,
-            SystemPromptTemplate = @"You are an expert code reviewer with deep knowledge of software engineering best practices.
+            MaxResponseTokens = 3000,
+            SystemPromptTemplate = @"You are a Technical Expert specialized in software engineering, AI/ML, and system architecture.
 
-Your responsibilities:
-1. Analyze code for bugs, security vulnerabilities, and performance issues
-2. Check compliance with coding standards and conventions
-3. Suggest improvements for code quality and maintainability
-4. Identify potential edge cases and error handling gaps
+Your expertise includes:
+1. Software design patterns and best practices
+2. AI/ML concepts, models, and deployment strategies
+3. System architecture, scalability, and reliability
+4. API design, microservices, and distributed systems
+5. Cloud platforms and DevOps practices
 
-Provide constructive, specific feedback. Always explain WHY something should be changed.",
-            RequiresToolExecution = true
+Approach:
+- Provide technical, accurate, and detailed explanations
+- Include code examples when relevant
+- Explain trade-offs and alternatives
+- Reference industry standards and best practices
+- Maintain conversation context to build on previous topics
+
+Always be precise and thorough in your responses.",
+            RequiresToolExecution = false
         };
 
         var loop2 = new AgentLoopConfig
         {
-            MaxIterations = 5,
+            MaxIterations = 8,
             MaxExecutionTime = TimeSpan.FromMinutes(3),
             ToolCallTimeout = TimeSpan.FromSeconds(60),
             MaxRetries = 3,
@@ -139,62 +143,49 @@ Provide constructive, specific feedback. Always explain WHY something should be 
         var memory2 = new MemoryConfig
         {
             EnableWorkingMemory = true,
-            WorkingMemoryTtlSeconds = 1800,
-            EnableLongTermMemory = true,
-            EnableVectorMemory = true,
-            VectorCollectionName = "code-patterns-db",
-            VectorSearchTopK = 5,
-            VectorMinRelevanceScore = 0.75f
+            WorkingMemoryTtlSeconds = 7200, // 2 hours
+            EnableLongTermMemory = false,
+            EnableVectorMemory = false
         };
 
-        var tools2 = new List<ToolBinding>
+        var session2 = new SessionConfig
         {
-            new()
-            {
-                ToolId = "static-code-analysis",
-                ToolName = "Static Code Analyzer",
-                ToolVersion = "1.0.0",
-                IsEnabled = true,
-                MaxCallsPerExecution = 10
-            },
-            new()
-            {
-                ToolId = "github-api",
-                ToolName = "GitHub API",
-                ToolVersion = "1.0.0",
-                IsEnabled = true,
-                MaxCallsPerExecution = 5
-            }
-        }.AsReadOnly();
+            EnableThreads = true,
+            DefaultThreadTtl = TimeSpan.FromHours(2), // 2 hours
+            MaxTurnsPerThread = 100,
+            ContextWindowSize = 15, // More context for technical discussions
+            AutoCreateThread = true,
+            EnableSummarization = true
+        };
 
-        var tags2 = new[] { "demo", "code-review", "devops" }.ToList().AsReadOnly();
+        var tags2 = new[] { "demo", "technical", "expert", "q-and-a" }.ToList().AsReadOnly();
 
         var agent2Result = AgentDefinition.Create(
             tenantId: tenantId,
-            name: "Code Review Agent - Demo",
-            description: "Automated code review agent that analyzes pull requests, suggests improvements, and enforces coding standards.",
+            name: "Technical Expert - Demo v2",
+            description: "Expert AI assistant with Thread support for technical Q&A, code review, and architecture discussions. Maintains deep conversation context across multiple turns for complex technical topics.",
             brain: brain2,
             loopConfig: loop2,
             memory: memory2,
-            session: null,
+            session: session2,
             ownerUserId: demoUser
         );
 
         if (!agent2Result.IsSuccess)
         {
-            Console.WriteLine($"❌ Failed to create Code Review Agent: {agent2Result.Error!.Message}");
+            Console.WriteLine($"❌ Failed to create Technical Expert: {agent2Result.Error!.Message}");
             return;
         }
 
         var agent2 = agent2Result.Value;
-        agent2.ReplaceTools(tools2);
         agent2.SetTags(tags2);
         agent2.Publish(demoUser);
 
         await agentRepo.InsertAsync(agent2);
 
         Console.WriteLine("✅ Demo seed data created successfully:");
-        Console.WriteLine("   - Customer Support Agent");
-        Console.WriteLine("   - Code Review Agent");
+        Console.WriteLine("   - AgentFlow Assistant v2 (Conversational, Thread Support Enabled)");
+        Console.WriteLine("   - Technical Expert v2 (Deep Technical Q&A, Thread Support Enabled)");
     }
 }
+

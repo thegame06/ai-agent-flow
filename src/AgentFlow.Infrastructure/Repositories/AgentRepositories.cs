@@ -118,7 +118,8 @@ public sealed class AgentExecutionRepository : MongoRepositoryBase<AgentExecutio
             F.Eq(e => e.TenantId, tenantId),
             F.Eq(e => e.Status, ExecutionStatus.Running));
 
-        var update = U.Push(e => e.Steps, step)
+        // Use field name as string to avoid MongoDB expression translation issues
+        var update = U.Push("_steps", step)
                       .Inc(e => e.CurrentIteration, step.StepType == StepType.Think ? 1 : 0)
                       .Set(e => e.UpdatedAt, DateTimeOffset.UtcNow);
 

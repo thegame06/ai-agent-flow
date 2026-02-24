@@ -21,6 +21,7 @@ public sealed class AgentExecutionEngine : IAgentExecutor
 {
     private readonly IAgentDefinitionRepository _agentRepo;
     private readonly IAgentExecutionRepository _executionRepo;
+    private readonly IConversationThreadRepository _threadRepo; // ✅ NEW: Thread persistence
     private readonly IAgentBrain _brain;
     private readonly IToolExecutor _toolExecutor;
     private readonly IAgentMemoryService _memory;
@@ -33,6 +34,7 @@ public sealed class AgentExecutionEngine : IAgentExecutor
     public AgentExecutionEngine(
         IAgentDefinitionRepository agentRepo,
         IAgentExecutionRepository executionRepo,
+        IConversationThreadRepository threadRepo, // ✅ NEW
         IAgentBrain brain,
         IToolExecutor toolExecutor,
         IAgentMemoryService memory,
@@ -44,6 +46,7 @@ public sealed class AgentExecutionEngine : IAgentExecutor
     {
         _agentRepo = agentRepo;
         _executionRepo = executionRepo;
+        _threadRepo = threadRepo; // ✅ NEW
         _brain = brain;
         _toolExecutor = toolExecutor;
         _memory = memory;
@@ -131,6 +134,7 @@ public sealed class AgentExecutionEngine : IAgentExecutor
         }, ct);
 
         // --- 4. Main Loop ---
+        string? executedThreadId = null;
         try
         {
             var loopResult = await RunLoopAsync(execution, agentDef, request, linkedCt);
@@ -139,6 +143,10 @@ public sealed class AgentExecutionEngine : IAgentExecutor
             {
                 execution.Fail(loopResult.Error!.Code, loopResult.Error.Message);
                 await _executionRepo.UpdateAsync(execution, ct);
+            }
+            else
+            {
+                executedThreadId = loopResult.Value;
             }
         }
         catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !ct.IsCancellationRequested)
@@ -182,7 +190,7 @@ public sealed class AgentExecutionEngine : IAgentExecutor
             }
         }
 
-        return MapToResult(execution, agentDef);
+        return MapToResult(execution, agentDef, executedThreadId);
     }
 
     public async Task<AgentExecutionResult> ResumeAsync(
@@ -238,7 +246,7 @@ public sealed class AgentExecutionEngine : IAgentExecutor
         return MapToResult(execution, agentDef);
     }
 
-    private AgentExecutionResult MapToResult(AgentExecution execution, AgentDefinition agentDef)
+    private AgentExecutionResult MapToResult(AgentExecution execution, AgentDefinition agentDef, string? threadId = null)
     {
         return new AgentExecutionResult
         {
@@ -251,11 +259,12 @@ public sealed class AgentExecutionEngine : IAgentExecutor
             TotalTokensUsed = execution.Steps.Sum(s => s.TokensUsed ?? 0),
             DurationMs = (long)(execution.GetDuration()?.TotalMilliseconds ?? 0),
             ErrorCode = execution.ErrorCode,
-            ErrorMessage = execution.ErrorMessage
+            ErrorMessage = execution.ErrorMessage,
+            ThreadId = threadId // ✅ Include thread ID for multi-turn conversations
         };
     }
 
-    private async Task<Result> RunLoopAsync(
+    private async Task<Result<string?>> RunLoopAsync(
         AgentExecution execution,
         AgentDefinition agentDef,
         AgentExecutionRequest request,
@@ -263,6 +272,36 @@ public sealed class AgentExecutionEngine : IAgentExecutor
     {
         bool goalAchieved = false;
         string currentMessage = request.UserMessage;
+
+        // ✅ NEW: Load or create conversation thread if session enabled
+        ConversationThread? currentThread = null;
+        Abstractions.ChatHistorySnapshot? threadSnapshot = null;
+
+        if (agentDef.Session.EnableThreads)
+        {
+            currentThread = await LoadOrCreateThreadAsync(agentDef, request, execution.Id, ct);
+            if (currentThread is not null)
+            {
+                var domainSnapshot = currentThread.GetChatHistory(agentDef.Session.ContextWindowSize);
+                
+                // Map Domain ChatHistorySnapshot → Abstractions ChatHistorySnapshot
+                threadSnapshot = new Abstractions.ChatHistorySnapshot
+                {
+                    ThreadId = domainSnapshot.ThreadId,
+                    RecentTurns = domainSnapshot.RecentTurns.Select(t => new Abstractions.ConversationTurn
+                    {
+                        UserMessage = t.UserMessage,
+                        AssistantResponse = t.AssistantResponse,
+                        Timestamp = t.Timestamp
+                    }).ToList(),
+                    TotalTurns = domainSnapshot.TotalTurns,
+                    OlderContextSummary = domainSnapshot.OlderContextSummary
+                };
+                
+                _logger.LogDebug("Loaded thread {ThreadId} with {TurnCount} turns for execution {ExecutionId}",
+                    currentThread.Id, threadSnapshot.TotalTurns, execution.Id);
+            }
+        }
 
         // RESPECT RUNTIME MODE: Deterministic agents only get 1 iteration (or explicit steps)
         var maxIterations = agentDef.LoopConfig.RuntimeMode == AgentFlow.Abstractions.RuntimeMode.Deterministic 
@@ -299,7 +338,8 @@ public sealed class AgentExecutionEngine : IAgentExecutor
                 Iteration = execution.CurrentIteration,
                 History = execution.Steps.Cast<object>().ToList(),
                 WorkingMemoryJson = memorySummary ?? "{}",
-                AvailableTools = availableTools
+                AvailableTools = availableTools,
+                ThreadSnapshot = threadSnapshot // ✅ NEW: Pass thread history to LLM
             };
 
             var thinkResult = await _brain.ThinkAsync(thinkCtx, ct);
@@ -325,7 +365,7 @@ public sealed class AgentExecutionEngine : IAgentExecutor
             // === POST-LLM POLICY CHECK ===
             var postLlmPolicy = await EvaluatePoliciesAsync(PolicyCheckpoint.PostLLM, execution, agentDef, request, 
                 llmResponse: thinkResult.Rationale, ct: ct);
-            if (!postLlmPolicy.IsSuccess) return Result.Failure(postLlmPolicy.Error!);
+            if (!postLlmPolicy.IsSuccess) return Result<string?>.Failure(postLlmPolicy.Error!);
 
             execution.AppendStep(thinkStep);
             await _executionRepo.AppendStepAsync(execution.Id, request.TenantId, thinkStep, ct);
@@ -347,7 +387,7 @@ public sealed class AgentExecutionEngine : IAgentExecutor
                     // === PRE-RESPONSE POLICY CHECK ===
                     var preResponsePolicy = await EvaluatePoliciesAsync(PolicyCheckpoint.PreResponse, execution, agentDef, request, 
                         finalResponse: output.FinalResponse, ct: ct);
-                    if (!preResponsePolicy.IsSuccess) return Result.Failure(preResponsePolicy.Error!);
+if (!preResponsePolicy.IsSuccess) return Result<string?>.Failure(preResponsePolicy.Error!);
 
                     await _executionRepo.UpdateAsync(execution, CancellationToken.None);
                     goalAchieved = true;
@@ -360,12 +400,12 @@ public sealed class AgentExecutionEngine : IAgentExecutor
                         thinkResult.NextToolInputJson!,
                         ct);
 
-                    if (!actResult.IsSuccess) return Result.Failure(actResult.Error!);
+                    if (!actResult.IsSuccess) return Result<string?>.Failure(actResult.Error!);
 
                     // === POST-TOOL POLICY CHECK ===
                     var postToolPolicy = await EvaluatePoliciesAsync(PolicyCheckpoint.PostTool, execution, agentDef, request, 
                         toolName: thinkResult.NextToolName, toolOutput: actResult.Value?.OutputJson, ct: ct);
-                    if (!postToolPolicy.IsSuccess) return Result.Failure(postToolPolicy.Error!);
+                    if (!postToolPolicy.IsSuccess) return Result<string?>.Failure(postToolPolicy.Error!);
 
                     var observeResult = await ObserveAsync(
                         execution, agentDef, request,
@@ -373,7 +413,7 @@ public sealed class AgentExecutionEngine : IAgentExecutor
                         actResult.Value!,
                         ct);
 
-                    if (!observeResult.IsSuccess) return Result.Failure(observeResult.Error!);
+                    if (!observeResult.IsSuccess) return Result<string?>.Failure(observeResult.Error!);
 
                     if (observeResult.Value!.GoalAchieved)
                     {
@@ -414,17 +454,32 @@ public sealed class AgentExecutionEngine : IAgentExecutor
                     break;
 
                 default:
-                    return Result.Failure(Error.EngineError($"Unknown think decision: {thinkResult.Decision}"));
+                    return Result<string?>.Failure(Error.EngineError($"Unknown think decision: {thinkResult.Decision}"));
             }
         }
 
         if (!goalAchieved)
         {
-            return Result.Failure(Error.EngineError(
+            return Result<string?>.Failure(Error.EngineError(
                 $"Agent did not achieve goal within {agentDef.LoopConfig.MaxIterations} iterations."));
         }
 
-        return Result.Success();
+        // ✅ NEW: Save conversation turn to thread if enabled
+        if (currentThread is not null && execution.Status == Abstractions.ExecutionStatus.Completed)
+        {
+            var totalTokens = execution.Steps.Sum(s => s.TokensUsed ?? 0);
+            var response = execution.Output?.FinalResponse;
+            
+            await SaveThreadTurnAsync(
+                currentThread, 
+                execution.Id, 
+                totalTokens, 
+                request.UserMessage, 
+                response, 
+                ct);
+        }
+
+        return Result<string?>.Success(currentThread?.Id);
     }
 
     private async Task<Result<ToolExecutionResult>> ActAsync(
@@ -661,5 +716,117 @@ public sealed class AgentExecutionEngine : IAgentExecutor
         }
 
         return Result<PolicyResult>.Success(result);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // THREAD MANAGEMENT HELPERS
+    // ═══════════════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// Load existing thread or create new one if AutoCreateThread is enabled.
+    /// </summary>
+    private async Task<ConversationThread?> LoadOrCreateThreadAsync(
+        AgentDefinition agentDef,
+        AgentExecutionRequest request,
+        string executionId,
+        CancellationToken ct)
+    {
+        ConversationThread? thread = null;
+
+        // Try to load existing thread if ThreadId provided
+        if (!string.IsNullOrEmpty(request.ThreadId))
+        {
+            thread = await _threadRepo.GetByIdAsync(request.ThreadId, request.TenantId, ct);
+            if (thread is not null)
+            {
+                _logger.LogInformation("Loaded existing thread {ThreadId} for execution {ExecutionId}",
+                    request.ThreadId, executionId);
+                return thread;
+            }
+
+            _logger.LogWarning("ThreadId {ThreadId} not found, will create new thread if AutoCreateThread=true",
+                request.ThreadId);
+        }
+
+        // Auto-create new thread if enabled
+        if (agentDef.Session.AutoCreateThread)
+        {
+            var threadKey = GenerateThreadKey(agentDef, request);
+            thread = ConversationThread.Create(
+                tenantId: request.TenantId,
+                threadKey: threadKey,
+                agentDefinitionId: agentDef.Id,
+                userId: request.UserId,
+                expiresIn: agentDef.Session.DefaultThreadTtl,
+                maxTurns: agentDef.Session.MaxTurnsPerThread,
+                metadata: new Dictionary<string, string>
+                {
+                    ["agentName"] = agentDef.Name,
+                    ["agentVersion"] = agentDef.Version.ToString(),
+                    ["createdByExecution"] = executionId
+                });
+
+            var insertResult = await _threadRepo.InsertAsync(thread, ct);
+            if (insertResult.IsSuccess)
+            {
+                _logger.LogInformation("Auto-created new thread {ThreadId} for execution {ExecutionId}",
+                    thread.Id, executionId);
+                return thread;
+            }
+
+            _logger.LogError("Failed to create thread: {Error}", insertResult.Error?.Message);
+            return null;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Save conversation turn to thread after successful execution.
+    /// </summary>
+    private async Task SaveThreadTurnAsync(
+        ConversationThread thread,
+        string executionId,
+        int tokensUsed,
+        string userMessage,
+        string? assistantResponse,
+        CancellationToken ct)
+    {
+        var appendResult = thread.AppendExecution(executionId, tokensUsed, userMessage, assistantResponse);
+
+        if (!appendResult.IsSuccess)
+        {
+            _logger.LogWarning("Failed to append execution to thread {ThreadId}: {Error}",
+                thread.Id, appendResult.Error?.Message);
+            return;
+        }
+
+        var updateResult = await _threadRepo.UpdateAsync(thread, ct);
+        if (!updateResult.IsSuccess)
+        {
+            _logger.LogError("Failed to persist thread {ThreadId} update: {Error}",
+                thread.Id, updateResult.Error?.Message);
+        }
+        else
+        {
+            _logger.LogDebug("Saved turn to thread {ThreadId}, total turns: {TurnCount}",
+                thread.Id, thread.TurnCount);
+        }
+    }
+
+    /// <summary>
+    /// Generate thread key based on agent's ThreadKeyPattern.
+    /// Supports variables: {agentName}, {userId}, {date}, {guid}
+    /// </summary>
+    private string GenerateThreadKey(AgentDefinition agentDef, AgentExecutionRequest request)
+    {
+        var pattern = agentDef.Session.ThreadKeyPattern;
+        var threadKey = pattern
+            .Replace("{agentName}", agentDef.Name.Replace(" ", "-").ToLowerInvariant())
+            .Replace("{userId}", request.UserId)
+            .Replace("{date}", DateTimeOffset.UtcNow.ToString("yyyy-MM-dd"))
+            .Replace("{guid}", Guid.NewGuid().ToString("N")[..8]);
+
+        return threadKey;
     }
 }
