@@ -1,5 +1,4 @@
-import axios from 'axios';
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useCallback } from 'react';
 
 import {
   Box,
@@ -13,6 +12,8 @@ import {
   Typography,
   CircularProgress,
 } from '@mui/material';
+
+import axios from 'src/lib/axios';
 
 import { Iconify } from 'src/components/iconify';
 
@@ -35,6 +36,12 @@ interface ThreadInfo {
   totalTokens: number;
 }
 
+interface ThreadSummary {
+  threadId: string;
+  threadKey: string;
+  turnCount: number;
+}
+
 export function ChatInterface({ agentId, agentName, tenantId }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -52,33 +59,81 @@ export function ChatInterface({ agentId, agentName, tenantId }: ChatInterfacePro
     scrollToBottom();
   }, [messages]);
 
-  // Initialize thread on mount
+  const mapHistoryToMessages = useCallback((turns: any[]): Message[] => {
+    const nextMessages: Message[] = [];
+    turns.forEach((turn) => {
+      if (turn.userMessage) {
+        nextMessages.push({
+          role: 'user',
+          content: turn.userMessage,
+          timestamp: new Date(turn.timestamp),
+        });
+      }
+      if (turn.assistantResponse) {
+        nextMessages.push({
+          role: 'assistant',
+          content: turn.assistantResponse,
+          timestamp: new Date(turn.timestamp),
+        });
+      }
+    });
+    return nextMessages;
+  }, []);
+
+  const createThread = useCallback(async () => {
+    const response = await axios.post(`/api/v1/tenants/${tenantId}/threads`, {
+      agentId,
+      expiresIn: '02:00:00',
+    });
+
+    setThreadInfo({
+      threadId: response.data.threadId,
+      threadKey: response.data.threadKey,
+      turnCount: response.data.turnCount ?? 0,
+      totalTokens: 0,
+    });
+    setMessages([]);
+  }, [agentId, tenantId]);
+
+  const loadThreadHistory = useCallback(async (threadId: string) => {
+    const historyResponse = await axios.get(`/api/v1/tenants/${tenantId}/threads/${threadId}/history`);
+    const turns = historyResponse.data?.turns ?? [];
+    setMessages(mapHistoryToMessages(turns));
+    setThreadInfo((prev) =>
+      prev
+        ? { ...prev, turnCount: historyResponse.data?.totalTurns ?? prev.turnCount, totalTokens: historyResponse.data?.tokenStats?.totalTokens ?? prev.totalTokens }
+        : prev
+    );
+  }, [mapHistoryToMessages, tenantId]);
+
   useEffect(() => {
     const initializeThread = async () => {
       try {
-        const response = await axios.post(
-          `/api/v1/tenants/${tenantId}/threads`,
-          {
-            agentId,
-            expiresIn: '02:00:00', // 2 hours
-          }
-        );
+        setError(null);
+        const listResponse = await axios.get(`/api/v1/tenants/${tenantId}/threads?agentId=${agentId}`);
+        const existingThreads = (listResponse.data ?? []) as ThreadSummary[];
 
-        console.log('Thread created:', response.data);
-        setThreadInfo({
-          threadId: response.data.threadId,
-          threadKey: response.data.threadKey,
-          turnCount: 0,
-          totalTokens: 0,
-        });
+        if (existingThreads.length > 0) {
+          const current = existingThreads[0];
+          setThreadInfo({
+            threadId: current.threadId,
+            threadKey: current.threadKey,
+            turnCount: current.turnCount ?? 0,
+            totalTokens: 0,
+          });
+          await loadThreadHistory(current.threadId);
+          return;
+        }
+
+        await createThread();
       } catch (err: any) {
-        console.error('Failed to create thread:', err);
+        console.error('Failed to initialize thread:', err);
         setError('Failed to initialize conversation');
       }
     };
 
     initializeThread();
-  }, [agentId, tenantId]);
+  }, [agentId, createThread, loadThreadHistory, tenantId]);
 
   const sendMessage = async () => {
     if (!input.trim() || !threadInfo) return;
@@ -171,6 +226,21 @@ export function ChatInterface({ agentId, agentName, tenantId }: ChatInterfacePro
               sx={{ color: 'inherit', borderColor: 'inherit' }}
             />
           )}
+          <IconButton
+            color="inherit"
+            onClick={async () => {
+              try {
+                setLoading(true);
+                await createThread();
+              } catch (err: any) {
+                setError(err?.message || 'Failed to start a new thread');
+              } finally {
+                setLoading(false);
+              }
+            }}
+          >
+            <Iconify icon="mdi:plus-circle-outline" />
+          </IconButton>
         </Stack>
       </Box>
 

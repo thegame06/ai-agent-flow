@@ -7,6 +7,7 @@ import Card from '@mui/material/Card';
 import Grid from '@mui/material/Grid';
 import Chip from '@mui/material/Chip';
 import Stack from '@mui/material/Stack';
+import Alert from '@mui/material/Alert';
 import Button from '@mui/material/Button';
 import Divider from '@mui/material/Divider';
 import MenuItem from '@mui/material/MenuItem';
@@ -49,12 +50,21 @@ export default function ModelsPage() {
   const [models, setModels] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [addModelOpen, setAddModelOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchModels = async () => {
     try {
       setLoading(true);
+      setError(null);
       const response = await axios.get('/api/v1/model-routing/models');
       setModels(response.data);
+    } catch (err: any) {
+      const message =
+        err?.status === 403
+          ? 'Model catalog requires platform admin permissions.'
+          : 'Unable to load model catalog.';
+      setError(message);
+      setModels([]);
     } finally {
       setLoading(false);
     }
@@ -65,23 +75,35 @@ export default function ModelsPage() {
   }, []);
 
   const handleConfigure = (modelId: string) => {
-    console.log('Configure model:', modelId);
-    // TODO: Abrir modal de configuración
+    alert(`Advanced model configuration is pending. Selected: ${modelId}`);
   };
 
-  const handleSetPrimary = (modelId: string) => {
-    console.log('Set as primary:', modelId);
-    // TODO: Implementar cambio de tier
+  const handleSetPrimary = async (modelId: string) => {
+    try {
+      await axios.post(`/api/v1/model-routing/models/${modelId}/set-primary`);
+      await fetchModels();
+    } catch (err: any) {
+      alert(err?.message || 'Failed to set model as primary.');
+    }
   };
 
   const handleTestConnection = async (modelId: string) => {
-    console.log('Test connection:', modelId);
-    // TODO: Implementar test de conexión
+    try {
+      const response = await axios.post(`/api/v1/model-routing/models/${modelId}/test`);
+      const healthy = response.data?.healthy ?? response.data?.Healthy;
+      alert(healthy ? `Model '${modelId}' is healthy.` : `Model '${modelId}' is unhealthy.`);
+    } catch (err: any) {
+      alert(err?.message || 'Failed to test model connection.');
+    }
   };
 
-  const handleDisable = (modelId: string) => {
-    console.log('Disable model:', modelId);
-    // TODO: Implementar desactivación
+  const handleDisable = async (modelId: string) => {
+    try {
+      await axios.delete(`/api/v1/model-routing/models/${modelId}`);
+      await fetchModels();
+    } catch (err: any) {
+      alert(err?.message || 'Failed to disable model.');
+    }
   };
 
   return (
@@ -110,8 +132,18 @@ export default function ModelsPage() {
           </Box>
         </Box>
 
+        {error && (
+          <Alert severity="warning" sx={{ mb: 3 }}>
+            {error}
+          </Alert>
+        )}
+
         {loading ? (
           <LinearProgress />
+        ) : models.length === 0 ? (
+          <Alert severity="info">
+            No models are available in the routing registry for your current role or tenant.
+          </Alert>
         ) : (
           <Grid container spacing={3}>
             {models.map((model) => (
@@ -275,9 +307,9 @@ export default function ModelsPage() {
 
 interface ModelMenuProps {
   modelId: string;
-  onConfigure: (id: string) => void;
-  onSetPrimary: (id: string) => void;
-  onDisable: (id: string) => void;
+  onConfigure: (id: string) => void | Promise<void>;
+  onSetPrimary: (id: string) => void | Promise<void>;
+  onDisable: (id: string) => void | Promise<void>;
 }
 
 function ModelMenu({ modelId, onConfigure, onSetPrimary, onDisable }: ModelMenuProps) {

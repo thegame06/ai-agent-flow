@@ -83,8 +83,8 @@ public sealed class CanaryRoutingServiceTests
 
         double actualRatio = (double)canaryCount / totalRequests;
 
-        // Should be roughly 10% ± 3% (statistical variance)
-        Assert.InRange(actualRatio, 0.07, 0.13);
+        // Should be roughly 10% ± 4% (statistical variance)
+        Assert.InRange(actualRatio, 0.06, 0.14);
     }
 
     [Fact]

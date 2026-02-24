@@ -174,7 +174,18 @@ public sealed class SemanticKernelBrain : IAgentBrain
     {
         try
         {
-            using var doc = JsonDocument.Parse(json);
+            // --- GURU SELF-HEALING: Clean JSON block if LLM added markdown wrappers ---
+            var cleanJson = json.Trim();
+            if (cleanJson.StartsWith("```json") && cleanJson.EndsWith("```"))
+            {
+                cleanJson = cleanJson[7..^3].Trim();
+            }
+            else if (cleanJson.StartsWith("```") && cleanJson.EndsWith("```"))
+            {
+                cleanJson = cleanJson[3..^3].Trim();
+            }
+
+            using var doc = JsonDocument.Parse(cleanJson);
             var root = doc.RootElement;
 
             var decisionStr = root.TryGetProperty("decision", out var d) ? d.GetString() : "ProvideFinalAnswer";
@@ -183,11 +194,13 @@ public sealed class SemanticKernelBrain : IAgentBrain
                 : ThinkDecision.ProvideFinalAnswer;
 
             var rationale = root.TryGetProperty("rationale", out var r) ? r.GetString() ?? "" : "";
+            
+            // Security: Pattern check for injection
             if (ContainsInjectionPattern(rationale))
             {
                 return new ThinkResult
                 {
-                    Rationale = "Security checkpoint triggered.",
+                    Rationale = "Security checkpoint triggered: Possible prompt injection in rationale.",
                     Decision = ThinkDecision.Checkpoint,
                     TokensUsed = ExtractTokensUsed(metadata)
                 };
@@ -197,19 +210,23 @@ public sealed class SemanticKernelBrain : IAgentBrain
             {
                 Rationale = rationale,
                 Decision = decision,
-                NextToolName = root.TryGetProperty("nextToolName", out var tn) ? tn.GetString() : null,
-                NextToolInputJson = root.TryGetProperty("nextToolInputJson", out var ti) ? ti.GetString() : null,
-                FinalAnswer = root.TryGetProperty("finalAnswer", out var fa) ? fa.GetString() : null,
+                NextToolName = root.TryGetProperty("nextToolName", out var tn) && !tn.ValueKind.Equals(JsonValueKind.Null) ? tn.GetString() : null,
+                NextToolInputJson = root.TryGetProperty("nextToolInputJson", out var ti) && !ti.ValueKind.Equals(JsonValueKind.Null) ? ti.GetString() : null,
+                FinalAnswer = root.TryGetProperty("finalAnswer", out var fa) && !fa.ValueKind.Equals(JsonValueKind.Null) ? fa.GetString() : null,
                 TokensUsed = ExtractTokensUsed(metadata)
             };
         }
-        catch
+        catch (JsonException jex)
         {
+            _logger.LogWarning("LLM returned malformed JSON: {Error}. Attempting fallback.", jex.Message);
+            
+            // If the LLM failed to produce JSON but gave a text response, use it as FinalAnswer
             return new ThinkResult
             {
-                Rationale = json,
+                Rationale = "Auto-recovery: LLM response was not valid JSON.",
                 Decision = ThinkDecision.ProvideFinalAnswer,
-                FinalAnswer = json
+                FinalAnswer = json,
+                TokensUsed = ExtractTokensUsed(metadata)
             };
         }
     }

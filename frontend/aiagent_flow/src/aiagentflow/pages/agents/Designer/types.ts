@@ -42,6 +42,7 @@ export interface AgentGuardrails {
 }
 
 export interface AgentModelConfig {
+  provider: string;
   primaryModel: string;
   fallbackModel: string;
   temperature: number;
@@ -121,6 +122,7 @@ export const DEFAULT_AGENT_DRAFT: AgentDefinitionDraft = {
     }
   },
   model: {
+    provider: 'OpenAI',
     primaryModel: 'gpt-4o',
     fallbackModel: 'gpt-4o-mini',
     temperature: 0.7,

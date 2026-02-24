@@ -151,6 +151,18 @@ public sealed record ThinkResult
 
 public enum ThinkDecision { UseTool, ProvideFinalAnswer, Checkpoint, RequestMoreContext }
 
+/// <summary>
+/// Supported Brain providers in AgentFlow.
+/// </summary>
+public enum BrainProvider
+{
+    /// <summary>Microsoft Semantic Kernel.</summary>
+    SemanticKernel,
+    /// <summary>Microsoft Agent Framework (MAF).</summary>
+    MicrosoftAgentFramework
+}
+
+
 public sealed record ObserveContext
 {
     public required string TenantId { get; init; }
@@ -241,6 +253,24 @@ public enum ToolRiskLevel { Low = 0, Medium = 1, High = 2, Critical = 3 }
 /// <summary>
 /// Higher-level service that orchestrates tool execution (auth + sandbox + execution).
 /// Used by AgentExecutionEngine to run tools.
+/// </summary>
+/// <summary>
+/// Model Context Protocol (MCP) gateway to execute tools on remote servers.
+/// </summary>
+public interface IMcpToolGateway
+{
+    /// <summary>
+    /// Executes a tool on a remote MCP server.
+    /// </summary>
+    Task<ToolResult> ExecuteAsync(
+        string serverName, 
+        string toolName, 
+        ToolExecutionContext context, 
+        CancellationToken ct = default);
+}
+
+/// <summary>
+/// Core tool execution engine.
 /// </summary>
 public interface IToolExecutor
 {

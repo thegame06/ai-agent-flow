@@ -92,7 +92,7 @@ function mapDraftToPayload(draft: AgentDefinitionDraft) {
     brain: {
       primaryModel: draft.model.primaryModel,
       fallbackModel: draft.model.fallbackModel,
-      provider: 'OpenAI', // Default; could be extended
+      provider: draft.model.provider,
       systemPrompt: draft.systemPrompt,
       temperature: draft.model.temperature,
       maxResponseTokens: draft.model.maxResponseTokens,
@@ -148,6 +148,7 @@ export function mapResponseToDraft(data: Record<string, unknown>): AgentDefiniti
     systemPrompt: (brain.systemPrompt as string) ?? '',
     tags: (data.tags as string[]) ?? [],
     model: {
+      provider: (brain.provider as string) ?? 'OpenAI',
       primaryModel: (brain.primaryModel as string) ?? 'gpt-4o',
       fallbackModel: (brain.fallbackModel as string) ?? 'gpt-4o-mini',
       temperature: (brain.temperature as number) ?? 0.7,

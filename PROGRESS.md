@@ -13,6 +13,39 @@ El proyecto ya cuenta con una base sólida para construir agentes de IA empresar
 
 ## Hitos recientes completados
 
+### [2026-02-23] — UX/Backend alignment for Model Routing, Tools y Chat Threads
+
+- **Model Routing API operativa (básica)**:
+  - nuevos endpoints en `ModelRoutingController` para:
+    - listar providers,
+    - listar modelos por provider,
+    - registrar modelo (`POST /model-routing/models`),
+    - test de salud (`POST /model-routing/models/{id}/test`),
+    - promover a primary (`POST /model-routing/models/{id}/set-primary`),
+    - remover modelo (`DELETE /model-routing/models/{id}`).
+- **Registry de modelos expandido**:
+  - `IModelRegistry` ahora soporta listado de providers y remoción de modelos.
+  - `StubModelProvider` admite `ProviderId` configurable.
+- **Designer mejor conectado al runtime**:
+  - pestaña **Tools** en Agent Designer con bind/unbind real desde `/extensions/tools`.
+  - configuración de modelo ahora incluye `provider` (ya no hardcodeado).
+  - Canvas actualiza conexiones al estado de pasos (ya no TODO).
+- **Chat con historial real por thread**:
+  - carga de thread existente por agente,
+  - carga de historial desde `/threads/{id}/history`,
+  - opción para iniciar nuevo thread desde UI.
+
+### [2026-02-23] — Enterprise Resilience & Sovereign Guardrails
+
+- **Self-Healing Brain**:
+  - Implementación de limpieza automática de respuestas Markdown/JSON en `SemanticKernelBrain`.
+  - Mecanismo de fallback resiliente para evitar fallos de ejecución ante anomalías de formato del LLM.
+- **Sovereign PII Redaction**:
+  - Nuevo `PiiRedactionEvaluator` para detección proactiva de datos sensibles (Emails, CC, SSN).
+  - Integración en el Pipeline de Gobernanza bajo los checkpoints `PostLLM`, `PreTool` y `PreResponse`.
+- **Arquitectura de Resiliencia**:
+  - Documentación técnica detallada de las defensas core en `docs/RESILIENCE-AND-SECURITY-UPGRADE.md`.
+
 ### [2026-02-21] — Fase 2/3: Core Logic & Enterprise Governance
 
 - **HITL**:

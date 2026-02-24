@@ -1,7 +1,7 @@
 import type { RootState, AppDispatch } from 'src/aiagentflow/store';
 
-import { useEffect } from 'react';
 import { useParams } from 'react-router';
+import { useState, useEffect } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { useDispatch, useSelector } from 'react-redux';
 
@@ -28,6 +28,7 @@ import CardContent from '@mui/material/CardContent';
 import FormControl from '@mui/material/FormControl';
 import { alpha, useTheme } from '@mui/material/styles';
 
+import axios from 'src/lib/axios';
 import { CONFIG } from 'src/global-config';
 import { DashboardContent } from 'src/layouts/dashboard';
 
@@ -38,7 +39,9 @@ import AgentFlowCanvas from './AgentFlowCanvas';
 import { saveAgent, publishAgent, fetchAgentDetail } from './designerThunks';
 import {
   addStep,
+  addTool,
   removeStep,
+  removeTool,
   resetDraft,
   updateField,
   updateModel,
@@ -61,10 +64,24 @@ const STEP_TYPES = [
   { value: 'human_review', label: 'Human Review', icon: 'mdi:account-check', color: '#795548' },
 ] as const;
 
-const MODELS = ['gpt-4o', 'gpt-4o-mini', 'claude-3.5-sonnet', 'gemini-2.0-flash'];
+const FALLBACK_MODELS = ['gpt-4o', 'gpt-4o-mini', 'claude-3.5-sonnet', 'gemini-2.0-flash'];
 
 let stepCounter = 0;
 const genId = () => `step-${++stepCounter}-${Date.now()}`;
+
+interface ModelOption {
+  modelId: string;
+  providerId: string;
+  displayName: string;
+}
+
+interface ToolOption {
+  extensionId: string;
+  name: string;
+  version: string;
+  riskLevel: 'Low' | 'Medium' | 'High' | 'Critical';
+  description: string;
+}
 
 // ══════════════════════════════════════════
 // TAB PANELS
@@ -152,6 +169,9 @@ function TabGeneral({ draft, dispatch }: { draft: any; dispatch: any }) {
 function TabSteps({ draft, dispatch, theme }: { draft: any; dispatch: any; theme: any }) {
   return (
     <Stack spacing={3}>
+      <Alert severity="info" variant="outlined">
+        Runtime still executes the Think-Act-Observe engine loop. These visual steps define design intent and guardrails.
+      </Alert>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Typography variant="subtitle1" fontWeight={700}>
           Agent Loop Steps ({draft.steps.length})
@@ -388,11 +408,147 @@ function TabMemory({ draft, dispatch }: { draft: any; dispatch: any }) {
   );
 }
 
-function TabModel({ draft, dispatch }: { draft: any; dispatch: any }) {
+function TabTools({
+  draft,
+  dispatch,
+  availableTools,
+  loading,
+}: {
+  draft: any;
+  dispatch: any;
+  availableTools: ToolOption[];
+  loading: boolean;
+}) {
+  const selectedToolIds = new Set(draft.tools.map((t: { toolId: string }) => t.toolId));
+
+  const bindTool = (tool: ToolOption) => {
+    if (selectedToolIds.has(tool.extensionId)) return;
+
+    dispatch(
+      addTool({
+        toolId: tool.extensionId,
+        toolName: tool.name,
+        version: tool.version,
+        riskLevel: tool.riskLevel,
+        permissions: [],
+      })
+    );
+  };
+
+  return (
+    <Stack spacing={2.5}>
+      <Typography variant="subtitle1" fontWeight={700}>Tool Bindings</Typography>
+      <Typography variant="body2" color="text.secondary">
+        Select which platform tools this agent is allowed to execute.
+      </Typography>
+
+      <Paper variant="outlined" sx={{ p: 2 }}>
+        <Typography variant="subtitle2" sx={{ mb: 1.5 }}>
+          Bound Tools ({draft.tools.length})
+        </Typography>
+        {draft.tools.length === 0 ? (
+          <Alert severity="warning" variant="outlined">
+            No tools bound yet. If the agent needs tool execution, bind at least one tool.
+          </Alert>
+        ) : (
+          <Stack spacing={1}>
+            {draft.tools.map((tool: any) => (
+              <Box
+                key={tool.toolId}
+                sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+              >
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <Typography variant="body2" fontWeight={600}>{tool.toolName}</Typography>
+                  <Chip label={tool.riskLevel} size="small" variant="outlined" />
+                </Stack>
+                <IconButton size="small" color="error" onClick={() => dispatch(removeTool(tool.toolId))}>
+                  <Iconify icon="mdi:delete-outline" width={18} />
+                </IconButton>
+              </Box>
+            ))}
+          </Stack>
+        )}
+      </Paper>
+
+      <Paper variant="outlined" sx={{ p: 2 }}>
+        <Typography variant="subtitle2" sx={{ mb: 1.5 }}>
+          Available Platform Tools
+        </Typography>
+        {loading ? (
+          <Typography variant="body2" color="text.secondary">Loading tools...</Typography>
+        ) : availableTools.length === 0 ? (
+          <Alert severity="info" variant="outlined">
+            No tools discovered from the Extensions API.
+          </Alert>
+        ) : (
+          <Stack spacing={1}>
+            {availableTools.map((tool) => (
+              <Box
+                key={tool.extensionId}
+                sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2 }}
+              >
+                <Box sx={{ minWidth: 0 }}>
+                  <Typography variant="body2" fontWeight={600} noWrap>{tool.name}</Typography>
+                  <Typography variant="caption" color="text.secondary" noWrap>
+                    {tool.description || tool.extensionId}
+                  </Typography>
+                </Box>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  disabled={selectedToolIds.has(tool.extensionId)}
+                  onClick={() => bindTool(tool)}
+                >
+                  {selectedToolIds.has(tool.extensionId) ? 'Bound' : 'Bind'}
+                </Button>
+              </Box>
+            ))}
+          </Stack>
+        )}
+      </Paper>
+    </Stack>
+  );
+}
+
+function TabModel({
+  draft,
+  dispatch,
+  models,
+  loading,
+}: {
+  draft: any;
+  dispatch: any;
+  models: ModelOption[];
+  loading: boolean;
+}) {
   const mc = draft.model;
+  const providers = Array.from(new Set(models.map((m) => m.providerId)));
+  const providerModels = models
+    .filter((m) => m.providerId === mc.provider)
+    .map((m) => m.modelId);
+  const modelOptions = providerModels.length > 0 ? providerModels : FALLBACK_MODELS;
+
   return (
     <Stack spacing={3}>
       <Typography variant="subtitle1" fontWeight={700}>LLM Configuration</Typography>
+      <Alert severity="info" variant="outlined">
+        Models are loaded from Model Routing API when available. If not accessible, fallback options are shown.
+      </Alert>
+      {loading && (
+        <Typography variant="body2" color="text.secondary">Loading model catalog...</Typography>
+      )}
+      <FormControl fullWidth>
+        <InputLabel>Provider</InputLabel>
+        <Select
+          value={mc.provider}
+          label="Provider"
+          onChange={(e) => dispatch(updateModel({ provider: e.target.value }))}
+        >
+          {(providers.length > 0 ? providers : ['OpenAI']).map((provider) => (
+            <MenuItem key={provider} value={provider}>{provider}</MenuItem>
+          ))}
+        </Select>
+      </FormControl>
       <Stack direction="row" spacing={3}>
         <FormControl fullWidth>
           <InputLabel>Primary Model</InputLabel>
@@ -401,7 +557,7 @@ function TabModel({ draft, dispatch }: { draft: any; dispatch: any }) {
             label="Primary Model"
             onChange={(e) => dispatch(updateModel({ primaryModel: e.target.value }))}
           >
-            {MODELS.map(m => <MenuItem key={m} value={m}>{m}</MenuItem>)}
+            {modelOptions.map((m) => <MenuItem key={m} value={m}>{m}</MenuItem>)}
           </Select>
         </FormControl>
         <FormControl fullWidth>
@@ -411,7 +567,7 @@ function TabModel({ draft, dispatch }: { draft: any; dispatch: any }) {
             label="Fallback Model"
             onChange={(e) => dispatch(updateModel({ fallbackModel: e.target.value }))}
           >
-            {MODELS.map(m => <MenuItem key={m} value={m}>{m}</MenuItem>)}
+            {modelOptions.map((m) => <MenuItem key={m} value={m}>{m}</MenuItem>)}
           </Select>
         </FormControl>
       </Stack>
@@ -449,13 +605,14 @@ function TabModel({ draft, dispatch }: { draft: any; dispatch: any }) {
 // MAIN PAGE
 // ══════════════════════════════════════════
 
-const TAB_LABELS = ['General', 'Agent Loop', 'Canvas', 'Guardrails', 'Memory', 'Model'];
+const TAB_LABELS = ['General', 'Agent Loop', 'Canvas', 'Guardrails', 'Memory', 'Tools', 'Model'];
 const TAB_ICONS = [
   'mdi:information-outline',
   'mdi:repeat',
   'mdi:sitemap',
   'mdi:shield-outline',
   'mdi:brain',
+  'mdi:wrench-outline',
   'mdi:chip',
 ];
 
@@ -466,6 +623,9 @@ export default function AgentDesignerPage() {
   );
   const theme = useTheme();
   const { agentId } = useParams<{ agentId: string }>();
+  const [availableModels, setAvailableModels] = useState<ModelOption[]>([]);
+  const [availableTools, setAvailableTools] = useState<ToolOption[]>([]);
+  const [catalogLoading, setCatalogLoading] = useState(false);
 
   // Load agent when editing an existing one
   useEffect(() => {
@@ -475,6 +635,44 @@ export default function AgentDesignerPage() {
       dispatch(resetDraft());
     }
   }, [agentId, dispatch]);
+
+  useEffect(() => {
+    const loadCatalog = async () => {
+      setCatalogLoading(true);
+      try {
+        const [modelsResponse, toolsResponse] = await Promise.allSettled([
+          axios.get('/api/v1/model-routing/models'),
+          axios.get('/api/v1/extensions/tools'),
+        ]);
+
+        if (modelsResponse.status === 'fulfilled' && Array.isArray(modelsResponse.value.data)) {
+          setAvailableModels(
+            modelsResponse.value.data.map((m: any) => ({
+              modelId: m.modelId,
+              providerId: m.providerId ?? 'OpenAI',
+              displayName: m.displayName ?? m.modelId,
+            }))
+          );
+        }
+
+        if (toolsResponse.status === 'fulfilled' && Array.isArray(toolsResponse.value.data)) {
+          setAvailableTools(
+            toolsResponse.value.data.map((t: any) => ({
+              extensionId: t.extensionId,
+              name: t.name,
+              version: t.version ?? '1.0.0',
+              riskLevel: (t.riskLevel ?? 'Low') as ToolOption['riskLevel'],
+              description: t.description ?? '',
+            }))
+          );
+        }
+      } finally {
+        setCatalogLoading(false);
+      }
+    };
+
+    loadCatalog();
+  }, []);
 
   const handleSave = () => {
     dispatch(saveAgent(draft));
@@ -493,13 +691,36 @@ export default function AgentDesignerPage() {
       case 1:
         return <TabSteps draft={draft} dispatch={dispatch} theme={theme} />;
       case 2:
-        return <AgentFlowCanvas steps={draft.steps} />;
+        return (
+          <Stack spacing={2}>
+            <Alert severity="info" variant="outlined">
+              Canvas is a visual editor of step relationships. Runtime behavior is still enforced by engine policies and loop mode.
+            </Alert>
+            <AgentFlowCanvas steps={draft.steps} />
+          </Stack>
+        );
       case 3:
         return <TabGuardrails draft={draft} dispatch={dispatch} />;
       case 4:
         return <TabMemory draft={draft} dispatch={dispatch} />;
       case 5:
-        return <TabModel draft={draft} dispatch={dispatch} />;
+        return (
+          <TabTools
+            draft={draft}
+            dispatch={dispatch}
+            availableTools={availableTools}
+            loading={catalogLoading}
+          />
+        );
+      case 6:
+        return (
+          <TabModel
+            draft={draft}
+            dispatch={dispatch}
+            models={availableModels}
+            loading={catalogLoading}
+          />
+        );
       default:
         return null;
     }

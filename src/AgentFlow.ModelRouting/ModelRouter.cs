@@ -12,21 +12,55 @@ public interface IModelRegistry
     void Register(IModelProvider provider);
     IModelProvider? GetProvider(string modelId);
     IReadOnlyList<string> GetAvailableModelIds();
+    IReadOnlyList<IModelProvider> GetProviders();
+    bool Remove(string modelId);
     Task<IReadOnlyList<string>> GetHealthyModelIdsAsync(CancellationToken ct = default);
 }
 
 public sealed class InMemoryModelRegistry : IModelRegistry
 {
     private readonly Dictionary<string, IModelProvider> _providers = new();
+    private readonly object _sync = new();
 
-    public void Register(IModelProvider provider) =>
-        _providers[provider.ModelId] = provider;
+    public void Register(IModelProvider provider)
+    {
+        lock (_sync)
+        {
+            _providers[provider.ModelId] = provider;
+        }
+    }
 
-    public IModelProvider? GetProvider(string modelId) =>
-        _providers.GetValueOrDefault(modelId);
+    public IModelProvider? GetProvider(string modelId)
+    {
+        lock (_sync)
+        {
+            return _providers.GetValueOrDefault(modelId);
+        }
+    }
 
-    public IReadOnlyList<string> GetAvailableModelIds() =>
-        [.. _providers.Keys];
+    public IReadOnlyList<string> GetAvailableModelIds()
+    {
+        lock (_sync)
+        {
+            return [.. _providers.Keys];
+        }
+    }
+
+    public IReadOnlyList<IModelProvider> GetProviders()
+    {
+        lock (_sync)
+        {
+            return [.. _providers.Values];
+        }
+    }
+
+    public bool Remove(string modelId)
+    {
+        lock (_sync)
+        {
+            return _providers.Remove(modelId);
+        }
+    }
 
     public async Task<IReadOnlyList<string>> GetHealthyModelIdsAsync(CancellationToken ct = default)
     {
@@ -165,14 +199,20 @@ public sealed class ModelRouter : IModelRouter
 
 public sealed class StubModelProvider : IModelProvider
 {
-    public string ProviderId => "stub";
+    public string ProviderId { get; }
     public string ModelId { get; }
     public ModelMetadata Metadata { get; init; }
     private readonly Func<LlmRequest, LlmResponse> _handler;
+    private readonly Func<CancellationToken, Task<bool>> _healthCheck;
 
-    public StubModelProvider(string modelId, Func<LlmRequest, LlmResponse>? handler = null)
+    public StubModelProvider(
+        string modelId,
+        string providerId = "stub",
+        Func<LlmRequest, LlmResponse>? handler = null,
+        Func<CancellationToken, Task<bool>>? healthCheck = null)
     {
         ModelId = modelId;
+        ProviderId = providerId;
         Metadata = new ModelMetadata
         {
             DisplayName = modelId,
@@ -187,11 +227,12 @@ public sealed class StubModelProvider : IModelProvider
             OutputTokens = 50,
             ModelId = modelId
         });
+        _healthCheck = healthCheck ?? (_ => Task.FromResult(true));
     }
 
     public Task<LlmResponse> CompleteAsync(LlmRequest request, CancellationToken ct = default) =>
         Task.FromResult(_handler(request));
 
     public Task<bool> IsHealthyAsync(CancellationToken ct = default) =>
-        Task.FromResult(true);
+        _healthCheck(ct);
 }

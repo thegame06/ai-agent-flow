@@ -17,6 +17,7 @@ using AgentFlow.Infrastructure.Repositories;
 using AgentFlow.Observability;
 using AgentFlow.Security;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.Extensions.Hosting;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.SemanticKernel;
 using MongoDB.Driver;
@@ -47,9 +48,10 @@ public static class DependencyInjection
             .AddMongoDB(configuration)
             .AddRepositories()
             .AddSecurity(configuration)
-            .AddAgentEngine()
+            .AddAgentEngine(configuration)
             .AddMemoryServices()
-            .AddAgentFlowObservability(configuration["Telemetry:OtlpEndpoint"] ?? "http://localhost:4317");
+            .AddAgentFlowObservability(configuration["Telemetry:OtlpEndpoint"] ?? "http://localhost:4317")
+            .AddMcpGateway(configuration);
 
         return services;
     }
@@ -145,7 +147,7 @@ public static class DependencyInjection
         return services;
     }
 
-    private static IServiceCollection AddAgentEngine(this IServiceCollection services)
+    private static IServiceCollection AddAgentEngine(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddScoped<IAgentExecutor, AgentExecutionEngine>();
         services.AddScoped<IToolExecutor, ToolExecutorService>();
@@ -153,40 +155,65 @@ public static class DependencyInjection
         services.AddSingleton<IToolSandbox, DefaultToolSandbox>();
         services.AddSingleton<IToolRegistry, ExtensionToolRegistry>();
 
-        // NOTE: Policy Engine + DSL Engine are registered in AddAgentFlow() via
-        // .AddPolicyEngine() and .AddDslEngine() — do NOT duplicate here.
+        // Register Brains
+        services.AddAgentBrains(configuration);
 
-        // Brain: Semantic Kernel - required config
-        // SK Kernel is registered as Scoped because it can hold per-request state
+        return services;
+    }
+
+    private static IServiceCollection AddAgentBrains(this IServiceCollection services, IConfiguration configuration)
+    {
+        var defaultProviderStr = configuration["AgentBrain:DefaultProvider"] ?? "SemanticKernel";
+        if (!Enum.TryParse<BrainProvider>(defaultProviderStr, true, out var defaultProvider))
+        {
+            defaultProvider = BrainProvider.SemanticKernel;
+        }
+
+        // Register all implementations
+        services.AddScoped<SemanticKernelBrain>();
+        services.AddScoped<MafBrain>();
+
+        // Resolver for IAgentBrain
         services.AddScoped<IAgentBrain>(sp =>
         {
-            var config = sp.GetRequiredService<IConfiguration>();
-            var logger = sp.GetRequiredService<ILogger<SemanticKernelBrain>>();
+            // Future: This could resolve based on AgentKey or TenantId from the request
+            return defaultProvider switch
+            {
+                BrainProvider.MicrosoftAgentFramework => sp.GetRequiredService<MafBrain>(),
+                _ => sp.GetRequiredService<SemanticKernelBrain>()
+            };
+        });
 
+        // Specific configuration for Semantic Kernel
+        services.AddScoped<Kernel>(sp =>
+        {
+            var config = sp.GetRequiredService<IConfiguration>();
             var provider = config["SemanticKernel:Provider"] ?? "OpenAI";
 
-            Kernel kernel;
             if (provider == "AzureOpenAI")
             {
-                kernel = Kernel.CreateBuilder()
+                return Kernel.CreateBuilder()
                     .AddAzureOpenAIChatCompletion(
                         deploymentName: config["SemanticKernel:AzureOpenAI:DeploymentName"]!,
                         endpoint: config["SemanticKernel:AzureOpenAI:Endpoint"]!,
                         apiKey: config["SemanticKernel:AzureOpenAI:ApiKey"]!)
                     .Build();
             }
-            else
-            {
-                kernel = Kernel.CreateBuilder()
-                    .AddOpenAIChatCompletion(
-                        modelId: config["SemanticKernel:OpenAI:ModelId"] ?? "gpt-4o",
-                        apiKey: config["SemanticKernel:OpenAI:ApiKey"]!)
-                    .Build();
-            }
-
-            return new SemanticKernelBrain(kernel, logger);
+            
+            return Kernel.CreateBuilder()
+                .AddOpenAIChatCompletion(
+                    modelId: config["SemanticKernel:OpenAI:ModelId"] ?? "gpt-4o",
+                    apiKey: config["SemanticKernel:OpenAI:ApiKey"]!)
+                .Build();
         });
 
+        return services;
+    }
+
+    private static IServiceCollection AddMcpGateway(this IServiceCollection services, IConfiguration configuration)
+    {
+        services.AddScoped<IMcpToolGateway, AgentFlow.Infrastructure.Gateways.McpToolGateway>();
+        services.AddHostedService<AgentFlow.Infrastructure.Gateways.McpDiscoveryService>();
         return services;
     }
 

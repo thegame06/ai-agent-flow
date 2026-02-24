@@ -127,9 +127,24 @@ export default function AgentFlowCanvas({ steps }: AgentFlowCanvasProps) {
   const onConnect = useCallback(
     (connection: Connection) => {
       setEdges((eds) => addEdge(connection, eds));
-      // TODO: Update redux state with new connection
+
+      if (!connection.source || !connection.target) return;
+
+      const sourceStep = steps.find((s) => s.id === connection.source);
+      if (!sourceStep) return;
+
+      const nextConnections = Array.from(
+        new Set([...(sourceStep.connections ?? []), connection.target])
+      );
+
+      dispatch(
+        updateStep({
+          id: connection.source,
+          changes: { connections: nextConnections },
+        })
+      );
     },
-    [setEdges]
+    [dispatch, setEdges, steps]
   );
 
   const onNodeDragStop = useCallback(

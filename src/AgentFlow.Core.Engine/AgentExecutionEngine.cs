@@ -27,6 +27,7 @@ public sealed class AgentExecutionEngine : IAgentExecutor
     private readonly IPolicyEngine _policyEngine;
     private readonly IAgentEventTransport _eventTransport;
     private readonly ICheckpointStore _checkpointStore;
+    private readonly IToolRegistry _toolRegistry;
     private readonly ILogger<AgentExecutionEngine> _logger;
 
     public AgentExecutionEngine(
@@ -38,6 +39,7 @@ public sealed class AgentExecutionEngine : IAgentExecutor
         IPolicyEngine policyEngine,
         IAgentEventTransport eventTransport,
         ICheckpointStore checkpointStore,
+        IToolRegistry toolRegistry,
         ILogger<AgentExecutionEngine> logger)
     {
         _agentRepo = agentRepo;
@@ -48,6 +50,7 @@ public sealed class AgentExecutionEngine : IAgentExecutor
         _policyEngine = policyEngine;
         _eventTransport = eventTransport;
         _checkpointStore = checkpointStore;
+        _toolRegistry = toolRegistry;
         _logger = logger;
     }
 
@@ -432,6 +435,32 @@ public sealed class AgentExecutionEngine : IAgentExecutor
         string toolInputJson,
         CancellationToken ct)
     {
+        // === GURU TIP: HUMAN-IN-THE-LOOP FOR HIGH RISK MCP TOOLS ===
+        // If the tool is HIGH risk, we must pause for human verification before Activating it.
+        var tool = _toolRegistry.Resolve(toolName);
+        if (tool != null && tool.RiskLevel >= ToolRiskLevel.High)
+        {
+            _logger.LogInformation("HITL: Tool {ToolName} has risk {RiskLevel}. Pausing execution {ExecutionId}.", 
+                toolName, tool.RiskLevel, execution.Id);
+
+            execution.PauseForReview($"Human verification required for security-sensitive tool: {toolName}");
+            await _executionRepo.UpdateAsync(execution, ct);
+            
+            await _checkpointStore.SaveAsync(new AgentCheckpoint
+            {
+                ExecutionId = execution.Id,
+                TenantId = request.TenantId,
+                AgentKey = agentDef.Id.ToString(),
+                CheckpointId = Guid.NewGuid().ToString(),
+                Reason = $"Security Review: {toolName} requires authorization (Risk: {tool.RiskLevel})",
+                ToolName = toolName,
+                ToolInputJson = toolInputJson,
+                LlmRationale = "Guru Enforcement: High risk tools require manual sign-off."
+            }, ct);
+
+            return Result<ToolExecutionResult>.Failure(Error.Unauthorized("Execution paused for security verification."));
+        }
+
         // === PRE-TOOL POLICY CHECK ===
         var preToolPolicy = await EvaluatePoliciesAsync(PolicyCheckpoint.PreTool, execution, agentDef, request, 
             toolName: toolName, toolInput: toolInputJson, ct: ct);

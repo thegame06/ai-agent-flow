@@ -51,7 +51,11 @@ export function AddModelDialog({ open, onClose, onSuccess }: AddModelDialogProps
       handleClose();
     } catch (error: any) {
       console.error('Failed to add model:', error);
-      alert(error.response?.data?.message || 'Failed to add model. Check console for details.');
+      if (error?.status === 404 || error?.status === 405) {
+        alert('Model creation API is not available yet in this backend build.');
+      } else {
+        alert(error?.message || 'Failed to add model. Check console for details.');
+      }
     } finally {
       setLoading(false);
     }
@@ -175,7 +179,7 @@ export function AddModelDialog({ open, onClose, onSuccess }: AddModelDialogProps
             <Grid item xs={12}>
               <Typography variant="caption" color="text.secondary">
                 Note: Model registration currently requires backend configuration. This dialog is a
-                UI preview - full implementation pending.
+                Model registration requires backend support. Provider credentials can still be configured at API level in server settings.
               </Typography>
             </Grid>
           </Grid>

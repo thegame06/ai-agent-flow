@@ -15,13 +15,13 @@ public static class ModelRoutingServiceExtensions
         var registry = new InMemoryModelRegistry();
         
         // Seed some platform models (Guru approach: system-level defaults)
-        registry.Register(new StubModelProvider("gpt-4o") { 
+        registry.Register(new StubModelProvider("gpt-4o", "OpenAI") { 
             Metadata = new ModelMetadata { DisplayName = "GPT-4o", CostPer1KTokens = 0.005, MaxContextTokens = 128000, Tier = "Primary" }
         });
-        registry.Register(new StubModelProvider("gpt-4o-mini") { 
+        registry.Register(new StubModelProvider("gpt-4o-mini", "OpenAI") { 
             Metadata = new ModelMetadata { DisplayName = "GPT-4o Mini", CostPer1KTokens = 0.00015, MaxContextTokens = 128000, Tier = "Fallback" }
         });
-        registry.Register(new StubModelProvider("claude-3-5-sonnet") { 
+        registry.Register(new StubModelProvider("claude-3-5-sonnet", "Anthropic") { 
             Metadata = new ModelMetadata { DisplayName = "Claude 3.5 Sonnet", CostPer1KTokens = 0.003, MaxContextTokens = 200000, Tier = "Secondary" }
         });
 

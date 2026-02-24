@@ -30,7 +30,7 @@ export default function ChatPage() {
           minHeight: 500,
         }}
       >
-        <ChatInterface agentId={agentId} agentName="Agent" tenantId="default-tenant" />
+        <ChatInterface agentId={agentId} agentName="Agent" tenantId="tenant-1" />
       </Box>
     </Container>
   );
