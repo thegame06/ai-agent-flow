@@ -188,13 +188,12 @@ public sealed class InMemoryAuthProfilesStore : IAuthProfilesStore
 
         return Encoding.UTF8.GetString(plainBytes);
     }
-+
-+    private static byte[] GetKey()
-+    {
-+        var keyMaterial = Environment.GetEnvironmentVariable("AGENTFLOW_AUTH_KEY")
-+            ?? "agentflow-dev-key-change-me";
-+        return SHA256.HashData(Encoding.UTF8.GetBytes(keyMaterial));
-+    }
+    private static byte[] GetKey()
+    {
+        var keyMaterial = Environment.GetEnvironmentVariable("AGENTFLOW_AUTH_KEY")
+            ?? "agentflow-dev-key-change-me";
+        return SHA256.HashData(Encoding.UTF8.GetBytes(keyMaterial));
+    }
 
     private static string? Mask(string? secret)
     {
