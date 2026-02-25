@@ -748,10 +748,20 @@ if (!preResponsePolicy.IsSuccess) return Result<string?>.Failure(preResponsePoli
                 request.ThreadId);
         }
 
-        // Auto-create new thread if enabled
+        // Auto-create/reuse thread if enabled
         if (agentDef.Session.AutoCreateThread)
         {
             var threadKey = GenerateThreadKey(agentDef, request);
+
+            // Reuse deterministic session thread when available
+            var existingByKey = await _threadRepo.GetByKeyAsync(threadKey, request.TenantId, ct);
+            if (existingByKey is not null)
+            {
+                _logger.LogInformation("Reusing existing thread {ThreadId} (key={ThreadKey}) for execution {ExecutionId}",
+                    existingByKey.Id, threadKey, executionId);
+                return existingByKey;
+            }
+
             thread = ConversationThread.Create(
                 tenantId: request.TenantId,
                 threadKey: threadKey,
@@ -763,7 +773,8 @@ if (!preResponsePolicy.IsSuccess) return Result<string?>.Failure(preResponsePoli
                 {
                     ["agentName"] = agentDef.Name,
                     ["agentVersion"] = agentDef.Version.ToString(),
-                    ["createdByExecution"] = executionId
+                    ["createdByExecution"] = executionId,
+                    ["sessionId"] = request.SessionId ?? string.Empty
                 });
 
             var insertResult = await _threadRepo.InsertAsync(thread, ct);
@@ -772,6 +783,15 @@ if (!preResponsePolicy.IsSuccess) return Result<string?>.Failure(preResponsePoli
                 _logger.LogInformation("Auto-created new thread {ThreadId} for execution {ExecutionId}",
                     thread.Id, executionId);
                 return thread;
+            }
+
+            // Race-safe fallback: if key already exists, load and continue
+            var recovered = await _threadRepo.GetByKeyAsync(threadKey, request.TenantId, ct);
+            if (recovered is not null)
+            {
+                _logger.LogInformation("Recovered concurrent thread {ThreadId} (key={ThreadKey}) after insert conflict",
+                    recovered.Id, threadKey);
+                return recovered;
             }
 
             _logger.LogError("Failed to create thread: {Error}", insertResult.Error?.Message);
@@ -816,16 +836,24 @@ if (!preResponsePolicy.IsSuccess) return Result<string?>.Failure(preResponsePoli
 
     /// <summary>
     /// Generate thread key based on agent's ThreadKeyPattern.
-    /// Supports variables: {agentName}, {userId}, {date}, {guid}
+    /// Supports variables: {agentName}, {userId}, {date}, {guid}, {sessionId}
+    /// NOTE: if SessionId is provided, key becomes deterministic for session continuity.
     /// </summary>
     private string GenerateThreadKey(AgentDefinition agentDef, AgentExecutionRequest request)
     {
         var pattern = agentDef.Session.ThreadKeyPattern;
+        var now = DateTimeOffset.UtcNow;
+        var sessionId = request.SessionId ?? string.Empty;
+        var guidPart = string.IsNullOrWhiteSpace(sessionId)
+            ? Guid.NewGuid().ToString("N")[..8]
+            : sessionId;
+
         var threadKey = pattern
             .Replace("{agentName}", agentDef.Name.Replace(" ", "-").ToLowerInvariant())
             .Replace("{userId}", request.UserId)
-            .Replace("{date}", DateTimeOffset.UtcNow.ToString("yyyy-MM-dd"))
-            .Replace("{guid}", Guid.NewGuid().ToString("N")[..8]);
+            .Replace("{date}", now.ToString("yyyy-MM-dd"))
+            .Replace("{sessionId}", sessionId)
+            .Replace("{guid}", guidPart);
 
         return threadKey;
     }

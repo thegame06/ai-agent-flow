@@ -68,15 +68,30 @@ public sealed class AgentExecutionsController : ControllerBase
         [FromRoute] string tenantId,
         [FromRoute] string agentId,
         [FromQuery] int limit = 20,
+        [FromQuery] string? threadId = null,
+        [FromQuery] string? sessionId = null,
         CancellationToken ct = default)
     {
         var context = _tenantContext.Current!;
         if (context.TenantId != tenantId && !context.IsPlatformAdmin) return Forbid();
 
-        var history = await _executionRepository.GetByAgentIdAsync(agentId, tenantId, limit, ct);
+        var fetchLimit = Math.Max(limit, 100);
+        var history = await _executionRepository.GetByAgentIdAsync(agentId, tenantId, fetchLimit, ct);
         
         // Materialize data from MongoDB before projecting (avoid "Expression not supported" error)
         var executions = history.ToList();
+
+        // Optional session/thread filtering (threadId and sessionId map to CorrelationId)
+        if (!string.IsNullOrWhiteSpace(threadId))
+        {
+            executions = executions.Where(e => e.CorrelationId == threadId).ToList();
+        }
+        else if (!string.IsNullOrWhiteSpace(sessionId))
+        {
+            executions = executions.Where(e => e.CorrelationId == sessionId).ToList();
+        }
+
+        executions = executions.Take(limit).ToList();
         
         return Ok(executions.Select(e => new
         {
@@ -86,7 +101,8 @@ public sealed class AgentExecutionsController : ControllerBase
             DurationMs = e.GetDuration()?.TotalMilliseconds,
             TotalSteps = e.Steps.Count,
             TotalTokensUsed = e.Output?.TotalTokensUsed ?? 0,
-            e.AgentDefinitionId
+            e.AgentDefinitionId,
+            e.CorrelationId
         }));
     }
 
@@ -249,7 +265,9 @@ public sealed class AgentExecutionsController : ControllerBase
             AgentKey = selectedAgentId,
             UserId = context.UserId,
             UserMessage = body.Message,
-            ThreadId = body.ThreadId, // ✅ Thread continuity support
+            SessionId = body.SessionId, // ✅ Session continuity support
+            ThreadId = body.ThreadId,   // ✅ Thread continuity support
+            CorrelationId = body.ThreadId ?? body.SessionId, // Group executions by active conversation when available
             Priority = Enum.TryParse<ExecutionPriority>(body.Priority ?? "Normal", true, out var p) ? p : ExecutionPriority.Normal,
             Metadata = metadata
         };
@@ -402,9 +420,15 @@ public sealed record TriggerExecutionRequest
     public string? Priority { get; init; }
     
     /// <summary>
+    /// Stable session identifier for conversation continuity.
+    /// When provided, backend will reuse the same auto-created thread for this session.
+    /// </summary>
+    public string? SessionId { get; init; }
+
+    /// <summary>
     /// Thread ID for multi-turn conversations.
     /// If provided, the execution will continue the existing thread.
-    /// If null and agent has AutoCreateThread=true, a new thread will be created.
+    /// If null and agent has AutoCreateThread=true, a new thread will be created/reused (by SessionId when available).
     /// </summary>
     public string? ThreadId { get; init; }
     
