@@ -1,4 +1,5 @@
 using AgentFlow.Abstractions;
+using AgentFlow.Api.AuthProfiles;
 using AgentFlow.ModelRouting;
 using AgentFlow.Security;
 using Microsoft.AspNetCore.Authorization;
@@ -13,11 +14,13 @@ public sealed class ModelRoutingController : ControllerBase
 {
     private readonly IModelRegistry _registry;
     private readonly ITenantContextAccessor _tenantContext;
+    private readonly IAuthProfilesStore _authProfiles;
 
-    public ModelRoutingController(IModelRegistry registry, ITenantContextAccessor tenantContext)
+    public ModelRoutingController(IModelRegistry registry, ITenantContextAccessor tenantContext, IAuthProfilesStore authProfiles)
     {
         _registry = registry;
         _tenantContext = tenantContext;
+        _authProfiles = authProfiles;
     }
 
     [HttpGet("models")]
@@ -35,6 +38,7 @@ public sealed class ModelRoutingController : ControllerBase
                 p.Metadata.CostPer1KTokens,
                 p.Metadata.MaxContextTokens,
                 p.Metadata.Tier,
+                ProviderProfileId = _authProfiles.GetModelProfileId(context.TenantId, p.ModelId),
                 Status = "Active" // Default for registered models
             });
 
@@ -76,6 +80,7 @@ public sealed class ModelRoutingController : ControllerBase
                 p.Metadata.CostPer1KTokens,
                 p.Metadata.MaxContextTokens,
                 p.Metadata.Tier,
+                ProviderProfileId = _authProfiles.GetModelProfileId(context.TenantId, p.ModelId),
                 Status = "Active"
             })
             .ToList();
@@ -100,6 +105,16 @@ public sealed class ModelRoutingController : ControllerBase
         if (request.CostPer1KTokens < 0)
             return BadRequest(new { message = "costPer1KTokens must be >= 0." });
 
+        if (!string.IsNullOrWhiteSpace(request.ProviderProfileId))
+        {
+            var profile = _authProfiles.Get(context.TenantId, request.ProviderProfileId);
+            if (profile is null)
+                return BadRequest(new { message = $"providerProfileId '{request.ProviderProfileId}' not found for tenant." });
+
+            if (!string.Equals(profile.Provider, request.ProviderId, StringComparison.OrdinalIgnoreCase))
+                return BadRequest(new { message = "providerProfileId provider does not match model providerId." });
+        }
+
         var provider = new StubModelProvider(request.ModelId, request.ProviderId)
         {
             Metadata = new ModelMetadata
@@ -113,6 +128,11 @@ public sealed class ModelRoutingController : ControllerBase
 
         _registry.Register(provider);
 
+        if (!string.IsNullOrWhiteSpace(request.ProviderProfileId))
+        {
+            _authProfiles.LinkModelProfile(context.TenantId, request.ModelId, request.ProviderProfileId);
+        }
+
         return CreatedAtAction(nameof(GetAvailableModels), new
         {
             provider.ModelId,
@@ -125,6 +145,7 @@ public sealed class ModelRoutingController : ControllerBase
             provider.Metadata.CostPer1KTokens,
             provider.Metadata.MaxContextTokens,
             provider.Metadata.Tier,
+            ProviderProfileId = request.ProviderProfileId,
             Status = "Active"
         });
     }
@@ -196,6 +217,32 @@ public sealed class ModelRoutingController : ControllerBase
         }
     }
 
+    [HttpPost("models/{modelId}/bind-profile")]
+    public IActionResult BindModelProfile(string modelId, [FromBody] BindModelProfileRequest request)
+    {
+        var context = _tenantContext.Current!;
+        if (!context.IsPlatformAdmin) return Forbid();
+
+        var model = _registry.GetProvider(modelId);
+        if (model is null) return NotFound(new { message = $"Model '{modelId}' not found." });
+
+        var profile = _authProfiles.Get(context.TenantId, request.ProviderProfileId);
+        if (profile is null) return NotFound(new { message = $"Profile '{request.ProviderProfileId}' not found." });
+
+        if (!string.Equals(profile.Provider, model.ProviderId, StringComparison.OrdinalIgnoreCase))
+            return BadRequest(new { message = "Profile provider does not match model provider." });
+
+        _authProfiles.LinkModelProfile(context.TenantId, modelId, request.ProviderProfileId);
+
+        return Ok(new
+        {
+            modelId,
+            model.ProviderId,
+            ProviderProfileId = request.ProviderProfileId,
+            message = "Model successfully linked to auth profile."
+        });
+    }
+
     [HttpDelete("models/{modelId}")]
     public IActionResult DisableModel(string modelId)
     {
@@ -227,5 +274,11 @@ public sealed record RegisterModelRequest
     public string Tier { get; init; } = "Primary";
     public double CostPer1KTokens { get; init; }
     public int MaxContextTokens { get; init; } = 128000;
+    public string? ProviderProfileId { get; init; }
     public string? ApiKey { get; init; } // Reserved for future persisted provider credentials
+}
+
+public sealed record BindModelProfileRequest
+{
+    public required string ProviderProfileId { get; init; }
 }

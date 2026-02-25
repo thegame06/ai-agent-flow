@@ -18,6 +18,7 @@ using AgentFlow.Domain.Repositories;
 using AgentFlow.Infrastructure.Repositories;
 using AgentFlow.Observability;
 using AgentFlow.Security;
+using AgentFlow.Api.AuthProfiles;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Extensions.Hosting;
 using Microsoft.IdentityModel.Tokens;
@@ -49,6 +50,7 @@ public static class DependencyInjection
             .AddAgentFlowExtensions()
             .AddMongoDB(configuration)
             .AddRepositories()
+            .AddSingleton<IAuthProfilesStore, InMemoryAuthProfilesStore>()
             .AddSecurity(configuration)
             .AddAgentEngine(configuration)
             .AddMemoryServices()
