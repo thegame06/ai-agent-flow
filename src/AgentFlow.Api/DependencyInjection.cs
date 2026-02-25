@@ -1,9 +1,13 @@
 using AgentFlow.Abstractions;
+using AgentFlow.Abstractions.Channels;
 using AgentFlow.Extensions;
 using AgentFlow.Application.Memory;
 using AgentFlow.Core.Engine;
+using AgentFlow.Infrastructure.Channels.WhatsApp;
+using AgentFlow.Infrastructure.Channels.WebChat;
+using AgentFlow.Infrastructure.Channels.Api;
 using AgentFlow.Infrastructure.Memory;
-using AgentFlow.Infrastructure.Persistence; // ✅ NEW
+using AgentFlow.Infrastructure.Persistence;
 using AgentFlow.DSL;
 using AgentFlow.Policy;
 using AgentFlow.Evaluation;
@@ -50,6 +54,7 @@ public static class DependencyInjection
             .AddAgentFlowExtensions()
             .AddMongoDB(configuration)
             .AddRepositories()
+            .AddChannelGateway()
             .AddSingleton<IAuthProfilesStore, InMemoryAuthProfilesStore>()
             .AddSecurity(configuration)
             .AddAgentEngine(configuration)
@@ -114,7 +119,28 @@ public static class DependencyInjection
         services.AddScoped<IPolicyRepository, PolicyRepository>();
         services.AddScoped<ICheckpointStore, MongoCheckpointStore>();
         services.AddScoped<IPromptProfileStore, MongoPromptProfileStore>();
-        services.AddScoped<IConversationThreadRepository, MongoConversationThreadRepository>(); // ✅ NEW
+        services.AddScoped<IConversationThreadRepository, MongoConversationThreadRepository>();
+        services.AddChannelRepositories();
+
+        return services;
+    }
+
+    private static IServiceCollection AddChannelGateway(this IServiceCollection services)
+    {
+        services.AddSingleton<IChannelGateway, ChannelGateway>();
+        services.AddSingleton<IChannelHandler, WhatsAppChannelHandler>();
+        services.AddSingleton<IChannelHandler, WebChatChannelHandler>();
+        services.AddSingleton<IChannelHandler, ApiChannelHandler>();
+        services.Configure<WhatsAppOptions>(options => { });
+
+        return services;
+    }
+
+    private static IServiceCollection AddChannelRepositories(this IServiceCollection services)
+    {
+        services.AddScoped<IChannelDefinitionRepository, MongoChannelDefinitionRepository>();
+        services.AddScoped<IChannelSessionRepository, MongoChannelSessionRepository>();
+        services.AddScoped<IChannelMessageRepository, MongoChannelMessageRepository>();
 
         return services;
     }
