@@ -2,6 +2,7 @@ using AgentFlow.Abstractions;
 using AgentFlow.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 
 namespace AgentFlow.Api.Controllers;
 
@@ -13,15 +14,18 @@ public sealed class CheckpointsController : ControllerBase
     private readonly ICheckpointStore _checkpointStore;
     private readonly IAgentExecutor _executor;
     private readonly ITenantContextAccessor _tenantContext;
+    private readonly ILogger<CheckpointsController> _logger;
 
     public CheckpointsController(
         ICheckpointStore checkpointStore,
         IAgentExecutor executor,
-        ITenantContextAccessor tenantContext)
+        ITenantContextAccessor tenantContext,
+        ILogger<CheckpointsController> logger)
     {
         _checkpointStore = checkpointStore;
         _executor = executor;
         _tenantContext = tenantContext;
+        _logger = logger;
     }
 
     [HttpGet]
@@ -30,8 +34,16 @@ public sealed class CheckpointsController : ControllerBase
         var context = _tenantContext.Current!;
         if (context.TenantId != tenantId && !context.IsPlatformAdmin) return Forbid();
 
-        var pending = await _checkpointStore.GetPendingAsync(tenantId, limit);
-        return Ok(pending);
+        try
+        {
+            var pending = await _checkpointStore.GetPendingAsync(tenantId, limit);
+            return Ok(pending);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to load pending checkpoints for tenant {TenantId}", tenantId);
+            return StatusCode(500, new { message = "Failed to load checkpoints.", error = ex.Message });
+        }
     }
 
     [HttpGet("{executionId}")]

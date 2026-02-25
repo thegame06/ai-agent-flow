@@ -2,6 +2,7 @@ using AgentFlow.Abstractions;
 using AgentFlow.Domain.Aggregates;
 using AgentFlow.Domain.Repositories;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 
 namespace AgentFlow.Api.Controllers;
 
@@ -16,15 +17,18 @@ public sealed class ConversationThreadsController : ControllerBase
     private readonly IConversationThreadRepository _threadRepo;
     private readonly IAgentDefinitionRepository _agentRepo;
     private readonly IAgentExecutor _executor;
+    private readonly ILogger<ConversationThreadsController> _logger;
     
     public ConversationThreadsController(
         IConversationThreadRepository threadRepo,
         IAgentDefinitionRepository agentRepo,
-        IAgentExecutor executor)
+        IAgentExecutor executor,
+        ILogger<ConversationThreadsController> logger)
     {
         _threadRepo = threadRepo;
         _agentRepo = agentRepo;
         _executor = executor;
+        _logger = logger;
     }
     
     /// <summary>
@@ -150,33 +154,41 @@ public sealed class ConversationThreadsController : ControllerBase
     {
         var thread = await _threadRepo.GetByIdAsync(threadId, tenantId, ct);
         if (thread is null)
-            return NotFound();
+            return NotFound(new { message = "Thread not found or expired." });
         
         // Security: Verify ownership
         if (thread.UserId != GetUserId())
-            return Forbid();
+            return Forbid(new { message = "Thread access denied." });
         
-        var history = thread.GetChatHistory(maxTurns);
-        
-        return Ok(new ThreadHistoryResponse
+        try
         {
-            ThreadId = thread.Id,
-            ThreadKey = thread.ThreadKey,
-            Turns = history.RecentTurns.Select(t => new TurnDto
+            var history = thread.GetChatHistory(maxTurns);
+            
+            return Ok(new ThreadHistoryResponse
             {
-                UserMessage = t.UserMessage,
-                AssistantResponse = t.AssistantResponse,
-                Timestamp = t.Timestamp
-            }).ToList(),
-            TotalTurns = history.TotalTurns,
-            OlderContextSummary = history.OlderContextSummary,
-            TokenStats = new TokenStatsDto
-            {
-                TotalTokens = thread.TokenStats.TotalTokens,
-                TotalTurns = thread.TokenStats.TotalTurns,
-                AverageTokensPerTurn = thread.TokenStats.AverageTokensPerTurn
-            }
-        });
+                ThreadId = thread.Id,
+                ThreadKey = thread.ThreadKey,
+                Turns = history.RecentTurns.Select(t => new TurnDto
+                {
+                    UserMessage = t.UserMessage,
+                    AssistantResponse = t.AssistantResponse,
+                    Timestamp = t.Timestamp
+                }).ToList(),
+                TotalTurns = history.TotalTurns,
+                OlderContextSummary = history.OlderContextSummary,
+                TokenStats = new TokenStatsDto
+                {
+                    TotalTokens = thread.TokenStats?.TotalTokens ?? 0,
+                    TotalTurns = thread.TokenStats?.TotalTurns ?? 0,
+                    AverageTokensPerTurn = thread.TokenStats?.AverageTokensPerTurn ?? 0
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to load thread history for {ThreadId}", threadId);
+            return StatusCode(500, new { message = "Failed to load thread history.", error = ex.Message });
+        }
     }
     
     /// <summary>
