@@ -109,6 +109,11 @@ export const navData: NavSectionProps['data'] = [
         icon: ICONS.product,
       },
       {
+        title: 'Auth Profiles',
+        path: paths.dashboard.system.authProfiles,
+        icon: ICONS.lock,
+      },
+      {
         title: 'Settings',
         path: paths.dashboard.system.settings,
         icon: ICONS.parameter,

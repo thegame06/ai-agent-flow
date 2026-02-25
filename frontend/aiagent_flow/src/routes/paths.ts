@@ -60,6 +60,7 @@ export const paths = {
     system: {
       root: `${ROOTS.DASHBOARD}/system`,
       models: `${ROOTS.DASHBOARD}/system/models`,
+      authProfiles: `${ROOTS.DASHBOARD}/system/auth-profiles`,
       settings: `${ROOTS.DASHBOARD}/system/settings`,
     },
   },

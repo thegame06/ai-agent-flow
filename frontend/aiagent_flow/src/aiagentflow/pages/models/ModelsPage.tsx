@@ -20,6 +20,8 @@ import LinearProgress from '@mui/material/LinearProgress';
 
 import axios from 'src/lib/axios';
 import { CONFIG } from 'src/global-config';
+import { paths } from 'src/routes/paths';
+import { useRouter } from 'src/routes/hooks';
 import { DashboardContent } from 'src/layouts/dashboard';
 
 import { Label } from 'src/components/label';
@@ -47,6 +49,7 @@ const tierColor = (tier: string) => {
 
 export default function ModelsPage() {
   const theme = useTheme();
+  const router = useRouter();
   const [models, setModels] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [addModelOpen, setAddModelOpen] = useState(false);
@@ -122,13 +125,21 @@ export default function ModelsPage() {
               </Typography>
             </Box>
 
-            <Button
-              variant="contained"
-              startIcon={<Iconify icon="mingcute:add-line" />}
-              onClick={() => setAddModelOpen(true)}
-            >
-              Add Model
-            </Button>
+            <Stack direction="row" spacing={1}>
+              <Button
+                variant="outlined"
+                onClick={() => router.push(paths.dashboard.system.authProfiles)}
+              >
+                Auth Profiles
+              </Button>
+              <Button
+                variant="contained"
+                startIcon={<Iconify icon="mingcute:add-line" />}
+                onClick={() => setAddModelOpen(true)}
+              >
+                Add Model
+              </Button>
+            </Stack>
           </Box>
         </Box>
 
