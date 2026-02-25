@@ -1,3 +1,4 @@
+using AgentFlow.Abstractions;
 using AgentFlow.Domain.Aggregates;
 using AgentFlow.Domain.Repositories;
 using MongoDB.Driver;
@@ -125,7 +126,7 @@ public sealed class MongoChannelSessionRepository : IChannelSessionRepository
 
     public async Task<int> GetActiveCountAsync(string tenantId, CancellationToken ct = default)
     {
-        return await (int)_collection.CountDocumentsAsync(
+        return (int)await _collection.CountDocumentsAsync(
             x => x.TenantId == tenantId && x.Status == SessionStatus.Active,
             cancellationToken: ct
         );

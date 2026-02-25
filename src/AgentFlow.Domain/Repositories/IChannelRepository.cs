@@ -1,4 +1,5 @@
 using AgentFlow.Domain.Aggregates;
+using Result = AgentFlow.Abstractions.Result;
 
 namespace AgentFlow.Domain.Repositories;
 

@@ -1,4 +1,4 @@
-using AgentFlow.Abstractions.Channels;
+using AgentFlow.Application.Channels;
 using AgentFlow.Domain.Aggregates;
 using AgentFlow.Domain.Common;
 using AgentFlow.Domain.Repositories;
@@ -57,8 +57,8 @@ public sealed class ApiChannelHandler : IChannelHandler
             rawPayload: System.Text.Json.JsonSerializer.Serialize(apiMessage)
         );
 
-        message.AddMetadata("api_version", apiMessage.ApiVersion ?? "1.0");
-        message.AddMetadata("correlation_id", apiMessage.CorrelationId ?? Guid.NewGuid().ToString("N"));
+        message.Metadata.TryAdd("api_version", apiMessage.ApiVersion ?? "1.0");
+        message.Metadata.TryAdd("correlation_id", apiMessage.CorrelationId ?? Guid.NewGuid().ToString("N"));
 
         session.RecordMessage();
         _ = _sessionRepo.UpdateAsync(session, ct);

@@ -1,3 +1,5 @@
+using AgentFlow.Domain.Aggregates;
+
 namespace AgentFlow.Domain.Common;
 
 /// <summary>

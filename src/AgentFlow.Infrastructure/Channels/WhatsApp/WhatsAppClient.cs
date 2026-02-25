@@ -4,7 +4,7 @@ namespace AgentFlow.Infrastructure.Channels.WhatsApp;
 
 public sealed record WhatsAppOptions
 {
-    public string? ApiKey { get; init; }
+    public string? ApiKey { get; set; }
     public string? ApiSecret { get; init; }
     public string? PhoneNumberId { get; init; }
     public string? BusinessAccountId { get; init; }

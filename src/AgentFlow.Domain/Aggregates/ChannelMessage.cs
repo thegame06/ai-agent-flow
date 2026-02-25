@@ -36,7 +36,7 @@ public sealed class ChannelMessage
     public Dictionary<string, string> Metadata { get; private set; } = new();
     public DateTimeOffset CreatedAt { get; private set; } = DateTimeOffset.UtcNow;
     public string? AgentExecutionId { get; private set; }
-    public MessageStatus Status { get; private set; } = MessageStatus.Pending;
+    public MessageStatus Status { get; set; } = MessageStatus.Pending;
     public string? ErrorMessage { get; private set; }
 
     public static ChannelMessage CreateIncoming(string tenantId, string channelId, string sessionId, string from, string content, string? rawPayload = null)

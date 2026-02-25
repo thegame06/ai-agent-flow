@@ -1,7 +1,6 @@
 using AgentFlow.Domain.Aggregates;
-using AgentFlow.Domain.Common;
 
-namespace AgentFlow.Abstractions.Channels;
+namespace AgentFlow.Application.Channels;
 
 /// <summary>
 /// Main gateway interface for multi-channel message orchestration.

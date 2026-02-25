@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Helmet } from 'react-helmet-async';
 
 import Box from '@mui/material/Box';
@@ -10,7 +10,6 @@ import Alert from '@mui/material/Alert';
 import Table from '@mui/material/Table';
 import Button from '@mui/material/Button';
 import Dialog from '@mui/material/Dialog';
-import Divider from '@mui/material/Divider';
 import MenuItem from '@mui/material/MenuItem';
 import TableRow from '@mui/material/TableRow';
 import TableBody from '@mui/material/TableBody';
@@ -18,18 +17,16 @@ import TableCell from '@mui/material/TableCell';
 import TextField from '@mui/material/TextField';
 import TableHead from '@mui/material/TableHead';
 import Typography from '@mui/material/Typography';
+import IconButton from '@mui/material/IconButton';
 import DialogTitle from '@mui/material/DialogTitle';
 import DialogActions from '@mui/material/DialogActions';
 import DialogContent from '@mui/material/DialogContent';
 import CircularProgress from '@mui/material/CircularProgress';
-import IconButton from '@mui/material/IconButton';
-import QrCodeIcon from '@mui/icons-material/QrCode';
 
 import axios from 'src/lib/axios';
-import { paths } from 'src/routes/paths';
 import { CONFIG } from 'src/global-config';
-import { useRouter } from 'src/routes/hooks';
 import { DashboardContent } from 'src/layouts/dashboard';
+
 import { Iconify } from 'src/components/iconify';
 
 const TENANT_ID = 'tenant-1';
@@ -59,7 +56,6 @@ interface ChannelSession {
 }
 
 export default function ChannelsPage() {
-  const router = useRouter();
   const [channels, setChannels] = useState<Channel[]>([]);
   const [sessions, setSessions] = useState<ChannelSession[]>([]);
   const [loading, setLoading] = useState(true);

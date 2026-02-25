@@ -1,8 +1,8 @@
-using AgentFlow.Abstractions.Channels;
+using AgentFlow.Application.Channels;
 using AgentFlow.Domain.Aggregates;
+using AgentFlow.Domain.Repositories;
 using AgentFlow.Infrastructure.Channels.WhatsApp;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace AgentFlow.Api.Controllers;

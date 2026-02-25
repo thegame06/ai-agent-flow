@@ -158,7 +158,7 @@ public sealed class ConversationThreadsController : ControllerBase
         
         // Security: Verify ownership
         if (thread.UserId != GetUserId())
-            return Forbid(new { message = "Thread access denied." });
+            return Forbid("Thread access denied.");
         
         try
         {

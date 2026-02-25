@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
 import { Helmet } from 'react-helmet-async';
+import { useMemo, useState, useEffect } from 'react';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -24,10 +24,11 @@ import DialogActions from '@mui/material/DialogActions';
 import DialogContent from '@mui/material/DialogContent';
 import CircularProgress from '@mui/material/CircularProgress';
 
-import axios from 'src/lib/axios';
 import { paths } from 'src/routes/paths';
-import { CONFIG } from 'src/global-config';
 import { useRouter } from 'src/routes/hooks';
+
+import axios from 'src/lib/axios';
+import { CONFIG } from 'src/global-config';
 import { DashboardContent } from 'src/layouts/dashboard';
 
 import { Iconify } from 'src/components/iconify';

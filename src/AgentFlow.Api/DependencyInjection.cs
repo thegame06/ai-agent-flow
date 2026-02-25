@@ -1,35 +1,33 @@
 using AgentFlow.Abstractions;
-using AgentFlow.Abstractions.Channels;
-using AgentFlow.Extensions;
+using AgentFlow.Api.AuthProfiles;
+using AgentFlow.Application.Channels;
 using AgentFlow.Application.Memory;
+using AgentFlow.Caching.Redis;
 using AgentFlow.Core.Engine;
-using AgentFlow.Infrastructure.Channels.WhatsApp;
-using AgentFlow.Infrastructure.Channels.WebChat;
+using AgentFlow.Domain.Aggregates;
+using AgentFlow.Domain.Repositories;
+using AgentFlow.DSL;
+using AgentFlow.Evaluation;
+using AgentFlow.Events;
+using AgentFlow.Extensions;
 using AgentFlow.Infrastructure.Channels.Api;
+using AgentFlow.Infrastructure.Channels.WebChat;
+using AgentFlow.Infrastructure.Channels.WhatsApp;
 using AgentFlow.Infrastructure.Memory;
 using AgentFlow.Infrastructure.Persistence;
-using AgentFlow.DSL;
-using AgentFlow.Policy;
-using AgentFlow.Evaluation;
-using AgentFlow.ModelRouting;
-using AgentFlow.Domain.Aggregates;
-using MongoDB.Bson.Serialization;
-using AgentFlow.TestRunner;
-using AgentFlow.Events;
-using AgentFlow.Prompting;
-using AgentFlow.Caching.Redis;
-using AgentFlow.Domain.Repositories;
 using AgentFlow.Infrastructure.Repositories;
+using AgentFlow.ModelRouting;
 using AgentFlow.Observability;
+using AgentFlow.Policy;
+using AgentFlow.Prompting;
 using AgentFlow.Security;
-using AgentFlow.Api.AuthProfiles;
+using AgentFlow.TestRunner;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.Extensions.Hosting;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.SemanticKernel;
+using MongoDB.Bson.Serialization;
 using MongoDB.Driver;
 using System.Text;
-using System.Security;
 
 namespace AgentFlow.Api;
 
@@ -127,7 +125,7 @@ public static class DependencyInjection
 
     private static IServiceCollection AddChannelGateway(this IServiceCollection services)
     {
-        services.AddSingleton<IChannelGateway, ChannelGateway>();
+        services.AddScoped<IChannelGateway, ChannelGateway>();
         services.AddSingleton<IChannelHandler, WhatsAppChannelHandler>();
         services.AddSingleton<IChannelHandler, WebChatChannelHandler>();
         services.AddSingleton<IChannelHandler, ApiChannelHandler>();
@@ -138,9 +136,9 @@ public static class DependencyInjection
 
     private static IServiceCollection AddChannelRepositories(this IServiceCollection services)
     {
-        services.AddScoped<IChannelDefinitionRepository, MongoChannelDefinitionRepository>();
-        services.AddScoped<IChannelSessionRepository, MongoChannelSessionRepository>();
-        services.AddScoped<IChannelMessageRepository, MongoChannelMessageRepository>();
+        services.AddSingleton<IChannelDefinitionRepository, MongoChannelDefinitionRepository>();
+        services.AddSingleton<IChannelSessionRepository, MongoChannelSessionRepository>();
+        services.AddSingleton<IChannelMessageRepository, MongoChannelMessageRepository>();
 
         return services;
     }

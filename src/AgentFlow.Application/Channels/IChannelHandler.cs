@@ -1,7 +1,7 @@
 using AgentFlow.Domain.Aggregates;
 using AgentFlow.Domain.Common;
 
-namespace AgentFlow.Abstractions.Channels;
+namespace AgentFlow.Application.Channels;
 
 /// <summary>
 /// Contract for channel-specific message handlers.

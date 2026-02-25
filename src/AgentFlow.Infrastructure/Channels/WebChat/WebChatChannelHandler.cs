@@ -1,4 +1,4 @@
-using AgentFlow.Abstractions.Channels;
+using AgentFlow.Application.Channels;
 using AgentFlow.Domain.Aggregates;
 using AgentFlow.Domain.Common;
 using AgentFlow.Domain.Repositories;
@@ -57,8 +57,8 @@ public sealed class WebChatChannelHandler : IChannelHandler
             rawPayload: System.Text.Json.JsonSerializer.Serialize(webMessage)
         );
 
-        message.AddMetadata("browser", webMessage.Browser ?? "unknown");
-        message.AddMetadata("page_url", webMessage.PageUrl ?? "unknown");
+        message.Metadata.TryAdd("browser", webMessage.Browser ?? "unknown");
+        message.Metadata.TryAdd("page_url", webMessage.PageUrl ?? "unknown");
 
         session.RecordMessage();
         _ = _sessionRepo.UpdateAsync(session, ct);

@@ -1,4 +1,4 @@
-using AgentFlow.Abstractions.Channels;
+using AgentFlow.Application.Channels;
 using AgentFlow.Domain.Aggregates;
 using AgentFlow.Domain.Common;
 using AgentFlow.Domain.Repositories;
@@ -105,8 +105,8 @@ public sealed class WhatsAppChannelHandler : IChannelHandler
             rawPayload: System.Text.Json.JsonSerializer.Serialize(waMessage)
         );
 
-        message.AddMetadata("wa_message_id", waMessage.Id);
-        message.AddMetadata("wa_timestamp", waMessage.Timestamp.ToString());
+        message.Metadata.TryAdd("wa_message_id", waMessage.Id);
+        message.Metadata.TryAdd("wa_timestamp", waMessage.Timestamp.ToString());
 
         session.RecordMessage();
         await _sessionRepo.UpdateAsync(session, ct);
@@ -179,7 +179,7 @@ public sealed class WhatsAppChannelHandler : IChannelHandler
         );
 
         session.SetExpiration(TimeSpan.FromHours(24));
-        session.AddMetadata("display_name", context.UserDisplayName ?? "Unknown");
+        session.Metadata.TryAdd("display_name", context.UserDisplayName ?? "Unknown");
 
         await _sessionRepo.InsertAsync(session, ct);
         return session;

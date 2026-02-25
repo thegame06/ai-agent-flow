@@ -1,4 +1,4 @@
-using AgentFlow.Abstractions.Channels;
+using AgentFlow.Application.Channels;
 using AgentFlow.Domain.Aggregates;
 using AgentFlow.Domain.Repositories;
 using AgentFlow.Security;

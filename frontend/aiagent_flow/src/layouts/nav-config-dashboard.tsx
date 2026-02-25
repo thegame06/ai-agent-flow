@@ -38,6 +38,7 @@ const ICONS = {
   menuItem: icon('ic-menu-item'),
   ecommerce: icon('ic-ecommerce'),
   analytics: icon('ic-analytics'),
+  channel: icon('ic-chat'),
   dashboard: icon('ic-dashboard'),
   parameter: icon('ic-parameter'),
 };

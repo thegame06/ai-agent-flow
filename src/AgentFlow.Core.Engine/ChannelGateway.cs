@@ -1,7 +1,6 @@
 using AgentFlow.Abstractions;
-using AgentFlow.Abstractions.Channels;
+using AgentFlow.Application.Channels;
 using AgentFlow.Domain.Aggregates;
-using AgentFlow.Domain.Common;
 using AgentFlow.Domain.Repositories;
 using Microsoft.Extensions.Logging;
 
@@ -24,6 +23,7 @@ public sealed class ChannelGateway : IChannelGateway
         IChannelSessionRepository sessionRepo,
         IChannelMessageRepository messageRepo,
         IAgentExecutor agentExecutor,
+        IEnumerable<IChannelHandler> handlers,
         ILogger<ChannelGateway> logger)
     {
         _channelRepo = channelRepo;
@@ -31,6 +31,11 @@ public sealed class ChannelGateway : IChannelGateway
         _messageRepo = messageRepo;
         _agentExecutor = agentExecutor;
         _logger = logger;
+
+        foreach (var handler in handlers)
+        {
+            RegisterHandler(handler);
+        }
     }
 
     public void RegisterHandler(IChannelHandler handler)
@@ -98,7 +103,7 @@ public sealed class ChannelGateway : IChannelGateway
             outgoingMessage.LinkExecution(executionResult.ExecutionId);
 
             // Send reply through channel
-            var sendResult = await SendReplyAsync(incomingMessage.ChannelId, outgoingMessage, ct);
+            var sendResult = await SendMessageAsync(incomingMessage.ChannelId, outgoingMessage, ct);
             if (!sendResult.Success)
             {
                 _logger.LogError("Failed to send reply: {Error}", sendResult.Error);

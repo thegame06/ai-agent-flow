@@ -18,10 +18,11 @@ import CardActions from '@mui/material/CardActions';
 import { alpha, useTheme } from '@mui/material/styles';
 import LinearProgress from '@mui/material/LinearProgress';
 
-import axios from 'src/lib/axios';
-import { CONFIG } from 'src/global-config';
 import { paths } from 'src/routes/paths';
 import { useRouter } from 'src/routes/hooks';
+
+import axios from 'src/lib/axios';
+import { CONFIG } from 'src/global-config';
 import { DashboardContent } from 'src/layouts/dashboard';
 
 import { Label } from 'src/components/label';

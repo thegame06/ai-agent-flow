@@ -6,9 +6,9 @@ import {
   Paper,
   Alert,
   Stack,
-  Divider,
   Select,
   Button,
+  Divider,
   MenuItem,
   TextField,
   IconButton,
@@ -197,7 +197,7 @@ export function ChatInterface({ agentId, agentName, tenantId }: ChatInterfacePro
   }, [activeThreadStorageKey, agentId, createThread, loadExecutions, loadThreadHistory, tenantId]);
 
   useEffect(() => {
-    if (!threadInfo?.threadId) return;
+    if (!threadInfo?.threadId) return undefined;
 
     const id = window.setInterval(async () => {
       await loadExecutions(threadInfo.threadId);
