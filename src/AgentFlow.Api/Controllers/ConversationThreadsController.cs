@@ -105,6 +105,7 @@ public sealed class ConversationThreadsController : ControllerBase
             UserMessage = request.Message,
             ContextJson = request.Context,
             CorrelationId = thread.Id,
+            ThreadId = thread.Id,
             Priority = ExecutionPriority.Normal
         };
         
@@ -123,26 +124,16 @@ public sealed class ConversationThreadsController : ControllerBase
             });
         }
         
-        // Append execution to thread
-        var appendResult = thread.AppendExecution(
-            executionId: executionResult.ExecutionId,
-            tokensUsed: executionResult.TotalTokensUsed,
-            userMessage: request.Message,
-            assistantResponse: executionResult.FinalResponse
-        );
-        
-        if (!appendResult.IsSuccess)
-            return BadRequest(appendResult.Error);
-        
-        // Persist thread
-        await _threadRepo.UpdateAsync(thread, ct);
-        
+        // Thread turn is persisted by AgentExecutionEngine when ThreadId is provided.
+        // Reload to return fresh counters.
+        var updatedThread = await _threadRepo.GetByIdAsync(threadId, tenantId, ct);
+
         return Ok(new MessageResponse
         {
             ExecutionId = executionResult.ExecutionId,
             AssistantResponse = executionResult.FinalResponse ?? "",
             TokensUsed = executionResult.TotalTokensUsed,
-            TotalTurns = thread.TurnCount,
+            TotalTurns = updatedThread?.TurnCount ?? thread.TurnCount,
             Status = "Completed"
         });
     }

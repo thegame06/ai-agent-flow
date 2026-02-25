@@ -7,6 +7,9 @@ import {
   Alert,
   Stack,
   Divider,
+  Select,
+  Button,
+  MenuItem,
   TextField,
   IconButton,
   Typography,
@@ -21,6 +24,7 @@ interface Message {
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
+  executionId?: string;
 }
 
 interface ChatInterfaceProps {
@@ -42,13 +46,36 @@ interface ThreadSummary {
   turnCount: number;
 }
 
+interface ExecutionSummary {
+  id: string;
+  status: string;
+  createdAt: string;
+  totalTokensUsed?: number;
+  totalSteps?: number;
+}
+
+interface ExecutionDetail {
+  id: string;
+  status?: string;
+  errorMessage?: string;
+  output?: {
+    finalResponse?: string;
+    totalTokensUsed?: number;
+  };
+}
+
 export function ChatInterface({ agentId, agentName, tenantId }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [threadInfo, setThreadInfo] = useState<ThreadInfo | null>(null);
+  const [threads, setThreads] = useState<ThreadSummary[]>([]);
+  const [executions, setExecutions] = useState<ExecutionSummary[]>([]);
+  const [selectedExecution, setSelectedExecution] = useState<ExecutionDetail | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const activeThreadStorageKey = `af:active-thread:${tenantId}:${agentId}`;
 
   // Auto-scroll to bottom when new messages arrive
   const scrollToBottom = () => {
@@ -86,14 +113,21 @@ export function ChatInterface({ agentId, agentName, tenantId }: ChatInterfacePro
       expiresIn: '02:00:00',
     });
 
-    setThreadInfo({
+    const created = {
       threadId: response.data.threadId,
       threadKey: response.data.threadKey,
       turnCount: response.data.turnCount ?? 0,
       totalTokens: 0,
-    });
+    };
+
+    localStorage.setItem(activeThreadStorageKey, created.threadId);
+    setThreadInfo(created);
+    setThreads((prev) => [
+      { threadId: created.threadId, threadKey: created.threadKey, turnCount: created.turnCount },
+      ...prev.filter((t) => t.threadId !== created.threadId),
+    ]);
     setMessages([]);
-  }, [agentId, tenantId]);
+  }, [activeThreadStorageKey, agentId, tenantId]);
 
   const loadThreadHistory = useCallback(async (threadId: string) => {
     const historyResponse = await axios.get(`/api/v1/tenants/${tenantId}/threads/${threadId}/history`);
@@ -106,15 +140,39 @@ export function ChatInterface({ agentId, agentName, tenantId }: ChatInterfacePro
     );
   }, [mapHistoryToMessages, tenantId]);
 
+  const loadExecutions = useCallback(async (threadId?: string) => {
+    try {
+      const qs = threadId ? `&threadId=${encodeURIComponent(threadId)}` : '';
+      const res = await axios.get(`/api/v1/tenants/${tenantId}/agents/${agentId}/executions?limit=20${qs}`);
+      setExecutions((res.data ?? []) as ExecutionSummary[]);
+    } catch (err) {
+      console.warn('Failed to load executions', err);
+    }
+  }, [agentId, tenantId]);
+
+  const loadExecutionDetail = useCallback(async (executionId: string) => {
+    try {
+      const res = await axios.get(`/api/v1/tenants/${tenantId}/executions/${executionId}`);
+      setSelectedExecution(res.data as ExecutionDetail);
+    } catch (err) {
+      console.warn('Failed to load execution detail', err);
+    }
+  }, [tenantId]);
+
   useEffect(() => {
     const initializeThread = async () => {
       try {
         setError(null);
         const listResponse = await axios.get(`/api/v1/tenants/${tenantId}/threads?agentId=${agentId}`);
         const existingThreads = (listResponse.data ?? []) as ThreadSummary[];
+        setThreads(existingThreads);
 
-        if (existingThreads.length > 0) {
-          const current = existingThreads[0];
+        const storedThreadId = localStorage.getItem(activeThreadStorageKey);
+        const preferred = existingThreads.find((t) => t.threadId === storedThreadId);
+        const current = preferred ?? existingThreads[0];
+
+        if (current) {
+          localStorage.setItem(activeThreadStorageKey, current.threadId);
           setThreadInfo({
             threadId: current.threadId,
             threadKey: current.threadKey,
@@ -122,10 +180,13 @@ export function ChatInterface({ agentId, agentName, tenantId }: ChatInterfacePro
             totalTokens: 0,
           });
           await loadThreadHistory(current.threadId);
+          await loadExecutions(current.threadId);
           return;
         }
 
         await createThread();
+        const newThreadId = localStorage.getItem(activeThreadStorageKey) ?? undefined;
+        await loadExecutions(newThreadId);
       } catch (err: any) {
         console.error('Failed to initialize thread:', err);
         setError('Failed to initialize conversation');
@@ -133,7 +194,30 @@ export function ChatInterface({ agentId, agentName, tenantId }: ChatInterfacePro
     };
 
     initializeThread();
-  }, [agentId, createThread, loadThreadHistory, tenantId]);
+  }, [activeThreadStorageKey, agentId, createThread, loadExecutions, loadThreadHistory, tenantId]);
+
+  useEffect(() => {
+    if (!threadInfo?.threadId) return;
+
+    const id = window.setInterval(async () => {
+      await loadExecutions(threadInfo.threadId);
+    }, 8000);
+
+    return () => window.clearInterval(id);
+  }, [loadExecutions, threadInfo?.threadId]);
+
+  useEffect(() => {
+    const id = window.setInterval(async () => {
+      try {
+        const listResponse = await axios.get(`/api/v1/tenants/${tenantId}/threads?agentId=${agentId}`);
+        setThreads((listResponse.data ?? []) as ThreadSummary[]);
+      } catch {
+        // ignore periodic thread refresh errors
+      }
+    }, 20000);
+
+    return () => window.clearInterval(id);
+  }, [agentId, tenantId]);
 
   const sendMessage = async () => {
     if (!input.trim() || !threadInfo) return;
@@ -161,6 +245,7 @@ export function ChatInterface({ agentId, agentName, tenantId }: ChatInterfacePro
         role: 'assistant',
         content: response.data.assistantResponse,
         timestamp: new Date(),
+        executionId: response.data.executionId,
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
@@ -173,6 +258,7 @@ export function ChatInterface({ agentId, agentName, tenantId }: ChatInterfacePro
       });
 
       console.log('Execution:', response.data.executionId, 'Tokens:', response.data.tokensUsed);
+      await loadExecutions(threadInfo.threadId);
     } catch (err: any) {
       console.error('Failed to send message:', err);
       setError(err.response?.data?.error?.message || 'Failed to send message');
@@ -214,7 +300,7 @@ export function ChatInterface({ agentId, agentName, tenantId }: ChatInterfacePro
             <Typography variant="h6">{agentName}</Typography>
             {threadInfo && (
               <Typography variant="caption">
-                {threadInfo.turnCount} turns • {threadInfo.totalTokens.toLocaleString()} tokens
+                {threadInfo.turnCount} turns • {threadInfo.totalTokens.toLocaleString()} tokens • {executions.length} execs
               </Typography>
             )}
           </Box>
@@ -226,12 +312,57 @@ export function ChatInterface({ agentId, agentName, tenantId }: ChatInterfacePro
               sx={{ color: 'inherit', borderColor: 'inherit' }}
             />
           )}
+
+          {threads.length > 0 && (
+            <Select
+              size="small"
+              value={threadInfo?.threadId ?? ''}
+              onChange={async (e) => {
+                const selectedThreadId = String(e.target.value);
+                const selected = threads.find((t) => t.threadId === selectedThreadId);
+                if (!selected) return;
+                localStorage.setItem(activeThreadStorageKey, selected.threadId);
+                setThreadInfo((prev) => ({
+                  threadId: selected.threadId,
+                  threadKey: selected.threadKey,
+                  turnCount: selected.turnCount ?? prev?.turnCount ?? 0,
+                  totalTokens: prev?.totalTokens ?? 0,
+                }));
+                await loadThreadHistory(selected.threadId);
+                await loadExecutions(selected.threadId);
+              }}
+              sx={{ minWidth: 170, bgcolor: 'background.paper' }}
+            >
+              {threads.map((t) => (
+                <MenuItem key={t.threadId} value={t.threadId}>
+                  {t.threadKey.slice(0, 20)}
+                </MenuItem>
+              ))}
+            </Select>
+          )}
+          <Button
+            size="small"
+            variant="outlined"
+            color="inherit"
+            onClick={async () => {
+              try {
+                const listResponse = await axios.get(`/api/v1/tenants/${tenantId}/threads?agentId=${agentId}`);
+                setThreads((listResponse.data ?? []) as ThreadSummary[]);
+              } catch {
+                setError('Failed to refresh threads');
+              }
+            }}
+          >
+            Refresh
+          </Button>
           <IconButton
             color="inherit"
             onClick={async () => {
               try {
                 setLoading(true);
                 await createThread();
+                const newThreadId = localStorage.getItem(activeThreadStorageKey) ?? undefined;
+                await loadExecutions(newThreadId);
               } catch (err: any) {
                 setError(err?.message || 'Failed to start a new thread');
               } finally {
@@ -253,6 +384,82 @@ export function ChatInterface({ agentId, agentName, tenantId }: ChatInterfacePro
           bgcolor: 'grey.50',
         }}
       >
+        {threads.length > 0 && (
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+              Conversation threads
+            </Typography>
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+              {threads.slice(0, 10).map((t) => (
+                <Chip
+                  key={t.threadId}
+                  size="small"
+                  color={t.threadId === threadInfo?.threadId ? 'primary' : 'default'}
+                  label={`${t.threadKey.slice(0, 16)} • ${t.turnCount ?? 0}`}
+                  variant={t.threadId === threadInfo?.threadId ? 'filled' : 'outlined'}
+                  onClick={async () => {
+                    localStorage.setItem(activeThreadStorageKey, t.threadId);
+                    setThreadInfo((prev) => ({
+                      threadId: t.threadId,
+                      threadKey: t.threadKey,
+                      turnCount: t.turnCount ?? prev?.turnCount ?? 0,
+                      totalTokens: prev?.totalTokens ?? 0,
+                    }));
+                    await loadThreadHistory(t.threadId);
+                    await loadExecutions(t.threadId);
+                  }}
+                  clickable
+                />
+              ))}
+            </Stack>
+          </Box>
+        )}
+
+        {executions.length > 0 && (
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+              Recent executions
+            </Typography>
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+              {executions.slice(0, 6).map((e) => (
+                <Chip
+                  key={e.id}
+                  size="small"
+                  label={`${e.status} • ${e.id.slice(0, 8)}`}
+                  variant="outlined"
+                  onClick={() => loadExecutionDetail(e.id)}
+                  clickable
+                />
+              ))}
+            </Stack>
+          </Box>
+        )}
+
+        {selectedExecution && (
+          <Alert severity={selectedExecution.status === 'Failed' ? 'error' : 'info'} sx={{ mb: 2 }}>
+            <Typography variant="subtitle2">Execution {selectedExecution.id.slice(0, 8)}</Typography>
+            <Typography variant="body2" sx={{ mt: 0.5, mb: 1 }}>
+              {selectedExecution.output?.finalResponse || selectedExecution.errorMessage || 'No detail available'}
+            </Typography>
+            <Stack direction="row" spacing={1}>
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => {
+                  const text = selectedExecution.output?.finalResponse;
+                  if (text) {
+                    setInput((prev) => (prev ? `${prev}\n\nContexto previo:\n${text}` : `Contexto previo:\n${text}`));
+                  }
+                }}
+              >
+                Usar como contexto
+              </Button>
+              <Button size="small" onClick={() => setSelectedExecution(null)}>
+                Cerrar
+              </Button>
+            </Stack>
+          </Alert>
+        )}
         {messages.length === 0 && !loading && (
           <Box
             sx={{
@@ -307,6 +514,7 @@ export function ChatInterface({ agentId, agentName, tenantId }: ChatInterfacePro
               </Typography>
               <Typography variant="caption" sx={{ opacity: 0.7, mt: 0.5, display: 'block' }}>
                 {msg.timestamp.toLocaleTimeString()}
+                {msg.executionId ? ` • exec ${msg.executionId.slice(0, 8)}` : ''}
               </Typography>
             </Box>
           </Box>

@@ -34,7 +34,26 @@ interface ExecutionResult {
   status: 'Running' | 'Completed' | 'Failed';
   output?: string;
   error?: string;
+  threadId?: string;
 }
+
+const normalizeStatus = (status: unknown): 'Running' | 'Completed' | 'Failed' => {
+  if (typeof status === 'string') {
+    const s = status.toLowerCase();
+    if (s === 'completed') return 'Completed';
+    if (s === 'failed' || s === 'cancelled') return 'Failed';
+    return 'Running';
+  }
+
+  // Domain enum fallback: Pending=0, Running=1, Completed=2, Failed=3, Cancelled=4, HumanReviewPending=5
+  if (typeof status === 'number') {
+    if (status === 2) return 'Completed';
+    if (status === 3 || status === 4) return 'Failed';
+    return 'Running';
+  }
+
+  return 'Running';
+};
 
 export function ExecuteAgentDialog({ open, onClose, agent }: ExecuteAgentDialogProps) {
   const [message, setMessage] = useState('');
@@ -51,14 +70,25 @@ export function ExecuteAgentDialog({ open, onClose, agent }: ExecuteAgentDialogP
       console.log('Executing agent:', agent.id, 'with message:', message);
       
       // POST /api/v1/tenants/{tenantId}/agents/{agentId}/trigger
+      const sessionStorageKey = `af:chat-session:tenant-1:${agent.id}`;
+      const threadStorageKey = `af:active-thread:tenant-1:${agent.id}`;
+      const sessionId = localStorage.getItem(sessionStorageKey) ?? crypto.randomUUID();
+      localStorage.setItem(sessionStorageKey, sessionId);
+      const activeThreadId = localStorage.getItem(threadStorageKey);
+
       const response = await axios.post(`/api/v1/tenants/tenant-1/agents/${agent.id}/trigger`, {
         message: message.trim(),
         context: {},
+        sessionId,
+        threadId: activeThreadId,
       });
 
       console.log('Trigger response:', response.data);
 
       const executionId = response.data.executionId || response.data.id;
+      if (response.data.threadId) {
+        localStorage.setItem(`af:active-thread:tenant-1:${agent.id}`, response.data.threadId);
+      }
 
       if (!executionId) {
         setResult({
@@ -80,21 +110,35 @@ export function ExecuteAgentDialog({ open, onClose, agent }: ExecuteAgentDialogP
             `/api/v1/tenants/tenant-1/executions/${executionId}`
           );
           const execution = statusResponse.data;
+          const normalizedStatus = normalizeStatus(execution?.status);
 
-          console.log(`Polling attempt ${attempts}:`, execution);
+          console.log(`Polling attempt ${attempts}:`, execution, 'normalized=', normalizedStatus);
 
-          if (
-            execution.status === 'Completed' ||
-            execution.status === 'Failed' ||
-            attempts >= maxAttempts
-          ) {
+          if (normalizedStatus === 'Completed' || normalizedStatus === 'Failed' || attempts >= maxAttempts) {
             clearInterval(checkStatus);
+
+            const timedOut = attempts >= maxAttempts && normalizedStatus === 'Running';
+
+            const finalOutput =
+              execution?.output?.finalResponse ||
+              execution?.output ||
+              execution?.result?.content ||
+              execution?.result?.message;
+
             setResult({
               executionId,
-              status: execution.status,
-              output: execution.output || execution.result?.content || execution.result?.message,
-              error: execution.error || execution.errorMessage,
+              status: timedOut ? 'Failed' : normalizedStatus,
+              output: finalOutput,
+              error: timedOut
+                ? 'Polling timeout: la ejecución puede haber terminado; revisa Chat/History.'
+                : execution?.error || execution?.errorMessage,
+              threadId: response.data?.threadId,
             });
+
+            if (response.data?.threadId) {
+              localStorage.setItem(`af:active-thread:tenant-1:${agent.id}`, response.data.threadId);
+            }
+
             setLoading(false);
           }
         } catch (error: any) {
@@ -179,6 +223,11 @@ export function ExecuteAgentDialog({ open, onClose, agent }: ExecuteAgentDialogP
                       Execution ID: {result.executionId}
                     </Typography>
                   )}
+                  {result.threadId && (
+                    <Typography variant="caption" color="text.secondary" display="block">
+                      Thread ID: {result.threadId}
+                    </Typography>
+                  )}
                 </Box>
 
                 {result.output && (
@@ -221,6 +270,16 @@ export function ExecuteAgentDialog({ open, onClose, agent }: ExecuteAgentDialogP
         <Button onClick={handleClose} disabled={loading}>
           {result ? 'Close' : 'Cancel'}
         </Button>
+        {result?.threadId && (
+          <Button
+            variant="outlined"
+            onClick={() => {
+              window.location.href = `/dashboard/agents/${agent.id}/chat`;
+            }}
+          >
+            Open Conversation
+          </Button>
+        )}
         <LoadingButton
           variant="contained"
           onClick={handleExecute}
