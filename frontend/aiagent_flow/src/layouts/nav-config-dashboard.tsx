@@ -114,6 +114,11 @@ export const navData: NavSectionProps['data'] = [
         icon: ICONS.lock,
       },
       {
+        title: 'Channels',
+        path: paths.dashboard.system.channels,
+        icon: ICONS.channel,
+      },
+      {
         title: 'Settings',
         path: paths.dashboard.system.settings,
         icon: ICONS.parameter,

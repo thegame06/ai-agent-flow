@@ -61,6 +61,7 @@ export const paths = {
       root: `${ROOTS.DASHBOARD}/system`,
       models: `${ROOTS.DASHBOARD}/system/models`,
       authProfiles: `${ROOTS.DASHBOARD}/system/auth-profiles`,
+      channels: `${ROOTS.DASHBOARD}/system/channels`,
       settings: `${ROOTS.DASHBOARD}/system/settings`,
     },
   },
