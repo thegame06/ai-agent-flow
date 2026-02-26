@@ -28,6 +28,7 @@ Aunque el pipeline base existe, falta estandarizar un camino de integración y o
 4. **Audit-first**: toda decisión e invocación crítica deja evidencia.
 5. **Idempotencia y resiliencia**: retries acotados + timeouts + fallback.
 6. **Contrato sobre improvisación**: cada integración debe tener schema de input/output.
+7. **No mocks en features de producto**: para canales e integraciones externas, solo se considera “hecho” con conectividad real en entorno controlado.
 
 ---
 
@@ -71,6 +72,7 @@ Objetivo: demostrar un flujo completo, confiable y auditable.
 - 10/10 ejecuciones consecutivas exitosas en entorno de prueba.
 - Sin bypass de policies.
 - Evidencia auditable completa por ejecución.
+- Canales/integraciones validadas con proveedores reales (no mocks como criterio de cierre).
 
 ---
 
@@ -90,6 +92,8 @@ Objetivo: hacer repetible la creación de nuevas integraciones.
 - [ ] Cobertura mínima de pruebas acordada.
 - [ ] Validación de policy checkpoints (PreTool/PostTool).
 - [ ] Documentación de operación y límites.
+- [ ] Prueba de integración real contra servicio/proveedor real (entorno sandbox o staging), con evidencia.
+- [ ] Prohibido cerrar ticket como “done” si solo existe mock/stub.
 
 ---
 
