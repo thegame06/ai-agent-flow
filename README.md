@@ -99,6 +99,28 @@ dotnet test tests/AgentFlow.Tests.Unit/AgentFlow.Tests.Unit.csproj
 **Salida esperada:**
 - `Passed` en suites de Domain, DSL, Engine, Policy y Evaluation.
 
+## Estado actual (validación reciente)
+
+### Backend
+- ✅ Build API en verde (`dotnet build src/AgentFlow.Api/AgentFlow.Api.csproj`)
+- ✅ Tests unitarios en verde
+- ✅ Tests de integración en verde
+- ✅ Guardrail `no-mock-runtime` activo y pasando
+
+### Frontend (`frontend/aiagent_flow`)
+- ✅ Lint en verde (con warnings no bloqueantes de hooks)
+- ✅ Build en verde
+- ✅ Tests smoke (`vitest`) en verde
+- ✅ Tenant dinámico (sin hardcode principal `tenant-1` en páginas core)
+- ✅ MCP Console operativa (discovery + invoke)
+- ✅ Tools operativas (invoke desde UI)
+- ✅ Policies operativas (create/publish + edición de reglas)
+- ✅ Settings persistente (GET/PUT por tenant)
+
+### Nota sobre mensajes de error vistos en logs
+Se observaron errores intermedios de compilación por ambigüedad de tipo (`PolicySetDefinition`) durante desarrollo.
+Esos errores ya fueron corregidos y el estado actual está validado en verde.
+
 ## Roadmap y progreso
 
 Consulta [`PROGRESS.md`](./PROGRESS.md) para ver:
