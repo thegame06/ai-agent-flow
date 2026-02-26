@@ -3,7 +3,7 @@ SHELL := /usr/bin/env bash
 ROOT := $(shell pwd)
 TEST_SCRIPT := $(ROOT)/scripts/test/ephemeral.sh
 
-.PHONY: help test-env-up test-env-down test-ephemeral test-unit test-integration test-backend test-frontend test-all quality-no-mock
+.PHONY: help test-env-up test-env-down test-ephemeral test-unit test-integration test-backend test-frontend test-all quality-no-mock qa-one-shot
 
 help:
 	@echo "Available targets:"
@@ -16,6 +16,7 @@ help:
 	@echo "  make test-frontend      # Frontend lint/build/test (if test script exists)"
 	@echo "  make test-all           # Alias of test-ephemeral"
 	@echo "  make quality-no-mock    # Fail if runtime code contains mock/stub/simulated paths"
+	@echo "  make qa-one-shot        # Full QA gate (guardrail + backend + frontend)"
 
 test-env-up:
 	@bash $(TEST_SCRIPT) up
@@ -47,5 +48,8 @@ test-frontend:
 
 quality-no-mock:
 	@bash scripts/quality/no-mock-runtime.sh
+
+qa-one-shot:
+	@bash scripts/quality/qa-one-shot.sh
 
 test-all: test-ephemeral
