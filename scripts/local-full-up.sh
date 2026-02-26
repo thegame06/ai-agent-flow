@@ -15,8 +15,14 @@ FRONT_PID_FILE="$RUN_DIR/frontend.pid"
 QR_PID_FILE="$RUN_DIR/qr.pid"
 
 if command -v docker >/dev/null 2>&1; then
+  if ss -ltn "( sport = :${MCP_TEST_PORT:-3501} )" | grep -q LISTEN; then
+    echo "[full-up] MCP_TEST_PORT ${MCP_TEST_PORT:-3501} is already in use."
+    echo "[full-up] Tip: run with another port, e.g.: MCP_TEST_PORT=3511 make up-local-full"
+    exit 1
+  fi
+
   echo "[full-up] Starting infra (mongo/redis/mcp-test) via docker-compose.test.yml"
-  docker compose -f "$ROOT_DIR/docker-compose.test.yml" up -d --wait
+  MCP_TEST_PORT=${MCP_TEST_PORT:-3501} docker compose -f "$ROOT_DIR/docker-compose.test.yml" up -d --wait
 else
   echo "[full-up] docker not found; skipping container infra"
 fi
