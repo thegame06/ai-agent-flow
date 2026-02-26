@@ -43,129 +43,63 @@ public sealed record QrAuthResult
 }
 
 /// <summary>
-/// Low-level WhatsApp client handling QR auth and Business API.
+/// WhatsApp client delegating to transport providers (business API and QR mode).
 /// </summary>
 public sealed class WhatsAppClient
 {
-    private readonly WhatsAppOptions _options;
     private readonly ILogger _logger;
-    private readonly HttpClient _httpClient;
-    private bool _isConnected;
-    private string? _activePhoneNumberId;
+    private readonly IWhatsAppTransport _businessTransport;
+    private readonly IWhatsAppTransport _qrTransport;
+    private IWhatsAppTransport? _activeTransport;
 
     public WhatsAppClient(WhatsAppOptions options, ILogger logger)
     {
-        _options = options;
         _logger = logger;
-        _httpClient = new HttpClient();
+        _businessTransport = new WhatsAppBusinessApiTransport(options, logger);
+        _qrTransport = new WhatsAppWebQrTransport(logger);
     }
 
     public async Task<QrAuthResult> ConnectWithQrAsync(string channelId, CancellationToken ct = default)
     {
-        await Task.CompletedTask;
-        _isConnected = false;
-        _logger.LogWarning("WhatsApp QR auth is not implemented for production use. Channel {ChannelId} remains disconnected.", channelId);
-        return QrAuthResult.Fail("QR auth mode not implemented. Use AuthMode=business with WhatsApp Cloud API credentials.");
+        _activeTransport = _qrTransport;
+        var result = await _activeTransport.ConnectAsync(channelId, null, null, ct);
+        if (!result.Success) _activeTransport = null;
+        return result;
     }
 
     public async Task ConnectWithBusinessApiAsync(string apiToken, string phoneNumberId, CancellationToken ct = default)
     {
-        _options.ApiKey = apiToken;
-        _activePhoneNumberId = phoneNumberId;
-        
-        // Validate connection
-        _httpClient.DefaultRequestHeaders.Authorization =
-            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiToken);
+        _activeTransport = _businessTransport;
+        var result = await _activeTransport.ConnectAsync("business", apiToken, phoneNumberId, ct);
 
-        try
+        if (!result.Success)
         {
-            var response = await _httpClient.GetAsync(
-                $"{_options.BaseUrl}/{phoneNumberId}",
-                ct
-            );
-            
-            if (response.IsSuccessStatusCode)
-            {
-                _isConnected = true;
-                _logger.LogInformation("WhatsApp Business API connected for {PhoneNumberId}", phoneNumberId);
-            }
-            else
-            {
-                _logger.LogWarning("WhatsApp Business API validation failed: {StatusCode}", response.StatusCode);
-            }
+            _activeTransport = null;
+            throw new InvalidOperationException(result.Error ?? "Failed to connect WhatsApp Business API");
         }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "WhatsApp Business API connection error");
-            throw;
-        }
+
+        _logger.LogInformation("WhatsApp connected in {Mode} mode", _businessTransport.Mode);
     }
 
     public async Task DisconnectAsync(CancellationToken ct = default)
     {
-        _isConnected = false;
-        _activePhoneNumberId = null;
-        await Task.CompletedTask;
+        if (_activeTransport != null)
+            await _activeTransport.DisconnectAsync(ct);
+
+        _activeTransport = null;
     }
 
     public async Task<bool> IsConnectedAsync(CancellationToken ct = default)
     {
-        await Task.CompletedTask;
-        return _isConnected;
+        if (_activeTransport == null) return false;
+        return await _activeTransport.IsConnectedAsync(ct);
     }
 
     public async Task<string> SendTextMessageAsync(string to, string content, CancellationToken ct = default)
     {
-        if (!_isConnected || string.IsNullOrEmpty(_activePhoneNumberId) || string.IsNullOrEmpty(_options.ApiKey))
-            throw new InvalidOperationException("WhatsApp client not connected with Business API credentials");
+        if (_activeTransport == null)
+            throw new InvalidOperationException("WhatsApp client is not connected");
 
-        var payload = new
-        {
-            messaging_product = "whatsapp",
-            recipient_type = "individual",
-            to,
-            type = "text",
-            text = new { body = content }
-        };
-
-        var request = new HttpRequestMessage(HttpMethod.Post, $"{_options.BaseUrl}/{_activePhoneNumberId}/messages")
-        {
-            Content = new StringContent(
-                System.Text.Json.JsonSerializer.Serialize(payload),
-                System.Text.Encoding.UTF8,
-                "application/json")
-        };
-
-        request.Headers.Authorization =
-            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _options.ApiKey);
-
-        var response = await _httpClient.SendAsync(request, ct);
-        var body = await response.Content.ReadAsStringAsync(ct);
-
-        if (!response.IsSuccessStatusCode)
-        {
-            _logger.LogError("WhatsApp send failed. Status: {StatusCode}, Body: {Body}", response.StatusCode, body);
-            throw new InvalidOperationException($"WhatsApp send failed: {(int)response.StatusCode} {response.ReasonPhrase}");
-        }
-
-        try
-        {
-            using var doc = System.Text.Json.JsonDocument.Parse(body);
-            var id = doc.RootElement
-                .GetProperty("messages")[0]
-                .GetProperty("id")
-                .GetString();
-
-            if (string.IsNullOrWhiteSpace(id))
-                throw new InvalidOperationException("WhatsApp response missing message id");
-
-            _logger.LogInformation("WhatsApp message sent to {To}. MessageId: {MessageId}", to, id);
-            return id;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to parse WhatsApp send response: {Body}", body);
-            throw;
-        }
+        return await _activeTransport.SendTextMessageAsync(to, content, ct);
     }
 }
