@@ -473,6 +473,29 @@ Se introdujo arquitectura de transporte para soportar dos modos:
    - escanear QR mostrado,
    - enviar mensaje real por WhatsApp.
 
+### 2026-02-26 — Evidencia operativa por sesión/canal
+
+#### Cambios aplicados
+1. **Mensajes de sesión con IDs de trazabilidad**
+   - Archivo: `src/AgentFlow.Api/Controllers/ChannelSessionsController.cs`
+   - `ChannelMessageDto` ahora incluye:
+     - `AgentExecutionId`
+     - `ChannelMessageIdIn`
+     - `ChannelMessageIdOut`
+     - `Metadata`
+
+2. **WhatsApp outbound guarda message id real en metadata**
+   - Archivo: `src/AgentFlow.Infrastructure/Channels/WhatsApp/WhatsAppChannelHandler.cs`
+   - Se persiste `wa_message_id_out` al enviar respuesta.
+
+3. **Estado de canal con readiness QR desde API**
+   - Archivo: `src/AgentFlow.Api/Controllers/ChannelsController.cs`
+   - Nuevo endpoint `GET /channels/{channelId}/status` devuelve `qrAvailable` para modo QR.
+
+#### Verificación
+- `dotnet build src/AgentFlow.Api/AgentFlow.Api.csproj -v minimal` ✅
+- `npm run lint` en `frontend/aiagent_flow` ✅
+
 ### 2026-02-26 — Hardening inicial del QR bridge
 
 #### Cambios aplicados

@@ -123,7 +123,8 @@ public sealed class WhatsAppChannelHandler : IChannelHandler
                 return SendResult.Fail("Missing recipient phone number");
 
             var waMessageId = await _whatsappClient.SendTextMessageAsync(to, message.Content, ct);
-            
+
+            message.Metadata["wa_message_id_out"] = waMessageId;
             message.MarkSent();
             return SendResult.Ok(waMessageId);
         }

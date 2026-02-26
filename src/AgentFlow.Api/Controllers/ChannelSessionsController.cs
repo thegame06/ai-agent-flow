@@ -112,7 +112,11 @@ public sealed class ChannelSessionsController : ControllerBase
             To = m.To,
             Content = m.Content,
             CreatedAt = m.CreatedAt,
-            Status = m.Status.ToString()
+            Status = m.Status.ToString(),
+            AgentExecutionId = m.AgentExecutionId,
+            ChannelMessageIdIn = m.Metadata.GetValueOrDefault("wa_message_id"),
+            ChannelMessageIdOut = m.Metadata.GetValueOrDefault("wa_message_id_out"),
+            Metadata = m.Metadata
         }));
     }
 }
@@ -142,4 +146,8 @@ public sealed record ChannelMessageDto
     public required string Content { get; init; }
     public DateTimeOffset CreatedAt { get; init; }
     public required string Status { get; init; }
+    public string? AgentExecutionId { get; init; }
+    public string? ChannelMessageIdIn { get; init; }
+    public string? ChannelMessageIdOut { get; init; }
+    public Dictionary<string, string> Metadata { get; init; } = new();
 }
