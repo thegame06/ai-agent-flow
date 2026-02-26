@@ -179,6 +179,32 @@ Validar **discovery + invoke HTTP** en AgentFlow con un servidor MCP real local,
 - `node --check tools/mcp-test-server/server.js` ✅
 - `dotnet build src/AgentFlow.Api/AgentFlow.Api.csproj -v minimal` ✅
 
+### 2026-02-26 — Tooling de pruebas automatizadas (ephemeral infra)
+
+#### Cambios aplicados
+1. `Makefile` en raíz del repo con targets:
+   - `test-env-up`
+   - `test-env-down`
+   - `test-ephemeral`
+   - `test-unit`
+   - `test-integration`
+   - `test-backend`
+   - `test-frontend`
+   - `test-all`
+
+2. `docker-compose.test.yml` para infraestructura efímera:
+   - `mongo-test` (puerto `27018`)
+   - `redis-test` (puerto `6380`)
+   - `mcp-test` (puerto `3501`)
+
+3. Script orquestador de pruebas:
+   - `scripts/test/ephemeral.sh`
+   - Flujo: `up -> backend tests -> frontend checks -> summary -> down`
+   - Guarda resultados `.trx` en `.agent/test-results`.
+
+#### Nota de entorno
+- En este host no está instalado `make` (comando no disponible), por lo que la validación fue por `bash -n` del script.
+
 ## 5) Métricas clave (producto + operación)
 
 1. **Autonomía útil**: % tareas completadas sin intervención humana.

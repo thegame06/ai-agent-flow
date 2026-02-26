@@ -1,0 +1,49 @@
+version: "3.9"
+
+services:
+  mongo-test:
+    image: mongo:7
+    container_name: agentflow-mongo-test
+    restart: unless-stopped
+    ports:
+      - "27018:27017"
+    command: ["--quiet"]
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping').ok", "--quiet"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis-test:
+    image: redis:7-alpine
+    container_name: agentflow-redis-test
+    restart: unless-stopped
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  mcp-test:
+    image: node:22-alpine
+    container_name: agentflow-mcp-test
+    working_dir: /workspace/tools/mcp-test-server
+    command: sh -c "npm install && PORT=3501 npm start"
+    environment:
+      - MCP_TEST_API_KEY=${MCP_TEST_API_KEY:-}
+    volumes:
+      - ./:/workspace
+    ports:
+      - "3501:3501"
+    depends_on:
+      mongo-test:
+        condition: service_healthy
+      redis-test:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3501/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
