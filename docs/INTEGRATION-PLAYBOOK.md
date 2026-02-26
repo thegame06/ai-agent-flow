@@ -496,6 +496,7 @@ SESSION_ID=<session-id> TENANT_ID=tenant-1 API_BASE=http://localhost:5000 ./scri
 
 ## Referencia de planificación diferida
 - Ver `docs/PIPELINE-ENHANCEMENT-PLAN.md` para roadmap de mejoras de pipeline (query rewrite, rerank, self-check) posterior al baseline funcional.
+- Pendiente estratégico: módulo IAM (usuarios/roles/permisos) con RBAC formal y gestión de identidades.
 
 ## 5) Métricas clave (producto + operación)
 

@@ -25,22 +25,28 @@ public class AuthController : ControllerBase
     [AllowAnonymous]
     public IActionResult SignIn([FromBody] SignInRequest request)
     {
-        // BYPASS: For Phase 2, we accept any login to unlock the UI.
-        // In real production, we would validate against a DB here.
-        
-        var token = GenerateJwtToken(request.Email);
+        var adminEmail = _configuration["Auth:Admin:Email"] ?? "admin@agentflow.local";
+        var adminPassword = _configuration["Auth:Admin:Password"] ?? "ChangeMeNow!123";
+        var adminTenantId = _configuration["Auth:Admin:TenantId"] ?? "tenant-1";
+
+        if (!string.Equals(request.Email?.Trim(), adminEmail, StringComparison.OrdinalIgnoreCase) || request.Password != adminPassword)
+        {
+            return Unauthorized(new { message = "Invalid credentials" });
+        }
+
+        var token = GenerateJwtToken(request.Email!, adminTenantId);
 
         return Ok(new
         {
             accessToken = token,
             user = new
             {
-                id = "user-1",
-                email = request.Email,
-                displayName = "Admin User",
-                role = "admin",
+                id = "admin-user-1",
+                email = adminEmail,
+                displayName = "Platform Admin",
+                role = "platform_admin",
                 photoURL = "https://api-dev-minimal-v6.vercel.app/assets/images/avatar/avatar-1.webp",
-                tenantId = "tenant-1"
+                tenantId = adminTenantId
             }
         });
     }
@@ -48,23 +54,7 @@ public class AuthController : ControllerBase
     [HttpPost("sign-up")]
     [AllowAnonymous]
     public IActionResult SignUp([FromBody] SignUpRequest request)
-    {
-        // BYPASS: Simple auto-login for signups during dev
-        var token = GenerateJwtToken(request.Email);
-
-        return Ok(new
-        {
-            accessToken = token,
-            user = new
-            {
-                id = Guid.NewGuid().ToString(),
-                email = request.Email,
-                displayName = $"{request.FirstName} {request.LastName}",
-                role = "admin",
-                tenantId = "tenant-1"
-            }
-        });
-    }
+        => StatusCode(StatusCodes.Status501NotImplemented, new { message = "User sign-up is disabled until IAM module is implemented." });
 
     [HttpGet("me")]
     [Authorize]
@@ -79,15 +69,15 @@ public class AuthController : ControllerBase
             {
                 id = context.UserId,
                 email = context.UserEmail,
-                displayName = "Admin User",
-                role = "admin",
+                displayName = "Platform Admin",
+                role = context.IsPlatformAdmin ? "platform_admin" : "tenant_user",
                 tenantId = context.TenantId,
                 permissions = context.Permissions
             }
         });
     }
 
-    private string GenerateJwtToken(string email)
+    private string GenerateJwtToken(string email, string tenantId)
     {
         var jwtSettings = _configuration.GetSection("Jwt");
         var secretKey = jwtSettings["SecretKey"] ?? throw new InvalidOperationException("JWT SecretKey is missing.");
@@ -96,12 +86,14 @@ public class AuthController : ControllerBase
 
         var claims = new List<Claim>
         {
-            new(ClaimTypes.NameIdentifier, "user-1"),
+            new(ClaimTypes.NameIdentifier, "admin-user-1"),
             new(ClaimTypes.Email, email),
+            new(ClaimTypes.Role, "platform_admin"),
             new(ClaimTypes.Role, "admin"),
-            new("tenant_id", "tenant-1"),
-            new("tenant_slug", "default-tenant"),
-            // Core permissions to unlock everything for dev
+            new("tenant_id", tenantId),
+            new("tenant_slug", tenantId),
+            // super permissions for local admin until IAM module is implemented
+            new("permission", AgentFlowPermissions.PlatformAdmin),
             new("permission", AgentFlowPermissions.AgentRead),
             new("permission", AgentFlowPermissions.AgentCreate),
             new("permission", AgentFlowPermissions.AgentUpdate),
