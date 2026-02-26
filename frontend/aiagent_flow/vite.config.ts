@@ -70,6 +70,15 @@ export default defineConfig({
       },
     },
   },
-  server: { port: PORT, host: true },
+  server: {
+    port: PORT,
+    host: true,
+    proxy: {
+      '/api': {
+        target: process.env.VITE_API_BASE_URL || 'http://localhost:5000',
+        changeOrigin: true,
+      },
+    },
+  },
   preview: { port: PORT, host: true },
 });
