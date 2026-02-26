@@ -3,7 +3,7 @@ SHELL := /usr/bin/env bash
 ROOT := $(shell pwd)
 TEST_SCRIPT := $(ROOT)/scripts/test/ephemeral.sh
 
-.PHONY: help test-env-up test-env-down test-ephemeral test-unit test-integration test-backend test-frontend test-all quality-no-mock qa-one-shot up-local-full down-local-full clean-local-full restart-local-full
+.PHONY: help test-env-up test-env-down test-ephemeral test-unit test-integration test-backend test-frontend test-all quality-no-mock qa-one-shot up-local-full down-local-full clean-local-full restart-local-full refresh-local-full
 
 help:
 	@echo "Available targets:"
@@ -18,9 +18,10 @@ help:
 	@echo "  make quality-no-mock    # Fail if runtime code contains mock/stub/simulated paths"
 	@echo "  make qa-one-shot        # Full QA gate (guardrail + backend + frontend)"
 	@echo "  make up-local-full      # Start full local stack (infra + api + frontend + qr bridge)"
-	@echo "  make down-local-full    # Stop full local stack and infra"
-	@echo "  make clean-local-full   # Kill stale local stack processes/ports and docker infra"
-	@echo "  make restart-local-full # Clean + start full local stack"
+	@echo "  make down-local-full    # Stop full local stack (keeps docker volumes/data)"
+	@echo "  make clean-local-full   # Kill stale stack/processes (keeps docker volumes/data)"
+	@echo "  make restart-local-full # Restart stack without wiping data"
+	@echo "  make refresh-local-full # Full refresh: clean + wipe volumes + start"
 
 test-env-up:
 	@bash $(TEST_SCRIPT) up
@@ -63,8 +64,14 @@ down-local-full:
 	@bash scripts/local-full-down.sh
 
 clean-local-full:
-	@bash scripts/local-full-clean.sh
+	@WIPE_DATA=0 bash scripts/local-full-clean.sh
 
-restart-local-full: clean-local-full up-local-full
+restart-local-full:
+	@WIPE_DATA=0 bash scripts/local-full-clean.sh
+	@bash scripts/local-full-up.sh
+
+refresh-local-full:
+	@WIPE_DATA=1 bash scripts/local-full-clean.sh
+	@bash scripts/local-full-up.sh
 
 test-all: test-ephemeral
