@@ -296,6 +296,35 @@ Validar **discovery + invoke HTTP** en AgentFlow con un servidor MCP real local,
 - `cd frontend/aiagent_flow && npm test` ✅ (1/1)
 - `cd frontend/designer && npm test` ✅ (1/1)
 
+### 2026-02-26 — Frontend: MCP Console operativa mínima (ataque #2)
+
+#### Cambios aplicados
+1. Backend API MCP para operación desde UI:
+   - Nuevo controller: `src/AgentFlow.Api/Controllers/McpController.cs`
+   - Endpoints:
+     - `GET /api/v1/mcp/servers`
+     - `GET /api/v1/mcp/servers/{serverName}/tools`
+     - `POST /api/v1/mcp/servers/{serverName}/invoke`
+
+2. Frontend página MCP:
+   - Nuevo: `frontend/aiagent_flow/src/aiagentflow/pages/system/McpPage.tsx`
+   - Funcionalidad:
+     - lista servidores MCP configurados,
+     - descubre tools (`/tools`),
+     - invoca tool con JSON de entrada,
+     - muestra resultado raw.
+
+3. Navegación/routing MCP:
+   - `paths.ts` (ruta `dashboard.system.mcp`)
+   - `nav-config-dashboard.tsx` (item `MCP Console`)
+   - `routes/sections/dashboard.tsx` (lazy route)
+
+#### Verificación
+- `dotnet build src/AgentFlow.Api/AgentFlow.Api.csproj -v minimal` ✅
+- `npm run lint` en `frontend/aiagent_flow` ✅ (warnings no bloqueantes de hooks)
+- `npm test` en `frontend/aiagent_flow` ✅
+- `npm run build` en `frontend/aiagent_flow` ✅
+
 ### 2026-02-26 — Frontend: tenant dinámico (ataque #1)
 
 #### Cambios aplicados

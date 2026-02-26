@@ -29,6 +29,7 @@ const PoliciesPage = lazy(() => import('src/aiagentflow/pages/policies/PoliciesP
 const AuditLogPage = lazy(() => import('src/aiagentflow/pages/audit/AuditPage'));
 const ModelsPage = lazy(() => import('src/aiagentflow/pages/models/ModelsPage'));
 const AuthProfilesPage = lazy(() => import('src/aiagentflow/pages/system/AuthProfilesPage'));
+const McpPage = lazy(() => import('src/aiagentflow/pages/system/McpPage'));
 const ChannelsPage = lazy(() => import('src/aiagentflow/pages/channels/ChannelsPage'));
 const SettingsPage = lazy(() => import('src/aiagentflow/pages/settings/SettingsPage'));
 
@@ -79,6 +80,7 @@ export const dashboardRoutes: RouteObject[] = [
           { element: <ModelsPage />, index: true },
           { path: 'models', element: <ModelsPage /> },
           { path: 'auth-profiles', element: <AuthProfilesPage /> },
+          { path: 'mcp', element: <McpPage /> },
           { path: 'channels', element: <ChannelsPage /> },
           { path: 'settings', element: <SettingsPage /> },
         ],

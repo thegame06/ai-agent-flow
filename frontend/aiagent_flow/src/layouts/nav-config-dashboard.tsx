@@ -115,6 +115,11 @@ export const navData: NavSectionProps['data'] = [
         icon: ICONS.lock,
       },
       {
+        title: 'MCP Console',
+        path: paths.dashboard.system.mcp,
+        icon: ICONS.parameter,
+      },
+      {
         title: 'Channels',
         path: paths.dashboard.system.channels,
         icon: ICONS.channel,
