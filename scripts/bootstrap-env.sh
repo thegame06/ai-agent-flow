@@ -174,23 +174,50 @@ ensure_net9_runtime_if_needed() {
 
   add_result "Detectar necesidad runtime net9.0" "OK" "proyecto usa net9.0"
 
+  local need_netcore=1
+  local need_aspnet=1
+
   if dotnet --list-runtimes 2>/dev/null | grep -q "Microsoft.NETCore.App 9\."; then
+    need_netcore=0
     add_result "Runtime Microsoft.NETCore.App 9.x" "OK" "ya instalado"
+  fi
+
+  if dotnet --list-runtimes 2>/dev/null | grep -q "Microsoft.AspNetCore.App 9\."; then
+    need_aspnet=0
+    add_result "Runtime Microsoft.AspNetCore.App 9.x" "OK" "ya instalado"
+  fi
+
+  if [[ "$need_netcore" -eq 0 && "$need_aspnet" -eq 0 ]]; then
     return 0
   fi
 
-  warn "Falta runtime .NET 9 para ejecutar tests net9.0; instalando con dotnet-install.sh"
+  warn "Faltan runtimes .NET 9 para ejecutar tests net9.0; instalando con dotnet-install.sh"
   run_cmd "Descargar dotnet-install.sh" wget https://dot.net/v1/dotnet-install.sh -O /tmp/dotnet-install.sh || return 1
   run_cmd "Permiso ejecución dotnet-install.sh" chmod +x /tmp/dotnet-install.sh || return 1
-  run_cmd "Instalar runtime .NET 9" sudo /tmp/dotnet-install.sh --channel 9.0 --runtime dotnet --install-dir /usr/lib/dotnet || return 1
+
+  if [[ "$need_netcore" -eq 1 ]]; then
+    run_cmd "Instalar runtime Microsoft.NETCore.App 9.x" sudo /tmp/dotnet-install.sh --channel 9.0 --runtime dotnet --install-dir /usr/lib/dotnet || return 1
+  fi
+
+  if [[ "$need_aspnet" -eq 1 ]]; then
+    run_cmd "Instalar runtime Microsoft.AspNetCore.App 9.x" sudo /tmp/dotnet-install.sh --channel 9.0 --runtime aspnetcore --install-dir /usr/lib/dotnet || return 1
+  fi
 
   if dotnet --list-runtimes 2>/dev/null | grep -q "Microsoft.NETCore.App 9\."; then
     add_result "Verificar runtime Microsoft.NETCore.App 9.x" "OK" "instalado"
-    return 0
+  else
+    add_result "Verificar runtime Microsoft.NETCore.App 9.x" "FAIL" "no se detecta tras instalación"
+    return 1
   fi
 
-  add_result "Verificar runtime Microsoft.NETCore.App 9.x" "FAIL" "no se detecta tras instalación"
-  return 1
+  if dotnet --list-runtimes 2>/dev/null | grep -q "Microsoft.AspNetCore.App 9\."; then
+    add_result "Verificar runtime Microsoft.AspNetCore.App 9.x" "OK" "instalado"
+  else
+    add_result "Verificar runtime Microsoft.AspNetCore.App 9.x" "FAIL" "no se detecta tras instalación"
+    return 1
+  fi
+
+  return 0
 }
 
 project_checks() {
