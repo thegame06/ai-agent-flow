@@ -265,6 +265,43 @@ Validar **discovery + invoke HTTP** en AgentFlow con un servidor MCP real local,
 - Frontend build/lint: 🟢
 - Harness efímero Docker: 🔴 (bloqueado por permisos de Docker daemon)
 
+### 2026-02-26 — Global #5 (MAF/A2A) ejecución local trazable
+
+#### Entregables
+- Script operativo: `scripts/run-global-45-local.sh`
+  - valida guardrail no-mock,
+  - levanta MCP server local,
+  - valida `/health`, `/tools`, `/invoke`,
+  - ejecuta tests de contrato `MafAndMcpContractsTests`.
+- Runbook: `docs/RUNBOOK-GLOBAL-4-5.md`
+
+#### Verificación
+- Ejecución completa `./scripts/run-global-45-local.sh` ✅
+- Resultado: MCP real operativo + tests de contrato MAF/MCP en verde.
+
+### 2026-02-26 — Global #3 (tests frontend automáticos)
+
+#### Cambios aplicados
+- `frontend/aiagent_flow/package.json`
+  - nuevo script: `test` (`vitest run`)
+  - dependencia dev: `vitest`
+- `frontend/designer/package.json`
+  - nuevo script: `test` (`vitest run`)
+  - dependencia dev: `vitest`
+- Nuevos smoke tests:
+  - `frontend/aiagent_flow/src/smoke.test.ts`
+  - `frontend/designer/src/smoke.test.ts`
+
+#### Verificación
+- `cd frontend/aiagent_flow && npm test` ✅ (1/1)
+- `cd frontend/designer && npm test` ✅ (1/1)
+
+### 2026-02-26 — Global #4 (MCP real) cierre incremental
+
+#### Estado
+- MCP discovery+invoke real ya validado vía servidor local.
+- Configuración dev y tooling listos para repetir prueba sin mocks.
+
 ## 5) Métricas clave (producto + operación)
 
 1. **Autonomía útil**: % tareas completadas sin intervención humana.
