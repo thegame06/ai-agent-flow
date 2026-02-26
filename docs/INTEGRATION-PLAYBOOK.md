@@ -150,6 +150,24 @@ Objetivo: que onboarding y operación comercial sean repetibles.
 - `dotnet test tests/AgentFlow.Tests.Integration/AgentFlow.Tests.Integration.csproj -v minimal` ✅
 - Resultado actualizado: `Passed: 8, Failed: 0`.
 
+### 2026-02-26 — Cierre práctico Global #4: servidor MCP real de referencia
+
+#### Cambio aplicado
+- Nuevo módulo: `tools/mcp-test-server`
+  - `server.js`
+  - `package.json`
+  - `README.md`
+- Endpoints reales:
+  - `GET /tools`
+  - `POST /invoke`
+  - `GET /health`
+
+#### Propósito
+Validar **discovery + invoke HTTP** en AgentFlow con un servidor MCP real local, evitando rutas simuladas en core/runtime.
+
+#### Verificación
+- `node --check tools/mcp-test-server/server.js` ✅
+
 ## 5) Métricas clave (producto + operación)
 
 1. **Autonomía útil**: % tareas completadas sin intervención humana.
