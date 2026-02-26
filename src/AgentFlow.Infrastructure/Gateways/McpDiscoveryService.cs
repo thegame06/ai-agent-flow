@@ -4,6 +4,8 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.DependencyInjection;
 using System.Linq;
+using System.Net.Http;
+using System.Text.Json;
 
 namespace AgentFlow.Infrastructure.Gateways;
 
@@ -61,12 +63,13 @@ public sealed class McpDiscoveryService : BackgroundService
                 _logger.LogInformation("Discovering tools from MCP server: {ServerName} ({Transport}, Security: {SecurityMode})", 
                     server.Name, server.Transport, server.Security.Mode);
                 
-                // Simulation: In a real implementation, we would call gateway.ListToolsAsync(server.Name)
-                var discoveredTools = new List<(string Name, string Description, string Schema)>
+                var discoveredTools = await DiscoverToolsAsync(server, stoppingToken);
+
+                if (discoveredTools.Count == 0)
                 {
-                    ( $"{server.Name}_GetStatus", $"Get status for {server.Name}", "{}" ),
-                    ( $"{server.Name}_ExecuteQuery", $"Execute domain query on {server.Name}", "{\"query\": \"string\"}" )
-                };
+                    _logger.LogWarning("No MCP tools discovered from {ServerName}. Skipping registration.", server.Name);
+                    continue;
+                }
 
                 foreach (var toolInfo in discoveredTools)
                 {
@@ -88,5 +91,44 @@ public sealed class McpDiscoveryService : BackgroundService
                 _logger.LogError(ex, "Failed to discover tools from MCP server {ServerName}", server.Name);
             }
         }
+    }
+
+    private async Task<List<(string Name, string Description, string Schema)>> DiscoverToolsAsync(
+        McpServerConfig server,
+        CancellationToken ct)
+    {
+        if (!string.Equals(server.Transport, "Http", StringComparison.OrdinalIgnoreCase) || string.IsNullOrWhiteSpace(server.Url))
+            return new();
+
+        using var http = new HttpClient();
+        var discoveryUrl = server.Url.TrimEnd('/') + "/tools";
+
+        var response = await http.GetAsync(discoveryUrl, ct);
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning("MCP discovery call failed for {ServerName}: {StatusCode}", server.Name, response.StatusCode);
+            return new();
+        }
+
+        var body = await response.Content.ReadAsStringAsync(ct);
+        var tools = JsonSerializer.Deserialize<List<McpDiscoveredTool>>(body, new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true
+        }) ?? new();
+
+        return tools
+            .Where(t => !string.IsNullOrWhiteSpace(t.Name))
+            .Select(t => (
+                t.Name!,
+                string.IsNullOrWhiteSpace(t.Description) ? t.Name! : t.Description!,
+                string.IsNullOrWhiteSpace(t.InputSchemaJson) ? "{}" : t.InputSchemaJson!))
+            .ToList();
+    }
+
+    private sealed class McpDiscoveredTool
+    {
+        public string? Name { get; set; }
+        public string? Description { get; set; }
+        public string? InputSchemaJson { get; set; }
     }
 }

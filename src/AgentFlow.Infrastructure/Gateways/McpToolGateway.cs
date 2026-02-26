@@ -1,6 +1,8 @@
 using AgentFlow.Abstractions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using System.Net.Http.Headers;
+using System.Text;
 using System.Text.Json;
 
 namespace AgentFlow.Infrastructure.Gateways;
@@ -13,6 +15,7 @@ public sealed class McpToolGateway : IMcpToolGateway
 {
     private readonly IConfiguration _configuration;
     private readonly ILogger<McpToolGateway> _logger;
+    private readonly HttpClient _httpClient = new();
 
     public McpToolGateway(IConfiguration configuration, ILogger<McpToolGateway> logger)
     {
@@ -58,21 +61,55 @@ public sealed class McpToolGateway : IMcpToolGateway
             _logger.LogInformation("MCP_AUDIT: Executing remote call. Request: {PayloadLength} bytes", context.InputJson?.Length ?? 0);
         }
 
-        // 4. MCP Protocol Execution (Placeholder for actual SSE/Stdio/Http transport)
+        // 4. MCP Protocol Execution (HTTP transport only in production runtime)
+        if (!string.Equals(server.Transport, "Http", StringComparison.OrdinalIgnoreCase) || string.IsNullOrWhiteSpace(server.Url))
+        {
+            return ToolResult.Failure(
+                "MCP_TRANSPORT_UNSUPPORTED",
+                $"Server {serverName} has unsupported transport '{server.Transport}'. Configure Http transport with Url.");
+        }
+
         try
         {
-            // Simulation of remote tool execution
-            await Task.Delay(200, ct); 
-
-            // Guru Tip: Always validate remote output schema before returning to the Brain
-            var simulatedOutput = new { 
-                status = "success", 
-                server = serverName, 
-                processedAt = DateTime.UtcNow,
-                data = "Result from remote MCP server"
+            var requestPayload = new
+            {
+                tool = toolName,
+                tenantId = context.TenantId,
+                userId = context.UserId,
+                executionId = context.ExecutionId,
+                stepId = context.StepId,
+                inputJson = context.InputJson,
+                metadata = context.Metadata
             };
 
-            return ToolResult.Success(JsonSerializer.Serialize(simulatedOutput), 150);
+            var request = new HttpRequestMessage(HttpMethod.Post, server.Url)
+            {
+                Content = new StringContent(JsonSerializer.Serialize(requestPayload), Encoding.UTF8, "application/json")
+            };
+
+            // Optional auth header from env/secret reference
+            if (!string.IsNullOrWhiteSpace(server.Security.AuthSecretName))
+            {
+                var token = Environment.GetEnvironmentVariable(server.Security.AuthSecretName);
+                if (!string.IsNullOrWhiteSpace(token))
+                {
+                    request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+                }
+            }
+
+            var startedAt = DateTime.UtcNow;
+            var response = await _httpClient.SendAsync(request, ct);
+            var durationMs = (long)(DateTime.UtcNow - startedAt).TotalMilliseconds;
+            var responseBody = await response.Content.ReadAsStringAsync(ct);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("MCP HTTP call failed for {ServerName}.{ToolName}: {StatusCode} {Body}",
+                    serverName, toolName, response.StatusCode, responseBody);
+                return ToolResult.Failure("MCP_HTTP_ERROR", $"{(int)response.StatusCode}: {responseBody}", durationMs);
+            }
+
+            return ToolResult.Success(responseBody, durationMs);
         }
         catch (OperationCanceledException)
         {

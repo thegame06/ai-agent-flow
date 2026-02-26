@@ -114,6 +114,42 @@ Objetivo: que onboarding y operación comercial sean repetibles.
 
 ---
 
+### 2026-02-26 — Global #4 (MCP/tools reales) y #5 (MAF/A2A) avances
+
+#### Global 4 — MCP/tools reales (sin simulación)
+
+**Cambios implementados**
+1. `McpToolGateway` ahora ejecuta **HTTP real** (sin `Task.Delay`/payload simulado):
+   - Archivo: `src/AgentFlow.Infrastructure/Gateways/McpToolGateway.cs`
+   - Requiere `Transport=Http` + `Url` configurado.
+   - Construye request JSON con contexto real (`tenantId`, `executionId`, `inputJson`, etc.).
+   - Soporta auth opcional vía `AuthSecretName` (env var).
+   - Devuelve error explícito `MCP_TRANSPORT_UNSUPPORTED` para transportes no productivos.
+
+2. `McpDiscoveryService` dejó descubrimiento fake:
+   - Archivo: `src/AgentFlow.Infrastructure/Gateways/McpDiscoveryService.cs`
+   - Descubre tools vía `GET {Url}/tools`.
+   - Si no hay tools reales, no registra proxies simulados.
+
+#### Global 5 — MAF/A2A operable y no engañoso
+
+**Cambios implementados**
+1. `MafBrain` sin comportamiento simulado de “respuesta final fake”:
+   - Archivo: `src/AgentFlow.Core.Engine/MafBrain.cs`
+   - Nuevo flag: `Brains:MAF:Enabled`.
+   - Si está deshabilitado: retorna `Checkpoint` explícito (no inventa respuesta).
+   - Si está habilitado: decide determinísticamente en función de tools disponibles.
+
+2. Tests de contrato agregados:
+   - Archivo nuevo: `tests/AgentFlow.Tests.Integration/Orchestration/MafAndMcpContractsTests.cs`
+   - Casos:
+     - MAF deshabilitado => `Checkpoint` (sin fake answer).
+     - MCP con transporte no-HTTP => `MCP_TRANSPORT_UNSUPPORTED`.
+
+#### Verificación
+- `dotnet test tests/AgentFlow.Tests.Integration/AgentFlow.Tests.Integration.csproj -v minimal` ✅
+- Resultado actualizado: `Passed: 8, Failed: 0`.
+
 ## 5) Métricas clave (producto + operación)
 
 1. **Autonomía útil**: % tareas completadas sin intervención humana.
