@@ -1,5 +1,5 @@
 import { Helmet } from 'react-helmet-async';
-import { useEffect, useState } from 'react';
+import { useState, useEffect } from 'react';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';

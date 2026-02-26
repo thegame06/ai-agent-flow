@@ -39,17 +39,19 @@ export default function McpPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const loadServers = async () => {
+    setError(null);
+    try {
+      const res = await axios.get('/api/v1/mcp/servers');
+      setServers(res.data ?? []);
+      if (res.data?.length && !selectedServer) setSelectedServer(res.data[0].name);
+    } catch (e: any) {
+      setError(e?.message || 'Failed to load MCP servers');
+    }
+  };
+
   useEffect(() => {
-    const load = async () => {
-      try {
-        const res = await axios.get('/api/v1/mcp/servers');
-        setServers(res.data ?? []);
-        if (res.data?.length) setSelectedServer(res.data[0].name);
-      } catch (e: any) {
-        setError(e?.message || 'Failed to load MCP servers');
-      }
-    };
-    load();
+    loadServers();
   }, []);
 
   const loadTools = async () => {
@@ -102,7 +104,11 @@ export default function McpPage() {
           </Typography>
         </Box>
 
-        {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+        {error && (
+          <Alert severity="error" sx={{ mb: 2 }} action={<Button color="inherit" size="small" onClick={loadServers}>Retry</Button>}>
+            {error}
+          </Alert>
+        )}
 
         <Grid container spacing={3}>
           <Grid item xs={12} md={5}>
@@ -121,9 +127,14 @@ export default function McpPage() {
                     ))}
                   </TextField>
 
-                  <Button variant="outlined" onClick={loadTools} disabled={loading || !selectedServer}>
-                    Discover Tools
-                  </Button>
+                  <Stack direction="row" spacing={1}>
+                    <Button variant="outlined" onClick={loadServers} disabled={loading}>
+                      Refresh Servers
+                    </Button>
+                    <Button variant="outlined" onClick={loadTools} disabled={loading || !selectedServer}>
+                      Discover Tools
+                    </Button>
+                  </Stack>
 
                   <TextField
                     select
