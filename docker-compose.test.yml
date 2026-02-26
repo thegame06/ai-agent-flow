@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   mongo-test:
     image: mongo:7
@@ -36,7 +34,7 @@ services:
     volumes:
       - ./:/workspace
     ports:
-      - "3501:3501"
+      - "${MCP_TEST_PORT:-3501}:3501"
     depends_on:
       mongo-test:
         condition: service_healthy
