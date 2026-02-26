@@ -1,8 +1,9 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { Node, Edge } from '@xyflow/react';
+import { AgentNodeData } from '../../types/agent';
 
 interface DesignerState {
-  nodes: Node[];
+  nodes: Node<AgentNodeData>[];
   edges: Edge[];
   selectedNodeId: string | null;
   isDirty: boolean;
@@ -31,7 +32,7 @@ const designerSlice = createSlice({
   name: 'designer',
   initialState,
   reducers: {
-    setNodes: (state, action: PayloadAction<Node[]>) => {
+    setNodes: (state, action: PayloadAction<Node<AgentNodeData>[]>) => {
       state.nodes = action.payload;
     },
     setEdges: (state, action: PayloadAction<Edge[]>) => {
@@ -40,12 +41,12 @@ const designerSlice = createSlice({
     selectNode: (state, action: PayloadAction<string | null>) => {
       state.selectedNodeId = action.payload;
     },
-    addNode: (state, action: PayloadAction<Node>) => {
+    addNode: (state, action: PayloadAction<Node<AgentNodeData>>) => {
       state.nodes.push(action.payload);
       state.isDirty = true;
     },
-    updateNodeData: (state, action: PayloadAction<{ id: string, data: any }>) => {
-      const node = state.nodes.find((n: any) => n.id === action.payload.id);
+    updateNodeData: (state, action: PayloadAction<{ id: string, data: Partial<AgentNodeData> }>) => {
+      const node = state.nodes.find((n) => n.id === action.payload.id);
       if (node) {
         node.data = { ...node.data, ...action.payload.data };
         state.isDirty = true;

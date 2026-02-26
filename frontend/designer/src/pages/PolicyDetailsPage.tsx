@@ -29,10 +29,10 @@ export default function PolicyDetailsPage() {
   const [currentRule, setCurrentRule] = useState<Partial<PolicyDefinition> | null>(null);
 
   useEffect(() => {
-    if (id) loadPolicySet(id);
+    if (id) loadPolicySet();
   }, [id]);
 
-  const loadPolicySet = async (_policySetId: string) => {
+  const loadPolicySet = async () => {
     try {
       setLoading(true);
       // Mocking fetch as the backend ID might not exist yet, 

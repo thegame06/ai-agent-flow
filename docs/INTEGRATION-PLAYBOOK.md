@@ -304,15 +304,41 @@ Un canal se marca **DONE** solo si cumple todo:
      - warnings de dependencias en `useEffect`
 
 #### Bloqueadores actuales
-- **B1 (Crítico):** Artefactos root-owned por ejecución con `sudo dotnet ...` impiden correr tests como usuario normal.
-- **B2 (Medio):** `frontend/designer` no pasa lint.
-- **B3 (Bajo):** No hay scripts `test` en frontends (solo build/lint).
+- **B1 (Crítico):** Artefactos root-owned por ejecución con `sudo dotnet ...` impiden correr tests como usuario normal. ✅ **Resuelto** (se corrigieron permisos).
+- **B2 (Medio):** `frontend/designer` no pasa lint. ✅ **Resuelto** (0 errores, quedan 2 warnings de hooks).
+- **B3 (Bajo):** No hay scripts `test` en frontends (solo build/lint). ⏳ Pendiente.
 
 #### Acciones inmediatas (siguiente ciclo)
-1. Corregir permisos del repo para habilitar pruebas backend sin sudo.
-2. Corregir errores de lint en `frontend/designer`.
-3. Definir estrategia mínima de tests frontend (Vitest/Jest + smoke tests).
-4. Re-ejecutar matriz de verificación completa y registrar evidencia.
+1. Definir estrategia mínima de tests frontend (Vitest/Jest + smoke tests).
+2. Reparar `tests/AgentFlow.Tests.Integration` (actualmente desalineados del contrato en `AgentFlow.Abstractions`).
+3. Re-ejecutar matriz de verificación completa y registrar evidencia.
+
+### 2026-02-26 — Ejecución tras desbloqueo
+
+#### Validaciones ejecutadas
+1. **Backend unit tests**
+   - Comando: `dotnet test AgentFlow.sln -v minimal`
+   - Resultado: ✅ `Passed: 168, Failed: 0` en `AgentFlow.Tests.Unit`.
+
+2. **Backend integration tests**
+   - Comando: `dotnet test tests/AgentFlow.Tests.Integration/AgentFlow.Tests.Integration.csproj -v minimal`
+   - Resultado: ❌ **No compila**.
+   - Causa: tests usan contratos antiguos (`ExecutionId` en request, `FinalAnswer`, `AgentExecutionStatus`, `ToolResult.Data`, `ToolCallHistory`, etc.) que ya no existen en `AgentFlow.Abstractions` actual.
+
+3. **Frontend aiagent_flow**
+   - `npm run lint` ✅
+   - `npm run build` ✅
+   - Nota: warning de bundles grandes (>500kB) en build.
+
+4. **Frontend designer**
+   - `npm run lint` ✅ sin errores (2 warnings `react-hooks/exhaustive-deps`).
+   - `npm run build` ✅.
+
+#### Estado operativo actual
+- Backend unitario: **verde**.
+- Backend integración: **rojo** (desalineación de contratos en tests).
+- Frontend build/lint: **verde** en ambas apps (con warnings no bloqueantes).
+- Frontend tests automáticos: **pendiente** (scripts `test` no definidos).
 
 ---
 

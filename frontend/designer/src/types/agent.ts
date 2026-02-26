@@ -13,9 +13,10 @@ export enum ToolRiskLevel {
 }
 
 export interface AgentNodeData {
+  [key: string]: unknown;
   label: string;
-  type: string;
-  config?: any;
+  type?: string;
+  config?: Record<string, unknown>;
   riskLevel?: ToolRiskLevel;
 }
 

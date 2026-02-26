@@ -4,12 +4,14 @@ import { updateNodeData } from '../store/slices/designerSlice';
 import { X, Settings, GitBranch } from 'lucide-react';
 import { useParams } from 'react-router-dom';
 import { SegmentRoutingPanel } from '../components/evaluation/SegmentRoutingPanel';
+import { Node } from '@xyflow/react';
+import { AgentNodeData } from '../types/agent';
 
 export const PropertiesPanel = () => {
   const dispatch = useDispatch();
   const { id: agentId } = useParams<{ id: string }>();
   const { nodes, selectedNodeId } = useSelector((state: RootState) => state.designer);
-  const selectedNode = nodes.find((n: any) => n.id === selectedNodeId);
+  const selectedNode = nodes.find((n: Node<AgentNodeData>) => n.id === selectedNodeId);
 
   // If no node is selected, show Agent-Level configuration (Routing, Experimentation)
   if (!selectedNode) {
@@ -44,7 +46,7 @@ export const PropertiesPanel = () => {
     );
   }
 
-  const handleChange = (field: string, value: any) => {
+  const handleChange = <K extends keyof AgentNodeData>(field: K, value: AgentNodeData[K]) => {
     dispatch(updateNodeData({ id: selectedNode.id, data: { [field]: value } }));
   };
 

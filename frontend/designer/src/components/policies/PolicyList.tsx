@@ -31,8 +31,8 @@ export function PolicyList({ tenantId }: { tenantId: string }) {
       // The API currently returns a summary object, so we cast it or need a specific DTO type
       const data = await PoliciesApi.getPolicies(tenantId) as unknown as PolicySetSummary[];
       setPolicies(data);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Unknown error loading policies');
     } finally {
       setLoading(false);
     }
