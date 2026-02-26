@@ -296,6 +296,30 @@ Validar **discovery + invoke HTTP** en AgentFlow con un servidor MCP real local,
 - `cd frontend/aiagent_flow && npm test` ✅ (1/1)
 - `cd frontend/designer && npm test` ✅ (1/1)
 
+### 2026-02-26 — Cierre pendientes reales #2 y #3
+
+#### #2 UX de error/reintento (mejorado)
+- `PoliciesPage`: alerta de error con botón `Retry` + refresh manual.
+- `McpPage`: alerta de error con `Retry` + botón `Refresh Servers`.
+- `SettingsPage`: feedback explícito de éxito/error en guardado y carga.
+
+#### #3 Policies avanzada (reglas editables)
+1. Backend:
+   - `PoliciesController` ampliado con endpoints:
+     - `GET /api/v1/tenants/{tenantId}/policies/{policySetId}`
+     - `PUT /api/v1/tenants/{tenantId}/policies/{policySetId}/policies`
+   - Soporta actualización de lista completa de reglas (`PolicyDefinition[]`).
+
+2. Frontend:
+   - `PoliciesPage` agrega acción `Edit Rules`.
+   - Carga reglas actuales y permite edición JSON + guardado.
+
+#### Verificación
+- `dotnet build src/AgentFlow.Api/AgentFlow.Api.csproj -v minimal` ✅
+- `npm run lint` en `frontend/aiagent_flow` ✅ (warnings no bloqueantes)
+- `npm test` en `frontend/aiagent_flow` ✅
+- `npm run build` en `frontend/aiagent_flow` ✅
+
 ### 2026-02-26 — Frontend: Settings persistente (ataque #5)
 
 #### Cambios aplicados

@@ -50,7 +50,7 @@ public sealed class PoliciesController : ControllerBase
         var context = _tenantContext.Current!;
         if (context.TenantId != tenantId && !context.IsPlatformAdmin) return Forbid();
 
-        var created = PolicySetDefinition.Create(
+        var created = AgentFlow.Domain.Aggregates.PolicySetDefinition.Create(
             tenantId,
             request.Name,
             request.Description ?? string.Empty,
@@ -64,6 +64,39 @@ public sealed class PoliciesController : ControllerBase
             return BadRequest(new { error = addResult.Error?.Message ?? "Failed to persist policy set" });
 
         return Ok(MapPolicySet(created.Value!));
+    }
+
+    [HttpPut("{policySetId}/policies")]
+    public async Task<IActionResult> UpdatePolicyRules([FromRoute] string tenantId, [FromRoute] string policySetId, [FromBody] UpdatePolicyRulesRequest request, CancellationToken ct)
+    {
+        var context = _tenantContext.Current!;
+        if (context.TenantId != tenantId && !context.IsPlatformAdmin) return Forbid();
+
+        var set = await _repository.GetByIdAsync(policySetId, tenantId, ct);
+        if (set is null) return NotFound();
+
+        var policies = request.Policies.Select(p => new PolicyDefinition
+        {
+            PolicyId = p.PolicyId,
+            Description = p.Description,
+            AppliesAt = p.AppliesAt,
+            PolicyType = p.PolicyType,
+            Action = p.Action,
+            Severity = p.Severity,
+            IsEnabled = p.IsEnabled,
+            Config = p.Config ?? new Dictionary<string, string>(),
+            TargetSegments = p.TargetSegments ?? []
+        }).ToList();
+
+        var update = set.UpdatePolicies(policies, context.UserId);
+        if (!update.IsSuccess)
+            return BadRequest(new { error = update.Error?.Message ?? "Failed to update policies" });
+
+        var save = await _repository.UpdateAsync(set, ct);
+        if (!save.IsSuccess)
+            return BadRequest(new { error = save.Error?.Message ?? "Failed to persist policies" });
+
+        return Ok(MapPolicySet(set));
     }
 
     [HttpPost("{policySetId}/publish")]
@@ -86,7 +119,7 @@ public sealed class PoliciesController : ControllerBase
         return Ok(MapPolicySet(set));
     }
 
-    private static object MapPolicySet(PolicySetDefinition s) => new
+    private static object MapPolicySet(AgentFlow.Domain.Aggregates.PolicySetDefinition s) => new
     {
         s.Id,
         s.Name,
@@ -97,6 +130,7 @@ public sealed class PoliciesController : ControllerBase
         Severity = s.Policies.Count > 0
             ? s.Policies.Max(p => p.Severity).ToString()
             : "Info",
+        Policies = s.Policies,
         s.CreatedAt,
         s.UpdatedAt
     };
@@ -106,4 +140,22 @@ public sealed class CreatePolicySetRequest
 {
     public string Name { get; set; } = string.Empty;
     public string? Description { get; set; }
+}
+
+public sealed class UpdatePolicyRulesRequest
+{
+    public List<UpdatePolicyRuleItem> Policies { get; set; } = new();
+}
+
+public sealed class UpdatePolicyRuleItem
+{
+    public string PolicyId { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public PolicyCheckpoint AppliesAt { get; set; } = PolicyCheckpoint.PreAgent;
+    public string PolicyType { get; set; } = "Custom";
+    public PolicyAction Action { get; set; } = PolicyAction.Allow;
+    public PolicySeverity Severity { get; set; } = PolicySeverity.Info;
+    public bool IsEnabled { get; set; } = true;
+    public Dictionary<string, string>? Config { get; set; }
+    public List<string>? TargetSegments { get; set; }
 }
