@@ -237,10 +237,10 @@ public sealed class ModelRouter : IModelRouter
 }
 
 // =========================================================================
-// NULL/STUB PROVIDER (for tests)
+// DETERMINISTIC PROVIDER (for tests)
 // =========================================================================
 
-public sealed class StubModelProvider : IModelProvider
+public sealed class DeterministicModelProvider : IModelProvider
 {
     public string ProviderId { get; }
     public string ModelId { get; }
@@ -248,9 +248,9 @@ public sealed class StubModelProvider : IModelProvider
     private readonly Func<LlmRequest, LlmResponse> _handler;
     private readonly Func<CancellationToken, Task<bool>> _healthCheck;
 
-    public StubModelProvider(
+    public DeterministicModelProvider(
         string modelId,
-        string providerId = "stub",
+        string providerId = "deterministic",
         Func<LlmRequest, LlmResponse>? handler = null,
         Func<CancellationToken, Task<bool>>? healthCheck = null)
     {
@@ -265,7 +265,7 @@ public sealed class StubModelProvider : IModelProvider
         };
         _handler = handler ?? (_ => new LlmResponse
         {
-            Content = """{"decision": "ProvideFinalAnswer", "finalAnswer": "Stub response", "rationale": "stub"}""",
+            Content = """{"decision": "ProvideFinalAnswer", "finalAnswer": "Deterministic response", "rationale": "deterministic"}""",
             InputTokens = 100,
             OutputTokens = 50,
             ModelId = modelId

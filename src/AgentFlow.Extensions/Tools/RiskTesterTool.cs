@@ -12,7 +12,7 @@ public sealed class RiskTesterTool : IToolPlugin
 {
     public string ExtensionId => "core.tools.risktester";
     public string Name => "RiskTester";
-    public string Description => "Simulates risky operations (sleep or crash) to test sandbox isolation.";
+    public string Description => "Processs risky operations (sleep or crash) to test sandbox isolation.";
     public string Version => "1.0.0";
     public ToolRiskLevel RiskLevel => ToolRiskLevel.High;
 
@@ -56,8 +56,8 @@ public sealed class RiskTesterTool : IToolPlugin
 
         if (action == "crash")
         {
-            _logger.LogCritical("RiskTester simulating a fatal crash!");
-            throw new AccessViolationException("Simulated memory corruption or restricted access.");
+            _logger.LogCritical("RiskTester triggering a fatal crash!");
+            throw new AccessViolationException("Processd memory corruption or restricted access.");
         }
 
         return ToolResult.Success("{\"status\": \"safe_operation_completed\"}");

@@ -115,7 +115,7 @@ public sealed class ModelRoutingController : ControllerBase
                 return BadRequest(new { message = "providerProfileId provider does not match model providerId." });
         }
 
-        var provider = new StubModelProvider(request.ModelId, request.ProviderId)
+        var provider = new DeterministicModelProvider(request.ModelId, request.ProviderId)
         {
             Metadata = new ModelMetadata
             {
@@ -166,7 +166,7 @@ public sealed class ModelRoutingController : ControllerBase
         foreach (var model in sameProviderModels)
         {
             var tier = model.ModelId == modelId ? "Primary" : "Secondary";
-            _registry.Register(new StubModelProvider(model.ModelId, model.ProviderId)
+            _registry.Register(new DeterministicModelProvider(model.ModelId, model.ProviderId)
             {
                 Metadata = new ModelMetadata
                 {

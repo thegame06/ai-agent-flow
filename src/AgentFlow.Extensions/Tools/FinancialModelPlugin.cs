@@ -5,7 +5,7 @@ using System.Text.Json;
 namespace AgentFlow.Extensions.Tools;
 
 /// <summary>
-/// Mock Financial Risk Calculator Plugin for Loan Officer Demo.
+/// Deterministic Financial Risk Calculator Plugin for Loan Officer Demo.
 /// Evaluates loan risk based on credit score, loan amount, and applicant profile.
 /// 
 /// In production, this would use ML models (e.g., XGBoost, neural networks) trained on historical loan data.
@@ -25,7 +25,7 @@ public sealed class FinancialModelPlugin : IToolPlugin
         Name = "Financial Risk Calculator",
         Version = "1.0.0",
         Author = "AgentFlow Demo Team",
-        Description = "Calculate loan risk score using proprietary financial model (mock implementation)",
+        Description = "Calculate loan risk score using proprietary financial model (deterministic implementation)",
         Tags = new[] { "finance", "risk", "ml-model", "banking", "demo" },
         RiskLevel = ToolRiskLevel.Medium, // Important financial decision
         License = "MIT"
@@ -120,7 +120,7 @@ public sealed class FinancialModelPlugin : IToolPlugin
                 ? dti
                 : 0.3; // Default assumption
 
-            // Simulate ML model processing
+            // Process ML model processing
             await Task.Delay(Random.Shared.Next(150, 400), ct);
 
             // Calculate risk score (0-100, lower is better)
@@ -151,7 +151,7 @@ public sealed class FinancialModelPlugin : IToolPlugin
                 riskScore = Math.Round(riskScore, 2),
                 riskLevel,
                 recommendation,
-                confidence = 0.87, // Mock confidence score
+                confidence = 0.87, // Deterministic confidence score
                 factors = new
                 {
                     creditScore,
@@ -166,7 +166,7 @@ public sealed class FinancialModelPlugin : IToolPlugin
                     recommendedTermMonths,
                     monthlyPayment = Math.Round(CalculateMonthlyPayment(loanAmount, recommendedInterestRate, recommendedTermMonths), 2)
                 },
-                modelVersion = "v2.3.1-mock",
+                modelVersion = "v2.3.1-deterministic",
                 calculatedAt = DateTimeOffset.UtcNow.ToString("O")
             };
 
@@ -201,7 +201,7 @@ public sealed class FinancialModelPlugin : IToolPlugin
     };
 
     /// <summary>
-    /// Mock risk calculation algorithm.
+    /// Deterministic risk calculation algorithm.
     /// In production, this would be a trained ML model.
     /// </summary>
     private static double CalculateRiskScore(

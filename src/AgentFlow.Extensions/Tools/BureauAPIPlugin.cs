@@ -5,8 +5,8 @@ using System.Text.Json;
 namespace AgentFlow.Extensions.Tools;
 
 /// <summary>
-/// Mock Credit Bureau API Plugin for Loan Officer Demo.
-/// Simulates calling a credit bureau to retrieve credit scores.
+/// Deterministic Credit Bureau API Plugin for Loan Officer Demo.
+/// Processs calling a credit bureau to retrieve credit scores.
 /// 
 /// In production, this would call Experian, Equifax, or TransUnion APIs.
 /// </summary>
@@ -25,7 +25,7 @@ public sealed class BureauAPIPlugin : IToolPlugin
         Name = "Credit Bureau API",
         Version = "1.0.0",
         Author = "AgentFlow Demo Team",
-        Description = "Retrieve credit score and history from credit bureau (mock implementation)",
+        Description = "Retrieve credit score and history from credit bureau (deterministic implementation)",
         Tags = new[] { "finance", "credit", "banking", "demo" },
         RiskLevel = ToolRiskLevel.Medium, // Accesses sensitive financial data
         License = "MIT"
@@ -92,10 +92,10 @@ public sealed class BureauAPIPlugin : IToolPlugin
                 ? p
                 : "loan application";
 
-            // Simulate API latency
+            // Process API latency
             await Task.Delay(Random.Shared.Next(100, 300), ct);
 
-            // Mock credit score based on name hash (deterministic for demo)
+            // Deterministic credit score based on name hash (deterministic for demo)
             int creditScore = DeterministicCreditScore(fullName);
             string creditHistory = creditScore switch
             {

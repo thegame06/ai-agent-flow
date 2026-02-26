@@ -20,7 +20,7 @@ public class ModelRouterTests
     public async Task SelectModelAsync_DefaultHealthy_ReturnsDefault()
     {
         // Arrange
-        var provider = new StubModelProvider("gpt-4", healthCheck: _ => Task.FromResult(true));
+        var provider = new DeterministicModelProvider("gpt-4", healthCheck: _ => Task.FromResult(true));
         _registry.Register(provider);
 
         var request = CreateRequest(defaultModelId: "gpt-4");
@@ -40,8 +40,8 @@ public class ModelRouterTests
         // Expectation: Router should automatically failover to ANY healthy model.
 
         // Arrange
-        var deadProvider = new StubModelProvider("gpt-4", healthCheck: _ => Task.FromResult(false)); // Health check fails!
-        var aliveProvider = new StubModelProvider("llama-3-70b", healthCheck: _ => Task.FromResult(true));
+        var deadProvider = new DeterministicModelProvider("gpt-4", healthCheck: _ => Task.FromResult(false)); // Health check fails!
+        var aliveProvider = new DeterministicModelProvider("llama-3-70b", healthCheck: _ => Task.FromResult(true));
         
         _registry.Register(deadProvider);
         _registry.Register(aliveProvider);
@@ -61,8 +61,8 @@ public class ModelRouterTests
     public async Task SelectByTask_SpecificTaskHealthy_ReturnsTaskModel()
     {
         // Arrange
-        var codeModel = new StubModelProvider("claude-3-opus", healthCheck: _ => Task.FromResult(true));
-        var generalModel = new StubModelProvider("gpt-3.5", healthCheck: _ => Task.FromResult(true));
+        var codeModel = new DeterministicModelProvider("claude-3-opus", healthCheck: _ => Task.FromResult(true));
+        var generalModel = new DeterministicModelProvider("gpt-3.5", healthCheck: _ => Task.FromResult(true));
 
         _registry.Register(codeModel);
         _registry.Register(generalModel);

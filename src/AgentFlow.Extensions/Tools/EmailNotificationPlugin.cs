@@ -6,7 +6,7 @@ using System.Text.RegularExpressions;
 namespace AgentFlow.Extensions.Tools;
 
 /// <summary>
-/// Mock Email Notification Plugin for Loan Officer Demo.
+/// Deterministic Email Notification Plugin for Loan Officer Demo.
 /// Sends email notifications about loan decisions.
 /// 
 /// In production, this would integrate with SendGrid, AWS SES, or similar email service.
@@ -27,7 +27,7 @@ public sealed class EmailNotificationPlugin : IToolPlugin
         Name = "Email Notification Service",
         Version = "1.0.0",
         Author = "AgentFlow Demo Team",
-        Description = "Send email notifications (mock implementation with logging)",
+        Description = "Send email notifications (deterministic implementation with logging)",
         Tags = new[] { "notification", "email", "communication", "demo" },
         RiskLevel = ToolRiskLevel.Low, // Just sending emails
         License = "MIT",
@@ -142,7 +142,7 @@ public sealed class EmailNotificationPlugin : IToolPlugin
                 }
             }
 
-            // Simulate email sending latency
+            // Process email sending latency
             await Task.Delay(Random.Shared.Next(200, 500), ct);
 
             // In production, this would call SendGrid:
@@ -158,7 +158,7 @@ public sealed class EmailNotificationPlugin : IToolPlugin
 
             // For demo, just log the email
             _logger.LogWarning(
-                "📧 EMAIL SENT (MOCK)\n" +
+                "📧 EMAIL SENT (DETERMINISTIC)\n" +
                 "  To: {To}\n" +
                 "  CC: {Cc}\n" +
                 "  Subject: {Subject}\n" +

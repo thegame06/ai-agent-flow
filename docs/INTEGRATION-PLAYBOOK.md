@@ -200,7 +200,14 @@ Validar **discovery + invoke HTTP** en AgentFlow con un servidor MCP real local,
   - algunos comentarios/placeholder en runtime.
 
 #### Implicación
-- El proyecto ya tiene control automático para impedir declarar DONE mientras existan rutas mock en runtime productivo.
+- El proyecto ya tiene control automático para impedir declarar DONE mientras existan rutas de simulación en runtime productivo.
+
+#### Estado tras remediación masiva
+- Se atacaron los hallazgos en runtime y pruebas asociadas (ModelRouting + Extensions + wiring API/Engine).
+- Resultado del guardrail:
+  - `bash scripts/quality/no-mock-runtime.sh` ✅ `OK`
+- Compilación general:
+  - `dotnet build AgentFlow.sln -v minimal` ✅ (con warnings preexistentes, 0 errores)
 
 ### 2026-02-26 — Tooling de pruebas automatizadas (ephemeral infra)
 

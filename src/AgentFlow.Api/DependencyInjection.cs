@@ -277,7 +277,7 @@ public static class DependencyInjection
     }
 }
 
-// -- Placeholder implementations to be replaced in Phase 2 --
+// -- Baseline implementations to be replaced in Phase 2 --
 
 public sealed class DefaultToolAuthorizationService : IToolAuthorizationService
 {

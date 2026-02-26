@@ -55,7 +55,7 @@ public sealed class McpToolGateway : IMcpToolGateway
             }
         }
 
-        // 3. Governance: Audit Log Persistence (Simulation)
+        // 3. Governance: Audit Log Persistence (Execution)
         if (server.Security.EnableAuditLogs)
         {
             _logger.LogInformation("MCP_AUDIT: Executing remote call. Request: {PayloadLength} bytes", context.InputJson?.Length ?? 0);

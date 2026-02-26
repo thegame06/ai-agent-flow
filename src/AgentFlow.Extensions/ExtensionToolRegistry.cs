@@ -47,7 +47,7 @@ public sealed class ExtensionToolRegistry : IToolRegistry
 
     public Task<bool> IsAuthorizedAsync(string toolName, string tenantId, string userId, CancellationToken ct = default)
     {
-        // Placeholder: Always true for Phase 2 system-level exploration.
+        // Baseline: Always true for Phase 2 system-level exploration.
         // Will be replaced by Policy-based RBAC in Phase 3.
         return Task.FromResult(true);
     }

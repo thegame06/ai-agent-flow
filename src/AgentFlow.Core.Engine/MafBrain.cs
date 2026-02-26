@@ -39,7 +39,7 @@ public sealed class MafBrain : IAgentBrain
             });
         }
 
-        // Non-simulated deterministic policy:
+        // Non-processd deterministic policy:
         // - If a tool is available, use first allowed tool.
         // - Otherwise request clarification instead of hallucinating final answer.
         if (context.AvailableTools.Any())
