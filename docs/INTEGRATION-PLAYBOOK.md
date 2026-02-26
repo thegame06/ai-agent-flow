@@ -140,16 +140,40 @@ Objetivo: que onboarding y operación comercial sean repetibles.
 
 ---
 
-## 7) Backlog inmediato (siguiente semana)
+## 7) Canales e integración real (estado y faltantes)
+
+> Regla operativa: **mock ≠ done**. Esta matriz define qué está realmente listo y qué falta para cerrar producto.
+
+| Canal/Entrada | Estado actual | Evidencia real requerida | Bloqueadores/Faltantes | Prioridad |
+|---|---|---|---|---|
+| WhatsApp | Parcial (depende de entorno/config) | Mensaje inbound/outbound real + webhook estable + traza auditada | Estandarizar setup por tenant y pruebas de resiliencia | Alta |
+| Telegram | Pendiente/variable | Bot real activo + conversación E2E + policy checkpoints verificados | Runbook de onboarding + validación de auth/secret rotation | Media |
+| WebChat | Parcial | Sesión real multi-turno + persistencia thread + métricas de latencia | Endurecer manejo de sesión, reconexión y límites por tenant | Alta |
+| API (directa) | Más avanzado | Ejecución real desde cliente externo + auditoría completa | Contract tests externos y control de cuotas por tenant | Alta |
+| MCP Tools | Parcial (arquitectura definida) | Invocación real a servidor MCP + policy gating + masking evidencia | Gateway MCP productivo, allowlists por tenant, contract tests | Crítica |
+| Agent-as-Tool (A2A/MAF) | Parcial | Flujo manager→especialista real + trazabilidad completa | Validación estable SK/MAF en paralelo + criterios de promoción | Alta |
+
+### Criterio de cierre por canal
+Un canal se marca **DONE** solo si cumple todo:
+- [ ] Conectividad real con proveedor/servicio externo (sandbox o staging real).
+- [ ] Flujo E2E reproducible (10/10 corridas exitosas).
+- [ ] Policies activas y verificadas (sin bypass).
+- [ ] Auditoría completa (request/response + decisión final + executionId).
+- [ ] Runbook de operación para onboarding tenant + troubleshooting.
+
+---
+
+## 8) Backlog inmediato (siguiente semana)
 
 1. Seleccionar y congelar el **golden flow** (input, tools, output esperado).
 2. Implementar/ajustar conector MCP crítico del flujo.
 3. Definir y exponer `Execution Verdict` en API/UI.
 4. Crear plantilla de nuevo conector en ToolSDK.
 5. Automatizar smoke test de onboarding por tenant.
+6. Cerrar al menos 1 canal en estado **DONE real** (sin mocks).
 
 ---
 
-## 8) Resultado esperado
+## 9) Resultado esperado
 
 Al completar este playbook, AgentFlow pasa de “plataforma técnicamente robusta” a “producto operable y vendible con evidencia”, con una ruta clara para escalar integraciones sin perder compliance.
