@@ -3,7 +3,7 @@ SHELL := /usr/bin/env bash
 ROOT := $(shell pwd)
 TEST_SCRIPT := $(ROOT)/scripts/test/ephemeral.sh
 
-.PHONY: help test-env-up test-env-down test-ephemeral test-unit test-integration test-backend test-frontend test-all
+.PHONY: help test-env-up test-env-down test-ephemeral test-unit test-integration test-backend test-frontend test-all quality-no-mock
 
 help:
 	@echo "Available targets:"
@@ -15,6 +15,7 @@ help:
 	@echo "  make test-backend       # Unit + integration backend tests"
 	@echo "  make test-frontend      # Frontend lint/build/test (if test script exists)"
 	@echo "  make test-all           # Alias of test-ephemeral"
+	@echo "  make quality-no-mock    # Fail if runtime code contains mock/stub/simulated paths"
 
 test-env-up:
 	@bash $(TEST_SCRIPT) up
@@ -43,5 +44,8 @@ test-frontend:
 			if (cd $$app && npm run | grep -q " test"); then (cd $$app && npm test -- --watch=false); else echo "No test script in $$app"; fi; \
 		fi; \
 	done
+
+quality-no-mock:
+	@bash scripts/quality/no-mock-runtime.sh
 
 test-all: test-ephemeral

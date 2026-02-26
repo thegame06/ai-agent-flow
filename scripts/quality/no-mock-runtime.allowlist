@@ -1,0 +1,3 @@
+# Allowed mock/stub references in runtime (regex). Keep this list short.
+# Example:
+# AgentFlow\.Infrastructure/SomeFile\.cs:.*"mock" for backward compatibility note

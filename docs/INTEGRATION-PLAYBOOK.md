@@ -179,6 +179,29 @@ Validar **discovery + invoke HTTP** en AgentFlow con un servidor MCP real local,
 - `node --check tools/mcp-test-server/server.js` ✅
 - `dotnet build src/AgentFlow.Api/AgentFlow.Api.csproj -v minimal` ✅
 
+### 2026-02-26 — Guardrail CI: mock ≠ done (enforcement)
+
+#### Cambio aplicado
+1. Script de calidad:
+   - `scripts/quality/no-mock-runtime.sh`
+   - Escanea runtime paths (`Api/Application/Core.Engine/Infrastructure/Extensions/ModelRouting`) y falla si encuentra términos tipo `mock|stub|simulated|placeholder`.
+
+2. Allowlist controlada:
+   - `scripts/quality/no-mock-runtime.allowlist`
+   - Para excepciones explícitas y auditables.
+
+3. Make target:
+   - `make quality-no-mock`
+
+#### Resultado actual (importante)
+- El guardrail **falla** actualmente (esperado), detectando pendientes reales en:
+  - `AgentFlow.Extensions/Tools/*` (Bureau/Financial/Email mock implementations)
+  - `AgentFlow.ModelRouting/ModelRouter.cs` (stub provider)
+  - algunos comentarios/placeholder en runtime.
+
+#### Implicación
+- El proyecto ya tiene control automático para impedir declarar DONE mientras existan rutas mock en runtime productivo.
+
 ### 2026-02-26 — Tooling de pruebas automatizadas (ephemeral infra)
 
 #### Cambios aplicados
