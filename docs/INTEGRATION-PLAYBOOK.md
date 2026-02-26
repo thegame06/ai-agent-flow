@@ -273,6 +273,49 @@ Un canal se marca **DONE** solo si cumple todo:
 
 ---
 
-## 12) Resultado esperado
+## 12) Avances de ejecución (bitácora exacta)
+
+### 2026-02-25/26 — Arranque operativo
+
+#### Validaciones ejecutadas
+1. **Backend tests (intentado)**
+   - Comando: `dotnet test AgentFlow.sln -v minimal`
+   - Resultado: **FAIL** por permisos de archivos generados con `sudo`.
+   - Error observado: `Access to the path ... is denied` sobre `src/AgentFlow.Policy/obj/...tmp`.
+
+2. **Frontend discovery**
+   - Se detectaron dos apps:
+     - `frontend/aiagent_flow/package.json`
+     - `frontend/designer/package.json`
+
+3. **Frontend aiagent_flow**
+   - `npm ci` ✅
+   - `npm run build` ✅
+   - `npm run lint` ✅
+   - `npm test` ❌ (no existe script `test` en package.json)
+
+4. **Frontend designer**
+   - `npm ci` ✅
+   - `npm run build` ✅
+   - `npm run lint` ❌ (7 errores, 2 warnings)
+   - Hallazgos principales:
+     - uso de `any` (`@typescript-eslint/no-explicit-any`)
+     - variable no usada (`no-unused-vars`)
+     - warnings de dependencias en `useEffect`
+
+#### Bloqueadores actuales
+- **B1 (Crítico):** Artefactos root-owned por ejecución con `sudo dotnet ...` impiden correr tests como usuario normal.
+- **B2 (Medio):** `frontend/designer` no pasa lint.
+- **B3 (Bajo):** No hay scripts `test` en frontends (solo build/lint).
+
+#### Acciones inmediatas (siguiente ciclo)
+1. Corregir permisos del repo para habilitar pruebas backend sin sudo.
+2. Corregir errores de lint en `frontend/designer`.
+3. Definir estrategia mínima de tests frontend (Vitest/Jest + smoke tests).
+4. Re-ejecutar matriz de verificación completa y registrar evidencia.
+
+---
+
+## 13) Resultado esperado
 
 Al completar este plan, AgentFlow pasa de “plataforma técnicamente robusta” a “producto operable y vendible con evidencia”, con una ruta clara para escalar integraciones sin perder compliance.
