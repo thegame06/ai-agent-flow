@@ -296,6 +296,25 @@ Validar **discovery + invoke HTTP** en AgentFlow con un servidor MCP real local,
 - `cd frontend/aiagent_flow && npm test` ✅ (1/1)
 - `cd frontend/designer && npm test` ✅ (1/1)
 
+### 2026-02-26 — Frontend: Policies CRUD mínimo (ataque #4)
+
+#### Cambios aplicados
+1. Backend `PoliciesController` extendido:
+   - `GET /api/v1/tenants/{tenantId}/policies/{policySetId}`
+   - `POST /api/v1/tenants/{tenantId}/policies` (crear policy set)
+   - `POST /api/v1/tenants/{tenantId}/policies/{policySetId}/publish`
+
+2. Frontend `PoliciesPage` operativa:
+   - botón `New Policy Set` con diálogo de creación,
+   - acción `Publish` por fila,
+   - refresco de listado tras crear/publicar.
+
+#### Verificación
+- `dotnet build src/AgentFlow.Api/AgentFlow.Api.csproj -v minimal` ✅
+- `npm run lint` en `frontend/aiagent_flow` ✅ (warnings no bloqueantes de hooks)
+- `npm test` en `frontend/aiagent_flow` ✅
+- `npm run build` en `frontend/aiagent_flow` ✅
+
 ### 2026-02-26 — Frontend: Tools operativas (ataque #3)
 
 #### Cambios aplicados
