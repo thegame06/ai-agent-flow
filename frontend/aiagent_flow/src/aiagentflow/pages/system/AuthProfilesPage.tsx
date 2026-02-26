@@ -30,10 +30,9 @@ import { useRouter } from 'src/routes/hooks';
 import axios from 'src/lib/axios';
 import { CONFIG } from 'src/global-config';
 import { DashboardContent } from 'src/layouts/dashboard';
+import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
 
 import { Iconify } from 'src/components/iconify';
-
-const TENANT_ID = 'tenant-1';
 
 interface AuthProfile {
   id: string;
@@ -55,6 +54,7 @@ interface ModelItem {
 
 export default function AuthProfilesPage() {
   const router = useRouter();
+  const TENANT_ID = useTenantId();
   const [profiles, setProfiles] = useState<AuthProfile[]>([]);
   const [models, setModels] = useState<ModelItem[]>([]);
   const [loading, setLoading] = useState(true);

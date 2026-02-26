@@ -21,6 +21,7 @@ import { useRouter , useParams } from 'src/routes/hooks';
 import axios from 'src/lib/axios';
 import { CONFIG } from 'src/global-config';
 import { DashboardContent } from 'src/layouts/dashboard';
+import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
 
 import { Label } from 'src/components/label';
 import { Iconify } from 'src/components/iconify';
@@ -46,6 +47,7 @@ export default function AgentDetailPage() {
   const theme = useTheme();
   const router = useRouter();
   const { id } = useParams();
+  const tenantId = useTenantId();
   const [agent, setAgent] = useState<any>(null);
   const [executions, setExecutions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -55,12 +57,12 @@ export default function AgentDetailPage() {
     const fetchAgentDetail = async () => {
       try {
         setLoading(true);
-        const response = await axios.get(`/api/v1/tenants/tenant-1/agents/${id}`);
+        const response = await axios.get(`/api/v1/tenants/${tenantId}/agents/${id}`);
         setAgent(response.data);
 
         // Fetch recent executions
         const execResponse = await axios.get(
-          `/api/v1/tenants/tenant-1/agents/${id}/executions?limit=10`
+          `/api/v1/tenants/${tenantId}/agents/${id}/executions?limit=10`
         );
         setExecutions(execResponse.data);
       } catch (error) {
@@ -73,7 +75,7 @@ export default function AgentDetailPage() {
     if (id) {
       fetchAgentDetail();
     }
-  }, [id]);
+  }, [id, tenantId]);
 
   const handleEdit = () => {
     router.push(`${paths.dashboard.agentDesigner}?id=${id}`);

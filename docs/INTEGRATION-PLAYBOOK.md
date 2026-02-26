@@ -296,6 +296,32 @@ Validar **discovery + invoke HTTP** en AgentFlow con un servidor MCP real local,
 - `cd frontend/aiagent_flow && npm test` ✅ (1/1)
 - `cd frontend/designer && npm test` ✅ (1/1)
 
+### 2026-02-26 — Frontend: tenant dinámico (ataque #1)
+
+#### Cambios aplicados
+- Nuevo hook: `frontend/aiagent_flow/src/aiagentflow/hooks/useTenantId.ts`
+  - Resuelve tenant desde `auth.user.tenantId` / `auth.user.tenant.id` / `localStorage` / `VITE_DEFAULT_TENANT_ID`.
+- Remoción de `tenant-1` hardcodeado en páginas clave:
+  - `ChannelsPage`
+  - `PoliciesPage`
+  - `AgentsPage`
+  - `AgentDetailPage`
+  - `ExecuteAgentDialog`
+  - `ExecutionsPage`
+  - `ExecutionDetailPage`
+  - `OverviewPage`
+  - `AuditPage`
+  - `CheckpointsPage`
+  - `AuthProfilesPage`
+  - `ChatPage`
+  - `designerThunks` (fallback dinámico por storage/env)
+
+#### Verificación
+- `rg "tenant-1" src/aiagentflow/pages` -> solo queda fallback en `designerThunks`.
+- `npm run lint` en `frontend/aiagent_flow` ✅ (0 errores)
+- `npm test` en `frontend/aiagent_flow` ✅
+- `npm run build` en `frontend/aiagent_flow` ✅
+
 ### 2026-02-26 — Frontend: evidencia E2E visible en Channels
 
 #### Cambios aplicados

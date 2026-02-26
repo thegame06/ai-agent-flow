@@ -33,6 +33,7 @@ import { RouterLink } from 'src/routes/components';
 
 import { CONFIG } from 'src/global-config';
 import { DashboardContent } from 'src/layouts/dashboard';
+import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
 
 import { Iconify } from 'src/components/iconify';
 
@@ -207,6 +208,7 @@ function DecisionTraceStep({ step, isLast }: { step: ExecutionStep; isLast: bool
 export default function ExecutionDetailPage() {
   const dispatch = useDispatch<AppDispatch>();
   const theme = useTheme();
+  const tenantId = useTenantId();
   const { executionId } = useParams<{ executionId: string }>();
   const { detail, loading, error } = useSelector(
     (state: RootState) => state.executionDetail
@@ -214,10 +216,10 @@ export default function ExecutionDetailPage() {
 
   useEffect(() => {
     if (executionId) {
-      dispatch(fetchExecutionDetail({ tenantId: 'tenant-1', executionId }));
+      dispatch(fetchExecutionDetail({ tenantId, executionId }));
     }
     return () => { dispatch(clearDetail()); };
-  }, [dispatch, executionId]);
+  }, [dispatch, executionId, tenantId]);
 
   if (loading || !detail) {
     return (

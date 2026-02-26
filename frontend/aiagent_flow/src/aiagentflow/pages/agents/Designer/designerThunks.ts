@@ -4,13 +4,19 @@ import axios from 'src/lib/axios';
 
 import type { AgentDefinitionDraft } from './types';
 
-const TENANT_ID = 'tenant-1'; // TODO: Get from auth context
+const resolveTenantId = () => {
+  if (typeof window !== 'undefined') {
+    const t = localStorage.getItem('af:tenantId');
+    if (t) return t;
+  }
+  return (import.meta.env.VITE_DEFAULT_TENANT_ID as string | undefined) || 'tenant-1';
+};
 
 // ── Fetch single agent for Designer ──
 export const fetchAgentDetail = createAsyncThunk(
   'designer/fetchAgentDetail',
   async (agentId: string) => {
-    const response = await axios.get(`/api/v1/tenants/${TENANT_ID}/agents/${agentId}`);
+    const response = await axios.get(`/api/v1/tenants/${resolveTenantId()}/agents/${agentId}`);
     return response.data;
   }
 );
@@ -24,14 +30,14 @@ export const saveAgent = createAsyncThunk(
     if (draft.id) {
       // UPDATE
       const response = await axios.put(
-        `/api/v1/tenants/${TENANT_ID}/agents/${draft.id}`,
+        `/api/v1/tenants/${resolveTenantId()}/agents/${draft.id}`,
         payload
       );
       return response.data;
     }
     // CREATE
     const response = await axios.post(
-      `/api/v1/tenants/${TENANT_ID}/agents`,
+      `/api/v1/tenants/${resolveTenantId()}/agents`,
       payload
     );
     return response.data;
@@ -43,7 +49,7 @@ export const publishAgent = createAsyncThunk(
   'designer/publishAgent',
   async (agentId: string) => {
     const response = await axios.post(
-      `/api/v1/tenants/${TENANT_ID}/agents/${agentId}/publish`
+      `/api/v1/tenants/${resolveTenantId()}/agents/${agentId}/publish`
     );
     return response.data;
   }
@@ -53,7 +59,7 @@ export const publishAgent = createAsyncThunk(
 export const deleteAgent = createAsyncThunk(
   'designer/deleteAgent',
   async (agentId: string) => {
-    await axios.delete(`/api/v1/tenants/${TENANT_ID}/agents/${agentId}`);
+    await axios.delete(`/api/v1/tenants/${resolveTenantId()}/agents/${agentId}`);
     return agentId;
   }
 );
@@ -63,7 +69,7 @@ export const cloneAgent = createAsyncThunk(
   'designer/cloneAgent',
   async ({ agentId, newName, newDescription }: { agentId: string; newName: string; newDescription?: string }) => {
     const response = await axios.post(
-      `/api/v1/tenants/${TENANT_ID}/agents/${agentId}/clone`,
+      `/api/v1/tenants/${resolveTenantId()}/agents/${agentId}/clone`,
       { newName, newDescription }
     );
     return response.data;
@@ -75,7 +81,7 @@ export const previewAgent = createAsyncThunk(
   'designer/previewAgent',
   async ({ agentId, message, variables }: { agentId: string; message: string; variables?: Record<string, string> }) => {
     const response = await axios.post(
-      `/api/v1/tenants/${TENANT_ID}/agents/${agentId}/preview`,
+      `/api/v1/tenants/${resolveTenantId()}/agents/${agentId}/preview`,
       { message, variables }
     );
     return response.data;

@@ -27,6 +27,7 @@ import { RouterLink } from 'src/routes/components';
 
 import { CONFIG } from 'src/global-config';
 import { DashboardContent } from 'src/layouts/dashboard';
+import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
 
 import { Iconify } from 'src/components/iconify';
 
@@ -144,14 +145,15 @@ function QualityBar({ score }: { score: number }) {
 
 export default function OverviewPage() {
   const dispatch = useDispatch<AppDispatch>();
+  const tenantId = useTenantId();
   const theme = useTheme();
   const { metrics, recentExecutions, agentPerformance, loading } = useSelector(
     (state: RootState) => state.overview
   );
 
   useEffect(() => {
-    dispatch(fetchOverview('tenant-1'));
-  }, [dispatch]);
+    dispatch(fetchOverview(tenantId));
+  }, [dispatch, tenantId]);
 
   return (
     <>

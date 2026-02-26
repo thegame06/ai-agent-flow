@@ -18,6 +18,7 @@ import LinearProgress from '@mui/material/LinearProgress';
 import axios from 'src/lib/axios';
 import { CONFIG } from 'src/global-config';
 import { DashboardContent } from 'src/layouts/dashboard';
+import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
 
 import { Label } from 'src/components/label';
 
@@ -37,20 +38,21 @@ const severityColor = (severity: string) => {
 
 export default function AuditPage() {
   const theme = useTheme();
+  const tenantId = useTenantId();
   const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetch = async () => {
       try {
-        const response = await axios.get('/api/v1/tenants/tenant-1/audit');
+        const response = await axios.get(`/api/v1/tenants/${tenantId}/audit`);
         setLogs(response.data);
       } finally {
         setLoading(false);
       }
     };
     fetch();
-  }, []);
+  }, [tenantId]);
 
   return (
     <>

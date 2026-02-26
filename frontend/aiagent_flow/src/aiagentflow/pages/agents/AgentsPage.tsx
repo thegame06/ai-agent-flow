@@ -23,6 +23,7 @@ import { RouterLink } from 'src/routes/components';
 
 import { CONFIG } from 'src/global-config';
 import { DashboardContent } from 'src/layouts/dashboard';
+import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
 
 import { Label } from 'src/components/label';
 import { Iconify } from 'src/components/iconify';
@@ -53,7 +54,8 @@ const statusColor = (status: string) => {
 export default function AgentsPage() {
   const theme = useTheme();
   const router = useRouter();
-  const { agents, loading, clone, remove } = useAgents('tenant-1');
+  const tenantId = useTenantId();
+  const { agents, loading, clone, remove } = useAgents(tenantId);
   const [executeDialog, setExecuteDialog] = useState<{
     open: boolean;
     agent: { id: string; name: string; description?: string } | null;

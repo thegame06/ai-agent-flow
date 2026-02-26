@@ -26,10 +26,11 @@ import CircularProgress from '@mui/material/CircularProgress';
 import axios from 'src/lib/axios';
 import { CONFIG } from 'src/global-config';
 import { DashboardContent } from 'src/layouts/dashboard';
+import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
 
 import { Iconify } from 'src/components/iconify';
 
-const TENANT_ID = 'tenant-1';
+
 
 interface Channel {
   id: string;
@@ -67,6 +68,7 @@ interface SessionMessageEvidence {
 }
 
 export default function ChannelsPage() {
+  const TENANT_ID = useTenantId();
   const [channels, setChannels] = useState<Channel[]>([]);
   const [sessions, setSessions] = useState<ChannelSession[]>([]);
   const [loading, setLoading] = useState(true);

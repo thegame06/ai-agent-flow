@@ -11,26 +11,28 @@ import Typography from '@mui/material/Typography';
 import axios from 'src/lib/axios';
 import { CONFIG } from 'src/global-config';
 import { DashboardContent } from 'src/layouts/dashboard';
+import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
 
 import { Label } from 'src/components/label';
 
 // ----------------------------------------------------------------------
 
 export default function PoliciesPage() {
+  const tenantId = useTenantId();
   const [policies, setPolicies] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetch = async () => {
       try {
-        const response = await axios.get('/api/v1/tenants/tenant-1/policies');
+        const response = await axios.get(`/api/v1/tenants/${tenantId}/policies`);
         setPolicies(response.data);
       } finally {
         setLoading(false);
       }
     };
     fetch();
-  }, []);
+  }, [tenantId]);
 
   const columns: GridColDef[] = [
     { field: 'name', headerName: 'Policy Name', width: 200 },

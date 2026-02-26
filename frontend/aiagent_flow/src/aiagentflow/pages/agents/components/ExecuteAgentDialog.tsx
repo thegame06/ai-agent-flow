@@ -14,6 +14,7 @@ import DialogContent from '@mui/material/DialogContent';
 import LinearProgress from '@mui/material/LinearProgress';
 
 import axios from 'src/lib/axios';
+import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
 
 import { Iconify } from 'src/components/iconify';
 
@@ -56,6 +57,7 @@ const normalizeStatus = (status: unknown): 'Running' | 'Completed' | 'Failed' =>
 };
 
 export function ExecuteAgentDialog({ open, onClose, agent }: ExecuteAgentDialogProps) {
+  const tenantId = useTenantId();
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ExecutionResult | null>(null);
@@ -70,13 +72,13 @@ export function ExecuteAgentDialog({ open, onClose, agent }: ExecuteAgentDialogP
       console.log('Executing agent:', agent.id, 'with message:', message);
       
       // POST /api/v1/tenants/{tenantId}/agents/{agentId}/trigger
-      const sessionStorageKey = `af:chat-session:tenant-1:${agent.id}`;
-      const threadStorageKey = `af:active-thread:tenant-1:${agent.id}`;
+      const sessionStorageKey = `af:chat-session:${tenantId}:${agent.id}`;
+      const threadStorageKey = `af:active-thread:${tenantId}:${agent.id}`;
       const sessionId = localStorage.getItem(sessionStorageKey) ?? crypto.randomUUID();
       localStorage.setItem(sessionStorageKey, sessionId);
       const activeThreadId = localStorage.getItem(threadStorageKey);
 
-      const response = await axios.post(`/api/v1/tenants/tenant-1/agents/${agent.id}/trigger`, {
+      const response = await axios.post(`/api/v1/tenants/${tenantId}/agents/${agent.id}/trigger`, {
         message: message.trim(),
         context: {},
         sessionId,
@@ -87,7 +89,7 @@ export function ExecuteAgentDialog({ open, onClose, agent }: ExecuteAgentDialogP
 
       const executionId = response.data.executionId || response.data.id;
       if (response.data.threadId) {
-        localStorage.setItem(`af:active-thread:tenant-1:${agent.id}`, response.data.threadId);
+        localStorage.setItem(`af:active-thread::`, response.data.threadId);
       }
 
       if (!executionId) {
@@ -107,7 +109,7 @@ export function ExecuteAgentDialog({ open, onClose, agent }: ExecuteAgentDialogP
         attempts += 1;
         try {
           const statusResponse = await axios.get(
-            `/api/v1/tenants/tenant-1/executions/${executionId}`
+            `/api/v1/tenants//executions/`
           );
           const execution = statusResponse.data;
           const normalizedStatus = normalizeStatus(execution?.status);
@@ -136,7 +138,7 @@ export function ExecuteAgentDialog({ open, onClose, agent }: ExecuteAgentDialogP
             });
 
             if (response.data?.threadId) {
-              localStorage.setItem(`af:active-thread:tenant-1:${agent.id}`, response.data.threadId);
+              localStorage.setItem(`af:active-thread::`, response.data.threadId);
             }
 
             setLoading(false);

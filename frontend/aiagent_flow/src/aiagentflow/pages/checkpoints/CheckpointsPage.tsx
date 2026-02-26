@@ -26,6 +26,7 @@ import CircularProgress from '@mui/material/CircularProgress';
 
 import { CONFIG } from 'src/global-config';
 import { DashboardContent } from 'src/layouts/dashboard';
+import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
 
 import { Iconify } from 'src/components/iconify';
 
@@ -246,6 +247,7 @@ function formatJson(str: string): string {
 
 export default function CheckpointsPage() {
   const dispatch = useDispatch<AppDispatch>();
+  const tenantId = useTenantId();
   const theme = useTheme();
   const { items, loading, decidingId, error } = useSelector(
     (state: RootState) => state.checkpoints
@@ -255,13 +257,13 @@ export default function CheckpointsPage() {
   const [rejectFeedback, setRejectFeedback] = useState('');
 
   useEffect(() => {
-    dispatch(fetchCheckpoints('tenant-1'));
+    dispatch(fetchCheckpoints(tenantId));
     // Auto-refresh every 15 seconds
     const interval = setInterval(() => {
-      dispatch(fetchCheckpoints('tenant-1'));
+      dispatch(fetchCheckpoints(tenantId));
     }, 15000);
     return () => clearInterval(interval);
-  }, [dispatch]);
+  }, [dispatch, tenantId]);
 
   const handleApprove = (cp: Checkpoint) => {
     dispatch(decideCheckpoint({
@@ -314,7 +316,7 @@ export default function CheckpointsPage() {
             variant="outlined"
             size="small"
             startIcon={<Iconify icon="mdi:refresh" />}
-            onClick={() => dispatch(fetchCheckpoints('tenant-1'))}
+            onClick={() => dispatch(fetchCheckpoints(tenantId))}
           >
             Refresh
           </Button>

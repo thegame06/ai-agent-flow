@@ -2,10 +2,12 @@ import { useParams , Link as RouterLink } from 'react-router';
 
 import { Box, Link, Container, Typography, Breadcrumbs } from '@mui/material';
 
+import { useTenantId } from '../hooks/useTenantId';
 import { ChatInterface } from '../components/ChatInterface';
 
 export default function ChatPage() {
   const { agentId } = useParams<{ agentId: string }>();
+  const tenantId = useTenantId();
 
   if (!agentId) {
     return (
@@ -30,7 +32,7 @@ export default function ChatPage() {
           minHeight: 500,
         }}
       >
-        <ChatInterface agentId={agentId} agentName="Agent" tenantId="tenant-1" />
+        <ChatInterface agentId={agentId} agentName="Agent" tenantId={tenantId} />
       </Box>
     </Container>
   );
