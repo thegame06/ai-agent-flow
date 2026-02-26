@@ -177,14 +177,13 @@ export default function ChannelsPage() {
         if (qr) {
           setQrCode(qr);
         } else {
-          alert('Channel activated, but QR not available yet. Use Refresh QR.');
+          setError('Channel activated, but QR is not available yet. Verify QR bridge and try Refresh QR.');
         }
       }
 
-      alert(`Channel activated: ${res.data.status}`);
       await fetchAll();
     } catch (err: any) {
-      alert(err?.message || 'Failed to activate channel');
+      setError(err?.response?.data?.message || err?.message || 'Failed to activate channel');
     }
   };
 
@@ -464,10 +463,14 @@ export default function ChannelsPage() {
               if (!selectedChannel) return;
               try {
                 const qr = await fetchQrCode(selectedChannel.id);
-                if (qr) setQrCode(qr);
-                else alert('QR still not available');
+                if (qr) {
+                  setQrCode(qr);
+                  setError(null);
+                } else {
+                  setError('QR still not available. Check bridge connection and try again.');
+                }
               } catch {
-                alert('QR still not available');
+                setError('QR still not available. Check bridge connection and try again.');
               }
             }}
           >

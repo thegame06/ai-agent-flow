@@ -32,6 +32,26 @@ interface ToolRow {
   inputSchemaJson?: string;
 }
 
+function schemaToPayload(schemaJson?: string) {
+  if (!schemaJson) return '{}';
+  try {
+    const s = JSON.parse(schemaJson);
+    if (!s?.properties) return schemaJson;
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries<any>(s.properties)) {
+      if (Array.isArray(v?.enum) && v.enum.length) out[k] = v.enum[0];
+      else if (v?.type === 'number' || v?.type === 'integer') out[k] = 0;
+      else if (v?.type === 'boolean') out[k] = false;
+      else if (v?.type === 'array') out[k] = [];
+      else if (v?.type === 'object') out[k] = {};
+      else out[k] = '';
+    }
+    return JSON.stringify(out, null, 2);
+  } catch {
+    return schemaJson;
+  }
+}
+
 export default function ToolsPage() {
   const tenantId = useTenantId();
   const [tools, setTools] = useState<ToolRow[]>([]);
@@ -149,7 +169,7 @@ export default function ToolsPage() {
                 onRowClick={(params) => {
                   setSelectedTool(params.row as ToolRow);
                   setResult('');
-                  setInputJson((params.row as any)?.inputSchemaJson || '{}');
+                  setInputJson(schemaToPayload((params.row as any)?.inputSchemaJson));
                 }}
               />
             </Card>
