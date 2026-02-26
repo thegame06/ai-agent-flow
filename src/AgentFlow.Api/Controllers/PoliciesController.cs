@@ -1,9 +1,10 @@
 using AgentFlow.Abstractions;
-using AgentFlow.Domain.Aggregates;
-using AgentFlow.Domain.Repositories;
 using AgentFlow.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using MongoDB.Bson;
+using MongoDB.Bson.Serialization.Attributes;
+using MongoDB.Driver;
 
 namespace AgentFlow.Api.Controllers;
 
@@ -13,12 +14,12 @@ namespace AgentFlow.Api.Controllers;
 public sealed class PoliciesController : ControllerBase
 {
     private readonly ITenantContextAccessor _tenantContext;
-    private readonly IPolicyRepository _repository;
+    private readonly IMongoCollection<PolicySetStoreDocument> _collection;
 
-    public PoliciesController(ITenantContextAccessor tenantContext, IPolicyRepository repository)
+    public PoliciesController(ITenantContextAccessor tenantContext, IMongoDatabase database)
     {
         _tenantContext = tenantContext;
-        _repository = repository;
+        _collection = database.GetCollection<PolicySetStoreDocument>("policy_sets_v2");
     }
 
     [HttpGet]
@@ -27,8 +28,7 @@ public sealed class PoliciesController : ControllerBase
         var context = _tenantContext.Current!;
         if (context.TenantId != tenantId && !context.IsPlatformAdmin) return Forbid();
 
-        var sets = await _repository.GetByTenantAsync(tenantId, ct: ct);
-
+        var sets = await _collection.Find(x => x.TenantId == tenantId).ToListAsync(ct);
         return Ok(sets.Select(MapPolicySet));
     }
 
@@ -38,7 +38,7 @@ public sealed class PoliciesController : ControllerBase
         var context = _tenantContext.Current!;
         if (context.TenantId != tenantId && !context.IsPlatformAdmin) return Forbid();
 
-        var set = await _repository.GetByIdAsync(policySetId, tenantId, ct);
+        var set = await _collection.Find(x => x.TenantId == tenantId && x.Id == policySetId).FirstOrDefaultAsync(ct);
         if (set is null) return NotFound();
 
         return Ok(MapPolicySet(set));
@@ -50,20 +50,26 @@ public sealed class PoliciesController : ControllerBase
         var context = _tenantContext.Current!;
         if (context.TenantId != tenantId && !context.IsPlatformAdmin) return Forbid();
 
-        var created = AgentFlow.Domain.Aggregates.PolicySetDefinition.Create(
-            tenantId,
-            request.Name,
-            request.Description ?? string.Empty,
-            context.UserId);
+        if (string.IsNullOrWhiteSpace(request.Name))
+            return BadRequest(new { error = "Policy set name is required" });
 
-        if (!created.IsSuccess)
-            return BadRequest(new { error = created.Error?.Message ?? "Failed to create policy set" });
+        var doc = new PolicySetStoreDocument
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            TenantId = tenantId,
+            Name = request.Name,
+            Description = request.Description ?? string.Empty,
+            Version = "1.0.0",
+            IsPublished = false,
+            Policies = new List<PolicyDefinition>(),
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow,
+            CreatedBy = context.UserId,
+            UpdatedBy = context.UserId
+        };
 
-        var addResult = await _repository.AddAsync(created.Value!, ct);
-        if (!addResult.IsSuccess)
-            return BadRequest(new { error = addResult.Error?.Message ?? "Failed to persist policy set" });
-
-        return Ok(MapPolicySet(created.Value!));
+        await _collection.InsertOneAsync(doc, cancellationToken: ct);
+        return Ok(MapPolicySet(doc));
     }
 
     [HttpPut("{policySetId}/policies")]
@@ -72,10 +78,11 @@ public sealed class PoliciesController : ControllerBase
         var context = _tenantContext.Current!;
         if (context.TenantId != tenantId && !context.IsPlatformAdmin) return Forbid();
 
-        var set = await _repository.GetByIdAsync(policySetId, tenantId, ct);
+        var set = await _collection.Find(x => x.TenantId == tenantId && x.Id == policySetId).FirstOrDefaultAsync(ct);
         if (set is null) return NotFound();
+        if (set.IsPublished) return BadRequest(new { error = "Cannot update a published policy set. Create a new version." });
 
-        var policies = request.Policies.Select(p => new PolicyDefinition
+        set.Policies = request.Policies.Select(p => new PolicyDefinition
         {
             PolicyId = p.PolicyId,
             Description = p.Description,
@@ -88,14 +95,10 @@ public sealed class PoliciesController : ControllerBase
             TargetSegments = p.TargetSegments ?? []
         }).ToList();
 
-        var update = set.UpdatePolicies(policies, context.UserId);
-        if (!update.IsSuccess)
-            return BadRequest(new { error = update.Error?.Message ?? "Failed to update policies" });
+        set.UpdatedAt = DateTimeOffset.UtcNow;
+        set.UpdatedBy = context.UserId;
 
-        var save = await _repository.UpdateAsync(set, ct);
-        if (!save.IsSuccess)
-            return BadRequest(new { error = save.Error?.Message ?? "Failed to persist policies" });
-
+        await _collection.ReplaceOneAsync(x => x.Id == set.Id && x.TenantId == tenantId, set, cancellationToken: ct);
         return Ok(MapPolicySet(set));
     }
 
@@ -105,21 +108,19 @@ public sealed class PoliciesController : ControllerBase
         var context = _tenantContext.Current!;
         if (context.TenantId != tenantId && !context.IsPlatformAdmin) return Forbid();
 
-        var set = await _repository.GetByIdAsync(policySetId, tenantId, ct);
+        var set = await _collection.Find(x => x.TenantId == tenantId && x.Id == policySetId).FirstOrDefaultAsync(ct);
         if (set is null) return NotFound();
+        if (set.IsPublished) return BadRequest(new { error = "Policy set is already published" });
 
-        var result = set.Publish(context.UserId);
-        if (!result.IsSuccess)
-            return BadRequest(new { error = result.Error?.Message ?? "Failed to publish policy set" });
+        set.IsPublished = true;
+        set.UpdatedAt = DateTimeOffset.UtcNow;
+        set.UpdatedBy = context.UserId;
 
-        var updateResult = await _repository.UpdateAsync(set, ct);
-        if (!updateResult.IsSuccess)
-            return BadRequest(new { error = updateResult.Error?.Message ?? "Failed to persist publish operation" });
-
+        await _collection.ReplaceOneAsync(x => x.Id == set.Id && x.TenantId == tenantId, set, cancellationToken: ct);
         return Ok(MapPolicySet(set));
     }
 
-    private static object MapPolicySet(AgentFlow.Domain.Aggregates.PolicySetDefinition s) => new
+    private static object MapPolicySet(PolicySetStoreDocument s) => new
     {
         s.Id,
         s.Name,
@@ -127,13 +128,28 @@ public sealed class PoliciesController : ControllerBase
         s.Version,
         Status = s.IsPublished ? "Published" : "Draft",
         PolicyCount = s.Policies.Count,
-        Severity = s.Policies.Count > 0
-            ? s.Policies.Max(p => p.Severity).ToString()
-            : "Info",
+        Severity = s.Policies.Count > 0 ? s.Policies.Max(p => p.Severity).ToString() : "Info",
         Policies = s.Policies,
         s.CreatedAt,
         s.UpdatedAt
     };
+
+    private sealed class PolicySetStoreDocument
+    {
+        [BsonId]
+        [BsonRepresentation(BsonType.String)]
+        public string Id { get; set; } = string.Empty;
+        public string TenantId { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+        public string Version { get; set; } = "1.0.0";
+        public bool IsPublished { get; set; }
+        public List<PolicyDefinition> Policies { get; set; } = new();
+        public DateTimeOffset CreatedAt { get; set; }
+        public DateTimeOffset UpdatedAt { get; set; }
+        public string CreatedBy { get; set; } = string.Empty;
+        public string UpdatedBy { get; set; } = string.Empty;
+    }
 }
 
 public sealed class CreatePolicySetRequest
