@@ -511,16 +511,22 @@ Se introdujo arquitectura de transporte para soportar dos modos:
 - `dotnet test tests/AgentFlow.Tests.Integration/AgentFlow.Tests.Integration.csproj -v minimal` ✅
 - Resultado: `Passed: 4, Failed: 0`.
 
-### 2026-02-26 — Test de contrato para estado de canal (QR readiness)
+### 2026-02-26 — Test de contrato para estado y QR de canal
 
 #### Cambio aplicado
-- Archivo nuevo: `tests/AgentFlow.Tests.Integration/Channels/ChannelStatusTests.cs`
-- Caso cubierto:
-  - `GET status` para canal WhatsApp en `AuthMode=qr` devuelve `qrAvailable` y estado de salud sin romper contrato.
+- Archivo actualizado: `tests/AgentFlow.Tests.Integration/Channels/ChannelStatusTests.cs`
+- Casos cubiertos:
+  - `GET /channels/{id}/status` para WhatsApp `AuthMode=qr` mantiene contrato de salud + `qrAvailable`.
+  - `GET /channels/{id}/qr` retorna `qrCode` cuando handler expone capacidad QR.
+
+#### Refactor de contrato
+- Archivo nuevo: `src/AgentFlow.Application/Channels/IChannelQrProvider.cs`
+- `ChannelsController` ya no depende de clase concreta de infraestructura para QR.
+- `WhatsAppChannelHandler` implementa `IChannelQrProvider`.
 
 #### Verificación
 - `dotnet test tests/AgentFlow.Tests.Integration/AgentFlow.Tests.Integration.csproj -v minimal` ✅
-- Resultado actualizado: `Passed: 5, Failed: 0`.
+- Resultado actualizado: `Passed: 6, Failed: 0`.
 
 ### 2026-02-26 — Hardening inicial del QR bridge
 

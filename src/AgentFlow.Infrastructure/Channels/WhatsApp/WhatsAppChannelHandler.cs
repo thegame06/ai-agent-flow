@@ -10,7 +10,7 @@ namespace AgentFlow.Infrastructure.Channels.WhatsApp;
 /// <summary>
 /// WhatsApp channel handler supporting QR authentication (initial) and Business API.
 /// </summary>
-public sealed class WhatsAppChannelHandler : IChannelHandler
+public sealed class WhatsAppChannelHandler : IChannelHandler, IChannelQrProvider
 {
     private readonly IChannelSessionRepository _sessionRepo;
     private readonly ILogger<WhatsAppChannelHandler> _logger;

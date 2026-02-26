@@ -11,7 +11,39 @@ namespace AgentFlow.Tests.Integration.Channels;
 public class ChannelStatusTests
 {
     [Fact]
-    public async Task GetStatus_ForWhatsAppQr_Returns_QrAvailableFalse_When_Handler_IsNotConcreteWhatsAppHandler()
+    public async Task GetQr_ForWhatsAppQr_Returns_QrCode_When_Handler_Provides_It()
+    {
+        var tenantId = "tenant-1";
+        var channel = ChannelDefinition.Create(
+            tenantId,
+            "wa-qr",
+            ChannelType.WhatsApp,
+            new Dictionary<string, string> { ["AuthMode"] = "qr" });
+
+        var channelRepo = new InMemoryChannelDefinitionRepository(channel);
+        var gateway = new FakeChannelGateway(new HealthyHandler(ChannelType.WhatsApp, "data:image/png;base64,abc"));
+
+        var tenantContext = new TenantContextAccessor();
+        tenantContext.Set(new TenantContext
+        {
+            TenantId = tenantId,
+            UserId = "u1",
+            UserEmail = "u1@test.local",
+            IsPlatformAdmin = false
+        });
+
+        var controller = new ChannelsController(channelRepo, gateway, tenantContext);
+
+        var result = await controller.GetQr(tenantId, channel.Id, CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(result);
+        var payload = ok.Value!;
+        var qrCode = (string)payload.GetType().GetProperty("qrCode")!.GetValue(payload)!;
+        Assert.StartsWith("data:image/png;base64", qrCode);
+    }
+
+    [Fact]
+    public async Task GetStatus_ForWhatsAppQr_Returns_QrAvailableFalse_When_Handler_Has_No_QrCapability()
     {
         // Arrange
         var tenantId = "tenant-1";
@@ -49,9 +81,16 @@ public class ChannelStatusTests
         Assert.True(healthy);
     }
 
-    private sealed class HealthyHandler : IChannelHandler
+    private sealed class HealthyHandler : IChannelHandler, IChannelQrProvider
     {
-        public HealthyHandler(ChannelType type) => SupportedChannelType = type;
+        private readonly string? _qrCode;
+
+        public HealthyHandler(ChannelType type, string? qrCode = null)
+        {
+            SupportedChannelType = type;
+            _qrCode = qrCode;
+        }
+
         public ChannelType SupportedChannelType { get; }
 
         public Task<ChannelStatus> InitializeAsync(ChannelDefinition definition, CancellationToken ct = default)
@@ -74,6 +113,9 @@ public class ChannelStatusTests
 
         public Task<HealthStatus> CheckHealthAsync(ChannelDefinition definition, CancellationToken ct = default)
             => Task.FromResult(HealthStatus.Ok("healthy"));
+
+        public Task<string?> GetQrCodeAsync(CancellationToken ct = default)
+            => Task.FromResult(_qrCode);
     }
 
     private sealed class FakeChannelGateway : IChannelGateway
