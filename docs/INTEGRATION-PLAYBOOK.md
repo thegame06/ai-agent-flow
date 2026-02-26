@@ -322,8 +322,9 @@ Un canal se marca **DONE** solo si cumple todo:
 
 2. **Backend integration tests**
    - Comando: `dotnet test tests/AgentFlow.Tests.Integration/AgentFlow.Tests.Integration.csproj -v minimal`
-   - Resultado: ❌ **No compila**.
-   - Causa: tests usan contratos antiguos (`ExecutionId` en request, `FinalAnswer`, `AgentExecutionStatus`, `ToolResult.Data`, `ToolCallHistory`, etc.) que ya no existen en `AgentFlow.Abstractions` actual.
+   - Resultado (estado anterior): ❌ **No compilaba** por contratos obsoletos.
+   - Acción aplicada: se reescribió `LoanOfficerDemoTests` contra contratos vigentes (`ExecutionStatus`, `FinalResponse`, `ToolSDK.ToolResult.Output`, etc.).
+   - Resultado actual: ✅ **Passed: 3, Failed: 0**.
 
 3. **Frontend aiagent_flow**
    - `npm run lint` ✅
@@ -335,10 +336,11 @@ Un canal se marca **DONE** solo si cumple todo:
    - `npm run build` ✅.
 
 #### Estado operativo actual
-- Backend unitario: **verde**.
-- Backend integración: **rojo** (desalineación de contratos en tests).
+- Backend unitario: **verde** (168/168).
+- Backend integración: **verde** (3/3).
 - Frontend build/lint: **verde** en ambas apps (con warnings no bloqueantes).
 - Frontend tests automáticos: **pendiente** (scripts `test` no definidos).
+- Nota crítica: `AgentFlow.Tests.Integration` hoy corre por csproj directo; validar si debe incluirse en `AgentFlow.sln` para que `dotnet test AgentFlow.sln` también lo ejecute.
 
 ### 2026-02-26 — Mejora de performance frontend (aiagent_flow)
 
