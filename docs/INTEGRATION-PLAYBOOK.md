@@ -296,6 +296,25 @@ Validar **discovery + invoke HTTP** en AgentFlow con un servidor MCP real local,
 - `cd frontend/aiagent_flow && npm test` ✅ (1/1)
 - `cd frontend/designer && npm test` ✅ (1/1)
 
+### 2026-02-26 — Frontend: evidencia E2E visible en Channels
+
+#### Cambios aplicados
+- Archivo: `frontend/aiagent_flow/src/aiagentflow/pages/channels/ChannelsPage.tsx`
+- Se agregó flujo UI para evidencias por sesión:
+  - botón `View Evidence` en cada sesión activa,
+  - consulta a `GET /channel-sessions/{sessionId}/messages`,
+  - diálogo con resumen:
+    - `ExecutionId`
+    - `MsgId In`
+    - `MsgId Out`
+    - `Latency ms`
+  - tabla de mensajes con dirección, contenido, estado y fecha.
+
+#### Verificación
+- `npm run lint` en `frontend/aiagent_flow` ✅
+- `npm test` en `frontend/aiagent_flow` ✅
+- `npm run build` en `frontend/aiagent_flow` ✅
+
 ### 2026-02-26 — Global #4 (MCP real) cierre incremental
 
 #### Estado

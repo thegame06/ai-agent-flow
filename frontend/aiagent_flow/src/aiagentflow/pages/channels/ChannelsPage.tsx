@@ -55,6 +55,17 @@ interface ChannelSession {
   expiresAt?: string;
 }
 
+interface SessionMessageEvidence {
+  id: string;
+  direction: string;
+  content: string;
+  createdAt: string;
+  status: string;
+  agentExecutionId?: string;
+  channelMessageIdIn?: string;
+  channelMessageIdOut?: string;
+}
+
 export default function ChannelsPage() {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [sessions, setSessions] = useState<ChannelSession[]>([]);
@@ -64,6 +75,9 @@ export default function ChannelsPage() {
   const [openCreate, setOpenCreate] = useState(false);
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null);
+  const [selectedSession, setSelectedSession] = useState<ChannelSession | null>(null);
+  const [sessionMessages, setSessionMessages] = useState<SessionMessageEvidence[]>([]);
+  const [sessionLoading, setSessionLoading] = useState(false);
 
   const [form, setForm] = useState({
     name: '',
@@ -206,6 +220,19 @@ export default function ChannelsPage() {
     }
   };
 
+  const openSessionEvidence = async (session: ChannelSession) => {
+    try {
+      setSelectedSession(session);
+      setSessionLoading(true);
+      const res = await axios.get(`/api/v1/tenants/${TENANT_ID}/channel-sessions/${session.id}/messages?limit=50`);
+      setSessionMessages((res.data ?? []) as SessionMessageEvidence[]);
+    } catch (err: any) {
+      alert(err?.message || 'Failed to load session messages');
+    } finally {
+      setSessionLoading(false);
+    }
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'Active': return 'success';
@@ -214,6 +241,14 @@ export default function ChannelsPage() {
       default: return 'default';
     }
   };
+
+  const latencyMs = sessionMessages.length >= 2
+    ? Math.max(0, new Date(sessionMessages[sessionMessages.length - 1].createdAt).getTime() - new Date(sessionMessages[0].createdAt).getTime())
+    : 0;
+
+  const firstExecutionId = sessionMessages.find((m) => m.agentExecutionId)?.agentExecutionId;
+  const messageIdIn = sessionMessages.find((m) => m.channelMessageIdIn)?.channelMessageIdIn;
+  const messageIdOut = sessionMessages.find((m) => m.channelMessageIdOut)?.channelMessageIdOut;
 
   return (
     <>
@@ -315,6 +350,9 @@ export default function ChannelsPage() {
                       <Typography variant="caption" display="block" sx={{ mt: 0.5 }}>
                         Last: {new Date(s.lastActivityAt).toLocaleString()}
                       </Typography>
+                      <Button size="small" sx={{ mt: 1 }} onClick={() => openSessionEvidence(s)}>
+                        View Evidence
+                      </Button>
                     </Box>
                   ))}
                 </Stack>
@@ -434,6 +472,51 @@ export default function ChannelsPage() {
             Refresh QR
           </Button>
           <Button onClick={() => setQrCode(null)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Session Evidence Dialog */}
+      <Dialog open={!!selectedSession} onClose={() => setSelectedSession(null)} fullWidth maxWidth="md">
+        <DialogTitle>Session Evidence - {selectedSession?.identifier}</DialogTitle>
+        <DialogContent>
+          {sessionLoading ? (
+            <Box sx={{ py: 4, textAlign: 'center' }}><CircularProgress /></Box>
+          ) : (
+            <Stack spacing={1.5}>
+              <Alert severity="info">
+                ExecutionId: {firstExecutionId || 'N/A'} | MsgIn: {messageIdIn || 'N/A'} | MsgOut: {messageIdOut || 'N/A'} | Latency: {latencyMs} ms
+              </Alert>
+              {sessionMessages.length === 0 ? (
+                <Alert severity="warning">No messages found for this session.</Alert>
+              ) : (
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Direction</TableCell>
+                      <TableCell>Content</TableCell>
+                      <TableCell>Status</TableCell>
+                      <TableCell>Created</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {sessionMessages.map((m) => (
+                      <TableRow key={m.id}>
+                        <TableCell>{m.direction}</TableCell>
+                        <TableCell sx={{ maxWidth: 420, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {m.content}
+                        </TableCell>
+                        <TableCell>{m.status}</TableCell>
+                        <TableCell>{new Date(m.createdAt).toLocaleString()}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSelectedSession(null)}>Close</Button>
         </DialogActions>
       </Dialog>
     </>
