@@ -235,6 +235,36 @@ Validar **discovery + invoke HTTP** en AgentFlow con un servidor MCP real local,
 #### Nota de entorno
 - En este host no está instalado `make` (comando no disponible), por lo que la validación fue por `bash -n` del script.
 
+### 2026-02-26 — Barrido final (arranque solicitado)
+
+#### Ejecución del harness efímero
+- Comando: `bash scripts/test/ephemeral.sh run`
+- Resultado: ❌ no pudo iniciar por permisos Docker daemon (`/var/run/docker.sock`: permission denied).
+- Implicación: para correr el ciclo efímero completo se requiere acceso al grupo `docker` o ejecución con privilegios.
+
+#### Validación fallback (sin Docker)
+1. Backend unit tests
+   - `dotnet test tests/AgentFlow.Tests.Unit/AgentFlow.Tests.Unit.csproj -v minimal` ✅
+   - Resultado: `Passed: 168, Failed: 0`.
+
+2. Backend integration tests
+   - `dotnet test tests/AgentFlow.Tests.Integration/AgentFlow.Tests.Integration.csproj -v minimal` ✅
+   - Resultado: `Passed: 8, Failed: 0`.
+
+3. Frontend `aiagent_flow`
+   - `npm run lint` ✅
+   - `npm run build` ✅
+
+4. Frontend `designer`
+   - `npm run lint` ✅ (2 warnings `react-hooks/exhaustive-deps`, 0 errores)
+   - `npm run build` ✅
+
+#### Estado semáforo actual
+- Backend unitario: 🟢
+- Backend integración: 🟢
+- Frontend build/lint: 🟢
+- Harness efímero Docker: 🔴 (bloqueado por permisos de Docker daemon)
+
 ## 5) Métricas clave (producto + operación)
 
 1. **Autonomía útil**: % tareas completadas sin intervención humana.
