@@ -148,6 +148,39 @@ public sealed class ChannelsController : ControllerBase
         return Ok(new { qrCode });
     }
 
+    [HttpGet("{channelId}/status")]
+    public async Task<IActionResult> GetStatus(string tenantId, string channelId, CancellationToken ct)
+    {
+        var context = _tenantContext.Current!;
+        if (context.TenantId != tenantId && !context.IsPlatformAdmin) return Forbid();
+
+        var channel = await _channelRepo.GetByIdAsync(channelId, tenantId, ct);
+        if (channel == null) return NotFound();
+
+        var handler = _gateway.GetHandler(channel.Type);
+        if (handler == null) return BadRequest(new { message = $"No handler for channel type {channel.Type}" });
+
+        var health = await handler.CheckHealthAsync(channel, ct);
+
+        string? qrCode = null;
+        if (channel.Type == ChannelType.WhatsApp && channel.Config.GetValueOrDefault("AuthMode") == "qr")
+        {
+            var waHandler = handler as AgentFlow.Infrastructure.Channels.WhatsApp.WhatsAppChannelHandler;
+            if (waHandler != null)
+                qrCode = await waHandler.GetQrCodeAsync(ct);
+        }
+
+        return Ok(new
+        {
+            channel.Id,
+            channel.Status,
+            health.Healthy,
+            health.Message,
+            health.CheckedAt,
+            qrAvailable = !string.IsNullOrWhiteSpace(qrCode)
+        });
+    }
+
     [HttpPost("{channelId}/health")]
     public async Task<IActionResult> CheckHealth(string tenantId, string channelId, CancellationToken ct)
     {

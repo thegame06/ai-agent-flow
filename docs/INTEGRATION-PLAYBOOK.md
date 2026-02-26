@@ -436,7 +436,12 @@ Se introdujo arquitectura de transporte para soportar dos modos:
    - Archivo: `src/AgentFlow.Infrastructure/Channels/WhatsApp/WhatsAppChannelHandler.cs`
    - Nuevo método: `GetQrCodeAsync()`.
 
-3. **Cliente/transport QR con lectura de QR real**
+3. **Endpoint de estado para operación web**
+   - Archivo: `src/AgentFlow.Api/Controllers/ChannelsController.cs`
+   - Nuevo: `GET /channels/{channelId}/status`
+   - Incluye `healthy`, `message`, `checkedAt`, y `qrAvailable` para WhatsApp QR.
+
+4. **Cliente/transport QR con lectura de QR real**
    - Archivos:
      - `src/AgentFlow.Infrastructure/Channels/WhatsApp/WhatsAppClient.cs`
      - `src/AgentFlow.Infrastructure/Channels/WhatsApp/WhatsAppWebQrTransport.cs`

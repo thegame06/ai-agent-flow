@@ -194,10 +194,13 @@ export default function ChannelsPage() {
     }
   };
 
-  const handleCheckHealth = async (channelId: string) => {
+  const handleCheckHealth = async (channel: Channel) => {
     try {
-      const res = await axios.post(`/api/v1/tenants/${TENANT_ID}/channels/${channelId}/health`);
-      alert(`Health: ${res.data.healthy ? 'OK' : 'UNHEALTHY'} - ${res.data.message || 'n/a'}`);
+      const res = await axios.get(`/api/v1/tenants/${TENANT_ID}/channels/${channel.id}/status`);
+      const qrSuffix = channel.type === 'WhatsApp' && channel.config?.AuthMode === 'qr'
+        ? ` | QR: ${res.data.qrAvailable ? 'AVAILABLE' : 'PENDING'}`
+        : '';
+      alert(`Health: ${res.data.healthy ? 'OK' : 'UNHEALTHY'} - ${res.data.message || 'n/a'}${qrSuffix}`);
     } catch (err: any) {
       alert(err?.message || 'Health check failed');
     }
@@ -276,7 +279,7 @@ export default function ChannelsPage() {
                                 Activate
                               </Button>
                             )}
-                            <IconButton size="small" onClick={() => handleCheckHealth(c.id)}>
+                            <IconButton size="small" onClick={() => handleCheckHealth(c)}>
                               <Iconify icon="mdi:heart-pulse" />
                             </IconButton>
                             <IconButton size="small" color="error" onClick={() => handleDelete(c.id)}>
