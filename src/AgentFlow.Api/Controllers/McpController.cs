@@ -26,6 +26,9 @@ public sealed class McpController : ControllerBase
     [HttpGet("servers")]
     public IActionResult GetServers()
     {
+        var context = _tenantContext.Current!;
+        if (!context.IsPlatformAdmin) return Forbid();
+
         var servers = _configuration.GetSection("Mcp:Servers").Get<List<McpServerDto>>() ?? new();
         return Ok(servers.Select(s => new
         {
@@ -39,6 +42,9 @@ public sealed class McpController : ControllerBase
     [HttpGet("servers/{serverName}/tools")]
     public async Task<IActionResult> GetTools(string serverName, CancellationToken ct)
     {
+        var context = _tenantContext.Current!;
+        if (!context.IsPlatformAdmin) return Forbid();
+
         var servers = _configuration.GetSection("Mcp:Servers").Get<List<McpServerDto>>() ?? new();
         var server = servers.FirstOrDefault(s => string.Equals(s.Name, serverName, StringComparison.OrdinalIgnoreCase));
         if (server is null) return NotFound(new { message = $"MCP server '{serverName}' not configured." });
@@ -61,6 +67,7 @@ public sealed class McpController : ControllerBase
     public async Task<IActionResult> Invoke(string serverName, [FromBody] InvokeMcpRequest request, CancellationToken ct)
     {
         var context = _tenantContext.Current!;
+        if (!context.IsPlatformAdmin) return Forbid();
 
         if (string.IsNullOrWhiteSpace(request.ToolName))
             return BadRequest(new { message = "toolName is required" });
