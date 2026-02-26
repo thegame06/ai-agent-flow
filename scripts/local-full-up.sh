@@ -37,6 +37,7 @@ done
 
 echo "[full-up] Starting API..."
 (cd "$ROOT_DIR" && nohup env \
+  ASPNETCORE_ENVIRONMENT=${ASPNETCORE_ENVIRONMENT:-Development} \
   ASPNETCORE_URLS=${ASPNETCORE_URLS:-http://0.0.0.0:${API_PORT:-5000}} \
   ConnectionStrings__MongoDB=${ConnectionStrings__MongoDB:-mongodb://localhost:27018} \
   ConnectionStrings__Redis=${ConnectionStrings__Redis:-localhost:6380} \
