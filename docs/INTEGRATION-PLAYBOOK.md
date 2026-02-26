@@ -302,6 +302,26 @@ Validar **discovery + invoke HTTP** en AgentFlow con un servidor MCP real local,
 - MCP discovery+invoke real ya validado vía servidor local.
 - Configuración dev y tooling listos para repetir prueba sin mocks.
 
+### 2026-02-26 — Punto 2: evidencia estándar por corrida (implementado)
+
+#### Entregables
+1. Plantilla oficial de corridas E2E:
+   - `docs/E2E-RUNS-LOG.md`
+   - Incluye campos obligatorios: `executionId`, `channelMessageIdIn`, `channelMessageIdOut`, `latencyMs`, `verdict`.
+
+2. Script de captura de evidencia desde API:
+   - `scripts/e2e/capture-evidence.sh`
+   - Consulta `channel-sessions/{sessionId}/messages` y resume:
+     - `executionId`
+     - `channelMessageIdIn`
+     - `channelMessageIdOut`
+     - `latencyMs` (aprox. del primer al último mensaje)
+
+#### Uso rápido
+```bash
+SESSION_ID=<session-id> TENANT_ID=tenant-1 API_BASE=http://localhost:5000 ./scripts/e2e/capture-evidence.sh
+```
+
 ## 5) Métricas clave (producto + operación)
 
 1. **Autonomía útil**: % tareas completadas sin intervención humana.
