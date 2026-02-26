@@ -157,6 +157,42 @@ install_docker_optional() {
   return 0
 }
 
+project_needs_net9_runtime() {
+  local repo_root="$1"
+  find "$repo_root/src" "$repo_root/tests" -name '*.csproj' -print0 2>/dev/null \
+    | xargs -0 grep -h "<TargetFramework" 2>/dev/null \
+    | grep -q "net9\.0"
+}
+
+ensure_net9_runtime_if_needed() {
+  local repo_root="$1"
+
+  if ! project_needs_net9_runtime "$repo_root"; then
+    add_result "Detectar necesidad runtime net9.0" "SKIP" "no se detectó net9.0"
+    return 0
+  fi
+
+  add_result "Detectar necesidad runtime net9.0" "OK" "proyecto usa net9.0"
+
+  if dotnet --list-runtimes 2>/dev/null | grep -q "Microsoft.NETCore.App 9\."; then
+    add_result "Runtime Microsoft.NETCore.App 9.x" "OK" "ya instalado"
+    return 0
+  fi
+
+  warn "Falta runtime .NET 9 para ejecutar tests net9.0; instalando con dotnet-install.sh"
+  run_cmd "Descargar dotnet-install.sh" wget https://dot.net/v1/dotnet-install.sh -O /tmp/dotnet-install.sh || return 1
+  run_cmd "Permiso ejecución dotnet-install.sh" chmod +x /tmp/dotnet-install.sh || return 1
+  run_cmd "Instalar runtime .NET 9" sudo /tmp/dotnet-install.sh --channel 9.0 --runtime dotnet --install-dir /usr/lib/dotnet || return 1
+
+  if dotnet --list-runtimes 2>/dev/null | grep -q "Microsoft.NETCore.App 9\."; then
+    add_result "Verificar runtime Microsoft.NETCore.App 9.x" "OK" "instalado"
+    return 0
+  fi
+
+  add_result "Verificar runtime Microsoft.NETCore.App 9.x" "FAIL" "no se detecta tras instalación"
+  return 1
+}
+
 project_checks() {
   local repo_root
   repo_root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -209,6 +245,10 @@ main() {
   else
     add_result "docker" "SKIP" "INSTALL_DOCKER=0"
   fi
+
+  local repo_root
+  repo_root="$(cd "$(dirname "$0")/.." && pwd)"
+  ensure_net9_runtime_if_needed "$repo_root" || warn "No se pudo asegurar runtime .NET 9"
 
   project_checks
   print_summary
