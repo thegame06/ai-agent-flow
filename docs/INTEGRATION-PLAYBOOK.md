@@ -301,6 +301,7 @@ Validar **discovery + invoke HTTP** en AgentFlow con un servidor MCP real local,
 #### #2 UX de error/reintento (mejorado)
 - `PoliciesPage`: alerta de error con botón `Retry` + refresh manual.
 - `McpPage`: alerta de error con `Retry` + botón `Refresh Servers`.
+- `ToolsPage`: alerta de error con `Retry` + `Refresh` y feedback de fallos en toggle/invoke.
 - `SettingsPage`: feedback explícito de éxito/error en guardado y carga.
 
 #### #3 Policies avanzada (reglas editables)
@@ -313,6 +314,21 @@ Validar **discovery + invoke HTTP** en AgentFlow con un servidor MCP real local,
 2. Frontend:
    - `PoliciesPage` agrega acción `Edit Rules`.
    - Carga reglas actuales y permite edición JSON + guardado.
+
+#### #4 Tools avanzada (enable/disable + health)
+1. Backend:
+   - Nuevo controller: `TenantToolsController`
+   - Endpoints:
+     - `GET /api/v1/tenants/{tenantId}/tools/status` (health + enabled)
+     - `PUT /api/v1/tenants/{tenantId}/tools/{toolName}/enabled`
+   - Persistencia de toggles por tenant en Mongo (`tenant_tool_toggles`).
+
+2. Frontend:
+   - `ToolsPage` migrada a vista tenant-aware:
+     - columna `Health`,
+     - switch `Enabled` por tool,
+     - refresh/retry,
+     - invoke test conservado.
 
 #### Verificación
 - `dotnet build src/AgentFlow.Api/AgentFlow.Api.csproj -v minimal` ✅

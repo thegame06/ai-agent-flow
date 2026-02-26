@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Helmet } from 'react-helmet-async';
 
 import Box from '@mui/material/Box';
@@ -6,6 +6,7 @@ import Card from '@mui/material/Card';
 import Grid from '@mui/material/Grid';
 import Alert from '@mui/material/Alert';
 import Stack from '@mui/material/Stack';
+import Switch from '@mui/material/Switch';
 import Button from '@mui/material/Button';
 import { DataGrid } from '@mui/x-data-grid';
 import TextField from '@mui/material/TextField';
@@ -15,19 +16,57 @@ import CardContent from '@mui/material/CardContent';
 import axios from 'src/lib/axios';
 import { CONFIG } from 'src/global-config';
 import { DashboardContent } from 'src/layouts/dashboard';
+import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
 
-import { useTools } from './Hooks/useTools';
-import { TOOL_COLUMNS } from './Config/Columns';
+import { Label } from 'src/components/label';
 
-// ----------------------------------------------------------------------
+interface ToolRow {
+  name: string;
+  version: string;
+  description?: string;
+  riskLevel: string;
+  enabled: boolean;
+  health: string;
+  message?: string;
+  checkedAt?: string;
+  inputSchemaJson?: string;
+}
 
 export default function ToolsPage() {
-  const { tools, loading } = useTools();
-  const [selectedTool, setSelectedTool] = useState<any | null>(null);
+  const tenantId = useTenantId();
+  const [tools, setTools] = useState<ToolRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedTool, setSelectedTool] = useState<ToolRow | null>(null);
   const [inputJson, setInputJson] = useState('{}');
   const [result, setResult] = useState('');
   const [runLoading, setRunLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const fetchTools = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await axios.get(`/api/v1/tenants/${tenantId}/tools/status`);
+      setTools(res.data ?? []);
+    } catch (err: any) {
+      setError(err?.message || 'Failed to load tools');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchTools();
+  }, [tenantId]);
+
+  const toggleTool = async (row: ToolRow, enabled: boolean) => {
+    try {
+      await axios.put(`/api/v1/tenants/${tenantId}/tools/${row.name}/enabled`, { enabled });
+      await fetchTools();
+    } catch (err: any) {
+      setError(err?.message || 'Failed to update tool status');
+    }
+  };
 
   const runToolTest = async () => {
     if (!selectedTool) return;
@@ -45,6 +84,35 @@ export default function ToolsPage() {
     }
   };
 
+  const columns: any[] = [
+    { field: 'name', headerName: 'Tool', minWidth: 190, flex: 1 },
+    { field: 'version', headerName: 'Version', width: 120 },
+    {
+      field: 'riskLevel',
+      headerName: 'Risk',
+      width: 120,
+      renderCell: (params: any) => <Label variant="soft">{params.value}</Label>,
+    },
+    {
+      field: 'health',
+      headerName: 'Health',
+      width: 140,
+      renderCell: (params: any) => (
+        <Label variant="soft" color={params.value === 'Healthy' ? 'success' : 'error'}>
+          {params.value}
+        </Label>
+      ),
+    },
+    {
+      field: 'enabled',
+      headerName: 'Enabled',
+      width: 130,
+      renderCell: (params: any) => (
+        <Switch checked={!!params.value} onChange={(e) => toggleTool(params.row, e.target.checked)} />
+      ),
+    },
+  ];
+
   return (
     <>
       <Helmet>
@@ -52,29 +120,36 @@ export default function ToolsPage() {
       </Helmet>
 
       <DashboardContent maxWidth="xl">
-        <Box sx={{ mb: 5 }}>
-          <Typography variant="h4">Platform Tools & Extensions</Typography>
-          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-            Registered capabilities available for your agents.
-          </Typography>
+        <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Box>
+            <Typography variant="h4">Platform Tools & Extensions</Typography>
+            <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+              Tenant-aware tool status, health, and invoke testing.
+            </Typography>
+          </Box>
+          <Button variant="outlined" onClick={fetchTools}>Refresh</Button>
         </Box>
 
-        {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+        {error && (
+          <Alert severity="error" sx={{ mb: 2 }} action={<Button color="inherit" size="small" onClick={fetchTools}>Retry</Button>}>
+            {error}
+          </Alert>
+        )}
 
         <Grid container spacing={3}>
           <Grid item xs={12} md={7}>
             <Card sx={{ height: 620, width: '100%' }}>
               <DataGrid
                 rows={tools}
-                columns={TOOL_COLUMNS}
+                columns={columns}
                 loading={loading}
                 getRowId={(row) => row.name + row.version}
                 pageSizeOptions={[10, 25, 50]}
                 sx={{ border: 0 }}
                 onRowClick={(params) => {
-                  setSelectedTool(params.row);
+                  setSelectedTool(params.row as ToolRow);
                   setResult('');
-                  setInputJson(params.row?.inputSchemaJson || '{}');
+                  setInputJson((params.row as any)?.inputSchemaJson || '{}');
                 }}
               />
             </Card>
@@ -98,22 +173,11 @@ export default function ToolsPage() {
                     disabled={!selectedTool}
                   />
 
-                  <Button
-                    variant="contained"
-                    onClick={runToolTest}
-                    disabled={!selectedTool || runLoading}
-                  >
+                  <Button variant="contained" onClick={runToolTest} disabled={!selectedTool || runLoading}>
                     Invoke Tool
                   </Button>
 
-                  <TextField
-                    label="Result"
-                    value={result}
-                    fullWidth
-                    multiline
-                    minRows={12}
-                    InputProps={{ readOnly: true }}
-                  />
+                  <TextField label="Result" value={result} fullWidth multiline minRows={12} InputProps={{ readOnly: true }} />
                 </Stack>
               </CardContent>
             </Card>
