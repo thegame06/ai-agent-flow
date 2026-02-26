@@ -27,15 +27,23 @@ else
   echo "[full-up] docker not found; skipping container infra"
 fi
 
+echo "[full-up] Ensuring ports are free..."
+for p in ${API_PORT:-5000} ${FRONTEND_PORT:-3039} ${QR_PORT:-3401}; do
+  if ss -ltn "( sport = :$p )" | grep -q LISTEN; then
+    echo "[full-up] Port $p is busy. Stop previous stack first: make down-local-full"
+    exit 1
+  fi
+done
+
 echo "[full-up] Starting API..."
 (cd "$ROOT_DIR" && nohup env \
-  ASPNETCORE_URLS=${ASPNETCORE_URLS:-http://0.0.0.0:5000} \
+  ASPNETCORE_URLS=${ASPNETCORE_URLS:-http://0.0.0.0:${API_PORT:-5000}} \
   ConnectionStrings__MongoDB=${ConnectionStrings__MongoDB:-mongodb://localhost:27018} \
   ConnectionStrings__Redis=${ConnectionStrings__Redis:-localhost:6380} \
-  dotnet run --project src/AgentFlow.Api/AgentFlow.Api.csproj >"$API_LOG" 2>&1 & echo $! > "$API_PID_FILE")
+  dotnet run --no-build --project src/AgentFlow.Api/AgentFlow.Api.csproj >"$API_LOG" 2>&1 & echo $! > "$API_PID_FILE")
 
 echo "[full-up] Starting Frontend..."
-(cd "$ROOT_DIR/frontend/aiagent_flow" && nohup npm run dev -- --port ${FRONTEND_PORT:-3039} --host >"$FRONT_LOG" 2>&1 & echo $! > "$FRONT_PID_FILE")
+(cd "$ROOT_DIR/frontend/aiagent_flow" && nohup npm run dev -- --strictPort --port ${FRONTEND_PORT:-3039} --host >"$FRONT_LOG" 2>&1 & echo $! > "$FRONT_PID_FILE")
 
 echo "[full-up] Starting WhatsApp QR bridge..."
 (cd "$ROOT_DIR/tools/whatsapp-qr-bridge" && npm install >/dev/null && nohup env PORT=${QR_PORT:-3401} AGENTFLOW_BASE_URL=${AGENTFLOW_BASE_URL:-http://localhost:5000} TENANT_ID=${TENANT_ID:-tenant-1} npm start >"$QR_LOG" 2>&1 & echo $! > "$QR_PID_FILE")
@@ -51,5 +59,5 @@ done
 
 echo "[full-up] URLs:"
 echo "  Frontend: http://localhost:${FRONTEND_PORT:-3039}"
-echo "  API:      ${ASPNETCORE_URLS:-http://localhost:5000}"
+echo "  API:      ${ASPNETCORE_URLS:-http://localhost:${API_PORT:-5000}}"
 echo "  QR bridge:http://localhost:${QR_PORT:-3401}"
