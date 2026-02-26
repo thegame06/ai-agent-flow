@@ -157,6 +157,7 @@ Objetivo: que onboarding y operación comercial sean repetibles.
   - `server.js`
   - `package.json`
   - `README.md`
+  - `validate-local.sh`
 - Endpoints reales:
   - `GET /tools`
   - `POST /invoke`
@@ -165,8 +166,18 @@ Objetivo: que onboarding y operación comercial sean repetibles.
 #### Propósito
 Validar **discovery + invoke HTTP** en AgentFlow con un servidor MCP real local, evitando rutas simuladas en core/runtime.
 
+#### Integración en entorno dev
+- Archivo: `src/AgentFlow.Api/appsettings.Development.json`
+- Se agregó servidor MCP local:
+  - `Name=local-test`
+  - `Transport=Http`
+  - `Url=http://localhost:3501/invoke`
+- Se agregó flag:
+  - `Brains:MAF:Enabled=false` (comportamiento explícito, no simulación)
+
 #### Verificación
 - `node --check tools/mcp-test-server/server.js` ✅
+- `dotnet build src/AgentFlow.Api/AgentFlow.Api.csproj -v minimal` ✅
 
 ## 5) Métricas clave (producto + operación)
 
