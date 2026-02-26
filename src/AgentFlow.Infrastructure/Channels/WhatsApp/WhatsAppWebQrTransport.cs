@@ -86,6 +86,20 @@ public sealed class WhatsAppWebQrTransport : IWhatsAppTransport
         return doc.RootElement.TryGetProperty("connected", out var connected) && connected.GetBoolean();
     }
 
+    public async Task<string?> GetQrCodeAsync(CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(_options.QrBridgeBaseUrl) || string.IsNullOrWhiteSpace(_channelId))
+            return null;
+
+        ApplyBridgeAuth();
+        var response = await _httpClient.GetAsync($"{_options.QrBridgeBaseUrl.TrimEnd('/')}/session/qr?channelId={Uri.EscapeDataString(_channelId)}", ct);
+        if (!response.IsSuccessStatusCode) return null;
+
+        var body = await response.Content.ReadAsStringAsync(ct);
+        using var doc = JsonDocument.Parse(body);
+        return doc.RootElement.TryGetProperty("qrCode", out var qr) ? qr.GetString() : null;
+    }
+
     public async Task<string> SendTextMessageAsync(string to, string content, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(_options.QrBridgeBaseUrl) || string.IsNullOrWhiteSpace(_channelId))

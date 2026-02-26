@@ -185,6 +185,9 @@ public sealed class WhatsAppChannelHandler : IChannelHandler
         return session;
     }
 
+    public async Task<string?> GetQrCodeAsync(CancellationToken ct = default)
+        => await _whatsappClient.GetQrCodeAsync(ct);
+
     public async Task<HealthStatus> CheckHealthAsync(ChannelDefinition definition, CancellationToken ct = default)
     {
         var isHealthy = await _whatsappClient.IsConnectedAsync(ct);

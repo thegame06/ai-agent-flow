@@ -424,6 +424,50 @@ Se introdujo arquitectura de transporte para soportar dos modos:
 #### Verificación
 - `dotnet build src/AgentFlow.Api/AgentFlow.Api.csproj -v minimal` ✅
 
+### 2026-02-26 — Habilitación de pruebas completas desde Web UI (QR)
+
+#### Cambios aplicados
+1. **Endpoint QR en API de canales**
+   - Archivo: `src/AgentFlow.Api/Controllers/ChannelsController.cs`
+   - Nuevo endpoint: `GET /api/v1/tenants/{tenantId}/channels/{channelId}/qr`
+   - Retorna `qrCode` real si está disponible.
+
+2. **Canal WhatsApp expone QR actual**
+   - Archivo: `src/AgentFlow.Infrastructure/Channels/WhatsApp/WhatsAppChannelHandler.cs`
+   - Nuevo método: `GetQrCodeAsync()`.
+
+3. **Cliente/transport QR con lectura de QR real**
+   - Archivos:
+     - `src/AgentFlow.Infrastructure/Channels/WhatsApp/WhatsAppClient.cs`
+     - `src/AgentFlow.Infrastructure/Channels/WhatsApp/WhatsAppWebQrTransport.cs`
+   - Soporte para consultar `qrCode` desde el bridge (`/session/qr`).
+
+4. **Web UI consume QR real**
+   - Archivo: `frontend/aiagent_flow/src/aiagentflow/pages/channels/ChannelsPage.tsx`
+   - Al activar canal WhatsApp en modo QR:
+     - consulta endpoint real de QR (poll corto),
+     - muestra QR real en diálogo,
+     - botón `Refresh QR` para reintentar.
+
+#### Validación ejecutada
+- `dotnet build src/AgentFlow.Infrastructure/AgentFlow.Infrastructure.csproj -v minimal` ✅
+- `dotnet build src/AgentFlow.Api/AgentFlow.Api.csproj -v minimal` ✅
+- `npm run lint` en `frontend/aiagent_flow` ✅
+- `npm run build` en `frontend/aiagent_flow` ✅
+
+#### Preflight para prueba E2E desde web
+1. Levantar API AgentFlow.
+2. Levantar bridge QR:
+   - `cd tools/whatsapp-qr-bridge && npm install && npm start` (con `AGENTFLOW_BASE_URL` y `TENANT_ID`).
+3. Configurar `WhatsAppOptions`:
+   - `QrBridgeBaseUrl`
+   - `QrBridgeApiKey` (si aplica)
+4. En Web UI:
+   - crear canal WhatsApp con `AuthMode=qr`,
+   - activar canal,
+   - escanear QR mostrado,
+   - enviar mensaje real por WhatsApp.
+
 ### 2026-02-26 — Mejora de performance frontend (aiagent_flow)
 
 #### Objetivo

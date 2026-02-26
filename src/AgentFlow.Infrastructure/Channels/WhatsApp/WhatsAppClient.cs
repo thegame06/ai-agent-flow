@@ -97,6 +97,14 @@ public sealed class WhatsAppClient
         return await _activeTransport.IsConnectedAsync(ct);
     }
 
+    public async Task<string?> GetQrCodeAsync(CancellationToken ct = default)
+    {
+        if (_activeTransport is WhatsAppWebQrTransport qrTransport)
+            return await qrTransport.GetQrCodeAsync(ct);
+
+        return null;
+    }
+
     public async Task<string> SendTextMessageAsync(string to, string content, CancellationToken ct = default)
     {
         if (_activeTransport == null)

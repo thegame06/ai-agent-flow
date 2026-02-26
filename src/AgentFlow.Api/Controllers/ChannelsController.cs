@@ -126,6 +126,28 @@ public sealed class ChannelsController : ControllerBase
         return Ok(new { channel.Id, Status = channel.Status.ToString() });
     }
 
+    [HttpGet("{channelId}/qr")]
+    public async Task<IActionResult> GetQr(string tenantId, string channelId, CancellationToken ct)
+    {
+        var context = _tenantContext.Current!;
+        if (context.TenantId != tenantId && !context.IsPlatformAdmin) return Forbid();
+
+        var channel = await _channelRepo.GetByIdAsync(channelId, tenantId, ct);
+        if (channel == null) return NotFound();
+
+        if (channel.Type != ChannelType.WhatsApp)
+            return BadRequest(new { message = "QR endpoint only available for WhatsApp channels" });
+
+        var handler = _gateway.GetHandler(channel.Type) as AgentFlow.Infrastructure.Channels.WhatsApp.WhatsAppChannelHandler;
+        if (handler == null) return BadRequest(new { message = "WhatsApp handler not available" });
+
+        var qrCode = await handler.GetQrCodeAsync(ct);
+        if (string.IsNullOrWhiteSpace(qrCode))
+            return NotFound(new { message = "QR code not available yet" });
+
+        return Ok(new { qrCode });
+    }
+
     [HttpPost("{channelId}/health")]
     public async Task<IActionResult> CheckHealth(string tenantId, string channelId, CancellationToken ct)
     {

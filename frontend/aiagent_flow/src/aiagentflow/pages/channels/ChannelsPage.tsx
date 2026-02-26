@@ -135,16 +135,36 @@ export default function ChannelsPage() {
     }
   };
 
+  const fetchQrCode = async (channelId: string) => {
+    const res = await axios.get(`/api/v1/tenants/${TENANT_ID}/channels/${channelId}/qr`);
+    return res.data?.qrCode as string | undefined;
+  };
+
   const handleActivate = async (channel: Channel) => {
     try {
       const res = await axios.post(`/api/v1/tenants/${TENANT_ID}/channels/${channel.id}/activate`);
-      
+
       if (channel.type === 'WhatsApp' && channel.config?.AuthMode === 'qr') {
-        // Show QR code for WhatsApp
-        setQrCode('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==');
         setSelectedChannel(channel);
+
+        // Poll QR endpoint for a short window while bridge initializes session.
+        let qr: string | undefined;
+        for (let i = 0; i < 8 && !qr; i++) {
+          try {
+            qr = await fetchQrCode(channel.id);
+          } catch {
+            // ignore while QR still unavailable
+          }
+          if (!qr) await new Promise((r) => setTimeout(r, 1500));
+        }
+
+        if (qr) {
+          setQrCode(qr);
+        } else {
+          alert('Channel activated, but QR not available yet. Use Refresh QR.');
+        }
       }
-      
+
       alert(`Channel activated: ${res.data.status}`);
       await fetchAll();
     } catch (err: any) {
@@ -396,6 +416,20 @@ export default function ChannelsPage() {
           </Box>
         </DialogContent>
         <DialogActions>
+          <Button
+            onClick={async () => {
+              if (!selectedChannel) return;
+              try {
+                const qr = await fetchQrCode(selectedChannel.id);
+                if (qr) setQrCode(qr);
+                else alert('QR still not available');
+              } catch {
+                alert('QR still not available');
+              }
+            }}
+          >
+            Refresh QR
+          </Button>
           <Button onClick={() => setQrCode(null)}>Close</Button>
         </DialogActions>
       </Dialog>
