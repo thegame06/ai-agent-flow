@@ -66,6 +66,11 @@ export default function PoliciesPage() {
     await fetchPolicies();
   };
 
+  const clonePolicyVersion = async (id: string) => {
+    await axios.post(`/api/v1/tenants/${tenantId}/policies/${id}/clone-version`);
+    await fetchPolicies();
+  };
+
   const openEditRules = async (id: string) => {
     const res = await axios.get(`/api/v1/tenants/${tenantId}/policies/${id}`);
     setEditing(res.data);
@@ -135,6 +140,11 @@ export default function PoliciesPage() {
           <Button size="small" onClick={() => openEditRules(params.row.id)}>
             Edit Rules
           </Button>
+          {params.row.status === 'Published' && (
+            <Button size="small" variant="text" onClick={() => clonePolicyVersion(params.row.id)}>
+              New Version
+            </Button>
+          )}
         </Stack>
       ),
     },

@@ -102,6 +102,34 @@ public sealed class PoliciesController : ControllerBase
         return Ok(MapPolicySet(set));
     }
 
+    [HttpPost("{policySetId}/clone-version")]
+    public async Task<IActionResult> CloneVersion([FromRoute] string tenantId, [FromRoute] string policySetId, CancellationToken ct)
+    {
+        var context = _tenantContext.Current!;
+        if (context.TenantId != tenantId && !context.IsPlatformAdmin) return Forbid();
+
+        var set = await _collection.Find(x => x.TenantId == tenantId && x.Id == policySetId).FirstOrDefaultAsync(ct);
+        if (set is null) return NotFound();
+
+        var clone = new PolicySetStoreDocument
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            TenantId = tenantId,
+            Name = set.Name,
+            Description = set.Description,
+            Version = BumpVersion(set.Version),
+            IsPublished = false,
+            Policies = set.Policies,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow,
+            CreatedBy = context.UserId,
+            UpdatedBy = context.UserId
+        };
+
+        await _collection.InsertOneAsync(clone, cancellationToken: ct);
+        return Ok(MapPolicySet(clone));
+    }
+
     [HttpPost("{policySetId}/publish")]
     public async Task<IActionResult> PublishPolicySet([FromRoute] string tenantId, [FromRoute] string policySetId, CancellationToken ct)
     {
@@ -133,6 +161,16 @@ public sealed class PoliciesController : ControllerBase
         s.CreatedAt,
         s.UpdatedAt
     };
+
+    private static string BumpVersion(string version)
+    {
+        var parts = (version ?? "1.0.0").Split('.');
+        if (parts.Length != 3) return "1.0.1";
+        if (!int.TryParse(parts[0], out var major)) major = 1;
+        if (!int.TryParse(parts[1], out var minor)) minor = 0;
+        if (!int.TryParse(parts[2], out var patch)) patch = 0;
+        return $"{major}.{minor}.{patch + 1}";
+    }
 
     private sealed class PolicySetStoreDocument
     {
