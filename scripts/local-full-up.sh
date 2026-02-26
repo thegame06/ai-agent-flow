@@ -40,7 +40,7 @@ echo "[full-up] Starting API..."
   ASPNETCORE_URLS=${ASPNETCORE_URLS:-http://0.0.0.0:${API_PORT:-5000}} \
   ConnectionStrings__MongoDB=${ConnectionStrings__MongoDB:-mongodb://localhost:27018} \
   ConnectionStrings__Redis=${ConnectionStrings__Redis:-localhost:6380} \
-  dotnet run --no-build --project src/AgentFlow.Api/AgentFlow.Api.csproj >"$API_LOG" 2>&1 & echo $! > "$API_PID_FILE")
+  dotnet run --no-build --no-launch-profile --project src/AgentFlow.Api/AgentFlow.Api.csproj >"$API_LOG" 2>&1 & echo $! > "$API_PID_FILE")
 
 echo "[full-up] Starting Frontend..."
 (cd "$ROOT_DIR/frontend/aiagent_flow" && nohup npm run dev -- --strictPort --port ${FRONTEND_PORT:-3039} --host >"$FRONT_LOG" 2>&1 & echo $! > "$FRONT_PID_FILE")
