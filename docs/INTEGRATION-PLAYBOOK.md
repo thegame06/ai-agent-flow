@@ -340,6 +340,30 @@ Un canal se marca **DONE** solo si cumple todo:
 - Frontend build/lint: **verde** en ambas apps (con warnings no bloqueantes).
 - Frontend tests automáticos: **pendiente** (scripts `test` no definidos).
 
+### 2026-02-26 — Mejora de performance frontend (aiagent_flow)
+
+#### Objetivo
+Reducir tamaño de chunks iniciales y eliminar warning de bundle >500kB.
+
+#### Cambio aplicado
+- Archivo: `frontend/aiagent_flow/vite.config.ts`
+- Se agregó `build.rollupOptions.output.manualChunks` con partición explícita:
+  - `vendor-react`
+  - `vendor-mui`
+  - `vendor-grid`
+  - `vendor-dates`
+  - `vendor-utils`
+  - `vendor-misc`
+
+#### Resultado medido (build)
+- **Antes**:
+  - `index-*.js`: **1,128.94 kB** (gzip 366.37 kB)
+  - warning de chunks >500kB: **presente**
+- **Después**:
+  - `index-*.js`: **340.79 kB** (gzip 102.62 kB)
+  - chunks principales segmentados (`vendor-grid` 310.03 kB, `vendor-mui` 394.51 kB)
+  - warning de chunks >500kB: **eliminado**
+
 ---
 
 ## 13) Resultado esperado
