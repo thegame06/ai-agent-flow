@@ -3,7 +3,7 @@ SHELL := /usr/bin/env bash
 ROOT := $(shell pwd)
 TEST_SCRIPT := $(ROOT)/scripts/test/ephemeral.sh
 
-.PHONY: help test-env-up test-env-down test-ephemeral test-unit test-integration test-backend test-frontend test-all quality-no-mock qa-one-shot up-local-full down-local-full
+.PHONY: help test-env-up test-env-down test-ephemeral test-unit test-integration test-backend test-frontend test-all quality-no-mock qa-one-shot up-local-full down-local-full clean-local-full restart-local-full
 
 help:
 	@echo "Available targets:"
@@ -19,6 +19,8 @@ help:
 	@echo "  make qa-one-shot        # Full QA gate (guardrail + backend + frontend)"
 	@echo "  make up-local-full      # Start full local stack (infra + api + frontend + qr bridge)"
 	@echo "  make down-local-full    # Stop full local stack and infra"
+	@echo "  make clean-local-full   # Kill stale local stack processes/ports and docker infra"
+	@echo "  make restart-local-full # Clean + start full local stack"
 
 test-env-up:
 	@bash $(TEST_SCRIPT) up
@@ -59,5 +61,10 @@ up-local-full:
 
 down-local-full:
 	@bash scripts/local-full-down.sh
+
+clean-local-full:
+	@bash scripts/local-full-clean.sh
+
+restart-local-full: clean-local-full up-local-full
 
 test-all: test-ephemeral
