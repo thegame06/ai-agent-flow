@@ -94,7 +94,7 @@ If users ask about something outside your knowledge, be honest about your limita
             return;
         }
 
-        var agent1 = agent1Result.Value;
+        var agent1 = agent1Result.Value!;
         agent1.SetTags(tags1);
         agent1.Publish(demoUser);
 
@@ -177,7 +177,7 @@ Always be precise and thorough in your responses.",
             return;
         }
 
-        var agent2 = agent2Result.Value;
+        var agent2 = agent2Result.Value!;
         agent2.SetTags(tags2);
         agent2.Publish(demoUser);
 
