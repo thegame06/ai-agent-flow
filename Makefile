@@ -3,7 +3,7 @@ SHELL := /usr/bin/env bash
 ROOT := $(shell pwd)
 TEST_SCRIPT := $(ROOT)/scripts/test/ephemeral.sh
 
-.PHONY: help test-env-up test-env-down test-ephemeral test-unit test-integration test-backend test-frontend test-all quality-no-mock qa-one-shot up-local-full down-local-full clean-local-full restart-local-full refresh-local-full
+.PHONY: help test-env-up test-env-down test-ephemeral test-unit test-integration test-backend test-frontend test-all quality-no-mock qa-one-shot up-local-full down-local-full clean-local-full restart-local-full refresh-local-full check-qr
 
 help:
 	@echo "Available targets:"
@@ -22,6 +22,7 @@ help:
 	@echo "  make clean-local-full   # Kill stale stack/processes (keeps docker volumes/data)"
 	@echo "  make restart-local-full # Restart stack without wiping data"
 	@echo "  make refresh-local-full # Full refresh: clean + wipe volumes + start"
+	@echo "  make check-qr CHANNEL_ID=<id> # Debug QR bridge/session for a channel"
 
 test-env-up:
 	@bash $(TEST_SCRIPT) up
@@ -73,5 +74,9 @@ restart-local-full:
 refresh-local-full:
 	@WIPE_DATA=1 bash scripts/local-full-clean.sh
 	@bash scripts/local-full-up.sh
+
+check-qr:
+	@if [[ -z "$$CHANNEL_ID" ]]; then echo "Usage: make check-qr CHANNEL_ID=<id>"; exit 1; fi
+	@bash scripts/check-qr.sh "$$CHANNEL_ID"
 
 test-all: test-ephemeral
