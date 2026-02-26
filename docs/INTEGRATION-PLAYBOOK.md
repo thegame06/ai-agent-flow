@@ -496,6 +496,21 @@ Se introdujo arquitectura de transporte para soportar dos modos:
 - `dotnet build src/AgentFlow.Api/AgentFlow.Api.csproj -v minimal` ✅
 - `npm run lint` en `frontend/aiagent_flow` ✅
 
+### 2026-02-26 — Test de integración para endpoint de evidencias
+
+#### Cambio aplicado
+- Archivo nuevo: `tests/AgentFlow.Tests.Integration/Channels/ChannelSessionEvidenceTests.cs`
+- Caso cubierto:
+  - `GetMessages` devuelve `AgentExecutionId`, `ChannelMessageIdIn`, `ChannelMessageIdOut` en payload.
+
+#### Ajuste de proyecto de tests
+- `tests/AgentFlow.Tests.Integration/AgentFlow.Tests.Integration.csproj`
+- Se agregaron referencias necesarias (`AgentFlow.Api`, `AgentFlow.Domain`, `AgentFlow.Security`) para testear el controller.
+
+#### Verificación
+- `dotnet test tests/AgentFlow.Tests.Integration/AgentFlow.Tests.Integration.csproj -v minimal` ✅
+- Resultado: `Passed: 4, Failed: 0`.
+
 ### 2026-02-26 — Hardening inicial del QR bridge
 
 #### Cambios aplicados

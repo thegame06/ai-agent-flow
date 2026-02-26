@@ -17,8 +17,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\AgentFlow.Abstractions\AgentFlow.Abstractions.csproj" />
+    <ProjectReference Include="..\..\src\AgentFlow.Api\AgentFlow.Api.csproj" />
     <ProjectReference Include="..\..\src\AgentFlow.Core.Engine\AgentFlow.Core.Engine.csproj" />
+    <ProjectReference Include="..\..\src\AgentFlow.Domain\AgentFlow.Domain.csproj" />
     <ProjectReference Include="..\..\src\AgentFlow.Extensions\AgentFlow.Extensions.csproj" />
+    <ProjectReference Include="..\..\src\AgentFlow.Security\AgentFlow.Security.csproj" />
     <ProjectReference Include="..\..\src\AgentFlow.ToolSDK\AgentFlow.ToolSDK.csproj" />
   </ItemGroup>
 
