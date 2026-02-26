@@ -22,8 +22,8 @@ stop_pid_file "$RUN_DIR/frontend.pid"
 stop_pid_file "$RUN_DIR/qr.pid"
 
 if command -v docker >/dev/null 2>&1; then
-  echo "[full-down] Stopping infra containers"
-  docker compose -f "$ROOT_DIR/docker-compose.test.yml" down -v --remove-orphans || true
+  echo "[full-down] Stopping infra containers (keeping volumes/data)"
+  docker compose -f "$ROOT_DIR/docker-compose.test.yml" down --remove-orphans || true
 fi
 
 echo "[full-down] Done."
