@@ -468,6 +468,20 @@ Se introdujo arquitectura de transporte para soportar dos modos:
    - escanear QR mostrado,
    - enviar mensaje real por WhatsApp.
 
+### 2026-02-26 — Hardening inicial del QR bridge
+
+#### Cambios aplicados
+- Archivo: `tools/whatsapp-qr-bridge/server.js`
+- Mejoras:
+  - reintentos con backoff al forward inbound hacia AgentFlow,
+  - endpoint `GET /health` con estado de sesiones,
+  - `GET /session/status` enriquecido (`lastSeenAt`, `lastForwardAt`, `lastError`),
+  - rate limit básico en `/messages/send` (20 msg/min por `channelId+to`),
+  - tracking de errores/actividad por sesión.
+
+#### Objetivo cubierto
+- Mayor estabilidad para corrida 10/10 y troubleshooting desde operación.
+
 ### 2026-02-26 — Mejora de performance frontend (aiagent_flow)
 
 #### Objetivo

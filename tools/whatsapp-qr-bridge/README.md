@@ -22,6 +22,7 @@ PORT=3401 AGENTFLOW_BASE_URL=http://localhost:5000 TENANT_ID=demo npm start
 - `POST /session/start` body `{ channelId }`
 - `GET /session/qr?channelId=...`
 - `GET /session/status?channelId=...`
+- `GET /health`
 - `POST /messages/send` body `{ channelId, to, content }`
 - `POST /session/disconnect` body `{ channelId }`
 
