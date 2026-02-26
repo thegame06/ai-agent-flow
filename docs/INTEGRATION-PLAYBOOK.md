@@ -494,6 +494,9 @@ Validar **discovery + invoke HTTP** en AgentFlow con un servidor MCP real local,
 SESSION_ID=<session-id> TENANT_ID=tenant-1 API_BASE=http://localhost:5000 ./scripts/e2e/capture-evidence.sh
 ```
 
+## Referencia de planificación diferida
+- Ver `docs/PIPELINE-ENHANCEMENT-PLAN.md` para roadmap de mejoras de pipeline (query rewrite, rerank, self-check) posterior al baseline funcional.
+
 ## 5) Métricas clave (producto + operación)
 
 1. **Autonomía útil**: % tareas completadas sin intervención humana.
