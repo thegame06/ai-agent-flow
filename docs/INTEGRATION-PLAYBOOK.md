@@ -296,6 +296,27 @@ Validar **discovery + invoke HTTP** en AgentFlow con un servidor MCP real local,
 - `cd frontend/aiagent_flow && npm test` ✅ (1/1)
 - `cd frontend/designer && npm test` ✅ (1/1)
 
+### 2026-02-26 — Frontend: Settings persistente (ataque #5)
+
+#### Cambios aplicados
+1. Backend nuevo para configuración por tenant:
+   - `src/AgentFlow.Api/Controllers/TenantSettingsController.cs`
+   - Endpoints:
+     - `GET /api/v1/tenants/{tenantId}/settings`
+     - `PUT /api/v1/tenants/{tenantId}/settings`
+   - Persistencia en Mongo colección `tenant_settings`.
+
+2. Frontend `SettingsPage` conectada a API real:
+   - carga configuración al entrar,
+   - edición de campos de tenant/security/limits/observability,
+   - guardado real con feedback (`success/error`).
+
+#### Verificación
+- `dotnet build src/AgentFlow.Api/AgentFlow.Api.csproj -v minimal` ✅
+- `npm run lint` en `frontend/aiagent_flow` ✅ (warnings no bloqueantes de hooks)
+- `npm test` en `frontend/aiagent_flow` ✅
+- `npm run build` en `frontend/aiagent_flow` ✅
+
 ### 2026-02-26 — Frontend: Policies CRUD mínimo (ataque #4)
 
 #### Cambios aplicados
