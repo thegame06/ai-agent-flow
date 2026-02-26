@@ -93,8 +93,7 @@ public sealed class McpController : ControllerBase
             result.OutputJson,
             result.ErrorCode,
             result.ErrorMessage,
-            result.DurationMs,
-            result.TokenUsage
+            result.DurationMs
         });
     }
 

@@ -296,6 +296,24 @@ Validar **discovery + invoke HTTP** en AgentFlow con un servidor MCP real local,
 - `cd frontend/aiagent_flow && npm test` ✅ (1/1)
 - `cd frontend/designer && npm test` ✅ (1/1)
 
+### 2026-02-26 — Frontend: Tools operativas (ataque #3)
+
+#### Cambios aplicados
+1. `ToolsPage` ahora permite prueba operativa por tool:
+   - selección de tool desde DataGrid,
+   - edición de `inputJson`,
+   - invocación real vía `POST /api/v1/extensions/tools/{name}/invoke`,
+   - visualización de resultado raw.
+
+2. `McpController` ajuste de contrato de salida:
+   - se removió campo inexistente `TokenUsage` del response para mantener compatibilidad con `ToolResult` actual.
+
+#### Verificación
+- `npm run lint` en `frontend/aiagent_flow` ✅ (warnings no bloqueantes en hooks)
+- `npm test` en `frontend/aiagent_flow` ✅
+- `npm run build` en `frontend/aiagent_flow` ✅
+- `dotnet build src/AgentFlow.Api/AgentFlow.Api.csproj -v minimal` ✅
+
 ### 2026-02-26 — Frontend: MCP Console operativa mínima (ataque #2)
 
 #### Cambios aplicados
