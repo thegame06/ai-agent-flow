@@ -10,6 +10,8 @@ public sealed record WhatsAppOptions
     public string? BusinessAccountId { get; init; }
     public string WebhookVerifyToken { get; init; } = "agentflow-whatsapp-webhook";
     public string BaseUrl { get; init; } = "https://graph.facebook.com/v17.0";
+    public string? QrBridgeBaseUrl { get; init; }
+    public string? QrBridgeApiKey { get; init; }
 }
 
 public sealed record WhatsAppIncomingMessage
@@ -56,7 +58,7 @@ public sealed class WhatsAppClient
     {
         _logger = logger;
         _businessTransport = new WhatsAppBusinessApiTransport(options, logger);
-        _qrTransport = new WhatsAppWebQrTransport(logger);
+        _qrTransport = new WhatsAppWebQrTransport(options, logger);
     }
 
     public async Task<QrAuthResult> ConnectWithQrAsync(string channelId, CancellationToken ct = default)

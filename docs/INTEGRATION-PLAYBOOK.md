@@ -396,11 +396,33 @@ Se introdujo arquitectura de transporte para soportar dos modos:
 
 #### Estado
 - WhatsApp Business API: **implementación real activa** para envío.
-- WhatsApp QR: **diseño listo, implementación runtime pendiente** (sin mocks engañosos).
+- WhatsApp QR: **bridge runtime implementado** para pruebas internas (session start/qr/status/send/disconnect).
+- Gateway/API: build validado (`AgentFlow.Api` compila) y webhook QR/Meta disponibles en `WhatsAppWebhookController`.
 - Pendiente para DONE real de canal:
-  - webhook inbound real,
   - ejecución E2E 10/10,
-  - evidencia auditada por ejecución.
+  - evidencia auditada por ejecución,
+  - decisión formal de compliance para producción (Business API recomendado).
+
+### 2026-02-26 — QR Bridge operativo para pruebas sin cuenta Business
+
+#### Cambio aplicado
+- Nuevo módulo: `tools/whatsapp-qr-bridge`
+  - `server.js` (Express + whatsapp-web.js)
+  - `package.json`
+  - `README.md`
+- Capacidades:
+  - iniciar sesión QR por `channelId`,
+  - exponer QR (`/session/qr`),
+  - estado de conexión (`/session/status`),
+  - enviar mensajes (`/messages/send`),
+  - desconectar (`/session/disconnect`),
+  - forward inbound al gateway de AgentFlow (`/webhooks/whatsapp/qr`).
+- Infraestructura WhatsApp en .NET:
+  - `WhatsAppWebQrTransport` ahora consume bridge real vía HTTP.
+  - `WhatsAppOptions` agrega `QrBridgeBaseUrl` y `QrBridgeApiKey`.
+
+#### Verificación
+- `dotnet build src/AgentFlow.Api/AgentFlow.Api.csproj -v minimal` ✅
 
 ### 2026-02-26 — Mejora de performance frontend (aiagent_flow)
 
