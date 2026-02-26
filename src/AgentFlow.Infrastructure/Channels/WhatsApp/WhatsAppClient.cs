@@ -49,6 +49,7 @@ public sealed class WhatsAppClient
 {
     private readonly WhatsAppOptions _options;
     private readonly ILogger _logger;
+    private readonly HttpClient _httpClient;
     private bool _isConnected;
     private string? _activePhoneNumberId;
 
@@ -56,16 +57,15 @@ public sealed class WhatsAppClient
     {
         _options = options;
         _logger = logger;
+        _httpClient = new HttpClient();
     }
 
     public async Task<QrAuthResult> ConnectWithQrAsync(string channelId, CancellationToken ct = default)
     {
-        // TODO: Implement QR-based authentication (like OpenClaw/whatsapp-web.js)
-        // For now, return mock success
-        await Task.Delay(100, ct);
-        _isConnected = true;
-        _logger.LogInformation("WhatsApp QR mock connection for channel {ChannelId}", channelId);
-        return QrAuthResult.Ok("data:image/png;base64,...mock-qr-code...");
+        await Task.CompletedTask;
+        _isConnected = false;
+        _logger.LogWarning("WhatsApp QR auth is not implemented for production use. Channel {ChannelId} remains disconnected.", channelId);
+        return QrAuthResult.Fail("QR auth mode not implemented. Use AuthMode=business with WhatsApp Cloud API credentials.");
     }
 
     public async Task ConnectWithBusinessApiAsync(string apiToken, string phoneNumberId, CancellationToken ct = default)
@@ -74,13 +74,12 @@ public sealed class WhatsAppClient
         _activePhoneNumberId = phoneNumberId;
         
         // Validate connection
-        using var httpClient = new HttpClient();
-        httpClient.DefaultRequestHeaders.Authorization =
+        _httpClient.DefaultRequestHeaders.Authorization =
             new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiToken);
 
         try
         {
-            var response = await httpClient.GetAsync(
+            var response = await _httpClient.GetAsync(
                 $"{_options.BaseUrl}/{phoneNumberId}",
                 ct
             );
@@ -117,12 +116,56 @@ public sealed class WhatsAppClient
 
     public async Task<string> SendTextMessageAsync(string to, string content, CancellationToken ct = default)
     {
-        if (!_isConnected || string.IsNullOrEmpty(_activePhoneNumberId))
-            throw new InvalidOperationException("WhatsApp client not connected");
+        if (!_isConnected || string.IsNullOrEmpty(_activePhoneNumberId) || string.IsNullOrEmpty(_options.ApiKey))
+            throw new InvalidOperationException("WhatsApp client not connected with Business API credentials");
 
-        // Mock send for now
-        await Task.Delay(50, ct);
-        _logger.LogInformation("WhatsApp mock send to {To}: {Content}", to, content);
-        return $"mock_wamid_{Guid.NewGuid():N}";
+        var payload = new
+        {
+            messaging_product = "whatsapp",
+            recipient_type = "individual",
+            to,
+            type = "text",
+            text = new { body = content }
+        };
+
+        var request = new HttpRequestMessage(HttpMethod.Post, $"{_options.BaseUrl}/{_activePhoneNumberId}/messages")
+        {
+            Content = new StringContent(
+                System.Text.Json.JsonSerializer.Serialize(payload),
+                System.Text.Encoding.UTF8,
+                "application/json")
+        };
+
+        request.Headers.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _options.ApiKey);
+
+        var response = await _httpClient.SendAsync(request, ct);
+        var body = await response.Content.ReadAsStringAsync(ct);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogError("WhatsApp send failed. Status: {StatusCode}, Body: {Body}", response.StatusCode, body);
+            throw new InvalidOperationException($"WhatsApp send failed: {(int)response.StatusCode} {response.ReasonPhrase}");
+        }
+
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(body);
+            var id = doc.RootElement
+                .GetProperty("messages")[0]
+                .GetProperty("id")
+                .GetString();
+
+            if (string.IsNullOrWhiteSpace(id))
+                throw new InvalidOperationException("WhatsApp response missing message id");
+
+            _logger.LogInformation("WhatsApp message sent to {To}. MessageId: {MessageId}", to, id);
+            return id;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to parse WhatsApp send response: {Body}", body);
+            throw;
+        }
     }
 }

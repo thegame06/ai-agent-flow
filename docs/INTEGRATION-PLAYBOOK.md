@@ -365,6 +365,26 @@ El runtime y pruebas están verdes, pero **el criterio comercial “canal real +
 2. Definir `feature flags` explícitos para que mock solo viva en entornos dev/test.
 3. Ejecutar primer E2E de canal real con evidencia auditable (10/10 corridas).
 
+### 2026-02-26 — WhatsApp: primer corte real (sin mock de envío)
+
+#### Cambio aplicado
+- Archivo: `src/AgentFlow.Infrastructure/Channels/WhatsApp/WhatsAppClient.cs`
+- Ajustes:
+  - `ConnectWithQrAsync` ya no retorna éxito mock: ahora responde **Fail** explícito en modo no implementado.
+  - `SendTextMessageAsync` dejó de usar `mock_wamid`; ahora hace POST real a Graph API:
+    - `POST {BaseUrl}/{PhoneNumberId}/messages`
+    - payload `messaging_product=whatsapp`, `type=text`.
+    - parsea `messages[0].id` como messageId real.
+  - validación estricta de conexión y credenciales (`ApiKey`, `PhoneNumberId`).
+
+#### Verificación
+- `dotnet build src/AgentFlow.Infrastructure/AgentFlow.Infrastructure.csproj -v minimal` ✅
+
+#### Estado
+- WhatsApp mock-send: **eliminado**.
+- WhatsApp QR auth: **pendiente** (se bloquea explícitamente en lugar de false success).
+- Pendiente para DONE real: webhook inbound real + prueba E2E 10/10 + evidencia auditada.
+
 ### 2026-02-26 — Mejora de performance frontend (aiagent_flow)
 
 #### Objetivo
