@@ -340,7 +340,30 @@ Un canal se marca **DONE** solo si cumple todo:
 - Backend integración: **verde** (3/3).
 - Frontend build/lint: **verde** en ambas apps (con warnings no bloqueantes).
 - Frontend tests automáticos: **pendiente** (scripts `test` no definidos).
-- Nota crítica: `AgentFlow.Tests.Integration` hoy corre por csproj directo; validar si debe incluirse en `AgentFlow.sln` para que `dotnet test AgentFlow.sln` también lo ejecute.
+- `AgentFlow.Tests.Integration` ya fue agregado a `AgentFlow.sln`; `dotnet test AgentFlow.sln` ejecuta unit + integration.
+
+### 2026-02-26 — Descubrimiento crítico: canales e integraciones aún en mock
+
+#### Hallazgos directos en código
+1. **WhatsApp client en mock**
+   - `src/AgentFlow.Infrastructure/Channels/WhatsApp/WhatsAppClient.cs`
+   - Evidencia: mensajes y QR mock (`mock_wamid`, `mock-qr-code`, "mock send").
+
+2. **Tools demo en mock**
+   - `src/AgentFlow.Extensions/Tools/BureauAPIPlugin.cs`
+   - `src/AgentFlow.Extensions/Tools/FinancialModelPlugin.cs`
+   - `src/AgentFlow.Extensions/Tools/EmailNotificationPlugin.cs`
+
+3. **Model routing con stub provider**
+   - `src/AgentFlow.ModelRouting/ModelRouter.cs` (provider `stub`, respuesta `Stub response`).
+
+#### Implicación
+El runtime y pruebas están verdes, pero **el criterio comercial “canal real + integración real” sigue pendiente**. No puede declararse DONE de producto hasta retirar/aislar mocks de runtime productivo.
+
+#### Próximas acciones (en curso)
+1. Crear plan de reemplazo de mocks por adaptadores reales (canales + tools + model provider).
+2. Definir `feature flags` explícitos para que mock solo viva en entornos dev/test.
+3. Ejecutar primer E2E de canal real con evidencia auditable (10/10 corridas).
 
 ### 2026-02-26 — Mejora de performance frontend (aiagent_flow)
 
