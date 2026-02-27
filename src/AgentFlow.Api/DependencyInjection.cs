@@ -52,7 +52,7 @@ public static class DependencyInjection
             .AddAgentFlowExtensions()
             .AddMongoDB(configuration)
             .AddRepositories()
-            .AddChannelGateway()
+            .AddChannelGateway(configuration)
             .AddSingleton<IAuthProfilesStore, InMemoryAuthProfilesStore>()
             .AddSecurity(configuration)
             .AddAgentEngine(configuration)
@@ -123,13 +123,13 @@ public static class DependencyInjection
         return services;
     }
 
-    private static IServiceCollection AddChannelGateway(this IServiceCollection services)
+    private static IServiceCollection AddChannelGateway(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddScoped<IChannelGateway, ChannelGateway>();
         services.AddSingleton<IChannelHandler, WhatsAppChannelHandler>();
         services.AddSingleton<IChannelHandler, WebChatChannelHandler>();
         services.AddSingleton<IChannelHandler, ApiChannelHandler>();
-        services.Configure<WhatsAppOptions>(options => { });
+        services.Configure<WhatsAppOptions>(configuration.GetSection("WhatsApp"));
 
         return services;
     }
