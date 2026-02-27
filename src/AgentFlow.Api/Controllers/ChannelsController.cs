@@ -98,7 +98,7 @@ public sealed class ChannelsController : ControllerBase
         var channel = await _channelRepo.GetByIdAsync(channelId, tenantId, ct);
         if (channel == null) return NotFound();
 
-        if (string.IsNullOrWhiteSpace(request.AgentId))
+        if (string.IsNullOrWhiteSpace(channel.AgentKey))
             return BadRequest(new { message = "Channel cannot be activated without an assigned agent." });
 
         var handler = _gateway.GetHandler(channel.Type);
@@ -122,13 +122,14 @@ public sealed class ChannelsController : ControllerBase
         var channel = await _channelRepo.GetByIdAsync(channelId, tenantId, ct);
         if (channel == null) return NotFound();
 
-        var assign = channel.AssignAgent(request.AgentId, context.UserId);
-        if (!assign.IsSuccess) return BadRequest(new { message = assign.Error?.Message ?? "Failed to assign agent" });
-
-        var save = await _channelRepo.UpdateAsync(channel, ct);
-        if (!save.IsSuccess) return BadRequest(new { message = save.Error?.Message ?? "Failed to persist channel" });
-
-        return Ok(new { channel.Id, request.AgentId, message = "Agent assigned" });
+        // TODO: Domain aggregate currently has no AssignAgent mutation method.
+        // Keep endpoint contract for frontend integration, but return explicit pending status.
+        return StatusCode(StatusCodes.Status501NotImplemented, new
+        {
+            message = "Assign-agent mutation is pending in domain model. Use channel creation with AgentId for now.",
+            channelId = channel.Id,
+            request.AgentId
+        });
     }
 
     [HttpPost("{channelId}/deactivate")]
