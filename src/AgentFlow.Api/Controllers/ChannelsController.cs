@@ -98,8 +98,6 @@ public sealed class ChannelsController : ControllerBase
         var channel = await _channelRepo.GetByIdAsync(channelId, tenantId, ct);
         if (channel == null) return NotFound();
 
-        if (string.IsNullOrWhiteSpace(channel.AgentKey))
-            return BadRequest(new { message = "Channel cannot be activated without an assigned agent." });
 
         var handler = _gateway.GetHandler(channel.Type);
         if (handler == null) return BadRequest(new { message = $"No handler for channel type {channel.Type}" });
