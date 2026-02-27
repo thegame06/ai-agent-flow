@@ -68,6 +68,7 @@ clean-local-full:
 	@WIPE_DATA=0 bash scripts/local-full-clean.sh
 
 restart-local-full:
+	@dotnet build src/AgentFlow.Api/AgentFlow.Api.csproj -v minimal
 	@WIPE_DATA=0 bash scripts/local-full-clean.sh
 	@bash scripts/local-full-up.sh
 
