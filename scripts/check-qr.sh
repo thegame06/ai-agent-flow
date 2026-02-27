@@ -25,11 +25,24 @@ curl -fsS "${AUTH_HEADER[@]}" "$QR_BASE_URL/health" | jq .
 
 echo
 echo "== Session status =="
-curl -fsS "${AUTH_HEADER[@]}" "$QR_BASE_URL/session/status?channelId=$CHANNEL_ID" | jq . || true
+STATUS_RAW="$(curl -s "${AUTH_HEADER[@]}" "$QR_BASE_URL/session/status?channelId=$CHANNEL_ID" || true)"
+if [[ -n "$STATUS_RAW" ]]; then
+  echo "$STATUS_RAW" | jq .
+fi
+
+if echo "$STATUS_RAW" | rg -q "session not found"; then
+  echo
+  echo "== Session start (auto) =="
+  curl -s "${AUTH_HEADER[@]}" -X POST "$QR_BASE_URL/session/start" -H 'Content-Type: application/json' -d "{\"channelId\":\"$CHANNEL_ID\"}" | jq . || true
+  sleep 2
+  echo
+  echo "== Session status (after start) =="
+  curl -s "${AUTH_HEADER[@]}" "$QR_BASE_URL/session/status?channelId=$CHANNEL_ID" | jq . || true
+fi
 
 echo
 echo "== Session QR =="
-curl -fsS "${AUTH_HEADER[@]}" "$QR_BASE_URL/session/qr?channelId=$CHANNEL_ID" | jq . || true
+curl -s "${AUTH_HEADER[@]}" "$QR_BASE_URL/session/qr?channelId=$CHANNEL_ID" | jq . || true
 
 echo
 echo "== Last QR bridge logs =="
