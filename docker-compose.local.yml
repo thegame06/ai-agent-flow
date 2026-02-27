@@ -1,27 +1,27 @@
 services:
-  mongo-test:
+  mongo-local:
     image: mongo:7
-    container_name: agentflow-mongo-test
+    container_name: agentflow-mongo-local
     restart: unless-stopped
     ports:
       - "27018:27017"
     command: ["--quiet"]
     volumes:
-      - mongo_test_data:/data/db
+      - mongo_local_data:/data/db
     healthcheck:
       test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping').ok", "--quiet"]
       interval: 5s
       timeout: 5s
       retries: 20
 
-  redis-test:
+  redis-local:
     image: redis:7-alpine
-    container_name: agentflow-redis-test
+    container_name: agentflow-redis-local
     restart: unless-stopped
     ports:
       - "6380:6379"
     volumes:
-      - redis_test_data:/data
+      - redis_local_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -40,9 +40,9 @@ services:
     ports:
       - "${MCP_TEST_PORT:-3501}:3501"
     depends_on:
-      mongo-test:
+      mongo-local:
         condition: service_healthy
-      redis-test:
+      redis-local:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3501/health"]
@@ -51,5 +51,5 @@ services:
       retries: 20
 
 volumes:
-  mongo_test_data:
-  redis_test_data:
+  mongo_local_data:
+  redis_local_data:
