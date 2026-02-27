@@ -512,6 +512,17 @@ SESSION_ID=<session-id> TENANT_ID=tenant-1 API_BASE=http://localhost:5000 ./scri
    - Verificar propagación de `correlationId` en API → runtime → tools/MCP → auditoría.
    - Confirmar que una ejecución completa es trazable por un único id.
 
+4. **Gestión de sesión por `correlationId` (regla de negocio unificada)**
+   - Validar que `correlationId` determina si se **reutiliza** o **crea** sesión según estado/expiración.
+   - Reglas esperadas por canal:
+     - WhatsApp: `correlationId = número telefónico`.
+     - Web/UI: `correlationId` generado automáticamente por cliente/app.
+     - API: `correlationId` provisto por cliente API.
+   - Criterio de decisión:
+     - Si existe sesión `Active` y no vencida para `{tenantId, channelId, correlationId}` -> reutilizar.
+     - Si no existe o está vencida/cerrada -> crear nueva sesión.
+   - Probar expiración configurable de sesión y reapertura posterior.
+
 4. **Evidencia operativa en UI/API**
    - Confirmar visibilidad de `executionId`, `channelMessageIdIn`, `channelMessageIdOut`, latencia, verdict.
 
