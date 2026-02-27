@@ -41,13 +41,14 @@ echo "[full-up] Starting API..."
   ASPNETCORE_URLS=${ASPNETCORE_URLS:-http://0.0.0.0:${API_PORT:-5000}} \
   ConnectionStrings__MongoDB=${ConnectionStrings__MongoDB:-mongodb://localhost:27018} \
   ConnectionStrings__Redis=${ConnectionStrings__Redis:-localhost:6380} \
+  WhatsApp__QrBridgeApiKey=${BRIDGE_API_KEY:-dev-bridge-key} \
   dotnet run --no-build --no-launch-profile --project src/AgentFlow.Api/AgentFlow.Api.csproj >"$API_LOG" 2>&1 & echo $! > "$API_PID_FILE")
 
 echo "[full-up] Starting Frontend..."
 (cd "$ROOT_DIR/frontend/aiagent_flow" && nohup npm run dev -- --strictPort --port ${FRONTEND_PORT:-3039} --host >"$FRONT_LOG" 2>&1 & echo $! > "$FRONT_PID_FILE")
 
 echo "[full-up] Starting WhatsApp QR bridge..."
-(cd "$ROOT_DIR/tools/whatsapp-qr-bridge" && npm install >/dev/null && nohup env PORT=${QR_PORT:-3401} AGENTFLOW_BASE_URL=${AGENTFLOW_BASE_URL:-http://localhost:5000} TENANT_ID=${TENANT_ID:-tenant-1} npm start >"$QR_LOG" 2>&1 & echo $! > "$QR_PID_FILE")
+(cd "$ROOT_DIR/tools/whatsapp-qr-bridge" && npm install >/dev/null && nohup env PORT=${QR_PORT:-3401} AGENTFLOW_BASE_URL=${AGENTFLOW_BASE_URL:-http://localhost:5000} TENANT_ID=${TENANT_ID:-tenant-1} BRIDGE_API_KEY=${BRIDGE_API_KEY:-dev-bridge-key} npm start >"$QR_LOG" 2>&1 & echo $! > "$QR_PID_FILE")
 
 echo "[full-up] Done."
 echo "  API log:      $API_LOG"

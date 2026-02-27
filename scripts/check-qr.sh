@@ -14,17 +14,22 @@ LOG_FILE="${LOG_FILE:-/home/blad/labs/ai-agent-flow/.agent/logs/qr-bridge-full.l
 echo "[check-qr] channelId=$CHANNEL_ID"
 echo "[check-qr] qrBaseUrl=$QR_BASE_URL"
 
+AUTH_HEADER=()
+if [[ -n "${BRIDGE_API_KEY:-}" ]]; then
+  AUTH_HEADER=(-H "Authorization: Bearer ${BRIDGE_API_KEY}")
+fi
+
 echo
 echo "== Bridge health =="
-curl -fsS "$QR_BASE_URL/health" | jq .
+curl -fsS "${AUTH_HEADER[@]}" "$QR_BASE_URL/health" | jq .
 
 echo
 echo "== Session status =="
-curl -fsS "$QR_BASE_URL/session/status?channelId=$CHANNEL_ID" | jq . || true
+curl -fsS "${AUTH_HEADER[@]}" "$QR_BASE_URL/session/status?channelId=$CHANNEL_ID" | jq . || true
 
 echo
 echo "== Session QR =="
-curl -fsS "$QR_BASE_URL/session/qr?channelId=$CHANNEL_ID" | jq . || true
+curl -fsS "${AUTH_HEADER[@]}" "$QR_BASE_URL/session/qr?channelId=$CHANNEL_ID" | jq . || true
 
 echo
 echo "== Last QR bridge logs =="
