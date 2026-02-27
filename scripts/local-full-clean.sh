@@ -64,10 +64,12 @@ kill_port_listeners
 if command -v docker >/dev/null 2>&1; then
   if [[ "${WIPE_DATA:-0}" == "1" ]]; then
     echo "[clean] docker compose down with volume wipe"
-    MCP_TEST_PORT=${MCP_TEST_PORT:-3501} docker compose -f "$ROOT_DIR/docker-compose.test.yml" down -v --remove-orphans || true
+    MCP_TEST_PORT=${MCP_TEST_PORT:-3501} docker compose -f "$ROOT_DIR/docker-compose.local.yml" down -v --remove-orphans || true
+    # Optional explicit local volume cleanup
+    docker volume rm -f ai-agent-flow_mongo_local_data ai-agent-flow_redis_local_data >/dev/null 2>&1 || true
   else
     echo "[clean] docker compose down (keeping volumes/data)"
-    MCP_TEST_PORT=${MCP_TEST_PORT:-3501} docker compose -f "$ROOT_DIR/docker-compose.test.yml" down --remove-orphans || true
+    MCP_TEST_PORT=${MCP_TEST_PORT:-3501} docker compose -f "$ROOT_DIR/docker-compose.local.yml" down --remove-orphans || true
   fi
 fi
 
