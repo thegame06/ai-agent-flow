@@ -498,6 +498,29 @@ SESSION_ID=<session-id> TENANT_ID=tenant-1 API_BASE=http://localhost:5000 ./scri
 - Ver `docs/PIPELINE-ENHANCEMENT-PLAN.md` para roadmap de mejoras de pipeline (query rewrite, rerank, self-check) posterior al baseline funcional.
 - Pendiente estratégico: módulo IAM (usuarios/roles/permisos) con RBAC formal y gestión de identidades.
 
+## Pendientes de performance (backlog)
+
+1. **Paginación server-side en sesiones de canal**
+   - Endpoint afectado: `GET /api/v1/tenants/{tenantId}/channel-sessions`
+   - Estado actual: devuelve todas las sesiones activas (sin `skip/limit`).
+   - Acción pendiente:
+     - agregar `page`, `pageSize`, `sort` en API,
+     - implementar `Skip/Limit` en repositorio,
+     - actualizar frontend para navegación por páginas.
+
+2. **Proyección de campos en listados masivos**
+   - Evitar cargar documentos completos cuando solo se usan 6-8 campos en UI.
+
+3. **Conteo desacoplado y caché de métricas**
+   - Separar `count` de `list` para no penalizar queries de tabla.
+
+4. **Revisión de índices para consultas de alta cardinalidad**
+   - `tenantId + status + lastActivityAt` en sesiones.
+   - verificar selectividad por `channelId`/`identifier`.
+
+5. **SLO de latencia para vistas operativas**
+   - definir p95 objetivo para `channel-sessions`, `channels/status`, `tools/status`.
+
 ## 5) Métricas clave (producto + operación)
 
 1. **Autonomía útil**: % tareas completadas sin intervención humana.
