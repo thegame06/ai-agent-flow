@@ -98,6 +98,9 @@ public sealed class ChannelsController : ControllerBase
         var channel = await _channelRepo.GetByIdAsync(channelId, tenantId, ct);
         if (channel == null) return NotFound();
 
+        if (string.IsNullOrWhiteSpace(channel.AgentId))
+            return BadRequest(new { message = "Channel cannot be activated without an assigned agent." });
+
         var handler = _gateway.GetHandler(channel.Type);
         if (handler == null) return BadRequest(new { message = $"No handler for channel type {channel.Type}" });
 
@@ -105,6 +108,27 @@ public sealed class ChannelsController : ControllerBase
         await _channelRepo.UpdateAsync(channel, ct);
 
         return Ok(new { channel.Id, Status = status.ToString() });
+    }
+
+    [HttpPost("{channelId}/assign-agent")]
+    public async Task<IActionResult> AssignAgent(string tenantId, string channelId, [FromBody] AssignChannelAgentRequest request, CancellationToken ct)
+    {
+        var context = _tenantContext.Current!;
+        if (context.TenantId != tenantId && !context.IsPlatformAdmin) return Forbid();
+
+        if (string.IsNullOrWhiteSpace(request.AgentId))
+            return BadRequest(new { message = "AgentId is required" });
+
+        var channel = await _channelRepo.GetByIdAsync(channelId, tenantId, ct);
+        if (channel == null) return NotFound();
+
+        var assign = channel.AssignAgent(request.AgentId, context.UserId);
+        if (!assign.IsSuccess) return BadRequest(new { message = assign.Error?.Message ?? "Failed to assign agent" });
+
+        var save = await _channelRepo.UpdateAsync(channel, ct);
+        if (!save.IsSuccess) return BadRequest(new { message = save.Error?.Message ?? "Failed to persist channel" });
+
+        return Ok(new { channel.Id, channel.AgentId, message = "Agent assigned" });
     }
 
     [HttpPost("{channelId}/deactivate")]
@@ -177,7 +201,7 @@ public sealed class ChannelsController : ControllerBase
             health.Healthy,
             health.Message,
             health.CheckedAt,
-            qrAvailable = !string.IsNullOrWhiteSpace(qrCode)
+            qrAvailable = !health.Healthy && !string.IsNullOrWhiteSpace(qrCode)
         });
     }
 
