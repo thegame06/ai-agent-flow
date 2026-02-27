@@ -15,6 +15,14 @@ const API_KEY = process.env.BRIDGE_API_KEY || '';
 const sessions = new Map();
 const sendRate = new Map(); // key: channelId|to -> timestamps(ms)
 
+process.on('uncaughtException', (err) => {
+  console.error('[bridge] uncaughtException:', err?.stack || err?.message || err);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[bridge] unhandledRejection:', reason?.stack || reason?.message || reason);
+});
+
 async function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
@@ -93,6 +101,18 @@ function attachClientHandlers(channelId, state, client) {
     state.connected = false;
     state.status = 'disconnected';
     state.lastError = reason || 'disconnected';
+
+    // Auto-recover session for demo robustness
+    setTimeout(async () => {
+      try {
+        if (state.status === 'disconnected') {
+          await reconnectSession(channelId);
+        }
+      } catch (err) {
+        state.status = 'error';
+        state.lastError = err.message;
+      }
+    }, 1500);
   });
 
   client.on('message', async (msg) => {
@@ -116,6 +136,7 @@ function attachClientHandlers(channelId, state, client) {
       state.lastError = null;
     } catch (err) {
       state.lastError = err.message;
+      // keep bridge alive; only log failure
       console.error('Failed forwarding message to AgentFlow:', err.message);
     }
   });

@@ -77,6 +77,8 @@ export default function ChannelsPage() {
   const [openCreate, setOpenCreate] = useState(false);
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null);
+  const [qrPolling, setQrPolling] = useState(false);
+  const [qrPollRounds, setQrPollRounds] = useState(0);
   const [selectedSession, setSelectedSession] = useState<ChannelSession | null>(null);
   const [sessionMessages, setSessionMessages] = useState<SessionMessageEvidence[]>([]);
   const [sessionLoading, setSessionLoading] = useState(false);
@@ -163,22 +165,14 @@ export default function ChannelsPage() {
       if (channel.type === 'WhatsApp' && channel.config?.AuthMode === 'qr') {
         setSelectedChannel(channel);
 
-        // Poll QR endpoint for a short window while bridge initializes session.
-        let qr: string | undefined;
-        for (let i = 0; i < 8 && !qr; i++) {
-          try {
-            qr = await fetchQrCode(channel.id);
-          } catch {
-            // ignore while QR still unavailable
-          }
-          if (!qr) await new Promise((r) => setTimeout(r, 1500));
+        try {
+          const qr = await fetchQrCode(channel.id);
+          if (qr) setQrCode(qr);
+        } catch {
+          // ignore; polling below handles pending state
         }
 
-        if (qr) {
-          setQrCode(qr);
-        } else {
-          setError('Channel activated, but QR is not available yet. Verify QR bridge and try Refresh QR.');
-        }
+        await startFiniteQrPolling(channel.id);
       }
 
       await fetchAll();
@@ -232,6 +226,37 @@ export default function ChannelsPage() {
     } finally {
       setSessionLoading(false);
     }
+  };
+
+  const startFiniteQrPolling = async (channelId: string) => {
+    setQrPolling(true);
+    setQrPollRounds(0);
+
+    const maxRounds = 10;
+    for (let round = 1; round <= maxRounds; round++) {
+      setQrPollRounds(round);
+      try {
+        const statusRes = await axios.get(`/api/v1/tenants/${TENANT_ID}/channels/${channelId}/status`);
+        if (statusRes.data?.healthy) {
+          setQrPolling(false);
+          setQrCode(null);
+          setError(null);
+          return;
+        }
+
+        const qr = await fetchQrCode(channelId);
+        if (qr) {
+          setQrCode(qr);
+        }
+      } catch {
+        // ignore transient poll errors
+      }
+
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+
+    setQrPolling(false);
+    setError('QR polling finished. If still pending, use Refresh QR.');
   };
 
   const getStatusColor = (status: string) => {
@@ -455,6 +480,11 @@ export default function ChannelsPage() {
                 </Alert>
               </>
             )}
+            {qrPolling && (
+              <Alert severity="warning" sx={{ mt: 2 }}>
+                Waiting for connection confirmation... attempt {qrPollRounds}/10
+              </Alert>
+            )}
           </Box>
         </DialogContent>
         <DialogActions>
@@ -473,6 +503,7 @@ export default function ChannelsPage() {
                 setError('QR still not available. Check bridge connection and try again.');
               }
             }}
+            disabled={qrPolling}
           >
             Refresh QR
           </Button>
