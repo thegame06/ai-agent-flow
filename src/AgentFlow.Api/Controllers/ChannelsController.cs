@@ -111,7 +111,7 @@ public sealed class ChannelsController : ControllerBase
     }
 
     [HttpPost("{channelId}/assign-agent")]
-    public async Task<IActionResult> AssignAgent(string tenantId, string channelId, [FromBody] AssignChannelAgentRequest request, CancellationToken ct)
+    public async Task<IActionResult> AssignAgent(string tenantId, string channelId, [FromBody] AgentFlow.Api.Contracts.AssignChannelAgentRequest request, CancellationToken ct)
     {
         var context = _tenantContext.Current!;
         if (context.TenantId != tenantId && !context.IsPlatformAdmin) return Forbid();
