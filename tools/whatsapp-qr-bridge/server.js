@@ -50,39 +50,49 @@ function auth(req, res, next) {
   next();
 }
 
-app.use(auth);
-
-app.post('/session/start', async (req, res) => {
-  const { channelId } = req.body || {};
-  if (!channelId) return res.status(400).json({ error: 'channelId required' });
-
-  if (sessions.has(channelId)) {
-    return res.json({ ok: true, message: 'already started' });
+function ensureState(channelId) {
+  if (!sessions.has(channelId)) {
+    sessions.set(channelId, {
+      channelId,
+      connected: false,
+      status: 'idle',
+      qrCode: null,
+      client: null,
+      lastSeenAt: null,
+      lastForwardAt: null,
+      lastError: null,
+      startedAt: null,
+    });
   }
+  return sessions.get(channelId);
+}
 
-  const state = {
-    connected: false,
-    qrCode: null,
-    client: null,
-    lastSeenAt: null,
-    lastForwardAt: null,
-    lastError: null
-  };
-  const client = new Client({
-    authStrategy: new LocalAuth({ clientId: channelId }),
-    puppeteer: { headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] }
-  });
-
+function attachClientHandlers(channelId, state, client) {
   client.on('qr', async (qr) => {
     state.qrCode = await QRCode.toDataURL(qr);
     state.connected = false;
+    state.status = 'qr_pending';
+    state.lastError = null;
   });
 
   client.on('ready', () => {
     state.connected = true;
     state.qrCode = null;
+    state.status = 'connected';
     state.lastSeenAt = new Date().toISOString();
     state.lastError = null;
+  });
+
+  client.on('auth_failure', (msg) => {
+    state.connected = false;
+    state.status = 'auth_failed';
+    state.lastError = msg || 'auth_failure';
+  });
+
+  client.on('disconnected', (reason) => {
+    state.connected = false;
+    state.status = 'disconnected';
+    state.lastError = reason || 'disconnected';
   });
 
   client.on('message', async (msg) => {
@@ -93,7 +103,7 @@ app.post('/session/start', async (req, res) => {
         from: msg.from,
         content: msg.body,
         pushName: msg._data?.notifyName || null,
-        timestamp: msg.timestamp
+        timestamp: msg.timestamp,
       };
 
       await postToAgentFlowWithRetry(
@@ -109,19 +119,82 @@ app.post('/session/start', async (req, res) => {
       console.error('Failed forwarding message to AgentFlow:', err.message);
     }
   });
+}
 
+async function startSession(channelId) {
+  const state = ensureState(channelId);
+  if (state.client) return state;
+
+  state.status = 'starting';
+  state.startedAt = new Date().toISOString();
+  state.lastError = null;
+
+  const client = new Client({
+    authStrategy: new LocalAuth({ clientId: channelId }),
+    puppeteer: { headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] },
+  });
+
+  attachClientHandlers(channelId, state, client);
   state.client = client;
-  sessions.set(channelId, state);
   await client.initialize();
+  return state;
+}
 
-  res.json({ ok: true, message: 'session started' });
+async function reconnectSession(channelId) {
+  const state = ensureState(channelId);
+  state.status = 'reconnecting';
+  state.lastError = null;
+
+  if (state.client) {
+    try {
+      await state.client.destroy();
+    } catch {}
+    state.client = null;
+    state.connected = false;
+    state.qrCode = null;
+  }
+
+  await startSession(channelId);
+  return state;
+}
+
+app.use(auth);
+
+app.post('/session/start', async (req, res) => {
+  const { channelId } = req.body || {};
+  if (!channelId) return res.status(400).json({ error: 'channelId required' });
+
+  try {
+    const state = await startSession(channelId);
+    return res.json({ ok: true, message: 'session started', status: state.status });
+  } catch (err) {
+    const state = ensureState(channelId);
+    state.status = 'error';
+    state.lastError = err.message;
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.post('/session/reconnect', async (req, res) => {
+  const { channelId } = req.body || {};
+  if (!channelId) return res.status(400).json({ error: 'channelId required' });
+
+  try {
+    const state = await reconnectSession(channelId);
+    return res.json({ ok: true, message: 'session reconnect triggered', status: state.status });
+  } catch (err) {
+    const state = ensureState(channelId);
+    state.status = 'error';
+    state.lastError = err.message;
+    return res.status(500).json({ ok: false, error: err.message });
+  }
 });
 
 app.get('/session/qr', (req, res) => {
   const channelId = req.query.channelId;
   const state = sessions.get(channelId);
   if (!state) return res.status(404).json({ error: 'session not found' });
-  res.json({ connected: state.connected, qrCode: state.qrCode });
+  res.json({ connected: state.connected, status: state.status, qrCode: state.qrCode });
 });
 
 app.get('/session/status', (req, res) => {
@@ -130,9 +203,12 @@ app.get('/session/status', (req, res) => {
   if (!state) return res.status(404).json({ error: 'session not found' });
   res.json({
     connected: state.connected,
+    status: state.status,
+    hasQr: !!state.qrCode,
     lastSeenAt: state.lastSeenAt,
     lastForwardAt: state.lastForwardAt,
-    lastError: state.lastError
+    lastError: state.lastError,
+    startedAt: state.startedAt,
   });
 });
 
@@ -140,16 +216,17 @@ app.get('/health', (_req, res) => {
   const stats = Array.from(sessions.entries()).map(([channelId, s]) => ({
     channelId,
     connected: s.connected,
+    status: s.status,
     hasQr: !!s.qrCode,
     lastSeenAt: s.lastSeenAt,
     lastForwardAt: s.lastForwardAt,
-    lastError: s.lastError
+    lastError: s.lastError,
   }));
 
   res.json({
     ok: true,
     sessions: stats.length,
-    stats
+    stats,
   });
 });
 
@@ -168,6 +245,7 @@ app.post('/messages/send', async (req, res) => {
     res.json({ ok: true, messageId: message.id._serialized });
   } catch (err) {
     state.lastError = err.message;
+    state.status = 'error';
     res.status(500).json({ error: err.message });
   }
 });
@@ -178,7 +256,7 @@ app.post('/session/disconnect', async (req, res) => {
   if (!state) return res.json({ ok: true, message: 'already disconnected' });
 
   try {
-    await state.client.destroy();
+    if (state.client) await state.client.destroy();
   } catch {}
 
   sessions.delete(channelId);
