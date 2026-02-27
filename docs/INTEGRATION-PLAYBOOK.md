@@ -499,6 +499,29 @@ SESSION_ID=<session-id> TENANT_ID=tenant-1 API_BASE=http://localhost:5000 ./scri
 - Pendiente estratégico: módulo IAM (usuarios/roles/permisos) con RBAC formal y gestión de identidades.
 - Pendiente estratégico: pipeline anti-divagación (RAG + query refinement + self-check) para mejorar precisión y evitar respuestas fuera de foco.
 
+## Pendientes globales de validación funcional (faltantes)
+
+1. **Prueba E2E real con bot + integración**
+   - Ejecutar corrida de punta a punta con bot activo y al menos 1 integración real (MCP/tool externa).
+
+2. **Validación de memoria de conversación**
+   - Confirmar persistencia/recuperación de contexto por sesión/thread.
+   - Verificar comportamiento tras reinicio (sin pérdida inesperada de continuidad).
+
+3. **Trazabilidad por `correlationId`**
+   - Verificar propagación de `correlationId` en API → runtime → tools/MCP → auditoría.
+   - Confirmar que una ejecución completa es trazable por un único id.
+
+4. **Evidencia operativa en UI/API**
+   - Confirmar visibilidad de `executionId`, `channelMessageIdIn`, `channelMessageIdOut`, latencia, verdict.
+
+5. **Pruebas de recuperación y resiliencia**
+   - Escenario disconnect/reconnect de canal.
+   - Escenario falla temporal de integración y reintento controlado.
+
+6. **Cierre de corridas 10/10**
+   - Completar bitácora `docs/E2E-RUNS-LOG.md` con evidencia real.
+
 ## Pendientes de performance (backlog)
 
 1. **Paginación server-side en sesiones de canal**
