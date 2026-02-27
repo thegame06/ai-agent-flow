@@ -98,7 +98,7 @@ public sealed class ChannelsController : ControllerBase
         var channel = await _channelRepo.GetByIdAsync(channelId, tenantId, ct);
         if (channel == null) return NotFound();
 
-        if (string.IsNullOrWhiteSpace(channel.AgentId))
+        if (string.IsNullOrWhiteSpace(request.AgentId))
             return BadRequest(new { message = "Channel cannot be activated without an assigned agent." });
 
         var handler = _gateway.GetHandler(channel.Type);
@@ -128,7 +128,7 @@ public sealed class ChannelsController : ControllerBase
         var save = await _channelRepo.UpdateAsync(channel, ct);
         if (!save.IsSuccess) return BadRequest(new { message = save.Error?.Message ?? "Failed to persist channel" });
 
-        return Ok(new { channel.Id, channel.AgentId, message = "Agent assigned" });
+        return Ok(new { channel.Id, request.AgentId, message = "Agent assigned" });
     }
 
     [HttpPost("{channelId}/deactivate")]
