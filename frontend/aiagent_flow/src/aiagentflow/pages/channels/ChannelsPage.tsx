@@ -207,7 +207,7 @@ export default function ChannelsPage() {
     try {
       const res = await axios.get(`/api/v1/tenants/${TENANT_ID}/channels/${channel.id}/status`);
       const qrSuffix = channel.type === 'WhatsApp' && channel.config?.AuthMode === 'qr'
-        ? ` | QR: ${res.data.qrAvailable ? 'AVAILABLE' : 'PENDING'}`
+        ? ` | QR: ${res.data.healthy ? 'CONNECTED' : (res.data.qrAvailable ? 'AVAILABLE' : 'PENDING')}`
         : '';
       alert(`Health: ${res.data.healthy ? 'OK' : 'UNHEALTHY'} - ${res.data.message || 'n/a'}${qrSuffix}`);
     } catch (err: any) {

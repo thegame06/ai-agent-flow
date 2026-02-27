@@ -94,6 +94,7 @@ public sealed class ChannelSessionsController : ControllerBase
         return Ok(new { message = "Session closed successfully" });
     }
 
+    [HttpGet("{sessionId}/messages")]
     [HttpPost("{sessionId}/messages")]
     public async Task<IActionResult> GetMessages(string tenantId, string sessionId, [FromQuery] int limit = 50, CancellationToken ct = default)
     {
