@@ -807,6 +807,46 @@ public sealed record ExtensionHealthStatus
 }
 
 // =========================================================================
+// AGENT HANDOFF (Manager -> Subagent)
+// =========================================================================
+
+public sealed record AgentHandoffRequest
+{
+    public required string TenantId { get; init; }
+    public required string SessionId { get; init; }
+    public required string CorrelationId { get; init; }
+    public required string SourceAgentKey { get; init; }
+    public required string TargetAgentKey { get; init; }
+    public required string Intent { get; init; }
+    public required string PayloadJson { get; init; }
+    public IReadOnlyDictionary<string, string> PolicyContext { get; init; } = new Dictionary<string, string>();
+    public IReadOnlyDictionary<string, string> Metadata { get; init; } = new Dictionary<string, string>();
+}
+
+public sealed record AgentHandoffToolCall
+{
+    public required string ContractAction { get; init; }
+    public required string Provider { get; init; }
+    public bool Ok { get; init; }
+    public string? ErrorCode { get; init; }
+}
+
+public sealed record AgentHandoffResponse
+{
+    public required bool Ok { get; init; }
+    public string? ResultJson { get; init; }
+    public string? ErrorCode { get; init; }
+    public bool Retryable { get; init; }
+    public IReadOnlyDictionary<string, string> StatePatch { get; init; } = new Dictionary<string, string>();
+    public IReadOnlyList<AgentHandoffToolCall> ToolCalls { get; init; } = new List<AgentHandoffToolCall>();
+}
+
+public interface IAgentHandoffExecutor
+{
+    Task<AgentHandoffResponse> ExecuteAsync(AgentHandoffRequest request, CancellationToken ct = default);
+}
+
+// =========================================================================
 // RESULT PATTERN (shared)
 // =========================================================================
 
