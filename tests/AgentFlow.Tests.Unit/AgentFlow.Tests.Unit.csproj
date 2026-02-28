@@ -23,6 +23,7 @@
     <ProjectReference Include="..\..\src\AgentFlow.Domain\AgentFlow.Domain.csproj" />
     <ProjectReference Include="..\..\src\AgentFlow.Evaluation\AgentFlow.Evaluation.csproj" />
     <ProjectReference Include="..\..\src\AgentFlow.Core.Engine\AgentFlow.Core.Engine.csproj" />
+    <ProjectReference Include="..\..\src\AgentFlow.Security\AgentFlow.Security.csproj" />
     <ProjectReference Include="..\..\src\AgentFlow.ToolSDK\AgentFlow.ToolSDK.csproj" />
     <ProjectReference Include="..\..\src\AgentFlow.ModelRouting\AgentFlow.ModelRouting.csproj" />
   </ItemGroup>
