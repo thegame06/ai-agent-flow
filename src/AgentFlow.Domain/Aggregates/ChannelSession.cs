@@ -25,6 +25,7 @@ public sealed class ChannelSession
     public DateTimeOffset CreatedAt { get; private set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset LastActivityAt { get; private set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? ExpiresAt { get; private set; }
+    public int LockVersion { get; private set; }
 
     public static ChannelSession Create(string tenantId, string channelId, ChannelType channelType, string identifier)
     {
@@ -68,6 +69,11 @@ public sealed class ChannelSession
     public bool IsExpired()
     {
         return ExpiresAt.HasValue && ExpiresAt <= DateTimeOffset.UtcNow;
+    }
+
+    public void IncrementLockVersion()
+    {
+        LockVersion++;
     }
 }
 

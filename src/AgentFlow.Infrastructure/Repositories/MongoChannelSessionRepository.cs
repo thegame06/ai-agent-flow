@@ -87,14 +87,24 @@ public sealed class MongoChannelSessionRepository : IChannelSessionRepository
     {
         try
         {
+            var expectedVersion = session.LockVersion;
+            session.IncrementLockVersion();
+
             var result = await _collection.ReplaceOneAsync(
-                x => x.Id == session.Id && x.TenantId == session.TenantId,
+                x => x.Id == session.Id && x.TenantId == session.TenantId && x.LockVersion == expectedVersion,
                 session,
                 cancellationToken: ct
             );
 
             if (result.MatchedCount == 0)
-                return Result.Failure(Error.NotFound("Session not found"));
+            {
+                var exists = await _collection.Find(x => x.Id == session.Id && x.TenantId == session.TenantId)
+                    .AnyAsync(ct);
+
+                return exists
+                    ? Result.Failure(new Error("ChannelSession.ConcurrentUpdate", "Concurrent session update detected", ErrorCategory.Infrastructure))
+                    : Result.Failure(Error.NotFound("Session not found"));
+            }
 
             return Result.Success();
         }

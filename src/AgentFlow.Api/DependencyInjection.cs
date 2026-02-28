@@ -197,6 +197,7 @@ public static class DependencyInjection
     private static IServiceCollection AddAgentEngine(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddScoped<IAgentExecutor, AgentExecutionEngine>();
+        services.AddScoped<IAgentHandoffExecutor, AgentHandoffExecutor>();
         services.AddScoped<IToolExecutor, ToolExecutorService>();
         services.AddScoped<IToolAuthorizationService, DefaultToolAuthorizationService>();
         services.AddSingleton<IToolSandbox, DefaultToolSandbox>();

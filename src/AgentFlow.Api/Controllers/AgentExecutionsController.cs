@@ -18,6 +18,7 @@ public sealed class AgentExecutionsController : ControllerBase
     private readonly ICanaryRoutingService _canaryRouting;
     private readonly ISegmentRoutingService _segmentRouting;
     private readonly IAgentAuthorizationService _authz;
+    private readonly IAgentHandoffExecutor _handoffExecutor;
     private readonly ITenantContextAccessor _tenantContext;
     private readonly ILogger<AgentExecutionsController> _logger;
 
@@ -28,6 +29,7 @@ public sealed class AgentExecutionsController : ControllerBase
         ICanaryRoutingService canaryRouting,
         ISegmentRoutingService segmentRouting,
         IAgentAuthorizationService authz,
+        IAgentHandoffExecutor handoffExecutor,
         ITenantContextAccessor tenantContext,
         ILogger<AgentExecutionsController> logger)
     {
@@ -37,6 +39,7 @@ public sealed class AgentExecutionsController : ControllerBase
         _canaryRouting = canaryRouting;
         _segmentRouting = segmentRouting;
         _authz = authz;
+        _handoffExecutor = handoffExecutor;
         _tenantContext = tenantContext;
         _logger = logger;
     }
@@ -294,6 +297,50 @@ public sealed class AgentExecutionsController : ControllerBase
         });
     }
 
+
+    /// <summary>
+    /// Internal handoff from a manager agent to a specialist subagent.
+    /// </summary>
+    [HttpPost("agents/{agentId}/handoff")]
+    [ProducesResponseType(typeof(HandoffExecutionResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> HandoffAsync(
+        [FromRoute] string tenantId,
+        [FromRoute] string agentId,
+        [FromBody] HandoffExecutionRequest body,
+        CancellationToken ct)
+    {
+        var context = _tenantContext.Current!;
+
+        if (context.TenantId != tenantId && !context.IsPlatformAdmin)
+            return Forbid();
+
+        var handoff = new AgentHandoffRequest
+        {
+            TenantId = tenantId,
+            SessionId = body.SessionId,
+            CorrelationId = body.CorrelationId ?? body.SessionId,
+            SourceAgentKey = agentId,
+            TargetAgentKey = body.TargetAgentId,
+            Intent = body.Intent,
+            PayloadJson = body.PayloadJson,
+            PolicyContext = body.PolicyContext ?? new Dictionary<string, string>(),
+            Metadata = body.Metadata ?? new Dictionary<string, string>()
+        };
+
+        var result = await _handoffExecutor.ExecuteAsync(handoff, ct);
+
+        return Ok(new HandoffExecutionResponse
+        {
+            Ok = result.Ok,
+            ErrorCode = result.ErrorCode,
+            Retryable = result.Retryable,
+            ResultJson = result.ResultJson,
+            StatePatch = result.StatePatch,
+            ToolCalls = result.ToolCalls
+        });
+    }
+
     /// <summary>
     /// Cancel a running execution.
     /// </summary>
@@ -472,6 +519,28 @@ public sealed record PreviewExecutionResponse
     public string? ErrorCode { get; init; }
     public string? ErrorMessage { get; init; }
     public RuntimeSnapshotDto? RuntimeSnapshot { get; init; }
+}
+
+
+public sealed record HandoffExecutionRequest
+{
+    public required string SessionId { get; init; }
+    public string? CorrelationId { get; init; }
+    public required string TargetAgentId { get; init; }
+    public required string Intent { get; init; }
+    public required string PayloadJson { get; init; }
+    public Dictionary<string, string>? PolicyContext { get; init; }
+    public Dictionary<string, string>? Metadata { get; init; }
+}
+
+public sealed record HandoffExecutionResponse
+{
+    public required bool Ok { get; init; }
+    public string? ResultJson { get; init; }
+    public string? ErrorCode { get; init; }
+    public bool Retryable { get; init; }
+    public IReadOnlyDictionary<string, string> StatePatch { get; init; } = new Dictionary<string, string>();
+    public IReadOnlyList<AgentHandoffToolCall> ToolCalls { get; init; } = new List<AgentHandoffToolCall>();
 }
 
 public sealed record RuntimeSnapshotDto
