@@ -331,6 +331,40 @@ public sealed class AgentExecutionsController : ControllerBase
     }
 
     /// <summary>
+    /// Evaluates handoff policy decision for source->target without executing a handoff.
+    /// </summary>
+    [HttpGet("agents/{agentId}/handoff/decision")]
+    [ProducesResponseType(typeof(HandoffPolicyDecisionResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public IActionResult GetHandoffDecision(
+        [FromRoute] string tenantId,
+        [FromRoute] string agentId,
+        [FromQuery] string targetAgentId)
+    {
+        var context = _tenantContext.Current!;
+
+        if (context.TenantId != tenantId && !context.IsPlatformAdmin)
+            return Forbid();
+
+        if (string.IsNullOrWhiteSpace(targetAgentId))
+            return BadRequest(new { error = "targetAgentId is required." });
+
+        var decision = _handoffPolicy.Evaluate(tenantId, agentId, targetAgentId);
+
+        return Ok(new HandoffPolicyDecisionResponse
+        {
+            TenantId = tenantId,
+            SourceAgentId = agentId,
+            TargetAgentId = targetAgentId,
+            Allowed = decision.Allowed,
+            Reason = decision.Reason,
+            HasExplicitPolicy = decision.HasExplicitPolicy,
+            AllowedTargets = decision.AllowedTargets
+        });
+    }
+
+    /// <summary>
     /// Internal handoff from a manager agent to a specialist subagent.
     /// </summary>
     [HttpPost("agents/{agentId}/handoff")]
@@ -678,6 +712,17 @@ public sealed record HandoffAllowedTargetsResponse
     public required string TenantId { get; init; }
     public required string SourceAgentId { get; init; }
     public IReadOnlyList<string> Targets { get; init; } = Array.Empty<string>();
+}
+
+public sealed record HandoffPolicyDecisionResponse
+{
+    public required string TenantId { get; init; }
+    public required string SourceAgentId { get; init; }
+    public required string TargetAgentId { get; init; }
+    public required bool Allowed { get; init; }
+    public required string Reason { get; init; }
+    public required bool HasExplicitPolicy { get; init; }
+    public IReadOnlyList<string> AllowedTargets { get; init; } = Array.Empty<string>();
 }
 
 public sealed record HandoffExecutionRequest

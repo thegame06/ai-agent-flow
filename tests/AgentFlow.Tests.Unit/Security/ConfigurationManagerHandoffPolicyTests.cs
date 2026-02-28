@@ -45,4 +45,17 @@ public sealed class ConfigurationManagerHandoffPolicyTests
 
         Assert.False(policy.IsAllowed("tenant-1", "manager-agent", "manager-agent"));
     }
+
+    [Fact]
+    public void Evaluate_ReturnsDefaultAllow_WhenNoPolicyConfigured()
+    {
+        var cfg = new ConfigurationBuilder().AddInMemoryCollection().Build();
+        var policy = new ConfigurationManagerHandoffPolicy(cfg);
+
+        var decision = policy.Evaluate("tenant-1", "manager-agent", "sales-agent");
+
+        Assert.True(decision.Allowed);
+        Assert.Equal("no_explicit_policy_allow", decision.Reason);
+        Assert.False(decision.HasExplicitPolicy);
+    }
 }

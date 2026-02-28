@@ -55,6 +55,7 @@ export const endpoints = {
       detail: (tenantId: string, agentId: string, executionId: string) => `/api/v1/tenants/${tenantId}/agents/${agentId}/executions/${executionId}`,
       trigger: (tenantId: string, agentId: string) => `/api/v1/tenants/${tenantId}/agents/${agentId}/trigger`,
       handoffAllowedTargets: (tenantId: string, agentId: string) => `/api/v1/tenants/${tenantId}/agents/${agentId}/handoff/allowed-targets`,
+      handoffDecision: (tenantId: string, agentId: string, targetAgentId: string) => `/api/v1/tenants/${tenantId}/agents/${agentId}/handoff/decision?targetAgentId=${encodeURIComponent(targetAgentId)}`,
     },
     // Checkpoints (HITL)
     checkpoints: {
