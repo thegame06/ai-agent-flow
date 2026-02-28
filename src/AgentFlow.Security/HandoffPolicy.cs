@@ -5,6 +5,7 @@ namespace AgentFlow.Security;
 public interface IManagerHandoffPolicy
 {
     bool IsAllowed(string tenantId, string sourceAgentId, string targetAgentId);
+    IReadOnlyList<string> GetAllowedTargets(string tenantId, string sourceAgentId);
 }
 
 /// <summary>
@@ -23,6 +24,18 @@ public sealed class ConfigurationManagerHandoffPolicy : IManagerHandoffPolicy
     public ConfigurationManagerHandoffPolicy(IConfiguration configuration)
     {
         _configuration = configuration;
+    }
+
+    public IReadOnlyList<string> GetAllowedTargets(string tenantId, string sourceAgentId)
+    {
+        if (string.IsNullOrWhiteSpace(tenantId) || string.IsNullOrWhiteSpace(sourceAgentId))
+            return Array.Empty<string>();
+
+        var managerSection = _configuration.GetSection($"HandoffPolicy:Tenants:{tenantId}:Managers:{sourceAgentId}");
+        if (!managerSection.Exists())
+            return Array.Empty<string>();
+
+        return managerSection.Get<string[]>() ?? Array.Empty<string>();
     }
 
     public bool IsAllowed(string tenantId, string sourceAgentId, string targetAgentId)

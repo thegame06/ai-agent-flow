@@ -306,6 +306,31 @@ public sealed class AgentExecutionsController : ControllerBase
 
 
     /// <summary>
+    /// Returns effective allowed target subagents for a manager agent in a tenant.
+    /// </summary>
+    [HttpGet("agents/{agentId}/handoff/allowed-targets")]
+    [ProducesResponseType(typeof(HandoffAllowedTargetsResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public IActionResult GetAllowedHandoffTargets(
+        [FromRoute] string tenantId,
+        [FromRoute] string agentId)
+    {
+        var context = _tenantContext.Current!;
+
+        if (context.TenantId != tenantId && !context.IsPlatformAdmin)
+            return Forbid();
+
+        var targets = _handoffPolicy.GetAllowedTargets(tenantId, agentId);
+
+        return Ok(new HandoffAllowedTargetsResponse
+        {
+            TenantId = tenantId,
+            SourceAgentId = agentId,
+            Targets = targets
+        });
+    }
+
+    /// <summary>
     /// Internal handoff from a manager agent to a specialist subagent.
     /// </summary>
     [HttpPost("agents/{agentId}/handoff")]
@@ -326,7 +351,27 @@ public sealed class AgentExecutionsController : ControllerBase
             return Forbid();
 
         if (!_handoffPolicy.IsAllowed(tenantId, agentId, body.TargetAgentId))
+        {
+            await _auditMemory.RecordAsync(new AuditEntry
+            {
+                ExecutionId = body.SessionId,
+                AgentId = agentId,
+                TenantId = tenantId,
+                UserId = context.UserId,
+                EventType = AuditEventType.SecurityViolation,
+                CorrelationId = body.CorrelationId ?? body.SessionId,
+                EventJson = System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    reason = "handoff_target_not_allowed",
+                    sourceAgent = agentId,
+                    targetAgent = body.TargetAgentId,
+                    body.Intent,
+                    body.SessionId
+                })
+            }, ct);
+
             return Forbid();
+        }
 
         if (!TryValidateHandoffPayload(body, out var validationError))
             return BadRequest(new { error = validationError });
@@ -627,6 +672,13 @@ public sealed record PreviewExecutionResponse
     public RuntimeSnapshotDto? RuntimeSnapshot { get; init; }
 }
 
+
+public sealed record HandoffAllowedTargetsResponse
+{
+    public required string TenantId { get; init; }
+    public required string SourceAgentId { get; init; }
+    public IReadOnlyList<string> Targets { get; init; } = Array.Empty<string>();
+}
 
 public sealed record HandoffExecutionRequest
 {

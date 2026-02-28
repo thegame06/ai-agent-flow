@@ -31,6 +31,10 @@ public sealed class ConfigurationManagerHandoffPolicyTests
 
         Assert.False(policy.IsAllowed("tenant-1", "manager-agent", "sales-agent"));
         Assert.True(policy.IsAllowed("tenant-1", "manager-agent", "collections-bot"));
+
+        var targets = policy.GetAllowedTargets("tenant-1", "manager-agent");
+        Assert.Single(targets);
+        Assert.Equal("collections-bot", targets[0]);
     }
 
     [Fact]

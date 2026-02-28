@@ -12,6 +12,22 @@ namespace AgentFlow.Tests.Integration.Executions;
 
 public sealed class HandoffEndpointTests
 {
+
+    [Fact]
+    public void GetAllowedHandoffTargets_ReturnsTargets()
+    {
+        var controller = BuildController(
+            setupPolicy: p => p
+                .Setup(x => x.GetAllowedTargets("tenant-1", "manager-agent"))
+                .Returns(new[] { "collections-bot", "rentals-sales-bot" }));
+
+        var result = controller.GetAllowedHandoffTargets("tenant-1", "manager-agent");
+
+        var ok = Assert.IsType<OkObjectResult>(result);
+        var body = Assert.IsType<HandoffAllowedTargetsResponse>(ok.Value);
+        Assert.Equal(2, body.Targets.Count);
+    }
+
     [Fact]
     public async Task HandoffAsync_ReturnsBadRequest_WhenPayloadJsonIsInvalid()
     {
@@ -128,6 +144,8 @@ public sealed class HandoffEndpointTests
 
         handoffPolicy.Setup(x => x.IsAllowed(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
             .Returns(true);
+        handoffPolicy.Setup(x => x.GetAllowedTargets(It.IsAny<string>(), It.IsAny<string>()))
+            .Returns(Array.Empty<string>());
 
         audit.Setup(x => x.RecordAsync(It.IsAny<AuditEntry>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
