@@ -58,4 +58,23 @@ public sealed class ConfigurationManagerHandoffPolicyTests
         Assert.Equal("no_explicit_policy_allow", decision.Reason);
         Assert.False(decision.HasExplicitPolicy);
     }
+
+    [Fact]
+    public void Evaluate_ReturnsDefaultDeny_WhenStrictModeEnabledAndNoPolicyConfigured()
+    {
+        var cfg = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["HandoffPolicy:DefaultAllowWhenNoPolicy"] = "false"
+            })
+            .Build();
+
+        var policy = new ConfigurationManagerHandoffPolicy(cfg);
+
+        var decision = policy.Evaluate("tenant-1", "manager-agent", "sales-agent");
+
+        Assert.False(decision.Allowed);
+        Assert.Equal("no_explicit_policy_deny", decision.Reason);
+        Assert.False(decision.HasExplicitPolicy);
+    }
 }

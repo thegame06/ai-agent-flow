@@ -81,3 +81,7 @@ jobs:
     inputPattern: "yyyy_mm_dd_collection"
     ownerAgent: "collections-bot"
     idempotencyKeyPattern: "{tenant}:{jobId}:{date}"
+
+# Security hardening
+HandoffPolicy:
+  DefaultAllowWhenNoPolicy: false  # strict mode recommended in production

@@ -56,7 +56,12 @@ public sealed class ConfigurationManagerHandoffPolicy : IManagerHandoffPolicy
         var hasExplicitPolicy = managerSection.Exists();
 
         if (!hasExplicitPolicy)
-            return new HandoffPolicyDecision(true, "no_explicit_policy_allow", false, targets);
+        {
+            var defaultAllowWhenNoPolicy = _configuration.GetValue<bool?>("HandoffPolicy:DefaultAllowWhenNoPolicy") ?? true;
+            return defaultAllowWhenNoPolicy
+                ? new HandoffPolicyDecision(true, "no_explicit_policy_allow", false, targets)
+                : new HandoffPolicyDecision(false, "no_explicit_policy_deny", false, targets);
+        }
 
         var allowed = targets.Any(x => string.Equals(x, targetAgentId, StringComparison.OrdinalIgnoreCase));
         return allowed
