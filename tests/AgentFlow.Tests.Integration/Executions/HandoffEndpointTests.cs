@@ -28,6 +28,23 @@ public sealed class HandoffEndpointTests
         Assert.Equal(2, body.Targets.Count);
     }
 
+
+    [Fact]
+    public void GetHandoffDecision_ReturnsDecision()
+    {
+        var controller = BuildController(
+            setupPolicy: p => p
+                .Setup(x => x.Evaluate("tenant-1", "manager-agent", "collections-bot"))
+                .Returns(new HandoffPolicyDecision(true, "target_in_allowlist", true, new[] { "collections-bot" })));
+
+        var result = controller.GetHandoffDecision("tenant-1", "manager-agent", "collections-bot");
+
+        var ok = Assert.IsType<OkObjectResult>(result);
+        var body = Assert.IsType<HandoffPolicyDecisionResponse>(ok.Value);
+        Assert.True(body.Allowed);
+        Assert.Equal("target_in_allowlist", body.Reason);
+    }
+
     [Fact]
     public async Task HandoffAsync_ReturnsBadRequest_WhenPayloadJsonIsInvalid()
     {

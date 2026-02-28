@@ -8,8 +8,10 @@ import Card from '@mui/material/Card';
 import Chip from '@mui/material/Chip';
 import Grid from '@mui/material/Grid';
 import Stack from '@mui/material/Stack';
+import Alert from '@mui/material/Alert';
 import Button from '@mui/material/Button';
 import Divider from '@mui/material/Divider';
+import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import CardContent from '@mui/material/CardContent';
 import { alpha, useTheme } from '@mui/material/styles';
@@ -54,6 +56,9 @@ export default function AgentDetailPage() {
   const [currentTab, setCurrentTab] = useState('overview');
   const [allowedTargets, setAllowedTargets] = useState<string[]>([]);
   const [allowlistVisible, setAllowlistVisible] = useState(false);
+  const [targetAgentInput, setTargetAgentInput] = useState('');
+  const [decisionLoading, setDecisionLoading] = useState(false);
+  const [policyDecision, setPolicyDecision] = useState<{allowed:boolean; reason:string; hasExplicitPolicy:boolean} | null>(null);
 
   useEffect(() => {
     const fetchAgentDetail = async () => {
@@ -97,6 +102,31 @@ export default function AgentDetailPage() {
 
   const handleBack = () => {
     router.back();
+  };
+
+
+  const evaluateDecision = async () => {
+    if (!id || !targetAgentInput.trim()) {
+      setPolicyDecision(null);
+      return;
+    }
+
+    try {
+      setDecisionLoading(true);
+      const response = await axios.get(
+        endpoints.agentflow.executions.handoffDecision(tenantId, id as string, targetAgentInput.trim())
+      );
+      setPolicyDecision({
+        allowed: !!response.data?.allowed,
+        reason: response.data?.reason ?? 'unknown',
+        hasExplicitPolicy: !!response.data?.hasExplicitPolicy,
+      });
+    } catch (error) {
+      console.error('Failed to evaluate handoff decision:', error);
+      setPolicyDecision({ allowed: false, reason: 'evaluation_failed', hasExplicitPolicy: false });
+    } finally {
+      setDecisionLoading(false);
+    }
   };
 
   if (loading) {
@@ -355,6 +385,34 @@ export default function AgentDetailPage() {
                 </CardContent>
               </Card>
             )}
+
+            <Card>
+              <CardContent>
+                <Typography variant="h6" gutterBottom>
+                  Policy Decision Preview
+                </Typography>
+                <Divider sx={{ mb: 2 }} />
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ xs: 'stretch', sm: 'center' }}>
+                  <TextField
+                    label="Target Subagent ID"
+                    size="small"
+                    value={targetAgentInput}
+                    onChange={(e) => setTargetAgentInput(e.target.value)}
+                    fullWidth
+                  />
+                  <Button variant="contained" onClick={evaluateDecision} disabled={decisionLoading || !targetAgentInput.trim()}>
+                    {decisionLoading ? 'Evaluating...' : 'Evaluate'}
+                  </Button>
+                </Stack>
+
+                {policyDecision && (
+                  <Alert severity={policyDecision.allowed ? 'success' : 'error'} sx={{ mt: 2 }}>
+                    Decision: <strong>{policyDecision.allowed ? 'ALLOW' : 'DENY'}</strong> · reason: <strong>{policyDecision.reason}</strong>{' '}
+                    ({policyDecision.hasExplicitPolicy ? 'explicit policy' : 'fallback/default'})
+                  </Alert>
+                )}
+              </CardContent>
+            </Card>
 
             <Card>
               <CardContent>
