@@ -1,0 +1,83 @@
+version: 1
+tenant:
+  id: "tenant_demo"
+  name: "Tenant Demo"
+  timezone: "America/Managua"
+
+manager:
+  agentId: "manager-agent"
+  session:
+    ttlMinutes: 1440
+    stickyRouting: true
+    lockStrategy: "optimistic" # optimistic|pessimistic
+  routing:
+    defaultAgent: "general-agent"
+    intentMap:
+      rentals_quote: "rentals-sales-bot"
+      rentals_reservation: "rentals-sales-bot"
+      collections_reminder: "collections-bot"
+      payments_proof: "payments-verification-bot"
+  idempotency:
+    dedupeWindowMinutes: 30
+    keyPattern: "{tenant}:{channel}:{messageId}"
+
+agents:
+  topology:
+    manager: "manager-agent"
+    subagents:
+      - "rentals-sales-bot"
+      - "collections-bot"
+      - "payments-verification-bot"
+  communication:
+    externalReplyAllowedOnlyForManager: true
+    subagentDirectReplyMode: "disabled" # disabled|test-only
+    requireCorrelationIdOnHandoff: true
+  testMode:
+    enabled: true
+    isolatedFromProductionSessions: true
+    auditTag: "subagent_test"
+
+channels:
+  - channel: "whatsapp"
+    enabled: true
+    inbound:
+      webhookPath: "/webhooks/whatsapp/tenant_demo"
+    outbound:
+      rateLimitPerMinute: 60
+      retries: 3
+
+mcp:
+  servers:
+    - id: "mcp_gdrive_prod"
+      provider: "gdrive"
+      enabled: true
+      endpoint: "https://mcp-gdrive.example.com"
+      authRef: "secret://tenant_demo/mcp/gdrive"
+    - id: "mcp_gsheets_prod"
+      provider: "gsheets"
+      enabled: true
+      endpoint: "https://mcp-gsheets.example.com"
+      authRef: "secret://tenant_demo/mcp/gsheets"
+
+  bindings:
+    - contractAction: "records.read"
+      serverId: "mcp_gsheets_prod"
+      toolName: "sheets.read_rows"
+      enabled: true
+    - contractAction: "records.upsert"
+      serverId: "mcp_gsheets_prod"
+      toolName: "sheets.update_rows"
+      enabled: true
+    - contractAction: "files.upload"
+      serverId: "mcp_gdrive_prod"
+      toolName: "drive.upload_file"
+      enabled: true
+
+jobs:
+  - id: "collections_daily_9am"
+    enabled: true
+    cron: "0 9 * * *"
+    timezone: "America/Managua"
+    inputPattern: "yyyy_mm_dd_collection"
+    ownerAgent: "collections-bot"
+    idempotencyKeyPattern: "{tenant}:{jobId}:{date}"
