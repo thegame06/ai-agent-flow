@@ -2,6 +2,7 @@ using AgentFlow.Abstractions;
 using AgentFlow.Application.Channels;
 using AgentFlow.Domain.Aggregates;
 using AgentFlow.Domain.Repositories;
+using AgentFlow.Security;
 using Microsoft.Extensions.Logging;
 
 namespace AgentFlow.Core.Engine;
@@ -16,6 +17,8 @@ public sealed class ChannelGateway : IChannelGateway
     private readonly IChannelSessionRepository _sessionRepo;
     private readonly IChannelMessageRepository _messageRepo;
     private readonly IAgentExecutor _agentExecutor;
+    private readonly IAgentHandoffExecutor _handoffExecutor;
+    private readonly IManagerHandoffPolicy _handoffPolicy;
     private readonly ILogger<ChannelGateway> _logger;
 
     public ChannelGateway(
@@ -23,6 +26,8 @@ public sealed class ChannelGateway : IChannelGateway
         IChannelSessionRepository sessionRepo,
         IChannelMessageRepository messageRepo,
         IAgentExecutor agentExecutor,
+        IAgentHandoffExecutor handoffExecutor,
+        IManagerHandoffPolicy handoffPolicy,
         IEnumerable<IChannelHandler> handlers,
         ILogger<ChannelGateway> logger)
     {
@@ -30,6 +35,8 @@ public sealed class ChannelGateway : IChannelGateway
         _sessionRepo = sessionRepo;
         _messageRepo = messageRepo;
         _agentExecutor = agentExecutor;
+        _handoffExecutor = handoffExecutor;
+        _handoffPolicy = handoffPolicy;
         _logger = logger;
 
         foreach (var handler in handlers)
@@ -100,16 +107,61 @@ public sealed class ChannelGateway : IChannelGateway
             var executionResult = await _agentExecutor.ExecuteAsync(executionRequest, ct);
             incomingMessage.LinkExecution(executionResult.ExecutionId);
 
+            var finalResponse = executionResult.FinalResponse;
+            var executionIdForOutgoing = executionResult.ExecutionId;
+
+            var handoff = TryParseHandoffDirective(finalResponse);
+            if (handoff is not null && session is not null)
+            {
+                if (_handoffPolicy.IsAllowed(incomingMessage.TenantId, agentKey, handoff.TargetAgentId))
+                {
+                    var handoffResponse = await _handoffExecutor.ExecuteAsync(new AgentHandoffRequest
+                    {
+                        TenantId = incomingMessage.TenantId,
+                        SessionId = incomingMessage.SessionId,
+                        CorrelationId = incomingMessage.SessionId,
+                        SourceAgentKey = agentKey,
+                        TargetAgentKey = handoff.TargetAgentId,
+                        Intent = handoff.Intent,
+                        PayloadJson = handoff.PayloadJson,
+                        Metadata = new Dictionary<string, string>
+                        {
+                            ["channelId"] = incomingMessage.ChannelId,
+                            ["source"] = "channel-gateway"
+                        }
+                    }, ct);
+
+                    if (handoffResponse.Ok)
+                    {
+                        finalResponse = ExtractResponseText(handoffResponse.ResultJson) ?? handoffResponse.ResultJson;
+                        executionIdForOutgoing = handoffResponse.StatePatch.TryGetValue("lastExecutionId", out var delegatedId)
+                            ? delegatedId
+                            : executionIdForOutgoing;
+
+                        session.LinkAgent(handoff.TargetAgentId);
+                        await _sessionRepo.UpdateAsync(session, ct);
+                    }
+                    else
+                    {
+                        finalResponse = "I couldn't complete that request right now.";
+                    }
+                }
+                else
+                {
+                    finalResponse = "That delegation target is not allowed by policy.";
+                }
+            }
+
             // Create outgoing message
             var outgoingMessage = ChannelMessage.CreateOutgoing(
                 incomingMessage.TenantId,
                 incomingMessage.ChannelId,
                 incomingMessage.SessionId,
                 incomingMessage.From,
-                executionResult.FinalResponse ?? "Sorry, I couldn't process that."
+                finalResponse ?? "Sorry, I couldn't process that."
             );
 
-            outgoingMessage.LinkExecution(executionResult.ExecutionId);
+            outgoingMessage.LinkExecution(executionIdForOutgoing);
 
             // Send reply through channel
             var sendResult = await SendMessageAsync(incomingMessage.ChannelId, outgoingMessage, ct);
@@ -182,6 +234,68 @@ public sealed class ChannelGateway : IChannelGateway
             ? BroadcastResult.Ok(successCount)
             : BroadcastResult.Partial(successCount, failedIds.Count, failedIds);
     }
+
+    private static HandoffDirective? TryParseHandoffDirective(string? response)
+    {
+        if (string.IsNullOrWhiteSpace(response))
+            return null;
+
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(response);
+            var root = doc.RootElement;
+            if (root.ValueKind != System.Text.Json.JsonValueKind.Object)
+                return null;
+
+            if (!root.TryGetProperty("type", out var typeEl) ||
+                !string.Equals(typeEl.GetString(), "handoff", StringComparison.OrdinalIgnoreCase))
+                return null;
+
+            if (!root.TryGetProperty("targetAgentId", out var targetEl) || string.IsNullOrWhiteSpace(targetEl.GetString()))
+                return null;
+
+            var intent = root.TryGetProperty("intent", out var intentEl) && !string.IsNullOrWhiteSpace(intentEl.GetString())
+                ? intentEl.GetString()!
+                : "delegated_task";
+
+            var payloadJson = root.TryGetProperty("payload", out var payloadEl)
+                ? payloadEl.GetRawText()
+                : "{}";
+
+            return new HandoffDirective(targetEl.GetString()!, intent, payloadJson);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string? ExtractResponseText(string? responseJson)
+    {
+        if (string.IsNullOrWhiteSpace(responseJson))
+            return responseJson;
+
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(responseJson);
+            var root = doc.RootElement;
+            if (root.ValueKind == System.Text.Json.JsonValueKind.Object)
+            {
+                if (root.TryGetProperty("message", out var msg) && msg.ValueKind == System.Text.Json.JsonValueKind.String)
+                    return msg.GetString();
+                if (root.TryGetProperty("finalResponse", out var final) && final.ValueKind == System.Text.Json.JsonValueKind.String)
+                    return final.GetString();
+            }
+        }
+        catch
+        {
+            // response is plain text
+        }
+
+        return responseJson;
+    }
+
+    private sealed record HandoffDirective(string TargetAgentId, string Intent, string PayloadJson);
     private static string ResolveAgentKey(ChannelDefinition channel, ChannelSession? session)
     {
         // Sticky routing: preserve owner agent for the current session.
