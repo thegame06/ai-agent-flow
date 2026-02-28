@@ -32,6 +32,30 @@ public sealed class HandoffEndpointTests
         Assert.IsType<BadRequestObjectResult>(result);
     }
 
+
+    [Fact]
+    public async Task HandoffAsync_ReturnsForbid_WhenTargetNotAllowedByPolicy()
+    {
+        var controller = BuildController(
+            setupPolicy: p => p
+                .Setup(x => x.IsAllowed("tenant-1", "manager-agent", "collections-bot"))
+                .Returns(false));
+
+        var result = await controller.HandoffAsync(
+            "tenant-1",
+            "manager-agent",
+            new HandoffExecutionRequest
+            {
+                SessionId = "sess-1",
+                TargetAgentId = "collections-bot",
+                Intent = "collections_reminder",
+                PayloadJson = "{\"ok\":true}"
+            },
+            CancellationToken.None);
+
+        Assert.IsType<ForbidResult>(result);
+    }
+
     [Fact]
     public async Task HandoffAsync_RecordsAuditEvents_WhenHandoffSucceeds()
     {
@@ -72,6 +96,7 @@ public sealed class HandoffEndpointTests
 
     private static AgentExecutionsController BuildController(
         Action<Mock<IAgentHandoffExecutor>>? setupHandoff = null,
+        Action<Mock<IManagerHandoffPolicy>>? setupPolicy = null,
         Action<Mock<IAuditMemory>>? setupAudit = null)
     {
         var executor = new Mock<IAgentExecutor>();
@@ -81,6 +106,7 @@ public sealed class HandoffEndpointTests
         var segment = new Mock<ISegmentRoutingService>();
         var authz = new Mock<IAgentAuthorizationService>();
         var handoff = new Mock<IAgentHandoffExecutor>();
+        var handoffPolicy = new Mock<IManagerHandoffPolicy>();
         var audit = new Mock<IAuditMemory>();
         var tenantContext = new TenantContextAccessor();
 
@@ -100,10 +126,14 @@ public sealed class HandoffEndpointTests
         handoff.Setup(x => x.ExecuteAsync(It.IsAny<AgentHandoffRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AgentHandoffResponse { Ok = true, Retryable = false, ResultJson = "{}" });
 
+        handoffPolicy.Setup(x => x.IsAllowed(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
+            .Returns(true);
+
         audit.Setup(x => x.RecordAsync(It.IsAny<AuditEntry>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
         setupHandoff?.Invoke(handoff);
+        setupPolicy?.Invoke(handoffPolicy);
         setupAudit?.Invoke(audit);
 
         return new AgentExecutionsController(
@@ -114,6 +144,7 @@ public sealed class HandoffEndpointTests
             segment.Object,
             authz.Object,
             handoff.Object,
+            handoffPolicy.Object,
             audit.Object,
             tenantContext,
             NullLogger<AgentExecutionsController>.Instance);
