@@ -1,0 +1,36 @@
+{
+  "handoffRequest": {
+    "tenant_id": "tenant_demo",
+    "session_id": "sess_123",
+    "correlation_id": "corr_123",
+    "target_agent": "collections-bot",
+    "intent": "collections_reminder",
+    "payload": {
+      "customer_id": "C001",
+      "amount_due": 125.5,
+      "due_date": "2026-02-27"
+    },
+    "policy_context": {
+      "scopes": ["records.read", "records.upsert"]
+    }
+  },
+  "handoffResponse": {
+    "ok": true,
+    "result": {
+      "message_preview": "Hola, tienes un pago pendiente..."
+    },
+    "error_code": null,
+    "retryable": false,
+    "state_patch": {
+      "status": "sent",
+      "attempt_count": 1
+    },
+    "tool_calls": [
+      {
+        "contract_action": "records.upsert",
+        "provider": "gsheets",
+        "ok": true
+      }
+    ]
+  }
+}
