@@ -41,3 +41,11 @@ coverage/
 # Logs
 logs/
 *.log
+
+
+tools/mcp-test-server/node_modules/
+tools/whatsapp-qr-bridge/node_modules/
+tools/whatsapp-qr-bridge/.wwebjs_cache/
+tools/whatsapp-qr-bridge/.wwebjs_auth
+
+.agent/run/

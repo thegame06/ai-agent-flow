@@ -66,10 +66,17 @@ public sealed class WhatsAppWebQrTransport : IWhatsAppTransport
             return;
 
         ApplyBridgeAuth();
-        await _httpClient.PostAsync(
-            $"{_options.QrBridgeBaseUrl.TrimEnd('/')}/session/disconnect",
-            new StringContent(JsonSerializer.Serialize(new { channelId = _channelId }), Encoding.UTF8, "application/json"),
-            ct);
+        try
+        {
+            await _httpClient.PostAsync(
+                $"{_options.QrBridgeBaseUrl.TrimEnd('/')}/session/disconnect",
+                new StringContent(JsonSerializer.Serialize(new { channelId = _channelId }), Encoding.UTF8, "application/json"),
+                ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "QR bridge disconnect failed (non-blocking) for channel {ChannelId}", _channelId);
+        }
     }
 
     public async Task<bool> IsConnectedAsync(CancellationToken ct = default)
