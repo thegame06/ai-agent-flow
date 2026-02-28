@@ -129,5 +129,8 @@ public enum AuditEventType
     ToolFailed,
     MemoryRead,
     MemoryWritten,
-    SecurityViolation
+    SecurityViolation,
+    HandoffRequested,
+    HandoffCompleted,
+    HandoffFailed
 }

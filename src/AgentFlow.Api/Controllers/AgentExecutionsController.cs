@@ -1,4 +1,5 @@
 using AgentFlow.Abstractions;
+using AgentFlow.Application.Memory;
 using AgentFlow.Domain.Repositories;
 using AgentFlow.Evaluation;
 using AgentFlow.Security;
@@ -19,6 +20,7 @@ public sealed class AgentExecutionsController : ControllerBase
     private readonly ISegmentRoutingService _segmentRouting;
     private readonly IAgentAuthorizationService _authz;
     private readonly IAgentHandoffExecutor _handoffExecutor;
+    private readonly IAuditMemory _auditMemory;
     private readonly ITenantContextAccessor _tenantContext;
     private readonly ILogger<AgentExecutionsController> _logger;
 
@@ -30,6 +32,7 @@ public sealed class AgentExecutionsController : ControllerBase
         ISegmentRoutingService segmentRouting,
         IAgentAuthorizationService authz,
         IAgentHandoffExecutor handoffExecutor,
+        IAuditMemory auditMemory,
         ITenantContextAccessor tenantContext,
         ILogger<AgentExecutionsController> logger)
     {
@@ -40,6 +43,7 @@ public sealed class AgentExecutionsController : ControllerBase
         _segmentRouting = segmentRouting;
         _authz = authz;
         _handoffExecutor = handoffExecutor;
+        _auditMemory = auditMemory;
         _tenantContext = tenantContext;
         _logger = logger;
     }
@@ -318,6 +322,9 @@ public sealed class AgentExecutionsController : ControllerBase
         if (!await _authz.CanHandoffExecutionAsync(context, agentId, body.TargetAgentId, ct))
             return Forbid();
 
+        if (!TryValidateHandoffPayload(body, out var validationError))
+            return BadRequest(new { error = validationError });
+
         var handoff = new AgentHandoffRequest
         {
             TenantId = tenantId,
@@ -331,7 +338,44 @@ public sealed class AgentExecutionsController : ControllerBase
             Metadata = body.Metadata ?? new Dictionary<string, string>()
         };
 
+        await _auditMemory.RecordAsync(new AuditEntry
+        {
+            ExecutionId = handoff.SessionId,
+            AgentId = handoff.SourceAgentKey,
+            TenantId = tenantId,
+            UserId = context.UserId,
+            EventType = AuditEventType.HandoffRequested,
+            CorrelationId = handoff.CorrelationId,
+            EventJson = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                sourceAgent = handoff.SourceAgentKey,
+                targetAgent = handoff.TargetAgentKey,
+                handoff.Intent,
+                handoff.SessionId
+            })
+        }, ct);
+
         var result = await _handoffExecutor.ExecuteAsync(handoff, ct);
+
+        await _auditMemory.RecordAsync(new AuditEntry
+        {
+            ExecutionId = handoff.SessionId,
+            AgentId = handoff.SourceAgentKey,
+            TenantId = tenantId,
+            UserId = context.UserId,
+            EventType = result.Ok ? AuditEventType.HandoffCompleted : AuditEventType.HandoffFailed,
+            CorrelationId = handoff.CorrelationId,
+            EventJson = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                sourceAgent = handoff.SourceAgentKey,
+                targetAgent = handoff.TargetAgentKey,
+                handoff.Intent,
+                handoff.SessionId,
+                result.Ok,
+                result.ErrorCode,
+                result.Retryable
+            })
+        }, ct);
 
         return Ok(new HandoffExecutionResponse
         {
@@ -342,6 +386,59 @@ public sealed class AgentExecutionsController : ControllerBase
             StatePatch = result.StatePatch,
             ToolCalls = result.ToolCalls
         });
+    }
+
+
+    private static bool TryValidateHandoffPayload(HandoffExecutionRequest body, out string? error)
+    {
+        error = null;
+
+        if (string.IsNullOrWhiteSpace(body.SessionId))
+        {
+            error = "sessionId is required.";
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(body.TargetAgentId))
+        {
+            error = "targetAgentId is required.";
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(body.Intent))
+        {
+            error = "intent is required.";
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(body.PayloadJson))
+        {
+            error = "payloadJson is required.";
+            return false;
+        }
+
+        if (body.PayloadJson.Length > 50_000)
+        {
+            error = "payloadJson exceeds max allowed size (50k).";
+            return false;
+        }
+
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(body.PayloadJson);
+            if (doc.RootElement.ValueKind is not (System.Text.Json.JsonValueKind.Object or System.Text.Json.JsonValueKind.Array))
+            {
+                error = "payloadJson must be a JSON object or array.";
+                return false;
+            }
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            error = "payloadJson must be valid JSON.";
+            return false;
+        }
+
+        return true;
     }
 
     /// <summary>
