@@ -18,8 +18,8 @@ import LinearProgress from '@mui/material/LinearProgress';
 import { paths } from 'src/routes/paths';
 import { useRouter , useParams } from 'src/routes/hooks';
 
-import axios from 'src/lib/axios';
 import { CONFIG } from 'src/global-config';
+import axios, { endpoints } from 'src/lib/axios';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
 
@@ -52,6 +52,8 @@ export default function AgentDetailPage() {
   const [executions, setExecutions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentTab, setCurrentTab] = useState('overview');
+  const [allowedTargets, setAllowedTargets] = useState<string[]>([]);
+  const [allowlistVisible, setAllowlistVisible] = useState(false);
 
   useEffect(() => {
     const fetchAgentDetail = async () => {
@@ -65,6 +67,18 @@ export default function AgentDetailPage() {
           `/api/v1/tenants/${tenantId}/agents/${id}/executions?limit=10`
         );
         setExecutions(execResponse.data);
+
+        // Fetch manager handoff allowlist (may be forbidden based on permissions)
+        try {
+          const allowResponse = await axios.get(
+            endpoints.agentflow.executions.handoffAllowedTargets(tenantId, id as string)
+          );
+          setAllowedTargets(allowResponse.data?.targets ?? []);
+          setAllowlistVisible(true);
+        } catch {
+          setAllowedTargets([]);
+          setAllowlistVisible(false);
+        }
       } catch (error) {
         console.error('Failed to fetch agent details:', error);
       } finally {
@@ -319,11 +333,34 @@ export default function AgentDetailPage() {
         )}
 
         {currentTab === 'configuration' && (
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Full Configuration
-              </Typography>
+          <Stack spacing={3}>
+            {allowlistVisible && (
+              <Card>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>
+                    Manager Handoff Allowlist
+                  </Typography>
+                  <Divider sx={{ mb: 2 }} />
+                  {allowedTargets.length === 0 ? (
+                    <Typography variant="body2" color="text.secondary">
+                      No explicit allowed targets configured for this manager agent.
+                    </Typography>
+                  ) : (
+                    <Stack direction="row" spacing={1} flexWrap="wrap">
+                      {allowedTargets.map((target) => (
+                        <Chip key={target} label={target} color="primary" variant="outlined" sx={{ mb: 1 }} />
+                      ))}
+                    </Stack>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            <Card>
+              <CardContent>
+                <Typography variant="h6" gutterBottom>
+                  Full Configuration
+                </Typography>
               <Divider sx={{ mb: 2 }} />
               <Box
                 component="pre"
@@ -339,6 +376,7 @@ export default function AgentDetailPage() {
               </Box>
             </CardContent>
           </Card>
+          </Stack>
         )}
 
         {currentTab === 'executions' && (
