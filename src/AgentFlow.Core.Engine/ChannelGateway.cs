@@ -69,11 +69,20 @@ public sealed class ChannelGateway : IChannelGateway
 
         try
         {
+            var session = await _sessionRepo.GetByIdAsync(incomingMessage.SessionId, incomingMessage.TenantId, ct);
+            var agentKey = ResolveAgentKey(channel, session);
+
+            if (session != null)
+            {
+                session.LinkAgent(agentKey);
+                await _sessionRepo.UpdateAsync(session, ct);
+            }
+
             // Execute agent
             var executionRequest = new AgentExecutionRequest
             {
                 TenantId = incomingMessage.TenantId,
-                AgentKey = channel.Metadata?.GetValueOrDefault("DefaultAgentId") ?? "default-agent",
+                AgentKey = agentKey,
                 UserId = incomingMessage.From,
                 UserMessage = incomingMessage.Content,
                 ContextJson = System.Text.Json.JsonSerializer.Serialize(new
@@ -173,4 +182,13 @@ public sealed class ChannelGateway : IChannelGateway
             ? BroadcastResult.Ok(successCount)
             : BroadcastResult.Partial(successCount, failedIds.Count, failedIds);
     }
+    private static string ResolveAgentKey(ChannelDefinition channel, ChannelSession? session)
+    {
+        // Sticky routing: preserve owner agent for the current session.
+        if (!string.IsNullOrWhiteSpace(session?.AgentId))
+            return session.AgentId!;
+
+        return channel.Metadata?.GetValueOrDefault("DefaultAgentId") ?? "default-agent";
+    }
+
 }
