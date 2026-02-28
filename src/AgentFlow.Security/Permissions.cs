@@ -20,6 +20,7 @@ public static class AgentFlowPermissions
     public const string ExecutionTrigger = "execution:trigger";
     public const string ExecutionRead = "execution:read";
     public const string ExecutionCancel = "execution:cancel";
+    public const string ExecutionHandoff = "execution:handoff";
     public const string ExecutionReadAll = "execution:read_all"; // All tenant executions
 
     // Tool permissions
@@ -62,6 +63,7 @@ public static class AgentFlowRoles
         ..Viewer,
         AgentFlowPermissions.ExecutionTrigger,
         AgentFlowPermissions.ExecutionCancel,
+        AgentFlowPermissions.ExecutionHandoff,
         AgentFlowPermissions.ToolExecuteLow,
         AgentFlowPermissions.ToolExecuteMedium
     ];
@@ -100,6 +102,7 @@ public interface IAgentAuthorizationService
     Task<bool> CanPublishAgentAsync(TenantContext context, string agentId, CancellationToken ct = default);
     Task<bool> CanTriggerExecutionAsync(TenantContext context, string agentId, CancellationToken ct = default);
     Task<bool> CanCancelExecutionAsync(TenantContext context, string executionId, CancellationToken ct = default);
+    Task<bool> CanHandoffExecutionAsync(TenantContext context, string sourceAgentId, string targetAgentId, CancellationToken ct = default);
 }
 
 public sealed class AgentAuthorizationService : IAgentAuthorizationService
@@ -122,4 +125,7 @@ public sealed class AgentAuthorizationService : IAgentAuthorizationService
 
     public Task<bool> CanCancelExecutionAsync(TenantContext context, string executionId, CancellationToken ct = default)
         => Task.FromResult(context.HasPermission(AgentFlowPermissions.ExecutionCancel));
+
+    public Task<bool> CanHandoffExecutionAsync(TenantContext context, string sourceAgentId, string targetAgentId, CancellationToken ct = default)
+        => Task.FromResult(context.HasPermission(AgentFlowPermissions.ExecutionHandoff));
 }

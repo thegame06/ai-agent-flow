@@ -315,6 +315,9 @@ public sealed class AgentExecutionsController : ControllerBase
         if (context.TenantId != tenantId && !context.IsPlatformAdmin)
             return Forbid();
 
+        if (!await _authz.CanHandoffExecutionAsync(context, agentId, body.TargetAgentId, ct))
+            return Forbid();
+
         var handoff = new AgentHandoffRequest
         {
             TenantId = tenantId,
