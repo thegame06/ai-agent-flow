@@ -11,6 +11,7 @@ import Stack from '@mui/material/Stack';
 import Alert from '@mui/material/Alert';
 import Button from '@mui/material/Button';
 import Divider from '@mui/material/Divider';
+import MenuItem from '@mui/material/MenuItem';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import CardContent from '@mui/material/CardContent';
@@ -59,6 +60,7 @@ export default function AgentDetailPage() {
   const [targetAgentInput, setTargetAgentInput] = useState('');
   const [decisionLoading, setDecisionLoading] = useState(false);
   const [policyDecision, setPolicyDecision] = useState<{allowed:boolean; reason:string; hasExplicitPolicy:boolean} | null>(null);
+  const [candidateTargets, setCandidateTargets] = useState<string[]>([]);
 
   useEffect(() => {
     const fetchAgentDetail = async () => {
@@ -72,6 +74,18 @@ export default function AgentDetailPage() {
           `/api/v1/tenants/${tenantId}/agents/${id}/executions?limit=10`
         );
         setExecutions(execResponse.data);
+
+        // Fetch agent catalog for target selection
+        try {
+          const agentsResponse = await axios.get(`/api/v1/tenants/${tenantId}/agents`);
+          const targets = (agentsResponse.data ?? [])
+            .filter((a: any) => a?.id && a.id !== id)
+            .filter((a: any) => a?.status !== 'Archived')
+            .map((a: any) => a.id as string);
+          setCandidateTargets(targets);
+        } catch {
+          setCandidateTargets([]);
+        }
 
         // Fetch manager handoff allowlist (may be forbidden based on permissions)
         try {
@@ -105,8 +119,10 @@ export default function AgentDetailPage() {
   };
 
 
-  const evaluateDecision = async () => {
-    if (!id || !targetAgentInput.trim()) {
+  const evaluateDecision = async (target?: string) => {
+    const targetValue = (target ?? targetAgentInput).trim();
+
+    if (!id || !targetValue) {
       setPolicyDecision(null);
       return;
     }
@@ -114,7 +130,7 @@ export default function AgentDetailPage() {
     try {
       setDecisionLoading(true);
       const response = await axios.get(
-        endpoints.agentflow.executions.handoffDecision(tenantId, id as string, targetAgentInput.trim())
+        endpoints.agentflow.executions.handoffDecision(tenantId, id as string, targetValue)
       );
       setPolicyDecision({
         allowed: !!response.data?.allowed,
@@ -394,14 +410,26 @@ export default function AgentDetailPage() {
                 <Divider sx={{ mb: 2 }} />
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ xs: 'stretch', sm: 'center' }}>
                   <TextField
+                    select
                     label="Target Subagent ID"
                     size="small"
                     value={targetAgentInput}
-                    onChange={(e) => setTargetAgentInput(e.target.value)}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setTargetAgentInput(value);
+                      void evaluateDecision(value);
+                    }}
                     fullWidth
-                  />
-                  <Button variant="contained" onClick={evaluateDecision} disabled={decisionLoading || !targetAgentInput.trim()}>
-                    {decisionLoading ? 'Evaluating...' : 'Evaluate'}
+                    helperText={candidateTargets.length === 0 ? 'No target agents available' : 'Select a target to evaluate policy decision'}
+                  >
+                    {candidateTargets.map((target) => (
+                      <MenuItem key={target} value={target}>
+                        {target}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                  <Button variant="contained" onClick={() => evaluateDecision()} disabled={decisionLoading || !targetAgentInput.trim()}>
+                    {decisionLoading ? 'Evaluating...' : 'Re-evaluate'}
                   </Button>
                 </Stack>
 
