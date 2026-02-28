@@ -150,6 +150,7 @@ public static class DependencyInjection
         // TenantContextAccessor: SCOPED (per-request). NEVER singleton.
         services.AddScoped<ITenantContextAccessor, TenantContextAccessor>();
         services.AddScoped<IAgentAuthorizationService, AgentAuthorizationService>();
+        services.AddSingleton<IManagerHandoffPolicy, ConfigurationManagerHandoffPolicy>();
 
         // JWT Authentication
         var jwtKey = configuration["Jwt:SecretKey"]

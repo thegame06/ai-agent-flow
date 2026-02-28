@@ -20,6 +20,7 @@ public sealed class AgentExecutionsController : ControllerBase
     private readonly ISegmentRoutingService _segmentRouting;
     private readonly IAgentAuthorizationService _authz;
     private readonly IAgentHandoffExecutor _handoffExecutor;
+    private readonly IManagerHandoffPolicy _handoffPolicy;
     private readonly IAuditMemory _auditMemory;
     private readonly ITenantContextAccessor _tenantContext;
     private readonly ILogger<AgentExecutionsController> _logger;
@@ -32,6 +33,7 @@ public sealed class AgentExecutionsController : ControllerBase
         ISegmentRoutingService segmentRouting,
         IAgentAuthorizationService authz,
         IAgentHandoffExecutor handoffExecutor,
+        IManagerHandoffPolicy handoffPolicy,
         IAuditMemory auditMemory,
         ITenantContextAccessor tenantContext,
         ILogger<AgentExecutionsController> logger)
@@ -43,6 +45,7 @@ public sealed class AgentExecutionsController : ControllerBase
         _segmentRouting = segmentRouting;
         _authz = authz;
         _handoffExecutor = handoffExecutor;
+        _handoffPolicy = handoffPolicy;
         _auditMemory = auditMemory;
         _tenantContext = tenantContext;
         _logger = logger;
@@ -320,6 +323,9 @@ public sealed class AgentExecutionsController : ControllerBase
             return Forbid();
 
         if (!await _authz.CanHandoffExecutionAsync(context, agentId, body.TargetAgentId, ct))
+            return Forbid();
+
+        if (!_handoffPolicy.IsAllowed(tenantId, agentId, body.TargetAgentId))
             return Forbid();
 
         if (!TryValidateHandoffPayload(body, out var validationError))
