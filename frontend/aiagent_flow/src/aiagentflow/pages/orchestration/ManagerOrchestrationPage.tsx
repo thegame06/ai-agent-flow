@@ -22,29 +22,34 @@ import { DashboardContent } from 'src/layouts/dashboard';
 import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
 
 type Agent = { id: string; name: string };
-type SessionRow = {
+type SessionRow = { id: string; channelType?: string; identifier?: string; agentId?: string; status?: string; messageCount?: number };
+type ExecutionRow = { id: string; status: string; createdAt: string; totalSteps?: number; totalTokensUsed?: number; correlationId?: string };
+type DecisionRow = { id: string; intent: string; targetAgentId: string; allowed: boolean; reason: string; hasExplicitPolicy: boolean };
+type IntentRule = {
   id: string;
-  channelType?: string;
-  identifier?: string;
-  agentId?: string;
-  status?: string;
-  messageCount?: number;
-};
-type ExecutionRow = {
-  id: string;
-  status: string;
-  createdAt: string;
-  totalSteps?: number;
-  totalTokensUsed?: number;
-  correlationId?: string;
-};
-type DecisionRow = {
-  id: string;
-  intent: string;
+  tenantId: string;
+  intentKey: string;
+  sourceAgentId: string;
   targetAgentId: string;
-  allowed: boolean;
-  reason: string;
-  hasExplicitPolicy: boolean;
+  priority: number;
+  enabled: boolean;
+  channel?: string;
+  conditionsJson?: string;
+  handoffPolicyJson?: string;
+  version: number;
+  updatedAt: string;
+};
+
+type RoutingAgent = {
+  id: string;
+  tenantId: string;
+  agentId: string;
+  agentType: string;
+  enabled: boolean;
+  testModeAllowed: boolean;
+  externalReplyAllowed: boolean;
+  capabilities: string[];
+  updatedAt: string;
 };
 
 const DEFAULT_INTENTS = ['sales', 'support', 'billing', 'collections', 'reservations'];
@@ -74,8 +79,26 @@ export default function ManagerOrchestrationPage() {
   const [managerATargets, setManagerATargets] = useState<string[]>([]);
   const [managerBTargets, setManagerBTargets] = useState<string[]>([]);
 
+  const [rules, setRules] = useState<IntentRule[]>([]);
+  const [routingAgents, setRoutingAgents] = useState<RoutingAgent[]>([]);
+  const [ruleIntentKey, setRuleIntentKey] = useState('general_support');
+  const [rulePriority, setRulePriority] = useState(100);
+  const [ruleChannel, setRuleChannel] = useState('');
+  const [ruleConditionsJson, setRuleConditionsJson] = useState('{}');
+  const [ruleHandoffPolicyJson, setRuleHandoffPolicyJson] = useState('{}');
+  const [simulateResult, setSimulateResult] = useState<any>(null);
+
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  const refreshRoutingData = async () => {
+    const [rulesRes, routingAgentsRes] = await Promise.all([
+      axios.get(endpoints.agentflow.intentRouting.rules(tenantId)),
+      axios.get(endpoints.agentflow.intentRouting.agents(tenantId)),
+    ]);
+    setRules((rulesRes.data ?? []) as IntentRule[]);
+    setRoutingAgents((routingAgentsRes.data ?? []) as RoutingAgent[]);
+  };
 
   useEffect(() => {
     const load = async () => {
@@ -86,16 +109,15 @@ export default function ManagerOrchestrationPage() {
           axios.get(`/api/v1/tenants/${tenantId}/channel-sessions?limit=50`),
         ]);
 
-        const list: Agent[] = (agentsRes.data ?? [])
-          .filter((a: any) => a?.id)
-          .map((a: any) => ({ id: a.id, name: a.name }));
-
+        const list: Agent[] = (agentsRes.data ?? []).filter((a: any) => a?.id).map((a: any) => ({ id: a.id, name: a.name }));
         setAgents(list);
         setSessions((sessionsRes.data ?? []) as SessionRow[]);
 
         if (!sourceAgentId && list.length > 0) setSourceAgentId(list[0].id);
         if (!managerA && list.length > 0) setManagerA(list[0].id);
         if (!managerB && list.length > 1) setManagerB(list[1].id);
+
+        await refreshRoutingData();
       } catch (e: any) {
         setMessage(e?.message ?? 'Failed to load orchestration data');
       } finally {
@@ -106,6 +128,7 @@ export default function ManagerOrchestrationPage() {
   }, [tenantId]);
 
   const availableTargets = useMemo(() => agents.filter((a) => a.id !== sourceAgentId), [agents, sourceAgentId]);
+  const sharedTargets = useMemo(() => managerATargets.filter((t) => managerBTargets.includes(t)), [managerATargets, managerBTargets]);
 
   const loadAllowedTargets = async (managerId = sourceAgentId) => {
     if (!managerId) return [] as string[];
@@ -127,9 +150,7 @@ export default function ManagerOrchestrationPage() {
   const evaluateDecision = async () => {
     if (!sourceAgentId || !targetAgentId) return;
     try {
-      const res = await axios.get(
-        endpoints.agentflow.executions.handoffDecision(tenantId, sourceAgentId, targetAgentId)
-      );
+      const res = await axios.get(endpoints.agentflow.executions.handoffDecision(tenantId, sourceAgentId, targetAgentId));
       setPolicyDecision(res.data);
     } catch (e: any) {
       setPolicyDecision(null);
@@ -141,19 +162,11 @@ export default function ManagerOrchestrationPage() {
     if (!sourceAgentId || !targetAgentId || !sessionId || !intent) return;
     try {
       const payload = (() => {
-        try {
-          return JSON.parse(payloadJson || '{}');
-        } catch {
-          return { raw: payloadJson };
-        }
+        try { return JSON.parse(payloadJson || '{}'); } catch { return { raw: payloadJson }; }
       })();
 
       const res = await axios.post(`/api/v1/tenants/${tenantId}/agents/${sourceAgentId}/handoff`, {
-        sessionId,
-        targetAgentId,
-        intent,
-        payloadJson: JSON.stringify(payload),
-        metadata: { initiatedFrom: 'manager-orchestration-ui' },
+        sessionId, targetAgentId, intent, payloadJson: JSON.stringify(payload), metadata: { initiatedFrom: 'manager-orchestration-ui' },
       });
 
       setHandoffResult(res.data);
@@ -175,9 +188,7 @@ export default function ManagerOrchestrationPage() {
       for (const intentName of intents) {
         for (const target of targets) {
           try {
-            const res = await axios.get(
-              endpoints.agentflow.executions.handoffDecision(tenantId, sourceAgentId, target)
-            );
+            const res = await axios.get(endpoints.agentflow.executions.handoffDecision(tenantId, sourceAgentId, target));
             rows.push({
               id: `${intentName}-${target}`,
               intent: intentName,
@@ -187,14 +198,7 @@ export default function ManagerOrchestrationPage() {
               hasExplicitPolicy: !!res.data?.hasExplicitPolicy,
             });
           } catch {
-            rows.push({
-              id: `${intentName}-${target}`,
-              intent: intentName,
-              targetAgentId: target,
-              allowed: false,
-              reason: 'decision_error',
-              hasExplicitPolicy: false,
-            });
+            rows.push({ id: `${intentName}-${target}`, intent: intentName, targetAgentId: target, allowed: false, reason: 'decision_error', hasExplicitPolicy: false });
           }
         }
       }
@@ -203,6 +207,65 @@ export default function ManagerOrchestrationPage() {
       setMessage('Routing matrix evaluated. Use this to define intent→sub-agent mapping.');
     } catch (e: any) {
       setMessage(e?.message ?? 'Failed to build routing matrix');
+    }
+  };
+
+  const createRule = async () => {
+    if (!sourceAgentId || !targetAgentId || !ruleIntentKey) return;
+    try {
+      await axios.post(endpoints.agentflow.intentRouting.rules(tenantId), {
+        intentKey: ruleIntentKey,
+        sourceAgentId,
+        targetAgentId,
+        priority: Number(rulePriority),
+        enabled: true,
+        channel: ruleChannel || null,
+        conditionsJson: ruleConditionsJson,
+        handoffPolicyJson: ruleHandoffPolicyJson,
+      });
+      await refreshRoutingData();
+      setMessage('Intent rule saved');
+    } catch (e: any) {
+      setMessage(e?.message ?? 'Failed to save rule');
+    }
+  };
+
+  const toggleRule = async (ruleId: string, enabled: boolean) => {
+    try {
+      await axios.patch(endpoints.agentflow.intentRouting.ruleEnable(tenantId, ruleId), { enabled });
+      await refreshRoutingData();
+    } catch (e: any) {
+      setMessage(e?.message ?? 'Failed to update rule status');
+    }
+  };
+
+  const simulateRule = async () => {
+    if (!sourceAgentId || !ruleIntentKey) return;
+    try {
+      const res = await axios.post(endpoints.agentflow.intentRouting.simulate(tenantId), {
+        sourceAgentId,
+        intent: ruleIntentKey,
+        channel: ruleChannel || null,
+      });
+      setSimulateResult(res.data);
+    } catch (e: any) {
+      setSimulateResult(null);
+      setMessage(e?.message ?? 'Failed to simulate routing');
+    }
+  };
+
+  const setRoutingAgentEnabled = async (agentId: string, agentType: string, enabled: boolean, testModeAllowed: boolean, externalReplyAllowed: boolean, capabilities: string[]) => {
+    try {
+      await axios.patch(endpoints.agentflow.intentRouting.agentById(tenantId, agentId), {
+        agentType,
+        enabled,
+        testModeAllowed,
+        externalReplyAllowed,
+        capabilities,
+      });
+      await refreshRoutingData();
+    } catch (e: any) {
+      setMessage(e?.message ?? 'Failed to update routing agent');
     }
   };
 
@@ -217,20 +280,12 @@ export default function ManagerOrchestrationPage() {
     }
   };
 
-  const sharedTargets = useMemo(
-    () => managerATargets.filter((t) => managerBTargets.includes(t)),
-    [managerATargets, managerBTargets]
-  );
-
   const inspectSession = async (row: SessionRow) => {
     setSelectedSession(row);
     setSessionExecutions([]);
     if (!row.agentId || !row.id) return;
-
     try {
-      const res = await axios.get(
-        `${endpoints.agentflow.executions.byAgent(tenantId, row.agentId)}?sessionId=${encodeURIComponent(row.id)}&limit=50`
-      );
+      const res = await axios.get(`${endpoints.agentflow.executions.byAgent(tenantId, row.agentId)}?sessionId=${encodeURIComponent(row.id)}&limit=50`);
       setSessionExecutions((res.data ?? []) as ExecutionRow[]);
     } catch {
       setSessionExecutions([]);
@@ -258,153 +313,101 @@ export default function ManagerOrchestrationPage() {
   const routingColumns: GridColDef[] = [
     { field: 'intent', headerName: 'Intent', width: 140 },
     { field: 'targetAgentId', headerName: 'Target Sub-agent', flex: 1, minWidth: 180 },
-    {
-      field: 'allowed',
-      headerName: 'Allowed',
-      width: 100,
-      renderCell: (p) => <Chip size="small" label={p.value ? 'YES' : 'NO'} color={p.value ? 'success' : 'error'} />,
-    },
+    { field: 'allowed', headerName: 'Allowed', width: 100, renderCell: (p) => <Chip size="small" label={p.value ? 'YES' : 'NO'} color={p.value ? 'success' : 'error'} /> },
     { field: 'reason', headerName: 'Reason', width: 180 },
+    { field: 'hasExplicitPolicy', headerName: 'Policy', width: 140, renderCell: (p) => <Chip size="small" label={p.value ? 'Explicit' : 'Default'} color={p.value ? 'primary' : 'default'} /> },
+  ];
+
+  const rulesColumns: GridColDef[] = [
+    { field: 'intentKey', headerName: 'Intent', width: 160 },
+    { field: 'sourceAgentId', headerName: 'Manager', width: 160 },
+    { field: 'targetAgentId', headerName: 'Subagent', width: 160 },
+    { field: 'priority', headerName: 'Priority', width: 100, type: 'number' },
+    { field: 'channel', headerName: 'Channel', width: 120 },
+    { field: 'version', headerName: 'Version', width: 90, type: 'number' },
     {
-      field: 'hasExplicitPolicy',
-      headerName: 'Policy',
-      width: 140,
-      renderCell: (p) => <Chip size="small" label={p.value ? 'Explicit' : 'Default'} color={p.value ? 'primary' : 'default'} />,
+      field: 'enabled',
+      headerName: 'Enabled',
+      width: 130,
+      renderCell: (p) => (
+        <Button size="small" variant={p.value ? 'contained' : 'outlined'} onClick={() => void toggleRule((p.row as IntentRule).id, !p.value)}>
+          {p.value ? 'ON' : 'OFF'}
+        </Button>
+      ),
     },
+  ];
+
+  const routingAgentsColumns: GridColDef[] = [
+    { field: 'agentId', headerName: 'Agent', width: 180 },
+    { field: 'agentType', headerName: 'Type', width: 120 },
+    {
+      field: 'enabled',
+      headerName: 'Enabled',
+      width: 120,
+      renderCell: (p) => {
+        const row = p.row as RoutingAgent;
+        return (
+          <Button size="small" variant={row.enabled ? 'contained' : 'outlined'} onClick={() => void setRoutingAgentEnabled(row.agentId, row.agentType, !row.enabled, row.testModeAllowed, row.externalReplyAllowed, row.capabilities)}>
+            {row.enabled ? 'ON' : 'OFF'}
+          </Button>
+        );
+      },
+    },
+    { field: 'testModeAllowed', headerName: 'Test mode', width: 120, renderCell: (p) => <Chip size="small" label={p.value ? 'YES' : 'NO'} color={p.value ? 'success' : 'default'} /> },
+    { field: 'externalReplyAllowed', headerName: 'External Reply', width: 140, renderCell: (p) => <Chip size="small" label={p.value ? 'YES' : 'NO'} color={p.value ? 'warning' : 'default'} /> },
   ];
 
   return (
     <>
-      <Helmet>
-        <title>Manager Orchestration | {CONFIG.appName}</title>
-      </Helmet>
-
+      <Helmet><title>Manager Orchestration | {CONFIG.appName}</title></Helmet>
       <DashboardContent maxWidth="xl">
         <Box sx={{ mb: 4 }}>
           <Typography variant="h4">Manager Orchestration</Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-            Multi-subagent control center: allowlists, intent routing matrix, shared sub-agents and handoff simulation.
+            Multi-subagent control center: allowlists, persisted intent rules, routing matrix, and handoff simulation.
           </Typography>
         </Box>
-
         {message && <Alert severity="info" sx={{ mb: 2 }}>{message}</Alert>}
 
         <Grid container spacing={3}>
-          <Grid item xs={12} lg={6}>
-            <Card>
-              <CardContent>
-                <Typography variant="h6" sx={{ mb: 2 }}>Handoff Simulator</Typography>
-                <Stack spacing={2}>
-                  <TextField select label="Manager Agent" value={sourceAgentId} onChange={(e) => setSourceAgentId(e.target.value)}>
-                    {agents.map((a) => <MenuItem key={a.id} value={a.id}>{a.name} ({a.id})</MenuItem>)}
-                  </TextField>
-                  <TextField select label="Target Sub-agent" value={targetAgentId} onChange={(e) => setTargetAgentId(e.target.value)}>
-                    {availableTargets.map((a) => <MenuItem key={a.id} value={a.id}>{a.name} ({a.id})</MenuItem>)}
-                  </TextField>
-                  <TextField label="Intent" value={intent} onChange={(e) => setIntent(e.target.value)} />
-                  <TextField label="Session ID" value={sessionId} onChange={(e) => setSessionId(e.target.value)} />
-                  <TextField label="Payload JSON" value={payloadJson} onChange={(e) => setPayloadJson(e.target.value)} multiline minRows={3} />
-                  <Stack direction="row" spacing={1}>
-                    <Button variant="outlined" onClick={refreshAllowedTargets} disabled={loading}>Allowed Targets</Button>
-                    <Button variant="outlined" onClick={evaluateDecision} disabled={!targetAgentId}>Evaluate Decision</Button>
-                    <Button variant="contained" onClick={executeHandoff} disabled={!targetAgentId}>Execute Handoff</Button>
-                  </Stack>
-                  {allowedTargets.length > 0 && (
-                    <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                      {allowedTargets.map((t) => <Chip key={t} label={t} size="small" color="primary" variant="outlined" />)}
-                    </Stack>
-                  )}
-                  {policyDecision && (
-                    <Alert severity={policyDecision?.allowed ? 'success' : 'warning'}>
-                      Decision: <strong>{policyDecision?.allowed ? 'ALLOW' : 'DENY'}</strong> · {policyDecision?.reason}
-                    </Alert>
-                  )}
-                  {handoffResult && (
-                    <Alert severity={handoffResult?.ok ? 'success' : 'error'}>
-                      Handoff result: {handoffResult?.ok ? 'OK' : 'FAILED'}
-                    </Alert>
-                  )}
-                </Stack>
-              </CardContent>
-            </Card>
-          </Grid>
+          <Grid item xs={12} lg={6}><Card><CardContent><Typography variant="h6" sx={{ mb: 2 }}>Handoff Simulator</Typography><Stack spacing={2}>
+            <TextField select label="Manager Agent" value={sourceAgentId} onChange={(e) => setSourceAgentId(e.target.value)}>{agents.map((a) => <MenuItem key={a.id} value={a.id}>{a.name} ({a.id})</MenuItem>)}</TextField>
+            <TextField select label="Target Sub-agent" value={targetAgentId} onChange={(e) => setTargetAgentId(e.target.value)}>{availableTargets.map((a) => <MenuItem key={a.id} value={a.id}>{a.name} ({a.id})</MenuItem>)}</TextField>
+            <TextField label="Intent" value={intent} onChange={(e) => setIntent(e.target.value)} />
+            <TextField label="Session ID" value={sessionId} onChange={(e) => setSessionId(e.target.value)} />
+            <TextField label="Payload JSON" value={payloadJson} onChange={(e) => setPayloadJson(e.target.value)} multiline minRows={3} />
+            <Stack direction="row" spacing={1}><Button variant="outlined" onClick={refreshAllowedTargets} disabled={loading}>Allowed Targets</Button><Button variant="outlined" onClick={evaluateDecision} disabled={!targetAgentId}>Evaluate Decision</Button><Button variant="contained" onClick={executeHandoff} disabled={!targetAgentId}>Execute Handoff</Button></Stack>
+            {allowedTargets.length > 0 && <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>{allowedTargets.map((t) => <Chip key={t} label={t} size="small" color="primary" variant="outlined" />)}</Stack>}
+            {policyDecision && <Alert severity={policyDecision?.allowed ? 'success' : 'warning'}>Decision: <strong>{policyDecision?.allowed ? 'ALLOW' : 'DENY'}</strong> · {policyDecision?.reason}</Alert>}
+            {handoffResult && <Alert severity={handoffResult?.ok ? 'success' : 'error'}>Handoff result: {handoffResult?.ok ? 'OK' : 'FAILED'}</Alert>}
+          </Stack></CardContent></Card></Grid>
 
-          <Grid item xs={12} lg={6}>
-            <Card>
-              <CardContent>
-                <Typography variant="h6" sx={{ mb: 2 }}>Shared Sub-agents Across Managers</Typography>
-                <Stack spacing={2}>
-                  <TextField select label="Manager A" value={managerA} onChange={(e) => setManagerA(e.target.value)}>
-                    {agents.map((a) => <MenuItem key={a.id} value={a.id}>{a.name} ({a.id})</MenuItem>)}
-                  </TextField>
-                  <TextField select label="Manager B" value={managerB} onChange={(e) => setManagerB(e.target.value)}>
-                    {agents.map((a) => <MenuItem key={a.id} value={a.id}>{a.name} ({a.id})</MenuItem>)}
-                  </TextField>
-                  <Button variant="outlined" onClick={loadSharedSubagents}>Compare Managers</Button>
+          <Grid item xs={12} lg={6}><Card><CardContent><Typography variant="h6" sx={{ mb: 2 }}>Persisted Intent Rules</Typography><Stack spacing={2}>
+            <TextField label="Intent Key" value={ruleIntentKey} onChange={(e) => setRuleIntentKey(e.target.value)} />
+            <TextField type="number" label="Priority" value={rulePriority} onChange={(e) => setRulePriority(Number(e.target.value))} />
+            <TextField label="Channel (optional)" value={ruleChannel} onChange={(e) => setRuleChannel(e.target.value)} />
+            <TextField label="Conditions JSON" value={ruleConditionsJson} onChange={(e) => setRuleConditionsJson(e.target.value)} multiline minRows={2} />
+            <TextField label="Handoff Policy JSON" value={ruleHandoffPolicyJson} onChange={(e) => setRuleHandoffPolicyJson(e.target.value)} multiline minRows={2} />
+            <Stack direction="row" spacing={1}><Button variant="contained" onClick={createRule} disabled={!sourceAgentId || !targetAgentId}>Save Rule</Button><Button variant="outlined" onClick={simulateRule}>Simulate</Button></Stack>
+            {simulateResult && <Alert severity={simulateResult?.fallbackUsed ? 'warning' : 'success'}>Simulation: {simulateResult?.decisionReason} · selected <strong>{simulateResult?.selectedAgentId}</strong></Alert>}
+          </Stack></CardContent></Card></Grid>
 
-                  <Typography variant="caption" color="text.secondary">Sub-agents that both managers can use:</Typography>
-                  <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                    {sharedTargets.length === 0 ? <Chip label="None" size="small" /> : sharedTargets.map((t) => <Chip key={t} label={t} size="small" color="success" />)}
-                  </Stack>
-                </Stack>
-              </CardContent>
-            </Card>
-          </Grid>
+          <Grid item xs={12}><Card><CardContent><Typography variant="h6" sx={{ mb: 1 }}>Intent Rules Registry</Typography><Box sx={{ height: 300 }}><DataGrid rows={rules} columns={rulesColumns} getRowId={(r) => (r as IntentRule).id} pageSizeOptions={[10, 25, 50]} /></Box></CardContent></Card></Grid>
 
-          <Grid item xs={12}>
-            <Card>
-              <CardContent>
-                <Typography variant="h6" sx={{ mb: 1 }}>Intent Routing Matrix (Explainer)</Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                  This matrix makes explicit how a manager should select sub-agents by intent. Use it as operational mapping.
-                </Typography>
-                <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 2 }}>
-                  <TextField
-                    fullWidth
-                    label="Intents (comma separated)"
-                    value={routingIntentsText}
-                    onChange={(e) => setRoutingIntentsText(e.target.value)}
-                  />
-                  <Button variant="contained" onClick={buildRoutingMatrix}>Evaluate Matrix</Button>
-                </Stack>
-                <Box sx={{ height: 300 }}>
-                  <DataGrid rows={routingMatrix} columns={routingColumns} getRowId={(r) => r.id} pageSizeOptions={[10, 25, 50]} />
-                </Box>
-              </CardContent>
-            </Card>
-          </Grid>
+          <Grid item xs={12}><Card><CardContent><Typography variant="h6" sx={{ mb: 1 }}>Routing Agent Registry</Typography><Box sx={{ height: 260 }}><DataGrid rows={routingAgents} columns={routingAgentsColumns} getRowId={(r) => (r as RoutingAgent).agentId} pageSizeOptions={[10, 25, 50]} /></Box></CardContent></Card></Grid>
 
-          <Grid item xs={12} lg={6}>
-            <Card>
-              <CardContent>
-                <Typography variant="h6" sx={{ mb: 2 }}>Live Session Ownership</Typography>
-                <Box sx={{ height: 320 }}>
-                  <DataGrid
-                    rows={sessions}
-                    columns={sessionColumns}
-                    loading={loading}
-                    getRowId={(r) => r.id}
-                    onRowClick={(p) => { void inspectSession(p.row as SessionRow); }}
-                    pageSizeOptions={[10, 20, 50]}
-                    initialState={{ pagination: { paginationModel: { pageSize: 10 } } }}
-                  />
-                </Box>
-              </CardContent>
-            </Card>
-          </Grid>
+          <Grid item xs={12} lg={6}><Card><CardContent><Typography variant="h6" sx={{ mb: 2 }}>Shared Sub-agents Across Managers</Typography><Stack spacing={2}>
+            <TextField select label="Manager A" value={managerA} onChange={(e) => setManagerA(e.target.value)}>{agents.map((a) => <MenuItem key={a.id} value={a.id}>{a.name} ({a.id})</MenuItem>)}</TextField>
+            <TextField select label="Manager B" value={managerB} onChange={(e) => setManagerB(e.target.value)}>{agents.map((a) => <MenuItem key={a.id} value={a.id}>{a.name} ({a.id})</MenuItem>)}</TextField>
+            <Button variant="outlined" onClick={loadSharedSubagents}>Compare Managers</Button>
+            <Typography variant="caption" color="text.secondary">Sub-agents that both managers can use:</Typography>
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>{sharedTargets.length === 0 ? <Chip label="None" size="small" /> : sharedTargets.map((t) => <Chip key={t} label={t} size="small" color="success" />)}</Stack>
+          </Stack></CardContent></Card></Grid>
 
-          <Grid item xs={12} lg={6}>
-            <Card>
-              <CardContent>
-                <Typography variant="h6" sx={{ mb: 1 }}>
-                  Session Execution Timeline {selectedSession ? `· ${selectedSession.id}` : ''}
-                </Typography>
-                <Box sx={{ height: 320 }}>
-                  <DataGrid rows={sessionExecutions} columns={execColumns} getRowId={(r) => r.id} pageSizeOptions={[10, 20, 50]} initialState={{ pagination: { paginationModel: { pageSize: 10 } } }} />
-                </Box>
-              </CardContent>
-            </Card>
-          </Grid>
+          <Grid item xs={12} lg={6}><Card><CardContent><Typography variant="h6" sx={{ mb: 1 }}>Intent Routing Matrix (Explainer)</Typography><Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>This matrix makes explicit how a manager should select sub-agents by intent.</Typography><Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 2 }}><TextField fullWidth label="Intents (comma separated)" value={routingIntentsText} onChange={(e) => setRoutingIntentsText(e.target.value)} /><Button variant="contained" onClick={buildRoutingMatrix}>Evaluate Matrix</Button></Stack><Box sx={{ height: 300 }}><DataGrid rows={routingMatrix} columns={routingColumns} getRowId={(r) => (r as DecisionRow).id} pageSizeOptions={[10, 25, 50]} /></Box></CardContent></Card></Grid>
+
+          <Grid item xs={12} lg={6}><Card><CardContent><Typography variant="h6" sx={{ mb: 2 }}>Live Session Ownership</Typography><Box sx={{ height: 320 }}><DataGrid rows={sessions} columns={sessionColumns} loading={loading} getRowId={(r) => (r as SessionRow).id} onRowClick={(p) => { void inspectSession(p.row as SessionRow); }} pageSizeOptions={[10, 20, 50]} initialState={{ pagination: { paginationModel: { pageSize: 10 } } }} /></Box></CardContent></Card></Grid>
+          <Grid item xs={12} lg={6}><Card><CardContent><Typography variant="h6" sx={{ mb: 1 }}>Session Execution Timeline {selectedSession ? `· ${selectedSession.id}` : ''}</Typography><Box sx={{ height: 320 }}><DataGrid rows={sessionExecutions} columns={execColumns} getRowId={(r) => (r as ExecutionRow).id} pageSizeOptions={[10, 20, 50]} initialState={{ pagination: { paginationModel: { pageSize: 10 } } }} /></Box></CardContent></Card></Grid>
         </Grid>
       </DashboardContent>
     </>

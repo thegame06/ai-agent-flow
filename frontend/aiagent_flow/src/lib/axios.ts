@@ -119,6 +119,14 @@ export const endpoints = {
       preview: (tenantId: string, agentId: string) => `/api/v1/tenants/${tenantId}/segment-routing/agents/${agentId}/preview`,
       disable: (tenantId: string, agentId: string) => `/api/v1/tenants/${tenantId}/segment-routing/agents/${agentId}/disable`,
     },
+    intentRouting: {
+      rules: (tenantId: string) => `/api/v1/tenants/${tenantId}/intent-routing/rules`,
+      ruleEnable: (tenantId: string, ruleId: string) => `/api/v1/tenants/${tenantId}/intent-routing/rules/${ruleId}/enable`,
+      ruleById: (tenantId: string, ruleId: string) => `/api/v1/tenants/${tenantId}/intent-routing/rules/${ruleId}`,
+      simulate: (tenantId: string) => `/api/v1/tenants/${tenantId}/intent-routing/simulate`,
+      agents: (tenantId: string) => `/api/v1/tenants/${tenantId}/intent-routing/agents`,
+      agentById: (tenantId: string, agentId: string) => `/api/v1/tenants/${tenantId}/intent-routing/agents/${agentId}`,
+    },
     // System
     health: '/health',
   },
