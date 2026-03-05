@@ -57,6 +57,37 @@ public sealed class AuditController : ControllerBase
         }));
     }
 
+    [HttpGet("correlations")]
+    public async Task<IActionResult> GetCorrelationSummary(
+        [FromRoute] string tenantId,
+        [FromQuery] int limit = 50,
+        CancellationToken ct = default)
+    {
+        var context = _tenantContext.Current!;
+        if (context.TenantId != tenantId && !context.IsPlatformAdmin) return Forbid();
+
+        var boundedLimit = Math.Clamp(limit, 1, 300);
+        var recent = await _auditMemory.GetRecentAsync(tenantId, 2000, ct);
+
+        var summary = recent
+            .Where(x => !string.IsNullOrWhiteSpace(x.CorrelationId))
+            .GroupBy(x => x.CorrelationId)
+            .Select(g => new
+            {
+                CorrelationId = g.Key,
+                EventCount = g.Count(),
+                FirstOccurredAt = g.Min(x => x.OccurredAt),
+                LastOccurredAt = g.Max(x => x.OccurredAt),
+                Actions = g.Select(x => x.EventType.ToString()).Distinct().Take(6).ToArray(),
+                Agents = g.Select(x => x.AgentId).Distinct().Take(6).ToArray()
+            })
+            .OrderByDescending(x => x.LastOccurredAt)
+            .Take(boundedLimit)
+            .ToList();
+
+        return Ok(summary);
+    }
+
     private static string GetSeverity(AuditEventType type) => type switch
     {
         AuditEventType.ExecutionFailed => "error",

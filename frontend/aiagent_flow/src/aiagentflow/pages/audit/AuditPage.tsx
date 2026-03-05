@@ -42,6 +42,7 @@ export default function AuditPage() {
   const [correlationId, setCorrelationId] = useState('');
   const [action, setAction] = useState('');
   const [limit, setLimit] = useState(150);
+  const [correlations, setCorrelations] = useState<any[]>([]);
 
   const fetchLogs = useCallback(async () => {
     try {
@@ -51,8 +52,12 @@ export default function AuditPage() {
       if (correlationId.trim()) params.set('correlationId', correlationId.trim());
       if (action.trim()) params.set('action', action.trim());
 
-      const response = await axios.get(`${endpoints.agentflow.audit.list(tenantId)}?${params.toString()}`);
+      const [response, corrResponse] = await Promise.all([
+        axios.get(`${endpoints.agentflow.audit.list(tenantId)}?${params.toString()}`),
+        axios.get(`${endpoints.agentflow.audit.correlations(tenantId)}?limit=30`),
+      ]);
       setLogs(response.data);
+      setCorrelations(corrResponse.data ?? []);
     } finally {
       setLoading(false);
     }
@@ -105,6 +110,26 @@ export default function AuditPage() {
           <Chip label={`${logs.filter((e) => e.severity === 'critical' || e.severity === 'error').length} issues`} color="error" variant="soft" />
           <Chip label={`${logs.filter((e) => e.severity === 'warning').length} warnings`} color="warning" variant="soft" />
         </Stack>
+
+        <Card sx={{ mb: 3, p: 2, border: `1px solid ${alpha(theme.palette.grey[500], 0.12)}` }}>
+          <Typography variant="subtitle2" sx={{ mb: 1.5 }}>Routing Timeline (recent correlation IDs)</Typography>
+          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+            {correlations.length === 0 ? (
+              <Chip size="small" label="No correlation traces yet" />
+            ) : (
+              correlations.map((c) => (
+                <Chip
+                  key={c.correlationId}
+                  size="small"
+                  color={correlationId === c.correlationId ? 'primary' : 'default'}
+                  label={`${c.correlationId} · ${c.eventCount}`}
+                  onClick={() => setCorrelationId(c.correlationId)}
+                  variant={correlationId === c.correlationId ? 'filled' : 'outlined'}
+                />
+              ))
+            )}
+          </Stack>
+        </Card>
 
         <Card sx={{ overflow: 'hidden', border: `1px solid ${alpha(theme.palette.grey[500], 0.12)}` }}>
           {loading ? (
