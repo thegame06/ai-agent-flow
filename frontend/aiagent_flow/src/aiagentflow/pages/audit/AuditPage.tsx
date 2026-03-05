@@ -53,6 +53,15 @@ export default function AuditPage() {
     .slice()
     .sort((a, b) => new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime());
 
+  const parseJson = (raw: string | null | undefined) => {
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      return null;
+    }
+  };
+
   const formatJson = (raw: string | null | undefined) => {
     if (!raw) return '-';
     try {
@@ -60,6 +69,18 @@ export default function AuditPage() {
     } catch {
       return raw;
     }
+  };
+
+  const computeDiff = (prevRaw: string | null | undefined, nextRaw: string | null | undefined) => {
+    const prev = parseJson(prevRaw) ?? {};
+    const next = parseJson(nextRaw) ?? {};
+
+    const keys = Array.from(new Set([...Object.keys(prev), ...Object.keys(next)])).sort();
+    const changes = keys
+      .filter((k) => JSON.stringify(prev[k]) !== JSON.stringify(next[k]))
+      .map((k) => ({ key: k, from: prev[k], to: next[k] }));
+
+    return changes;
   };
 
   const fetchLogs = useCallback(async () => {
@@ -193,19 +214,45 @@ export default function AuditPage() {
               {selectedTimeline.length === 0 ? (
                 <Typography variant="body2" color="text.secondary">No events loaded for this correlation in current filter range.</Typography>
               ) : (
-                selectedTimeline.map((e) => (
-                  <Card key={e.id} variant="outlined" sx={{ p: 1.5 }}>
-                    <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
-                      <Chip size="small" label={e.action} variant="outlined" />
-                      <Label color={severityColor(e.severity)}>{e.severity}</Label>
-                      <Typography variant="caption" color="text.secondary">{new Date(e.occurredAt).toLocaleString()}</Typography>
-                      <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>{e.resource || '-'}</Typography>
-                    </Stack>
-                    <Box component="pre" sx={{ m: 0, fontSize: '0.72rem', overflowX: 'auto', whiteSpace: 'pre-wrap' }}>
-                      {formatJson(e.eventJson)}
-                    </Box>
-                  </Card>
-                ))
+                selectedTimeline.map((e, idx) => {
+                  const prev = idx > 0 ? selectedTimeline[idx - 1] : null;
+                  const changes = prev ? computeDiff(prev.eventJson, e.eventJson) : [];
+
+                  return (
+                    <Card key={e.id} variant="outlined" sx={{ p: 1.5 }}>
+                      <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+                        <Chip size="small" label={e.action} variant="outlined" />
+                        <Label color={severityColor(e.severity)}>{e.severity}</Label>
+                        <Typography variant="caption" color="text.secondary">{new Date(e.occurredAt).toLocaleString()}</Typography>
+                        <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>{e.resource || '-'}</Typography>
+                      </Stack>
+
+                      {prev && (
+                        <Box sx={{ mb: 1 }}>
+                          <Typography variant="caption" color="text.secondary">Diff vs previous event:</Typography>
+                          {changes.length === 0 ? (
+                            <Typography variant="caption" sx={{ display: 'block' }}>No JSON field changes</Typography>
+                          ) : (
+                            <Stack spacing={0.5} sx={{ mt: 0.5 }}>
+                              {changes.slice(0, 8).map((c) => (
+                                <Typography key={c.key} variant="caption" sx={{ fontFamily: 'monospace' }}>
+                                  {c.key}: {JSON.stringify(c.from)} → {JSON.stringify(c.to)}
+                                </Typography>
+                              ))}
+                              {changes.length > 8 && (
+                                <Typography variant="caption" color="text.secondary">+{changes.length - 8} more changes...</Typography>
+                              )}
+                            </Stack>
+                          )}
+                        </Box>
+                      )}
+
+                      <Box component="pre" sx={{ m: 0, fontSize: '0.72rem', overflowX: 'auto', whiteSpace: 'pre-wrap' }}>
+                        {formatJson(e.eventJson)}
+                      </Box>
+                    </Card>
+                  );
+                })
               )}
             </Stack>
           </DialogContent>
