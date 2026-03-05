@@ -80,6 +80,11 @@ export const navData: NavSectionProps['data'] = [
         icon: ICONS.parameter,
       },
       {
+        title: 'Orchestration',
+        path: paths.dashboard.orchestration,
+        icon: ICONS.analytics,
+      },
+      {
         title: 'Threads',
         path: paths.dashboard.threads,
         icon: ICONS.chat,

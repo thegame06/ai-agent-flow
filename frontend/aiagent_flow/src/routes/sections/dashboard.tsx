@@ -34,6 +34,7 @@ const ChannelsPage = lazy(() => import('src/aiagentflow/pages/channels/ChannelsP
 const SegmentRoutingPage = lazy(() => import('src/aiagentflow/pages/system/SegmentRoutingPage'));
 const FeatureFlagsPage = lazy(() => import('src/aiagentflow/pages/system/FeatureFlagsPage'));
 const SettingsPage = lazy(() => import('src/aiagentflow/pages/settings/SettingsPage'));
+const ManagerOrchestrationPage = lazy(() => import('src/aiagentflow/pages/orchestration/ManagerOrchestrationPage'));
 const ThreadsPage = lazy(() => import('src/aiagentflow/pages/threads/ThreadsPage'));
 const EvaluationsPage = lazy(() => import('src/aiagentflow/pages/evaluations/EvaluationsPage'));
 
@@ -70,6 +71,7 @@ export const dashboardRoutes: RouteObject[] = [
       { path: 'executions/:executionId', element: <ExecutionDetailPage /> },
       { path: 'checkpoints', element: <CheckpointsPage /> },
       { path: 'tools', element: <ToolsPage /> },
+      { path: 'orchestration', element: <ManagerOrchestrationPage /> },
       { path: 'threads', element: <ThreadsPage /> },
       { path: 'evaluations', element: <EvaluationsPage /> },
       {
