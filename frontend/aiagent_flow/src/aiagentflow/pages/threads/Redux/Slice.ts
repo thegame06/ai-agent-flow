@@ -9,7 +9,7 @@ export interface Thread {
   threadKey: string;
   agentId: string;
   agentName?: string;
-  userId: string;
+  userId?: string;
   status: 'Active' | 'Archived' | 'Expired' | 'Completed';
   turnCount: number;
   maxTurns: number;
@@ -50,16 +50,36 @@ const initialState: ThreadsState = {
 
 // ----------------------------------------------------------------------
 
+const normalizeThread = (raw: any): Thread => ({
+  id: raw.id ?? raw.threadId,
+  threadKey: raw.threadKey,
+  agentId: raw.agentId,
+  agentName: raw.agentName,
+  userId: raw.userId,
+  status: raw.status,
+  turnCount: raw.turnCount ?? 0,
+  maxTurns: raw.maxTurns ?? 0,
+  createdAt: raw.createdAt,
+  expiresAt: raw.expiresAt,
+  lastActivityAt: raw.lastActivityAt,
+  metadata: raw.metadata,
+});
+
 export const fetchThreads = createAsyncThunk(
   'threads/fetchThreads',
   async ({ tenantId, agentId, status, limit }: { tenantId: string; agentId?: string; status?: string; limit?: number }) => {
     const params = new URLSearchParams();
     if (agentId) params.append('agentId', agentId);
-    if (status) params.append('status', status);
+    // Backend currently supports agentId filter only for list endpoint.
     if (limit) params.append('limit', limit.toString());
 
-    const response = await axios.get(`${endpoints.agentflow.threads.list(tenantId)}?${params.toString()}`);
-    return response.data as Thread[];
+    const query = params.toString();
+    const response = await axios.get(
+      `${endpoints.agentflow.threads.list(tenantId)}${query ? `?${query}` : ''}`
+    );
+
+    const normalized = (response.data ?? []).map(normalizeThread);
+    return status ? normalized.filter((t: Thread) => t.status === status) : normalized;
   }
 );
 
@@ -67,16 +87,43 @@ export const fetchThreadDetail = createAsyncThunk(
   'threads/fetchThreadDetail',
   async ({ tenantId, threadId }: { tenantId: string; threadId: string }) => {
     const response = await axios.get(endpoints.agentflow.threads.detail(tenantId, threadId));
-    return response.data as Thread;
+    return normalizeThread(response.data);
   }
 );
 
 export const fetchThreadHistory = createAsyncThunk(
   'threads/fetchThreadHistory',
   async ({ tenantId, threadId, limit }: { tenantId: string; threadId: string; limit?: number }) => {
-    const params = limit ? `?limit=${limit}` : '';
+    const params = limit ? `?maxTurns=${limit}` : '';
     const response = await axios.get(`${endpoints.agentflow.threads.history(tenantId, threadId)}${params}`);
-    return response.data as ThreadMessage[];
+
+    const turns = response.data?.turns ?? [];
+    const messages: ThreadMessage[] = turns.flatMap((turn: any, idx: number) => {
+      const ts = turn.timestamp ?? new Date().toISOString();
+      const arr: ThreadMessage[] = [
+        {
+          id: `${threadId}-u-${idx}`,
+          threadId,
+          role: 'user',
+          content: turn.userMessage ?? '',
+          createdAt: ts,
+        },
+      ];
+
+      if (turn.assistantResponse) {
+        arr.push({
+          id: `${threadId}-a-${idx}`,
+          threadId,
+          role: 'assistant',
+          content: turn.assistantResponse,
+          createdAt: ts,
+        });
+      }
+
+      return arr;
+    });
+
+    return messages;
   }
 );
 
@@ -84,10 +131,17 @@ export const sendMessage = createAsyncThunk(
   'threads/sendMessage',
   async ({ tenantId, threadId, message }: { tenantId: string; threadId: string; message: string }) => {
     const response = await axios.post(endpoints.agentflow.threads.sendMessage(tenantId, threadId), {
-      role: 'user',
-      content: message,
+      message,
     });
-    return response.data as ThreadMessage;
+
+    return {
+      id: response.data?.executionId ?? `${threadId}-${Date.now()}`,
+      threadId,
+      role: 'assistant',
+      content: response.data?.assistantResponse ?? '',
+      createdAt: new Date().toISOString(),
+      executionId: response.data?.executionId,
+    } as ThreadMessage;
   }
 );
 
