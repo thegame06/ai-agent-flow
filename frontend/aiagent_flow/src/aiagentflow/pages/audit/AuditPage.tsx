@@ -7,15 +7,18 @@ import Chip from '@mui/material/Chip';
 import Stack from '@mui/material/Stack';
 import Table from '@mui/material/Table';
 import Button from '@mui/material/Button';
+import Dialog from '@mui/material/Dialog';
 import TableRow from '@mui/material/TableRow';
 import TableBody from '@mui/material/TableBody';
 import TableCell from '@mui/material/TableCell';
 import TableHead from '@mui/material/TableHead';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
+import DialogTitle from '@mui/material/DialogTitle';
 import { alpha, useTheme } from '@mui/material/styles';
-import TableContainer from '@mui/material/TableContainer';
+import DialogContent from '@mui/material/DialogContent';
 import LinearProgress from '@mui/material/LinearProgress';
+import TableContainer from '@mui/material/TableContainer';
 
 import { CONFIG } from 'src/global-config';
 import axios, { endpoints } from 'src/lib/axios';
@@ -43,6 +46,21 @@ export default function AuditPage() {
   const [action, setAction] = useState('');
   const [limit, setLimit] = useState(150);
   const [correlations, setCorrelations] = useState<any[]>([]);
+  const [selectedCorrelation, setSelectedCorrelation] = useState<string | null>(null);
+
+  const selectedTimeline = logs
+    .filter((x) => x.correlationId === selectedCorrelation)
+    .slice()
+    .sort((a, b) => new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime());
+
+  const formatJson = (raw: string | null | undefined) => {
+    if (!raw) return '-';
+    try {
+      return JSON.stringify(JSON.parse(raw), null, 2);
+    } catch {
+      return raw;
+    }
+  };
 
   const fetchLogs = useCallback(async () => {
     try {
@@ -118,14 +136,16 @@ export default function AuditPage() {
               <Chip size="small" label="No correlation traces yet" />
             ) : (
               correlations.map((c) => (
-                <Chip
-                  key={c.correlationId}
-                  size="small"
-                  color={correlationId === c.correlationId ? 'primary' : 'default'}
-                  label={`${c.correlationId} · ${c.eventCount}`}
-                  onClick={() => setCorrelationId(c.correlationId)}
-                  variant={correlationId === c.correlationId ? 'filled' : 'outlined'}
-                />
+                <Stack key={c.correlationId} direction="row" spacing={0.5} alignItems="center">
+                  <Chip
+                    size="small"
+                    color={correlationId === c.correlationId ? 'primary' : 'default'}
+                    label={`${c.correlationId} · ${c.eventCount}`}
+                    onClick={() => setCorrelationId(c.correlationId)}
+                    variant={correlationId === c.correlationId ? 'filled' : 'outlined'}
+                  />
+                  <Button size="small" variant="text" onClick={() => setSelectedCorrelation(c.correlationId)}>View</Button>
+                </Stack>
               ))
             )}
           </Stack>
@@ -165,6 +185,31 @@ export default function AuditPage() {
             </TableContainer>
           )}
         </Card>
+
+        <Dialog open={!!selectedCorrelation} onClose={() => setSelectedCorrelation(null)} fullWidth maxWidth="md">
+          <DialogTitle>Routing Timeline · {selectedCorrelation}</DialogTitle>
+          <DialogContent dividers>
+            <Stack spacing={1.5}>
+              {selectedTimeline.length === 0 ? (
+                <Typography variant="body2" color="text.secondary">No events loaded for this correlation in current filter range.</Typography>
+              ) : (
+                selectedTimeline.map((e) => (
+                  <Card key={e.id} variant="outlined" sx={{ p: 1.5 }}>
+                    <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+                      <Chip size="small" label={e.action} variant="outlined" />
+                      <Label color={severityColor(e.severity)}>{e.severity}</Label>
+                      <Typography variant="caption" color="text.secondary">{new Date(e.occurredAt).toLocaleString()}</Typography>
+                      <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>{e.resource || '-'}</Typography>
+                    </Stack>
+                    <Box component="pre" sx={{ m: 0, fontSize: '0.72rem', overflowX: 'auto', whiteSpace: 'pre-wrap' }}>
+                      {formatJson(e.eventJson)}
+                    </Box>
+                  </Card>
+                ))
+              )}
+            </Stack>
+          </DialogContent>
+        </Dialog>
       </DashboardContent>
     </>
   );
