@@ -32,6 +32,8 @@ const AuthProfilesPage = lazy(() => import('src/aiagentflow/pages/system/AuthPro
 const McpPage = lazy(() => import('src/aiagentflow/pages/system/McpPage'));
 const ChannelsPage = lazy(() => import('src/aiagentflow/pages/channels/ChannelsPage'));
 const SettingsPage = lazy(() => import('src/aiagentflow/pages/settings/SettingsPage'));
+const ThreadsPage = lazy(() => import('src/aiagentflow/pages/threads/ThreadsPage'));
+const EvaluationsPage = lazy(() => import('src/aiagentflow/pages/evaluations/EvaluationsPage'));
 
 // ----------------------------------------------------------------------
 
@@ -66,6 +68,8 @@ export const dashboardRoutes: RouteObject[] = [
       { path: 'executions/:executionId', element: <ExecutionDetailPage /> },
       { path: 'checkpoints', element: <CheckpointsPage /> },
       { path: 'tools', element: <ToolsPage /> },
+      { path: 'threads', element: <ThreadsPage /> },
+      { path: 'evaluations', element: <EvaluationsPage /> },
       {
         path: 'governance',
         children: [

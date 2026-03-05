@@ -51,6 +51,7 @@ export const paths = {
     executionDetail: (id: string) => `${ROOTS.DASHBOARD}/executions/${id}`,
     checkpoints: `${ROOTS.DASHBOARD}/checkpoints`,
     tools: `${ROOTS.DASHBOARD}/tools`,
+    threads: `${ROOTS.DASHBOARD}/threads`,
     evaluations: `${ROOTS.DASHBOARD}/evaluations`,
     governance: {
       root: `${ROOTS.DASHBOARD}/governance`,
