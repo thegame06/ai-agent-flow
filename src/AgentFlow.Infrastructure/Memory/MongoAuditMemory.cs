@@ -20,8 +20,14 @@ public sealed class MongoAuditMemory : IAuditMemory
             .Ascending(x => x.TenantId)
             .Descending(x => x.OccurredAt);
 
+        var correlationIndex = Builders<AuditEntry>.IndexKeys
+            .Ascending(x => x.TenantId)
+            .Ascending(x => x.CorrelationId)
+            .Descending(x => x.OccurredAt);
+
         _collection.Indexes.CreateOne(new CreateIndexModel<AuditEntry>(executionIndex));
         _collection.Indexes.CreateOne(new CreateIndexModel<AuditEntry>(tenantRecentIndex));
+        _collection.Indexes.CreateOne(new CreateIndexModel<AuditEntry>(correlationIndex));
     }
 
     public async Task RecordAsync(AuditEntry entry, CancellationToken ct = default)
@@ -46,6 +52,14 @@ public sealed class MongoAuditMemory : IAuditMemory
     public async Task<IReadOnlyList<AuditEntry>> GetRecentAsync(string tenantId, int limit = 100, CancellationToken ct = default)
     {
         return await _collection.Find(x => x.TenantId == tenantId)
+            .SortByDescending(x => x.OccurredAt)
+            .Limit(limit)
+            .ToListAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<AuditEntry>> GetByCorrelationAsync(string tenantId, string correlationId, int limit = 200, CancellationToken ct = default)
+    {
+        return await _collection.Find(x => x.TenantId == tenantId && x.CorrelationId == correlationId)
             .SortByDescending(x => x.OccurredAt)
             .Limit(limit)
             .ToListAsync(ct);

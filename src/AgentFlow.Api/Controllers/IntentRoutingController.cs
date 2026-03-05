@@ -1,3 +1,4 @@
+using AgentFlow.Application.Memory;
 using AgentFlow.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -10,11 +11,13 @@ namespace AgentFlow.Api.Controllers;
 public sealed class IntentRoutingController : ControllerBase
 {
     private readonly IIntentRoutingStore _store;
+    private readonly IAuditMemory _auditMemory;
     private readonly ITenantContextAccessor _tenantContext;
 
-    public IntentRoutingController(IIntentRoutingStore store, ITenantContextAccessor tenantContext)
+    public IntentRoutingController(IIntentRoutingStore store, IAuditMemory auditMemory, ITenantContextAccessor tenantContext)
     {
         _store = store;
+        _auditMemory = auditMemory;
         _tenantContext = tenantContext;
     }
 
@@ -96,6 +99,27 @@ public sealed class IntentRoutingController : ControllerBase
         if (context.TenantId != tenantId && !context.IsPlatformAdmin) return Forbid();
 
         var result = await _store.SimulateAsync(tenantId, body.SourceAgentId, body.Intent, body.Channel, ct);
+
+        await _auditMemory.RecordAsync(new AuditEntry
+        {
+            ExecutionId = result.MatchedRuleId ?? "intent-routing-simulate",
+            AgentId = body.SourceAgentId,
+            TenantId = tenantId,
+            UserId = context.UserId,
+            EventType = AuditEventType.RoutingDecision,
+            CorrelationId = $"routing:{tenantId}:{body.SourceAgentId}:{body.Intent}",
+            EventJson = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                sourceAgentId = body.SourceAgentId,
+                intent = body.Intent,
+                channel = body.Channel,
+                matchedRuleId = result.MatchedRuleId,
+                selectedAgentId = result.SelectedAgentId,
+                result.FallbackUsed,
+                result.DecisionReason
+            })
+        }, ct);
+
         return Ok(result);
     }
 
