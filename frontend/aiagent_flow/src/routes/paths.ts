@@ -64,6 +64,8 @@ export const paths = {
       authProfiles: `${ROOTS.DASHBOARD}/system/auth-profiles`,
       mcp: `${ROOTS.DASHBOARD}/system/mcp`,
       channels: `${ROOTS.DASHBOARD}/system/channels`,
+      segmentRouting: `${ROOTS.DASHBOARD}/system/segment-routing`,
+      featureFlags: `${ROOTS.DASHBOARD}/system/feature-flags`,
       settings: `${ROOTS.DASHBOARD}/system/settings`,
     },
   },

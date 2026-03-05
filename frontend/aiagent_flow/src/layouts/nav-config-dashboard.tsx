@@ -135,6 +135,16 @@ export const navData: NavSectionProps['data'] = [
         icon: ICONS.channel,
       },
       {
+        title: 'Segment Routing',
+        path: paths.dashboard.system.segmentRouting,
+        icon: ICONS.analytics,
+      },
+      {
+        title: 'Feature Flags',
+        path: paths.dashboard.system.featureFlags,
+        icon: ICONS.label,
+      },
+      {
         title: 'Settings',
         path: paths.dashboard.system.settings,
         icon: ICONS.parameter,
