@@ -6,9 +6,11 @@ import Card from '@mui/material/Card';
 import Chip from '@mui/material/Chip';
 import Stack from '@mui/material/Stack';
 import Table from '@mui/material/Table';
+import Alert from '@mui/material/Alert';
 import Button from '@mui/material/Button';
 import Dialog from '@mui/material/Dialog';
 import TableRow from '@mui/material/TableRow';
+import Snackbar from '@mui/material/Snackbar';
 import TableBody from '@mui/material/TableBody';
 import TableCell from '@mui/material/TableCell';
 import TableHead from '@mui/material/TableHead';
@@ -47,6 +49,7 @@ export default function AuditPage() {
   const [limit, setLimit] = useState(150);
   const [correlations, setCorrelations] = useState<any[]>([]);
   const [selectedCorrelation, setSelectedCorrelation] = useState<string | null>(null);
+  const [copied, setCopied] = useState<string | null>(null);
 
   const selectedTimeline = logs
     .filter((x) => x.correlationId === selectedCorrelation)
@@ -78,9 +81,20 @@ export default function AuditPage() {
     const keys = Array.from(new Set([...Object.keys(prev), ...Object.keys(next)])).sort();
     const changes = keys
       .filter((k) => JSON.stringify(prev[k]) !== JSON.stringify(next[k]))
-      .map((k) => ({ key: k, from: prev[k], to: next[k] }));
+      .map((k) => {
+        const hasPrev = Object.prototype.hasOwnProperty.call(prev, k);
+        const hasNext = Object.prototype.hasOwnProperty.call(next, k);
+        const changeType = !hasPrev && hasNext ? 'added' : hasPrev && !hasNext ? 'removed' : 'changed';
+
+        return { key: k, from: prev[k], to: next[k], changeType };
+      });
 
     return changes;
+  };
+
+  const copyToClipboard = async (text: string, label: string) => {
+    await navigator.clipboard.writeText(text);
+    setCopied(label);
   };
 
   const fetchLogs = useCallback(async () => {
@@ -208,7 +222,21 @@ export default function AuditPage() {
         </Card>
 
         <Dialog open={!!selectedCorrelation} onClose={() => setSelectedCorrelation(null)} fullWidth maxWidth="md">
-          <DialogTitle>Routing Timeline · {selectedCorrelation}</DialogTitle>
+          <DialogTitle>
+            <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1}>
+              <Typography variant="subtitle1">Routing Timeline · {selectedCorrelation}</Typography>
+              <Stack direction="row" spacing={1}>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={() => void copyToClipboard(JSON.stringify(selectedTimeline, null, 2), 'timeline JSON copied')}
+                  disabled={selectedTimeline.length === 0}
+                >
+                  Export JSON
+                </Button>
+              </Stack>
+            </Stack>
+          </DialogTitle>
           <DialogContent dividers>
             <Stack spacing={1.5}>
               {selectedTimeline.length === 0 ? (
@@ -217,6 +245,7 @@ export default function AuditPage() {
                 selectedTimeline.map((e, idx) => {
                   const prev = idx > 0 ? selectedTimeline[idx - 1] : null;
                   const changes = prev ? computeDiff(prev.eventJson, e.eventJson) : [];
+                  const diffText = changes.map((c) => `${c.changeType} ${c.key}: ${JSON.stringify(c.from)} -> ${JSON.stringify(c.to)}`).join('\n');
 
                   return (
                     <Card key={e.id} variant="outlined" sx={{ p: 1.5 }}>
@@ -225,19 +254,37 @@ export default function AuditPage() {
                         <Label color={severityColor(e.severity)}>{e.severity}</Label>
                         <Typography variant="caption" color="text.secondary">{new Date(e.occurredAt).toLocaleString()}</Typography>
                         <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>{e.resource || '-'}</Typography>
+                        <Button size="small" variant="text" onClick={() => void copyToClipboard(formatJson(e.eventJson), 'event JSON copied')}>Copy JSON</Button>
                       </Stack>
 
                       {prev && (
                         <Box sx={{ mb: 1 }}>
-                          <Typography variant="caption" color="text.secondary">Diff vs previous event:</Typography>
+                          <Stack direction="row" justifyContent="space-between" alignItems="center">
+                            <Typography variant="caption" color="text.secondary">Diff vs previous event:</Typography>
+                            <Button
+                              size="small"
+                              variant="text"
+                              onClick={() => void copyToClipboard(diffText || 'No JSON field changes', 'event diff copied')}
+                            >
+                              Copy Diff
+                            </Button>
+                          </Stack>
                           {changes.length === 0 ? (
                             <Typography variant="caption" sx={{ display: 'block' }}>No JSON field changes</Typography>
                           ) : (
                             <Stack spacing={0.5} sx={{ mt: 0.5 }}>
                               {changes.slice(0, 8).map((c) => (
-                                <Typography key={c.key} variant="caption" sx={{ fontFamily: 'monospace' }}>
-                                  {c.key}: {JSON.stringify(c.from)} → {JSON.stringify(c.to)}
-                                </Typography>
+                                <Stack key={c.key} direction="row" spacing={0.75} alignItems="center">
+                                  <Chip
+                                    size="small"
+                                    label={c.changeType}
+                                    color={c.changeType === 'added' ? 'success' : c.changeType === 'removed' ? 'error' : 'warning'}
+                                    variant="outlined"
+                                  />
+                                  <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
+                                    {c.key}: {JSON.stringify(c.from)} → {JSON.stringify(c.to)}
+                                  </Typography>
+                                </Stack>
                               ))}
                               {changes.length > 8 && (
                                 <Typography variant="caption" color="text.secondary">+{changes.length - 8} more changes...</Typography>
@@ -257,6 +304,10 @@ export default function AuditPage() {
             </Stack>
           </DialogContent>
         </Dialog>
+
+        <Snackbar open={!!copied} autoHideDuration={1800} onClose={() => setCopied(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}>
+          <Alert severity="success" onClose={() => setCopied(null)} sx={{ width: '100%' }}>{copied}</Alert>
+        </Snackbar>
       </DashboardContent>
     </>
   );
