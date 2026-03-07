@@ -152,6 +152,7 @@ public static class DependencyInjection
         services.AddScoped<IAgentAuthorizationService, AgentAuthorizationService>();
         services.AddSingleton<ConfigurationManagerHandoffPolicy>();
         services.AddScoped<IIntentRoutingStore, AgentFlow.Infrastructure.Repositories.MongoIntentRoutingStore>();
+        services.AddScoped<ITenantMcpSettingsStore, AgentFlow.Infrastructure.Repositories.MongoTenantMcpSettingsStore>();
         services.AddScoped<IManagerHandoffPolicy, PersistentManagerHandoffPolicy>();
 
         // JWT Authentication

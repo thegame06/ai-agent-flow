@@ -275,6 +275,24 @@ public interface IMcpToolGateway
         CancellationToken ct = default);
 }
 
+public sealed record TenantMcpSettings
+{
+    public required string TenantId { get; init; }
+    public bool Enabled { get; init; } = false;
+    public string Runtime { get; init; } = "MicrosoftAgentFramework";
+    public int TimeoutSeconds { get; init; } = 20;
+    public int RetryCount { get; init; } = 1;
+    public IReadOnlyList<string> AllowedServers { get; init; } = [];
+    public DateTimeOffset UpdatedAt { get; init; } = DateTimeOffset.UtcNow;
+    public string? UpdatedBy { get; init; }
+}
+
+public interface ITenantMcpSettingsStore
+{
+    Task<TenantMcpSettings> GetAsync(string tenantId, CancellationToken ct = default);
+    Task<TenantMcpSettings> SaveAsync(TenantMcpSettings settings, CancellationToken ct = default);
+}
+
 /// <summary>
 /// Core tool execution engine.
 /// </summary>
