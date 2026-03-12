@@ -8,6 +8,22 @@ namespace AgentFlow.Tests.Integration.Orchestration;
 
 public class MafAndMcpContractsTests
 {
+    private sealed class InMemoryTenantMcpSettingsStore : ITenantMcpSettingsStore
+    {
+        public Task<TenantMcpSettings> GetAsync(string tenantId, CancellationToken ct = default)
+            => Task.FromResult(new TenantMcpSettings
+            {
+                TenantId = tenantId,
+                Enabled = true,
+                Runtime = "MicrosoftAgentFramework",
+                TimeoutSeconds = 20,
+                RetryCount = 0,
+                AllowedServers = Array.Empty<string>()
+            });
+
+        public Task<TenantMcpSettings> SaveAsync(TenantMcpSettings settings, CancellationToken ct = default)
+            => Task.FromResult(settings);
+    }
     [Fact]
     public async Task MafBrain_WhenDisabled_ReturnsCheckpoint_InsteadOfFakeAnswer()
     {
@@ -47,7 +63,7 @@ public class MafAndMcpContractsTests
             })
             .Build();
 
-        var gateway = new McpToolGateway(config, NullLogger<McpToolGateway>.Instance);
+        var gateway = new McpToolGateway(config, new InMemoryTenantMcpSettingsStore(), NullLogger<McpToolGateway>.Instance);
 
         var result = await gateway.ExecuteAsync(
             "demo",

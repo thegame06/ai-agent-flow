@@ -82,6 +82,7 @@ export default function ChannelsPage() {
   const [selectedSession, setSelectedSession] = useState<ChannelSession | null>(null);
   const [sessionMessages, setSessionMessages] = useState<SessionMessageEvidence[]>([]);
   const [sessionLoading, setSessionLoading] = useState(false);
+  const [candidateAgents, setCandidateAgents] = useState<{ id: string; name: string }[]>([]);
 
   const [form, setForm] = useState({
     name: '',
@@ -104,13 +105,18 @@ export default function ChannelsPage() {
     try {
       setLoading(true);
       setError(null);
-      const [channelsRes, sessionsRes] = await Promise.all([
+      const [channelsRes, sessionsRes, agentsRes] = await Promise.all([
         axios.get(`/api/v1/tenants/${TENANT_ID}/channels`),
         axios.get(`/api/v1/tenants/${TENANT_ID}/channel-sessions?limit=50`),
+        axios.get(`/api/v1/tenants/${TENANT_ID}/agents`),
       ]);
 
       setChannels((channelsRes.data ?? []) as Channel[]);
       setSessions((sessionsRes.data ?? []) as ChannelSession[]);
+      const agents = (agentsRes.data ?? [])
+        .filter((a: any) => a?.id && a.status !== 'Archived')
+        .map((a: any) => ({ id: a.id, name: a.name }));
+      setCandidateAgents(agents);
     } catch (err: any) {
       setError(err?.message || 'Failed to load channels');
     } finally {
@@ -451,12 +457,19 @@ export default function ChannelsPage() {
             )}
 
             <TextField
-              label="Default Agent ID"
+              select
+              label="Default Agent"
               value={form.defaultAgentId}
               onChange={(e) => setForm((p) => ({ ...p, defaultAgentId: e.target.value }))}
-              placeholder="gps-support-agent"
               fullWidth
-            />
+              helperText={candidateAgents.length === 0 ? 'No agents available' : 'Select the default agent for this channel'}
+            >
+              {candidateAgents.map((agent) => (
+                <MenuItem key={agent.id} value={agent.id}>
+                  {agent.name} ({agent.id})
+                </MenuItem>
+              ))}
+            </TextField>
           </Stack>
         </DialogContent>
         <DialogActions>

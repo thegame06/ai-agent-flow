@@ -15,6 +15,7 @@ import CardContent from '@mui/material/CardContent';
 import axios from 'src/lib/axios';
 import { CONFIG } from 'src/global-config';
 import { DashboardContent } from 'src/layouts/dashboard';
+import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
 
 interface McpServer {
   name: string;
@@ -29,8 +30,19 @@ interface McpTool {
   inputSchemaJson?: string;
 }
 
+interface TenantMcpSettings {
+  tenantId: string;
+  enabled: boolean;
+  runtime: string;
+  timeoutSeconds: number;
+  retryCount: number;
+  allowedServers: string[];
+}
+
 export default function McpPage() {
+  const tenantId = useTenantId();
   const [servers, setServers] = useState<McpServer[]>([]);
+  const [settings, setSettings] = useState<TenantMcpSettings | null>(null);
   const [selectedServer, setSelectedServer] = useState('');
   const [tools, setTools] = useState<McpTool[]>([]);
   const [selectedTool, setSelectedTool] = useState('');
@@ -39,7 +51,16 @@ export default function McpPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const loadServers = async () => {
+    const loadSettings = async () => {
+    try {
+      const res = await axios.get(`/api/v1/tenants/${tenantId}/mcp/settings`);
+      setSettings(res.data);
+    } catch {
+      setSettings(null);
+    }
+  };
+  
+    const loadServers = async () => {
     setError(null);
     try {
       const res = await axios.get('/api/v1/mcp/servers');
@@ -49,10 +70,14 @@ export default function McpPage() {
       setError(e?.message || 'Failed to load MCP servers');
     }
   };
-
-  useEffect(() => {
+  
+    useEffect(() => {
+   loadSettings();
     loadServers();
+  }, [tenantId]);
+      loadServers();
   }, []);
+
 
   const loadTools = async () => {
     if (!selectedServer) return;
@@ -85,7 +110,24 @@ export default function McpPage() {
       });
       setOutput(JSON.stringify(res.data, null, 2));
     } catch (e: any) {
-      setError(e?.message || 'Failed to invoke MCP tool');
+      setError(e?.response?.data?.message || e?.message || 'Failed to invoke MCP tool');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const enableMcp = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      await axios.post(`/api/v1/tenants/${tenantId}/mcp/enable`, {
+        allowedServers: selectedServer ? [selectedServer] : undefined,
+        timeoutSeconds: 20,
+        retryCount: 1,
+      });
+      await loadSettings();
+    } catch (e: any) {
+      setError(e?.message || 'Failed to enable MCP');
     } finally {
       setLoading(false);
     }
@@ -103,6 +145,20 @@ export default function McpPage() {
             Discover tools from configured MCP servers and invoke them with real payloads.
           </Typography>
         </Box>
+
+        {settings && (
+          <Alert severity={settings.enabled ? 'success' : 'warning'} sx={{ mb: 2 }}
+            action={
+              !settings.enabled ? (
+                <Button color="inherit" size="small" onClick={enableMcp} disabled={loading}>
+                  Enable MCP (MAF)
+                </Button>
+              ) : undefined
+            }
+          >
+            MCP: <b>{settings.enabled ? 'Enabled' : 'Disabled'}</b> · Runtime: <b>{settings.runtime}</b> · Timeout: {settings.timeoutSeconds}s · Retries: {settings.retryCount}
+          </Alert>
+        )}
 
         {error && (
           <Alert severity="error" sx={{ mb: 2 }} action={<Button color="inherit" size="small" onClick={loadServers}>Retry</Button>}>
@@ -131,7 +187,7 @@ export default function McpPage() {
                     <Button variant="outlined" onClick={loadServers} disabled={loading}>
                       Refresh Servers
                     </Button>
-                    <Button variant="outlined" onClick={loadTools} disabled={loading || !selectedServer}>
+                    <Button variant="outlined" onClick={loadTools} disabled={loading || !selectedServer || !settings?.enabled}>
                       Discover Tools
                     </Button>
                   </Stack>
@@ -157,7 +213,7 @@ export default function McpPage() {
                     minRows={8}
                   />
 
-                  <Button variant="contained" onClick={invoke} disabled={loading || !selectedTool}>
+                  <Button variant="contained" onClick={invoke} disabled={loading || !selectedTool || !settings?.enabled}>
                     Invoke Tool
                   </Button>
                 </Stack>

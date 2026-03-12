@@ -61,6 +61,7 @@ public interface IAuditMemory
     Task<IReadOnlyList<AuditEntry>> GetForExecutionAsync(string executionId, string tenantId, CancellationToken ct = default);
     Task<IReadOnlyList<AuditEntry>> GetForAgentAsync(string agentId, string tenantId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default);
     Task<IReadOnlyList<AuditEntry>> GetRecentAsync(string tenantId, int limit = 100, CancellationToken ct = default);
+    Task<IReadOnlyList<AuditEntry>> GetByCorrelationAsync(string tenantId, string correlationId, int limit = 200, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -132,5 +133,6 @@ public enum AuditEventType
     SecurityViolation,
     HandoffRequested,
     HandoffCompleted,
-    HandoffFailed
+    HandoffFailed,
+    RoutingDecision
 }

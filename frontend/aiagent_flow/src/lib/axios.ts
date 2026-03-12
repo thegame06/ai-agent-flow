@@ -84,17 +84,49 @@ export const endpoints = {
     // Audit
     audit: {
       list: (tenantId: string) => `/api/v1/tenants/${tenantId}/audit`,
+      correlations: (tenantId: string) => `/api/v1/tenants/${tenantId}/audit/correlations`,
     },
     // Evaluations
     evaluations: {
       list: (tenantId: string) => `/api/v1/tenants/${tenantId}/evaluations`,
       create: (tenantId: string) => `/api/v1/tenants/${tenantId}/evaluations`,
       detail: (tenantId: string, runId: string) => `/api/v1/tenants/${tenantId}/evaluations/${runId}`,
+      byExecution: (tenantId: string, executionId: string) => `/api/v1/tenants/${tenantId}/evaluations/executions/${executionId}`,
+      byAgent: (tenantId: string, agentKey: string) => `/api/v1/tenants/${tenantId}/evaluations/agents/${agentKey}`,
+      agentSummary: (tenantId: string, agentKey: string) => `/api/v1/tenants/${tenantId}/evaluations/agents/${agentKey}/summary`,
+      pendingReview: (tenantId: string) => `/api/v1/tenants/${tenantId}/evaluations/pending-review`,
     },
     // Feature Flags
     featureFlags: {
       list: (tenantId: string) => `/api/v1/tenants/${tenantId}/feature-flags`,
-      toggle: (tenantId: string, flagKey: string) => `/api/v1/tenants/${tenantId}/feature-flags/${flagKey}/toggle`,
+      check: (tenantId: string, flagKey: string) => `/api/v1/tenants/${tenantId}/feature-flags/${flagKey}/check`,
+      enabled: (tenantId: string) => `/api/v1/tenants/${tenantId}/feature-flags/enabled`,
+      update: (tenantId: string, flagKey: string) => `/api/v1/tenants/${tenantId}/feature-flags/${flagKey}`,
+    },
+    // Conversation Threads
+    threads: {
+      list: (tenantId: string) => `/api/v1/tenants/${tenantId}/threads`,
+      create: (tenantId: string) => `/api/v1/tenants/${tenantId}/threads`,
+      detail: (tenantId: string, threadId: string) => `/api/v1/tenants/${tenantId}/threads/${threadId}`,
+      history: (tenantId: string, threadId: string) => `/api/v1/tenants/${tenantId}/threads/${threadId}/history`,
+      sendMessage: (tenantId: string, threadId: string) => `/api/v1/tenants/${tenantId}/threads/${threadId}/messages`,
+      archive: (tenantId: string, threadId: string) => `/api/v1/tenants/${tenantId}/threads/${threadId}/archive`,
+      delete: (tenantId: string, threadId: string) => `/api/v1/tenants/${tenantId}/threads/${threadId}`,
+    },
+    // Segment Routing
+    segmentRouting: {
+      getConfig: (tenantId: string, agentId: string) => `/api/v1/tenants/${tenantId}/segment-routing/agents/${agentId}`,
+      updateConfig: (tenantId: string, agentId: string) => `/api/v1/tenants/${tenantId}/segment-routing/agents/${agentId}`,
+      preview: (tenantId: string, agentId: string) => `/api/v1/tenants/${tenantId}/segment-routing/agents/${agentId}/preview`,
+      disable: (tenantId: string, agentId: string) => `/api/v1/tenants/${tenantId}/segment-routing/agents/${agentId}/disable`,
+    },
+    intentRouting: {
+      rules: (tenantId: string) => `/api/v1/tenants/${tenantId}/intent-routing/rules`,
+      ruleEnable: (tenantId: string, ruleId: string) => `/api/v1/tenants/${tenantId}/intent-routing/rules/${ruleId}/enable`,
+      ruleById: (tenantId: string, ruleId: string) => `/api/v1/tenants/${tenantId}/intent-routing/rules/${ruleId}`,
+      simulate: (tenantId: string) => `/api/v1/tenants/${tenantId}/intent-routing/simulate`,
+      agents: (tenantId: string) => `/api/v1/tenants/${tenantId}/intent-routing/agents`,
+      agentById: (tenantId: string, agentId: string) => `/api/v1/tenants/${tenantId}/intent-routing/agents/${agentId}`,
     },
     // System
     health: '/health',

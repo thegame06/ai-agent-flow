@@ -18,6 +18,7 @@
     <ProjectReference Include="..\AgentFlow.Application\AgentFlow.Application.csproj" />
     <ProjectReference Include="..\AgentFlow.Abstractions\AgentFlow.Abstractions.csproj" />
     <ProjectReference Include="..\AgentFlow.Prompting\AgentFlow.Prompting.csproj" />
+    <ProjectReference Include="..\AgentFlow.Security\AgentFlow.Security.csproj" />
   </ItemGroup>
 
 </Project>

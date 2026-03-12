@@ -79,6 +79,21 @@ export const navData: NavSectionProps['data'] = [
         path: paths.dashboard.tools,
         icon: ICONS.parameter,
       },
+      {
+        title: 'Orchestration',
+        path: paths.dashboard.orchestration,
+        icon: ICONS.analytics,
+      },
+      {
+        title: 'Threads',
+        path: paths.dashboard.threads,
+        icon: ICONS.chat,
+      },
+      {
+        title: 'Evaluations',
+        path: paths.dashboard.evaluations,
+        icon: ICONS.analytics,
+      },
     ],
   },
   /**
@@ -123,6 +138,16 @@ export const navData: NavSectionProps['data'] = [
         title: 'Channels',
         path: paths.dashboard.system.channels,
         icon: ICONS.channel,
+      },
+      {
+        title: 'Segment Routing',
+        path: paths.dashboard.system.segmentRouting,
+        icon: ICONS.analytics,
+      },
+      {
+        title: 'Feature Flags',
+        path: paths.dashboard.system.featureFlags,
+        icon: ICONS.label,
       },
       {
         title: 'Settings',
