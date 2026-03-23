@@ -3,7 +3,7 @@
 
 export interface AgentStep {
   id: string;
-  type: 'think' | 'plan' | 'act' | 'observe' | 'decide' | 'tool_call' | 'human_review';
+  type: 'think' | 'plan' | 'act' | 'observe' | 'decide' | 'tool_call' | 'human_review' | 'aggregate';
   label: string;
   description: string;
   config: Record<string, unknown>;
@@ -31,6 +31,9 @@ export interface AgentGuardrails {
   timeoutPerStepMs: number;
   maxTokensPerExecution: number;
   maxRetries: number;
+  allowParallelToolCalls: boolean;
+  plannerType: 'ReAct' | 'Sequential' | 'TreeOfThought';
+  runtimeMode: 'Autonomous' | 'Deterministic';
   enablePromptInjectionGuard: boolean;
   enablePIIProtection: boolean;
   hitl: {
@@ -112,6 +115,9 @@ export const DEFAULT_AGENT_DRAFT: AgentDefinitionDraft = {
     timeoutPerStepMs: 30000,
     maxTokensPerExecution: 100000,
     maxRetries: 3,
+    allowParallelToolCalls: false,
+    plannerType: 'ReAct',
+    runtimeMode: 'Autonomous',
     enablePromptInjectionGuard: true,
     enablePIIProtection: true,
     hitl: {

@@ -85,6 +85,7 @@ If users ask about something outside your knowledge, be honest about your limita
             loopConfig: loop1,
             memory: memory1,
             session: session1, // ✅ Session enabled
+            workflowSteps: null,
             ownerUserId: demoUser
         );
 
@@ -168,6 +169,7 @@ Always be precise and thorough in your responses.",
             loopConfig: loop2,
             memory: memory2,
             session: session2,
+            workflowSteps: null,
             ownerUserId: demoUser
         );
 
@@ -188,4 +190,3 @@ Always be precise and thorough in your responses.",
         Console.WriteLine("   - Technical Expert v2 (Deep Technical Q&A, Thread Support Enabled)");
     }
 }
-

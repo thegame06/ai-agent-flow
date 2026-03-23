@@ -4,6 +4,7 @@ using AgentFlow.Domain.Enums;
 using AgentFlow.Domain.Repositories;
 using AgentFlow.Domain.ValueObjects;
 using AgentFlow.Security;
+using AgentFlow.Abstractions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -110,6 +111,9 @@ public sealed class AgentsController : ControllerBase
             MaxIterations = request.Loop.MaxSteps,
             ToolCallTimeout = TimeSpan.FromMilliseconds(request.Loop.TimeoutPerStepMs),
             MaxRetries = request.Loop.MaxRetries,
+            AllowParallelToolCalls = request.Loop.AllowParallelToolCalls,
+            PlannerType = ParsePlannerType(request.Loop.PlannerType),
+            RuntimeMode = ParseRuntimeMode(request.Loop.RuntimeMode),
             HitlConfig = new HumanInTheLoopConfig { Enabled = request.Loop.RequireHumanApproval }
         };
 
@@ -139,7 +143,8 @@ public sealed class AgentsController : ControllerBase
             loop,
             memory,
             session: session,
-            ctx.UserId);
+            workflowSteps: request.Steps.Select(MapWorkflowStep).ToList().AsReadOnly(),
+            ownerUserId: ctx.UserId);
 
         if (!agentResult.IsSuccess)
             return BadRequest(agentResult.Error);
@@ -205,6 +210,9 @@ public sealed class AgentsController : ControllerBase
             MaxIterations = request.Loop.MaxSteps,
             ToolCallTimeout = TimeSpan.FromMilliseconds(request.Loop.TimeoutPerStepMs),
             MaxRetries = request.Loop.MaxRetries,
+            AllowParallelToolCalls = request.Loop.AllowParallelToolCalls,
+            PlannerType = ParsePlannerType(request.Loop.PlannerType),
+            RuntimeMode = ParseRuntimeMode(request.Loop.RuntimeMode),
             HitlConfig = new HumanInTheLoopConfig { Enabled = request.Loop.RequireHumanApproval }
         };
 
@@ -234,9 +242,10 @@ public sealed class AgentsController : ControllerBase
             loop,
             memory,
             session: null,
-            tools,
-            request.Tags.ToList().AsReadOnly(),
-            ctx.UserId);
+            workflowSteps: request.Steps.Select(MapWorkflowStep).ToList().AsReadOnly(),
+            tools: tools,
+            tags: request.Tags.ToList().AsReadOnly(),
+            updatedBy: ctx.UserId);
 
         if (!updateResult.IsSuccess)
             return BadRequest(updateResult.Error);
@@ -374,8 +383,15 @@ public sealed class AgentsController : ControllerBase
         {
             MaxSteps = agent.LoopConfig.MaxIterations,
             TimeoutPerStepMs = (int)agent.LoopConfig.ToolCallTimeout.TotalMilliseconds,
+            MaxTokensPerExecution = 100000,
             MaxRetries = agent.LoopConfig.MaxRetries,
+            EnablePromptInjectionGuard = true,
+            EnablePIIProtection = true,
             RequireHumanApproval = agent.LoopConfig.HitlConfig.Enabled,
+            HumanApprovalThreshold = agent.LoopConfig.HitlConfig.ConfidenceThresholdToReview.ToString("F2"),
+            AllowParallelToolCalls = agent.LoopConfig.AllowParallelToolCalls,
+            PlannerType = agent.LoopConfig.PlannerType.ToString(),
+            RuntimeMode = agent.LoopConfig.RuntimeMode.ToString(),
         },
         Memory = new MemoryConfigDto
         {
@@ -394,6 +410,16 @@ public sealed class AgentsController : ControllerBase
             EnableSummarization = agent.Session.EnableSummarization,
             ThreadKeyPattern = agent.Session.ThreadKeyPattern,
         },
+        Steps = agent.WorkflowSteps.Select(s => new DesignerStepDto
+        {
+            Id = s.Id,
+            Type = s.Type,
+            Label = s.Label,
+            Description = s.Description,
+            Config = s.Config.ToDictionary(kvp => kvp.Key, kvp => kvp.Value),
+            Position = new PositionDto { X = s.Position.X, Y = s.Position.Y },
+            Connections = s.Connections,
+        }).ToList(),
         Tools = agent.AuthorizedTools
             .Select(t => new ToolBindingDto
             {
@@ -403,6 +429,21 @@ public sealed class AgentsController : ControllerBase
                 Permissions = t.GrantedPermissions,
             }).ToList(),
     };
+
+    private static WorkflowStep MapWorkflowStep(DesignerStepDto step) => new()
+    {
+        Id = step.Id,
+        Type = step.Type,
+        Label = step.Label,
+        Description = step.Description,
+        Config = step.Config,
+        Position = new WorkflowPosition { X = step.Position.X, Y = step.Position.Y },
+        Connections = step.Connections,
+    };
+
+    private static PlannerType ParsePlannerType(string? value)
+        => Enum.TryParse<PlannerType>(value, true, out var parsed) ? parsed : PlannerType.ReAct;
+
+    private static RuntimeMode ParseRuntimeMode(string? value)
+        => Enum.TryParse<RuntimeMode>(value, true, out var parsed) ? parsed : RuntimeMode.Autonomous;
 }
-
-

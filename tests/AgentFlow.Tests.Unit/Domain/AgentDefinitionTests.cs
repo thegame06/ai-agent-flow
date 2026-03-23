@@ -11,6 +11,18 @@ public sealed class AgentDefinitionTests
     public void Clone_WithValidParameters_CreatesNewDraft()
     {
         // Arrange
+        var workflow = new[]
+        {
+            new WorkflowStep
+            {
+                Id = "step-1",
+                Type = "think",
+                Label = "Prompt Chain",
+                Config = new Dictionary<string, object> { ["prompt"] = "Rewrite user input" },
+                Connections = ["step-2"]
+            }
+        }.ToList().AsReadOnly();
+
         var originalResult = AgentDefinition.Create(
             tenantId: "tenant-1",
             name: "Original Agent",
@@ -37,6 +49,7 @@ public sealed class AgentDefinitionTests
                 EnableVectorMemory = false
             },
             session: null,
+            workflowSteps: workflow,
             ownerUserId: "user-1");
 
         Assert.True(originalResult.IsSuccess);
@@ -78,6 +91,8 @@ public sealed class AgentDefinitionTests
         // Tools should be copied
         Assert.Single(cloned.AuthorizedTools);
         Assert.Equal("tool-1", cloned.AuthorizedTools[0].ToolId);
+        Assert.Single(cloned.WorkflowSteps);
+        Assert.Equal("Prompt Chain", cloned.WorkflowSteps[0].Label);
 
         // Experimentation settings should NOT be copied
         Assert.Null(cloned.ShadowAgentId);
@@ -115,6 +130,7 @@ public sealed class AgentDefinitionTests
                 EnableVectorMemory = false
             },
             session: null,
+            workflowSteps: null,
             ownerUserId: "user-1");
 
         var original = originalResult.Value!;
@@ -161,6 +177,7 @@ public sealed class AgentDefinitionTests
                 EnableVectorMemory = false
             },
             session: null,
+            workflowSteps: null,
             ownerUserId: "user-1");
 
         var original = originalResult.Value!;
@@ -207,6 +224,7 @@ public sealed class AgentDefinitionTests
                 EnableVectorMemory = false
             },
             session: null,
+            workflowSteps: null,
             ownerUserId: "user-1");
 
         var original = originalResult.Value!;
@@ -254,6 +272,7 @@ public sealed class AgentDefinitionTests
                 EnableVectorMemory = false
             },
             session: null,
+            workflowSteps: null,
             ownerUserId: "user-1");
 
         var original = originalResult.Value!;
@@ -312,6 +331,7 @@ public sealed class AgentDefinitionTests
                 EnableVectorMemory = false
             },
             session: null,
+            workflowSteps: null,
             ownerUserId: "user-1");
 
         var original = originalResult.Value!;
@@ -325,6 +345,7 @@ public sealed class AgentDefinitionTests
             loopConfig: original.LoopConfig,
             memory: original.Memory,
             session: null,
+            workflowSteps: original.WorkflowSteps,
             tools: original.AuthorizedTools,
             tags: original.Tags,
             updatedBy: "user-1",
@@ -358,7 +379,61 @@ public sealed class AgentDefinitionTests
         Assert.Equal("agent-canary", original.CanaryAgentId);
         Assert.Equal(0.10, original.CanaryWeight);
     }
+
+    [Fact]
+    public void Update_WithWorkflowSteps_PersistsSequentialPlannerShape()
+    {
+        var createResult = AgentDefinition.Create(
+            tenantId: "tenant-1",
+            name: "Workflow Agent",
+            description: "Original description",
+            brain: new BrainConfiguration
+            {
+                ModelId = "gpt-4o",
+                Provider = "OpenAI",
+                SystemPromptTemplate = "You are a helpful assistant."
+            },
+            loopConfig: new AgentLoopConfig { MaxIterations = 10 },
+            memory: new MemoryConfig(),
+            session: null,
+            workflowSteps: null,
+            ownerUserId: "user-1");
+
+        var agent = createResult.Value!;
+
+        var updateResult = agent.Update(
+            name: "Workflow Agent",
+            description: "Updated",
+            brain: agent.Brain,
+            loopConfig: agent.LoopConfig with { PlannerType = AgentFlow.Abstractions.PlannerType.Sequential, AllowParallelToolCalls = true },
+            memory: agent.Memory,
+            session: null,
+            workflowSteps: new[]
+            {
+                new WorkflowStep
+                {
+                    Id = "step-think",
+                    Type = "think",
+                    Label = "Chain Prompt",
+                    Config = new Dictionary<string, object> { ["prompt"] = "Summarize input" },
+                    Connections = ["step-decide"]
+                },
+                new WorkflowStep
+                {
+                    Id = "step-decide",
+                    Type = "decide",
+                    Label = "Gate",
+                    Config = new Dictionary<string, object> { ["mode"] = "contains", ["matchValue"] = "approve" }
+                }
+            }.ToList().AsReadOnly(),
+            tools: [],
+            tags: ["sprint-1"],
+            updatedBy: "user-2");
+
+        Assert.True(updateResult.IsSuccess);
+        Assert.Equal(AgentFlow.Abstractions.PlannerType.Sequential, agent.LoopConfig.PlannerType);
+        Assert.True(agent.LoopConfig.AllowParallelToolCalls);
+        Assert.Equal(2, agent.WorkflowSteps.Count);
+        Assert.Equal("decide", agent.WorkflowSteps[1].Type);
+    }
 }
-
-
-
