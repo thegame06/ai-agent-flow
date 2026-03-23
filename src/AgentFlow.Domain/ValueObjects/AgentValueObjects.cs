@@ -128,6 +128,26 @@ public sealed record ToolBinding
 }
 
 /// <summary>
+/// Declarative workflow step used by the Agent Designer and sequential planner runtime.
+/// </summary>
+public sealed record WorkflowStep
+{
+    public string Id { get; init; } = string.Empty;
+    public string Type { get; init; } = "think"; // think | plan | act | observe | decide | aggregate | tool_call | human_review
+    public string Label { get; init; } = string.Empty;
+    public string Description { get; init; } = string.Empty;
+    public IReadOnlyDictionary<string, object> Config { get; init; } = new Dictionary<string, object>();
+    public WorkflowPosition Position { get; init; } = new();
+    public IReadOnlyList<string> Connections { get; init; } = [];
+}
+
+public sealed record WorkflowPosition
+{
+    public double X { get; init; }
+    public double Y { get; init; }
+}
+
+/// <summary>
 /// Represents an agent execution step.
 /// Each step is a snapshot of one iteration in the Think→Plan→Act→Observe loop.
 /// </summary>

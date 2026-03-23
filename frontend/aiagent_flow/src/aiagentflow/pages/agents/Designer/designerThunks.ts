@@ -112,6 +112,9 @@ function mapDraftToPayload(draft: AgentDefinitionDraft) {
       enablePIIProtection: draft.guardrails.enablePIIProtection,
       requireHumanApproval: draft.guardrails.hitl.enabled,
       humanApprovalThreshold: draft.guardrails.hitl.requireReviewOnAllToolCalls ? 'always' : 'high_risk',
+      allowParallelToolCalls: draft.guardrails.allowParallelToolCalls,
+      plannerType: draft.guardrails.plannerType,
+      runtimeMode: draft.guardrails.runtimeMode,
     },
     memory: {
       workingMemory: draft.memory.workingMemory,
@@ -165,6 +168,9 @@ export function mapResponseToDraft(data: Record<string, unknown>): AgentDefiniti
       timeoutPerStepMs: (loop.timeoutPerStepMs as number) ?? 30000,
       maxTokensPerExecution: (loop.maxTokensPerExecution as number) ?? 100000,
       maxRetries: (loop.maxRetries as number) ?? 3,
+      allowParallelToolCalls: (loop.allowParallelToolCalls as boolean) ?? false,
+      plannerType: (loop.plannerType as AgentDefinitionDraft['guardrails']['plannerType']) ?? 'ReAct',
+      runtimeMode: (loop.runtimeMode as AgentDefinitionDraft['guardrails']['runtimeMode']) ?? 'Autonomous',
       enablePromptInjectionGuard: (loop.enablePromptInjectionGuard as boolean) ?? true,
       enablePIIProtection: (loop.enablePIIProtection as boolean) ?? true,
       hitl: {

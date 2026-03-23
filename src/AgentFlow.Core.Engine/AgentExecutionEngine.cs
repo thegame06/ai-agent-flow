@@ -9,6 +9,7 @@ using AgentFlow.Domain.ValueObjects;
 using Microsoft.Extensions.Logging;
 using System.Diagnostics;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using AgentFlow.Security;
 
 namespace AgentFlow.Core.Engine;
@@ -272,6 +273,7 @@ public sealed class AgentExecutionEngine : IAgentExecutor
     {
         bool goalAchieved = false;
         string currentMessage = request.UserMessage;
+        string? latestPayload = request.UserMessage;
 
         // ✅ NEW: Load or create conversation thread if session enabled
         ConversationThread? currentThread = null;
@@ -307,6 +309,18 @@ public sealed class AgentExecutionEngine : IAgentExecutor
         var maxIterations = agentDef.LoopConfig.RuntimeMode == AgentFlow.Abstractions.RuntimeMode.Deterministic 
             ? 1 
             : agentDef.LoopConfig.MaxIterations;
+
+        if (agentDef.LoopConfig.PlannerType == PlannerType.Sequential && agentDef.WorkflowSteps.Count > 0)
+        {
+            var sequentialResult = await RunSequentialWorkflowAsync(
+                execution, agentDef, request, currentMessage, latestPayload, maxIterations, ct);
+
+            if (!sequentialResult.IsSuccess)
+                return Result<string?>.Failure(sequentialResult.Error!);
+
+            goalAchieved = true;
+            latestPayload = sequentialResult.Value;
+        }
 
         while (!goalAchieved && execution.CurrentIteration < maxIterations)
         {
@@ -480,6 +494,312 @@ if (!preResponsePolicy.IsSuccess) return Result<string?>.Failure(preResponsePoli
         }
 
         return Result<string?>.Success(currentThread?.Id);
+    }
+
+    private async Task<Result<string?>> RunSequentialWorkflowAsync(
+        AgentExecution execution,
+        AgentDefinition agentDef,
+        AgentExecutionRequest request,
+        string currentMessage,
+        string? latestPayload,
+        int maxIterations,
+        CancellationToken ct)
+    {
+        var stepsById = agentDef.WorkflowSteps
+            .Where(s => !string.IsNullOrWhiteSpace(s.Id))
+            .ToDictionary(s => s.Id, s => s);
+
+        if (stepsById.Count == 0)
+            return Result<string?>.Failure(Error.Validation("WorkflowSteps", "Sequential planner requires at least one workflow step."));
+
+        var currentStep = agentDef.WorkflowSteps[0];
+        var visited = 0;
+
+        while (visited < maxIterations && currentStep is not null)
+        {
+            ct.ThrowIfCancellationRequested();
+            visited++;
+
+            var stepType = NormalizeStepType(currentStep.Type);
+            switch (stepType)
+            {
+                case "think":
+                case "plan":
+                    {
+                        var prompt = GetConfigString(currentStep.Config, "prompt")
+                            ?? GetConfigString(currentStep.Config, "instruction")
+                            ?? currentMessage;
+
+                        var thinkResult = await _brain.ThinkAsync(new ThinkContext
+                        {
+                            TenantId = request.TenantId,
+                            ExecutionId = execution.Id,
+                            SystemPrompt = agentDef.Brain.SystemPromptTemplate,
+                            UserMessage = prompt,
+                            Iteration = execution.CurrentIteration,
+                            History = execution.Steps.Cast<object>().ToList(),
+                            WorkingMemoryJson = latestPayload ?? "{}",
+                            AvailableTools = agentDef.AuthorizedTools.Where(t => t.IsEnabled)
+                                .Select(t => new AvailableToolDescriptor { Name = t.ToolName, Description = t.ToolName })
+                                .ToList()
+                        }, ct);
+
+                        latestPayload = thinkResult.FinalAnswer ?? thinkResult.Rationale ?? prompt;
+                        currentMessage = latestPayload;
+
+                        await AppendWorkflowAuditStepAsync(
+                            execution, request.TenantId, stepType == "plan" ? StepType.Plan : StepType.Think,
+                            visited - 1, currentStep, prompt, latestPayload, thinkResult.TokensUsed, null, ct);
+                        break;
+                    }
+
+                case "act":
+                case "tool_call":
+                    {
+                        var toolNames = GetConfigStringList(currentStep.Config, "toolNames");
+                        var singleTool = GetConfigString(currentStep.Config, "toolName");
+                        if (toolNames.Count == 0 && !string.IsNullOrWhiteSpace(singleTool))
+                            toolNames.Add(singleTool!);
+
+                        if (toolNames.Count == 0)
+                            return Result<string?>.Failure(Error.Validation("WorkflowStep", $"Step '{currentStep.Label}' requires toolName or toolNames."));
+
+                        var toolInput = BuildToolInputJson(currentStep.Config, latestPayload ?? currentMessage);
+
+                        if (toolNames.Count > 1 && agentDef.LoopConfig.AllowParallelToolCalls)
+                        {
+                            var tasks = toolNames.Select(name => ActAsync(execution, agentDef, request, name, toolInput, ct)).ToList();
+                            var results = await Task.WhenAll(tasks);
+                            var failed = results.FirstOrDefault(r => !r.IsSuccess);
+                            if (failed is not null && !failed.IsSuccess)
+                                return Result<string?>.Failure(failed.Error!);
+
+                            var aggregatePayload = JsonSerializer.Serialize(results.Select((r, index) => new
+                            {
+                                toolName = toolNames[index],
+                                output = r.Value!.OutputJson,
+                                success = r.Value.IsSuccess
+                            }).ToList());
+
+                            latestPayload = aggregatePayload;
+                            await AppendWorkflowAuditStepAsync(
+                                execution, request.TenantId, StepType.Aggregate, visited - 1, currentStep,
+                                toolInput, aggregatePayload, null,
+                                $"Parallel aggregation of {toolNames.Count} tool calls", ct);
+
+                            foreach (var postTool in results.Select((result, index) => new { result, toolName = toolNames[index] }))
+                            {
+                                var postToolPolicy = await EvaluatePoliciesAsync(
+                                    PolicyCheckpoint.PostTool,
+                                    execution,
+                                    agentDef,
+                                    request,
+                                    toolName: postTool.toolName,
+                                    toolOutput: postTool.result.Value?.OutputJson,
+                                    ct: ct);
+
+                                if (!postToolPolicy.IsSuccess)
+                                    return Result<string?>.Failure(postToolPolicy.Error!);
+                            }
+                        }
+                        else
+                        {
+                            var act = await ActAsync(execution, agentDef, request, toolNames[0], toolInput, ct);
+                            if (!act.IsSuccess)
+                                return Result<string?>.Failure(act.Error!);
+
+                            latestPayload = act.Value!.OutputJson;
+
+                            var postToolPolicy = await EvaluatePoliciesAsync(
+                                PolicyCheckpoint.PostTool,
+                                execution,
+                                agentDef,
+                                request,
+                                toolName: toolNames[0],
+                                toolOutput: act.Value.OutputJson,
+                                ct: ct);
+
+                            if (!postToolPolicy.IsSuccess)
+                                return Result<string?>.Failure(postToolPolicy.Error!);
+                        }
+                        break;
+                    }
+
+                case "observe":
+                case "aggregate":
+                    {
+                        var observe = await _brain.ObserveAsync(new ObserveContext
+                        {
+                            TenantId = request.TenantId,
+                            ToolName = currentStep.Label,
+                            ToolOutputJson = latestPayload ?? "{}",
+                            ToolSucceeded = true,
+                            UserGoal = request.UserMessage,
+                            History = execution.Steps.Cast<object>().ToList()
+                        }, ct);
+
+                        latestPayload = observe.Summary;
+                        currentMessage = observe.Summary;
+
+                        await AppendWorkflowAuditStepAsync(
+                            execution, request.TenantId,
+                            stepType == "aggregate" ? StepType.Aggregate : StepType.Observe,
+                            visited - 1, currentStep, latestPayload, observe.Summary, observe.TokensUsed, null, ct);
+                        break;
+                    }
+
+                case "decide":
+                    {
+                        var decision = EvaluateDecision(currentStep, latestPayload);
+                        var decisionJson = JsonSerializer.Serialize(decision);
+                        await AppendWorkflowAuditStepAsync(
+                            execution, request.TenantId, StepType.Decision, visited - 1, currentStep,
+                            latestPayload, decisionJson, null, decision.reason, ct);
+
+                        var nextId = decision.passed
+                            ? currentStep.Connections.FirstOrDefault()
+                            : currentStep.Connections.Skip(1).FirstOrDefault();
+
+                        if (string.IsNullOrWhiteSpace(nextId))
+                        {
+                            return await CompleteSequentialExecutionAsync(execution, agentDef, request, latestPayload, visited, ct);
+                        }
+
+                        currentStep = stepsById.GetValueOrDefault(nextId);
+                        continue;
+                    }
+
+                case "human_review":
+                    execution.PauseForReview(currentStep.Description);
+                    await _executionRepo.UpdateAsync(execution, ct);
+                    return Result<string?>.Failure(Error.Unauthorized("Sequential workflow paused for human review."));
+
+                default:
+                    return Result<string?>.Failure(Error.Validation("WorkflowStep", $"Unsupported workflow step type '{currentStep.Type}'."));
+            }
+
+            var defaultNext = currentStep.Connections.FirstOrDefault();
+            if (string.IsNullOrWhiteSpace(defaultNext))
+            {
+                return await CompleteSequentialExecutionAsync(execution, agentDef, request, latestPayload, visited, ct);
+            }
+
+            currentStep = stepsById.GetValueOrDefault(defaultNext);
+        }
+
+        return Result<string?>.Failure(Error.EngineError($"Sequential workflow did not complete within {maxIterations} steps."));
+    }
+
+    private async Task AppendWorkflowAuditStepAsync(
+        AgentExecution execution,
+        string tenantId,
+        StepType type,
+        int iteration,
+        WorkflowStep workflowStep,
+        string? input,
+        string? output,
+        int? tokensUsed,
+        string? rationale,
+        CancellationToken ct)
+    {
+        var step = new AgentStep
+        {
+            StepType = type,
+            Iteration = iteration,
+            StartedAt = DateTimeOffset.UtcNow,
+            CompletedAt = DateTimeOffset.UtcNow,
+            DurationMs = 0,
+            InputJson = input,
+            OutputJson = output,
+            TokensUsed = tokensUsed,
+            ThinkingRationale = rationale,
+            LlmResponse = output,
+            IsSuccess = true,
+            ToolName = workflowStep.Label
+        };
+
+        execution.AppendStep(step);
+        await _executionRepo.AppendStepAsync(execution.Id, tenantId, step, ct);
+    }
+
+    private async Task<Result<string?>> CompleteSequentialExecutionAsync(
+        AgentExecution execution,
+        AgentDefinition agentDef,
+        AgentExecutionRequest request,
+        string? latestPayload,
+        int visited,
+        CancellationToken ct)
+    {
+        var finalResponse = latestPayload ?? string.Empty;
+        var preResponsePolicy = await EvaluatePoliciesAsync(
+            PolicyCheckpoint.PreResponse,
+            execution,
+            agentDef,
+            request,
+            finalResponse: finalResponse,
+            ct: ct);
+
+        if (!preResponsePolicy.IsSuccess)
+            return Result<string?>.Failure(preResponsePolicy.Error!);
+
+        execution.Complete(new ExecutionOutput
+        {
+            FinalResponse = finalResponse,
+            TotalTokensUsed = execution.Steps.Sum(s => s.TokensUsed ?? 0),
+            TotalToolCalls = execution.Steps.Count(s => s.StepType == StepType.Act),
+            TotalIterations = visited
+        });
+        await _executionRepo.UpdateAsync(execution, CancellationToken.None);
+        return Result<string?>.Success(finalResponse);
+    }
+
+    private static string NormalizeStepType(string? type) => (type ?? "think").Trim().ToLowerInvariant();
+
+    private static string? GetConfigString(IReadOnlyDictionary<string, object> config, string key)
+    {
+        if (!config.TryGetValue(key, out var value) || value is null) return null;
+        return value switch
+        {
+            string s => s,
+            JsonElement el when el.ValueKind == JsonValueKind.String => el.GetString(),
+            JsonNode node => node.ToJsonString(),
+            _ => value.ToString()
+        };
+    }
+
+    private static List<string> GetConfigStringList(IReadOnlyDictionary<string, object> config, string key)
+    {
+        if (!config.TryGetValue(key, out var value) || value is null) return [];
+        return value switch
+        {
+            JsonElement el when el.ValueKind == JsonValueKind.Array => el.EnumerateArray().Select(x => x.ToString()).ToList(),
+            IEnumerable<object> values => values.Select(v => v?.ToString()).Where(v => !string.IsNullOrWhiteSpace(v)).Cast<string>().ToList(),
+            string s => s.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList(),
+            _ => []
+        };
+    }
+
+    private static string BuildToolInputJson(IReadOnlyDictionary<string, object> config, string payload)
+    {
+        var inputTemplate = GetConfigString(config, "inputTemplate");
+        if (string.IsNullOrWhiteSpace(inputTemplate))
+            return payload;
+
+        return inputTemplate.Replace("{{input}}", payload, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static (bool passed, string reason) EvaluateDecision(WorkflowStep step, string? payload)
+    {
+        payload ??= string.Empty;
+        var mode = GetConfigString(step.Config, "mode") ?? "contains";
+        var expected = GetConfigString(step.Config, "matchValue") ?? "true";
+
+        return mode.ToLowerInvariant() switch
+        {
+            "non_empty" => (!string.IsNullOrWhiteSpace(payload), "Decision gate evaluated non_empty"),
+            "equals" => (string.Equals(payload.Trim(), expected.Trim(), StringComparison.OrdinalIgnoreCase), $"Decision gate compared equals '{expected}'"),
+            _ => (payload.Contains(expected, StringComparison.OrdinalIgnoreCase), $"Decision gate checked contains '{expected}'")
+        };
     }
 
     private async Task<Result<ToolExecutionResult>> ActAsync(

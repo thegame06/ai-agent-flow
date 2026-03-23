@@ -17,6 +17,8 @@ public enum StepType
     Plan,       // Planning/structured output step
     Act,        // Tool invocation step
     Observe,    // Processing tool output step
+    Decision,   // Conditional gate / branch evaluation
+    Aggregate,  // Fan-in aggregation of parallel branches
     Memory,     // Memory read/write step
     Checkpoint, // Explicit human-in-the-loop step
 }

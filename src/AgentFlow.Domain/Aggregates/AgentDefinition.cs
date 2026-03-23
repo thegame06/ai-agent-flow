@@ -26,6 +26,9 @@ public sealed class AgentDefinition : AggregateRoot
     // --- Authorized Tools ---
     public IReadOnlyList<ToolBinding> AuthorizedTools { get; private set; } = [];
 
+    // --- Workflow / Designer Steps ---
+    public IReadOnlyList<WorkflowStep> WorkflowSteps { get; private set; } = [];
+
     // --- Memory Configuration ---
     public MemoryConfig Memory { get; private set; } = default!;
 
@@ -53,6 +56,7 @@ public sealed class AgentDefinition : AggregateRoot
         AgentLoopConfig loopConfig,
         MemoryConfig memory,
         SessionConfig? session,
+        IReadOnlyList<WorkflowStep>? workflowSteps,
         string ownerUserId)
     {
         if (string.IsNullOrWhiteSpace(name))
@@ -73,6 +77,7 @@ public sealed class AgentDefinition : AggregateRoot
             LoopConfig = loopConfig,
             Memory = memory,
             Session = session ?? new SessionConfig(),
+            WorkflowSteps = workflowSteps ?? [],
             OwnerUserId = ownerUserId,
             CreatedBy = ownerUserId,
             UpdatedBy = ownerUserId
@@ -104,6 +109,7 @@ public sealed class AgentDefinition : AggregateRoot
         AgentLoopConfig loopConfig,
         MemoryConfig memory,
         SessionConfig? session,
+        IReadOnlyList<WorkflowStep> workflowSteps,
         IReadOnlyList<ToolBinding> tools,
         IReadOnlyList<string> tags,
         string updatedBy,
@@ -129,6 +135,7 @@ public sealed class AgentDefinition : AggregateRoot
         LoopConfig = loopConfig;
         Memory = memory;
         Session = session ?? Session;
+        WorkflowSteps = workflowSteps;
         AuthorizedTools = tools;
         Tags = tags;
         ShadowAgentId = shadowAgentId;
@@ -195,6 +202,7 @@ public sealed class AgentDefinition : AggregateRoot
             Brain = source.Brain,
             LoopConfig = source.LoopConfig,
             Memory = source.Memory,
+            WorkflowSteps = new List<WorkflowStep>(source.WorkflowSteps).AsReadOnly(),
             AuthorizedTools = new List<ToolBinding>(source.AuthorizedTools).AsReadOnly(),
             Tags = new List<string>(source.Tags).AsReadOnly(),
             OwnerUserId = clonedBy,

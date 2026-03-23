@@ -57,6 +57,9 @@ public sealed record LoopConfigDto
     public bool EnablePIIProtection { get; init; } = true;
     public bool RequireHumanApproval { get; init; } = false;
     public string HumanApprovalThreshold { get; init; } = "high_risk";
+    public bool AllowParallelToolCalls { get; init; } = false;
+    public string PlannerType { get; init; } = "ReAct";
+    public string RuntimeMode { get; init; } = "Autonomous";
 }
 
 public sealed record MemoryConfigDto
@@ -85,7 +88,7 @@ public sealed record SessionConfigDto
 public sealed record DesignerStepDto
 {
     public string Id { get; init; } = string.Empty;
-    public string Type { get; init; } = string.Empty;  // think | plan | act | observe | decide | tool_call | human_review
+    public string Type { get; init; } = string.Empty;  // think | plan | act | observe | decide | aggregate | tool_call | human_review
     public string Label { get; init; } = string.Empty;
     public string Description { get; init; } = string.Empty;
     public Dictionary<string, object> Config { get; init; } = [];

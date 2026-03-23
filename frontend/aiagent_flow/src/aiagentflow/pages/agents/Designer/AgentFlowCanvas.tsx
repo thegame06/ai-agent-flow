@@ -32,6 +32,7 @@ function StepNode({ data }: { data: any }) {
     act: { icon: '⚡', color: '#FF9800' },
     observe: { icon: '👁️', color: '#4CAF50' },
     decide: { icon: '🔀', color: '#E91E63' },
+    aggregate: { icon: '🧩', color: '#3F51B5' },
     tool_call: { icon: '🔧', color: '#607D8B' },
     human_review: { icon: '✋', color: '#795548' },
   };

@@ -45,6 +45,7 @@ import {
   resetDraft,
   updateField,
   updateModel,
+  updateStep,
   setActiveTab,
   updateMemory,
   updateGuardrails,
@@ -59,7 +60,8 @@ const STEP_TYPES = [
   { value: 'plan', label: 'Plan', icon: 'mdi:map-outline', color: '#00BCD4' },
   { value: 'act', label: 'Act', icon: 'mdi:lightning-bolt', color: '#FF9800' },
   { value: 'observe', label: 'Observe', icon: 'mdi:eye-outline', color: '#4CAF50' },
-  { value: 'decide', label: 'Decide', icon: 'mdi:source-branch', color: '#E91E63' },
+  { value: 'decide', label: 'Decision Gate', icon: 'mdi:source-branch', color: '#E91E63' },
+  { value: 'aggregate', label: 'Aggregator', icon: 'mdi:graph-outline', color: '#3F51B5' },
   { value: 'tool_call', label: 'Tool Call', icon: 'mdi:wrench-outline', color: '#607D8B' },
   { value: 'human_review', label: 'Human Review', icon: 'mdi:account-check', color: '#795548' },
 ] as const;
@@ -68,6 +70,25 @@ const FALLBACK_MODELS = ['gpt-4o', 'gpt-4o-mini', 'claude-3.5-sonnet', 'gemini-2
 
 let stepCounter = 0;
 const genId = () => `step-${++stepCounter}-${Date.now()}`;
+
+function defaultConfigForStepType(type: AgentStep['type']): Record<string, unknown> {
+  switch (type) {
+    case 'think':
+    case 'plan':
+      return { prompt: '', outputKey: 'latest' };
+    case 'act':
+    case 'tool_call':
+      return { toolName: '', inputTemplate: '{{input}}' };
+    case 'decide':
+      return { mode: 'contains', matchValue: 'approved' };
+    case 'aggregate':
+      return { strategy: 'concat', separator: '\n---\n' };
+    case 'human_review':
+      return { reason: 'Manual verification required' };
+    default:
+      return {};
+  }
+}
 
 interface ModelOption {
   modelId: string;
@@ -170,7 +191,7 @@ function TabSteps({ draft, dispatch, theme }: { draft: any; dispatch: any; theme
   return (
     <Stack spacing={3}>
       <Alert severity="info" variant="outlined">
-        Runtime still executes the Think-Act-Observe engine loop. These visual steps define design intent and guardrails.
+        Select <strong>Sequential</strong> planner to execute prompt chains, decision gates, and parallel tool aggregation from these steps.
       </Alert>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Typography variant="subtitle1" fontWeight={700}>
@@ -200,7 +221,7 @@ function TabSteps({ draft, dispatch, theme }: { draft: any; dispatch: any; theme
                 type: st.value,
                 label: `${st.label} Step`,
                 description: '',
-                config: {},
+                config: defaultConfigForStepType(st.value),
                 position: { x: 0, y: draft.steps.length * 80 },
                 connections: [],
               };
@@ -242,10 +263,43 @@ function TabSteps({ draft, dispatch, theme }: { draft: any; dispatch: any; theme
                 sx={{ color: stepType?.color }}
               />
               <Box sx={{ flex: 1 }}>
-                <Typography variant="subtitle2">{step.label}</Typography>
+                <TextField
+                  size="small"
+                  label="Step label"
+                  value={step.label}
+                  onChange={(e) => dispatch(updateStep({ id: step.id, changes: { label: e.target.value } }))}
+                  sx={{ minWidth: 220 }}
+                />
                 <Typography variant="caption" color="text.secondary">
                   Step {idx + 1} · {step.type.replace('_', ' ').toUpperCase()}
                 </Typography>
+                <TextField
+                  size="small"
+                  fullWidth
+                  multiline
+                  minRows={2}
+                  label="Description"
+                  value={step.description}
+                  onChange={(e) => dispatch(updateStep({ id: step.id, changes: { description: e.target.value } }))}
+                  sx={{ mt: 1 }}
+                />
+                <TextField
+                  size="small"
+                  fullWidth
+                  multiline
+                  minRows={4}
+                  label="Config (JSON)"
+                  value={JSON.stringify(step.config ?? {}, null, 2)}
+                  onChange={(e) => {
+                    try {
+                      const next = JSON.parse(e.target.value || '{}');
+                      dispatch(updateStep({ id: step.id, changes: { config: next } }));
+                    } catch {
+                      // Ignore partial invalid JSON while the user edits
+                    }
+                  }}
+                  sx={{ mt: 1 }}
+                />
               </Box>
               <Label color="default" variant="soft">{step.type}</Label>
               <Tooltip title="Remove step">
@@ -300,10 +354,44 @@ function TabGuardrails({ draft, dispatch }: { draft: any; dispatch: any }) {
           onChange={(e) => dispatch(updateGuardrails({ maxRetries: Number(e.target.value) }))}
           sx={{ width: 140 }}
         />
+        <FormControl sx={{ width: 180 }}>
+          <InputLabel>Planner</InputLabel>
+          <Select
+            value={g.plannerType}
+            label="Planner"
+            onChange={(e) => dispatch(updateGuardrails({ plannerType: e.target.value }))}
+          >
+            <MenuItem value="ReAct">ReAct</MenuItem>
+            <MenuItem value="Sequential">Sequential</MenuItem>
+            <MenuItem value="TreeOfThought">Tree of Thought</MenuItem>
+          </Select>
+        </FormControl>
+        <FormControl sx={{ width: 180 }}>
+          <InputLabel>Runtime</InputLabel>
+          <Select
+            value={g.runtimeMode}
+            label="Runtime"
+            onChange={(e) => dispatch(updateGuardrails({ runtimeMode: e.target.value }))}
+          >
+            <MenuItem value="Autonomous">Autonomous</MenuItem>
+            <MenuItem value="Deterministic">Deterministic</MenuItem>
+          </Select>
+        </FormControl>
       </Stack>
 
       <Divider />
       <Typography variant="subtitle1" fontWeight={700}>Security & Governance</Typography>
+
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Box>
+          <Typography variant="subtitle2">Parallel Tool Calls</Typography>
+          <Typography variant="caption" color="text.secondary">Enable fan-out/fan-in when a tool step specifies multiple tool names</Typography>
+        </Box>
+        <Switch
+          checked={g.allowParallelToolCalls}
+          onChange={(e) => dispatch(updateGuardrails({ allowParallelToolCalls: e.target.checked }))}
+        />
+      </Box>
 
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Box>
@@ -818,4 +906,3 @@ export default function AgentDesignerPage() {
     </>
   );
 }
-
