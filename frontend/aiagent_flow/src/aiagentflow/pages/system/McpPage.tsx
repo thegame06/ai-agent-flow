@@ -51,7 +51,7 @@ export default function McpPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-    const loadSettings = async () => {
+  const loadSettings = async () => {
     try {
       const res = await axios.get(`/api/v1/tenants/${tenantId}/mcp/settings`);
       setSettings(res.data);
@@ -60,7 +60,7 @@ export default function McpPage() {
     }
   };
   
-    const loadServers = async () => {
+  const loadServers = async () => {
     setError(null);
     try {
       const res = await axios.get('/api/v1/mcp/servers');
@@ -71,13 +71,10 @@ export default function McpPage() {
     }
   };
   
-    useEffect(() => {
-   loadSettings();
+  useEffect(() => {
+    loadSettings();
     loadServers();
   }, [tenantId]);
-      loadServers();
-  }, []);
-
 
   const loadTools = async () => {
     if (!selectedServer) return;
