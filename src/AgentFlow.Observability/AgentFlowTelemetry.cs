@@ -68,6 +68,39 @@ public static class AgentFlowTelemetry
 
     public static readonly Histogram<double> HandoffHopLatency =
         _meter.CreateHistogram<double>("agentflow.handoff.latency_ms", "ms", "Latency per manager->subagent handoff hop");
+
+    public static readonly Counter<long> ExecutionOutcomes =
+        _meter.CreateCounter<long>("agentflow.executions.outcomes", "executions", "Execution outcomes by status/segment/variant/brain");
+
+    public static readonly Histogram<double> ExecutionLatencyBySegment =
+        _meter.CreateHistogram<double>("agentflow.executions.latency_by_segment_ms", "ms", "Execution latency by segment/variant/brain");
+
+    public static readonly Counter<long> EvaluationComparisons =
+        _meter.CreateCounter<long>("agentflow.evaluations.comparisons", "comparisons", "Champion/challenger and SK/MAF evaluation comparison events");
+
+    public static readonly Histogram<double> EvaluationScoreDelta =
+        _meter.CreateHistogram<double>("agentflow.evaluations.score_delta", "ratio", "Absolute score delta for champion/challenger or SK/MAF pairs");
+
+    public static readonly Histogram<double> TokenCostPerExecution =
+        _meter.CreateHistogram<double>("agentflow.tokens.cost_per_execution_usd", "usd", "Estimated token cost per execution");
+
+    public static readonly Histogram<double> TokenCostPer1K =
+        _meter.CreateHistogram<double>("agentflow.tokens.cost_per_1k_usd", "usd", "Estimated USD cost per 1K tokens");
+
+    public static readonly Counter<long> CanaryAssignments =
+        _meter.CreateCounter<long>("agentflow.canary.assignments", "assignments", "Canary/champion routing assignments by segment");
+
+    public static readonly Counter<long> FeatureFlagChecks =
+        _meter.CreateCounter<long>("agentflow.feature_flags.checks", "checks", "Feature flag checks by flag and segment");
+
+    public static readonly Counter<long> SegmentRoutingDecisions =
+        _meter.CreateCounter<long>("agentflow.segment_routing.decisions", "decisions", "Segment routing decisions");
+
+    public static readonly Counter<long> McpToolFailures =
+        _meter.CreateCounter<long>("agentflow.tools.mcp.failures", "failures", "Failures for MCP-backed tool calls");
+
+    public static readonly Histogram<double> ApiEndpointLatency =
+        _meter.CreateHistogram<double>("agentflow.api.endpoint.latency_ms", "ms", "Endpoint latency by controller/action");
 }
 
 /// <summary>

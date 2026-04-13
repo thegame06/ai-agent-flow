@@ -1,0 +1,106 @@
+{
+  "title": "AgentFlow - Business & Technical Observability",
+  "uid": "agentflow-observability",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "tags": ["agentflow", "observability", "canary"],
+  "timezone": "utc",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Execution Success Rate (Business)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum(rate(agentflow_executions_outcomes_total{status=\"completed\"}[5m])) / clamp_min(sum(rate(agentflow_executions_outcomes_total[5m])), 1)"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Execution Latency p95 by Segment",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(agentflow_executions_latency_by_segment_ms_bucket[5m])) by (le, segment))"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Cost per 1K Tokens (USD)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "avg(rate(agentflow_tokens_cost_per_1k_usd_sum[5m]) / clamp_min(rate(agentflow_tokens_cost_per_1k_usd_count[5m]), 1)) by (brain)"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Error Rate by Segment",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum(rate(agentflow_executions_outcomes_total{status=\"failed\"}[5m])) by (segment) / clamp_min(sum(rate(agentflow_executions_outcomes_total[5m])) by (segment), 1)"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Canary Distribution by Segment",
+      "type": "bargauge",
+      "targets": [
+        {
+          "expr": "sum(rate(agentflow_canary_assignments_total[15m])) by (segment, variant)"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Champion vs Challenger Comparison Count",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum(rate(agentflow_evaluations_comparisons_total{comparison=\"champion_challenger\"}[5m])) by (variant)"
+        }
+      ],
+      "description": "Feeds from evaluation worker and EvaluationsController summaries."
+    },
+    {
+      "id": 7,
+      "title": "SK vs MAF Execution Outcomes",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum(rate(agentflow_executions_outcomes_total[5m])) by (brain, status)"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "MCP / Tool Failures",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum(rate(agentflow_tools_failures_total[5m])) by (tool_name)"
+        },
+        {
+          "expr": "sum(rate(agentflow_tools_mcp_failures_total[5m])) by (tool_name)"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "title": "API Endpoint Latency (Eval/Segment/Flags)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(agentflow_api_endpoint_latency_ms_bucket[5m])) by (le, controller, action))"
+        }
+      ],
+      "description": "Bound directly to EvaluationsController, SegmentRoutingController and FeatureFlagsController instrumentation."
+    }
+  ]
+}

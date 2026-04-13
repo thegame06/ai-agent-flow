@@ -1,7 +1,10 @@
 using AgentFlow.Evaluation;
+using AgentFlow.Observability;
 using AgentFlow.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Diagnostics;
+using System.Diagnostics.Metrics;
 
 namespace AgentFlow.Api.Controllers;
 
@@ -38,6 +41,7 @@ public sealed class FeatureFlagsController : ControllerBase
         [FromBody] FeatureFlagCheckRequest request,
         CancellationToken ct)
     {
+        var sw = Stopwatch.StartNew();
         var ctx = _tenantContext.Current!;
         if (ctx.TenantId != tenantId && !ctx.IsPlatformAdmin)
             return Forbid();
@@ -52,6 +56,21 @@ public sealed class FeatureFlagsController : ControllerBase
 
         var isEnabled = await _featureFlagService.IsEnabledAsync(
             tenantId, flagKey, context, ct);
+
+        sw.Stop();
+        var segment = (context.UserSegments.FirstOrDefault() ?? "all").ToLowerInvariant();
+        AgentFlowTelemetry.ApiEndpointLatency.Record(sw.Elapsed.TotalMilliseconds, new TagList
+        {
+            { "controller", "FeatureFlagsController" },
+            { "action", "CheckFeatureFlagAsync" }
+        });
+        AgentFlowTelemetry.FeatureFlagChecks.Add(1, new TagList
+        {
+            { "tenant_id", tenantId },
+            { "flag_key", flagKey },
+            { "segment", segment },
+            { "enabled", isEnabled.ToString().ToLowerInvariant() }
+        });
 
         return Ok(new FeatureFlagCheckResponse
         {
@@ -71,6 +90,7 @@ public sealed class FeatureFlagsController : ControllerBase
         [FromBody] FeatureFlagCheckRequest request,
         CancellationToken ct)
     {
+        var sw = Stopwatch.StartNew();
         var ctx = _tenantContext.Current!;
         if (ctx.TenantId != tenantId && !ctx.IsPlatformAdmin)
             return Forbid();
@@ -85,6 +105,12 @@ public sealed class FeatureFlagsController : ControllerBase
 
         var features = await _featureFlagService.GetEnabledFeaturesAsync(
             tenantId, context, ct);
+        sw.Stop();
+        AgentFlowTelemetry.ApiEndpointLatency.Record(sw.Elapsed.TotalMilliseconds, new TagList
+        {
+            { "controller", "FeatureFlagsController" },
+            { "action", "GetEnabledFeaturesAsync" }
+        });
 
         return Ok(new EnabledFeaturesResponse
         {
@@ -105,6 +131,7 @@ public sealed class FeatureFlagsController : ControllerBase
         [FromBody] FeatureFlagUpdateRequest request,
         CancellationToken ct)
     {
+        var sw = Stopwatch.StartNew();
         var ctx = _tenantContext.Current!;
         if (ctx.TenantId != tenantId && !ctx.IsPlatformAdmin)
             return Forbid();
@@ -133,6 +160,12 @@ public sealed class FeatureFlagsController : ControllerBase
         _logger.LogInformation(
             "Feature flag {FlagKey} updated by {UserId} in tenant {TenantId}. Enabled={IsEnabled}",
             flagKey, ctx.UserId, tenantId, request.IsEnabled);
+        sw.Stop();
+        AgentFlowTelemetry.ApiEndpointLatency.Record(sw.Elapsed.TotalMilliseconds, new TagList
+        {
+            { "controller", "FeatureFlagsController" },
+            { "action", "SetFeatureFlagAsync" }
+        });
 
         return Ok(new { message = "Feature flag updated successfully" });
     }
