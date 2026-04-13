@@ -105,6 +105,30 @@ public interface IAgentBrain
     Task<ObserveResult> ObserveAsync(ObserveContext context, CancellationToken ct = default);
 }
 
+public interface IAgentBrainResolver
+{
+    Task<BrainResolutionResult> ResolveAsync(
+        string tenantId,
+        string agentId,
+        AgentBrainExecutionContext context,
+        CancellationToken ct = default);
+}
+
+public sealed record AgentBrainExecutionContext
+{
+    public string? UserId { get; init; }
+    public string? ExecutionId { get; init; }
+    public IReadOnlyDictionary<string, string> Metadata { get; init; }
+        = new Dictionary<string, string>();
+}
+
+public sealed record BrainResolutionResult
+{
+    public required IAgentBrain Brain { get; init; }
+    public required BrainProvider Provider { get; init; }
+    public string ResolutionSource { get; init; } = "default";
+}
+
 public sealed record ThinkContext
 {
     public required string TenantId { get; init; }

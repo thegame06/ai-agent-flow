@@ -19,6 +19,7 @@
     <ProjectReference Include="..\AgentFlow.Policy\AgentFlow.Policy.csproj" />
     <ProjectReference Include="..\AgentFlow.Security\AgentFlow.Security.csproj" />
     <ProjectReference Include="..\AgentFlow.ToolSDK\AgentFlow.ToolSDK.csproj" />
+    <ProjectReference Include="..\AgentFlow.Evaluation\AgentFlow.Evaluation.csproj" />
   </ItemGroup>
 
 </Project>
