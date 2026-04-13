@@ -142,7 +142,7 @@ public sealed class MafBrain : IAgentBrain
                 ? parsed
                 : ThinkDecision.Checkpoint;
 
-            return new ThinkResult
+            var parsedResult = new ThinkResult
             {
                 Decision = decision,
                 Rationale = root.TryGetProperty("rationale", out var r) ? r.GetString() : null,
@@ -151,13 +151,18 @@ public sealed class MafBrain : IAgentBrain
                 FinalAnswer = root.TryGetProperty("finalAnswer", out var fa) && fa.ValueKind != JsonValueKind.Null ? fa.GetString() : null,
                 TokensUsed = TryReadTokens(metadata)
             };
+
+            return BrainContractValidator.NormalizeThinkResult(parsedResult, "MAF");
         }
-        catch
+        catch (JsonException ex)
         {
             return new ThinkResult
             {
                 Decision = ThinkDecision.Checkpoint,
-                Rationale = "MAF orchestration response was not valid JSON.",
+                Rationale = BrainContractValidator.SerializeContractErrors(
+                    "MAF",
+                    "ThinkResult",
+                    [$"Malformed JSON: {ex.Message}"]),
                 TokensUsed = TryReadTokens(metadata)
             };
         }
@@ -169,15 +174,19 @@ public sealed class MafBrain : IAgentBrain
         {
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
-            return new ObserveResult
+            var parsedResult = new ObserveResult
             {
                 Summary = root.TryGetProperty("summary", out var s) ? s.GetString() ?? string.Empty : string.Empty,
                 GoalAchieved = root.TryGetProperty("goalAchieved", out var g) && g.GetBoolean()
             };
+
+            return BrainContractValidator.NormalizeObserveResult(parsedResult, "MAF");
         }
         catch
         {
-            return new ObserveResult { Summary = json, GoalAchieved = false };
+            return BrainContractValidator.NormalizeObserveResult(
+                new ObserveResult { Summary = json, GoalAchieved = false },
+                "MAF");
         }
     }
 
