@@ -15,17 +15,22 @@ public sealed class McpToolGateway : IMcpToolGateway
 {
     private readonly IConfiguration _configuration;
     private readonly ITenantMcpSettingsStore _tenantMcpSettingsStore;
+    private readonly IMcpToolActionCatalog _actionCatalog;
     private readonly ILogger<McpToolGateway> _logger;
-    private readonly HttpClient _httpClient = new();
+    private readonly HttpClient _httpClient;
 
     public McpToolGateway(
         IConfiguration configuration,
         ITenantMcpSettingsStore tenantMcpSettingsStore,
-        ILogger<McpToolGateway> logger)
+        IMcpToolActionCatalog actionCatalog,
+        ILogger<McpToolGateway> logger,
+        HttpClient? httpClient = null)
     {
         _configuration = configuration;
         _tenantMcpSettingsStore = tenantMcpSettingsStore;
+        _actionCatalog = actionCatalog;
         _logger = logger;
+        _httpClient = httpClient ?? new HttpClient();
     }
 
     public async Task<ToolResult> ExecuteAsync(
@@ -71,6 +76,21 @@ public sealed class McpToolGateway : IMcpToolGateway
 
         if (server.Security.EnableAuditLogs)
             _logger.LogInformation("MCP_AUDIT: Executing remote call. Request: {PayloadLength} bytes", context.InputJson?.Length ?? 0);
+
+        var policy = EvaluatePolicy(serverName, toolName, context);
+        _logger.LogInformation(
+            "MCP_POLICY_AUDIT: tenant={Tenant} server={Server} tool={Tool} action={Action} risk={Risk} requiredPermissions={RequiredPermissions} decision={Decision} version={Version}",
+            policy.Tenant,
+            policy.Server,
+            policy.Tool,
+            policy.Action,
+            policy.RiskLevel,
+            string.Join(",", policy.RequiredPermissions),
+            policy.Decision,
+            policy.PolicyVersion);
+
+        if (policy.Decision == McpPolicyDecision.Deny)
+            return ToolResult.Failure("MCP_POLICY_DENIED", $"Policy denied action '{policy.Action}' for tool '{toolName}'.");
 
         if (!string.Equals(server.Transport, "Http", StringComparison.OrdinalIgnoreCase) || string.IsNullOrWhiteSpace(server.Url))
         {
@@ -153,5 +173,85 @@ public sealed class McpToolGateway : IMcpToolGateway
         }
 
         return ToolResult.Failure("MCP_ERROR", $"Remote execution failed: {lastException?.Message ?? "unknown error"}");
+    }
+
+    private McpToolPolicyContract EvaluatePolicy(string serverName, string toolName, ToolExecutionContext context)
+    {
+        var action = ResolveAction(toolName, context.Metadata);
+        if (!_actionCatalog.TryResolve(action, out var descriptor))
+        {
+            return new McpToolPolicyContract
+            {
+                Tenant = context.TenantId,
+                Server = serverName,
+                Tool = toolName,
+                Action = action,
+                RiskLevel = ToolRiskLevel.Critical,
+                RequiredPermissions = [],
+                Decision = McpPolicyDecision.Deny,
+                PolicyVersion = _actionCatalog.Version
+            };
+        }
+
+        var precedence = ResolvePrecedence(context.Metadata);
+        var allowActions = ParseCsvSet(context.Metadata, "mcp.policy.allow_actions");
+        var denyActions = ParseCsvSet(context.Metadata, "mcp.policy.deny_actions");
+        var principalPermissions = ParseCsvSet(context.Metadata, "permissions");
+        var missingPermissions = descriptor.RequiredPermissions
+            .Where(p => !principalPermissions.Contains(p))
+            .ToArray();
+
+        var allowMatch = allowActions.Contains(action);
+        var denyMatch = denyActions.Contains(action);
+        var hasPermissionGap = missingPermissions.Length > 0;
+
+        var decision = precedence switch
+        {
+            McpPolicyPrecedence.AllowOverrides when allowMatch => McpPolicyDecision.Allow,
+            McpPolicyPrecedence.AllowOverrides when denyMatch || hasPermissionGap => McpPolicyDecision.Deny,
+            McpPolicyPrecedence.AllowOverrides => McpPolicyDecision.Deny, // default deny
+            _ when denyMatch || hasPermissionGap => McpPolicyDecision.Deny,
+            _ when allowMatch => McpPolicyDecision.Allow,
+            _ => McpPolicyDecision.Deny // default deny
+        };
+
+        return new McpToolPolicyContract
+        {
+            Tenant = context.TenantId,
+            Server = serverName,
+            Tool = toolName,
+            Action = descriptor.Action,
+            RiskLevel = descriptor.RiskLevel,
+            RequiredPermissions = descriptor.RequiredPermissions,
+            Decision = decision,
+            PolicyVersion = _actionCatalog.Version
+        };
+    }
+
+    private static string ResolveAction(string toolName, IReadOnlyDictionary<string, string> metadata)
+    {
+        if (metadata.TryGetValue("mcp.action", out var action) && !string.IsNullOrWhiteSpace(action))
+            return action.Trim();
+
+        return "tools.execute";
+    }
+
+    private static McpPolicyPrecedence ResolvePrecedence(IReadOnlyDictionary<string, string> metadata)
+    {
+        if (metadata.TryGetValue("mcp.policy.precedence", out var mode) &&
+            mode.Equals("allow-overrides", StringComparison.OrdinalIgnoreCase))
+            return McpPolicyPrecedence.AllowOverrides;
+
+        return McpPolicyPrecedence.DenyOverrides;
+    }
+
+    private static HashSet<string> ParseCsvSet(IReadOnlyDictionary<string, string> metadata, string key)
+    {
+        if (!metadata.TryGetValue(key, out var raw) || string.IsNullOrWhiteSpace(raw))
+            return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        return raw
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
 }

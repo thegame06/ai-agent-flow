@@ -339,6 +339,43 @@ public interface IMcpToolGateway
         CancellationToken ct = default);
 }
 
+public enum McpPolicyDecision
+{
+    Deny = 0,
+    Allow = 1
+}
+
+public enum McpPolicyPrecedence
+{
+    DenyOverrides = 0,
+    AllowOverrides = 1
+}
+
+public sealed record McpToolActionDescriptor
+{
+    public required string Action { get; init; }
+    public required ToolRiskLevel RiskLevel { get; init; }
+    public IReadOnlyList<string> RequiredPermissions { get; init; } = [];
+}
+
+public interface IMcpToolActionCatalog
+{
+    string Version { get; }
+    bool TryResolve(string action, out McpToolActionDescriptor descriptor);
+}
+
+public sealed record McpToolPolicyContract
+{
+    public required string Tenant { get; init; }
+    public required string Server { get; init; }
+    public required string Tool { get; init; }
+    public required string Action { get; init; }
+    public required ToolRiskLevel RiskLevel { get; init; }
+    public IReadOnlyList<string> RequiredPermissions { get; init; } = [];
+    public required McpPolicyDecision Decision { get; init; }
+    public required string PolicyVersion { get; init; }
+}
+
 public sealed record TenantMcpSettings
 {
     public required string TenantId { get; init; }
