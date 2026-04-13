@@ -3,6 +3,7 @@ using AgentFlow.Domain.Aggregates;
 using AgentFlow.Domain.Repositories;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
+using System.Security.Claims;
 
 namespace AgentFlow.Api.Controllers;
 
@@ -41,13 +42,16 @@ public sealed class ConversationThreadsController : ControllerBase
         [FromBody] CreateThreadRequest request,
         CancellationToken ct)
     {
+        if (!TryGetUserId(out var userId, out var authFailure))
+            return authFailure;
+
         // Validate agent exists
         var agent = await _agentRepo.GetByIdAsync(request.AgentId, tenantId, ct);
         if (agent is null)
             return NotFound($"Agent '{request.AgentId}' not found");
         
         // Generate thread key if not provided
-        var threadKey = request.ThreadKey ?? GenerateThreadKey(agent, GetUserId());
+        var threadKey = request.ThreadKey ?? GenerateThreadKey(agent, userId);
         
         // Determine TTL from agent config or request
         var ttl = request.ExpiresIn ?? agent.Session.DefaultThreadTtl;
@@ -57,7 +61,7 @@ public sealed class ConversationThreadsController : ControllerBase
             tenantId: tenantId,
             threadKey: threadKey,
             agentDefinitionId: agent.Id,
-            userId: GetUserId(),
+            userId: userId,
             expiresIn: ttl,
             maxTurns: maxTurns,
             metadata: request.Metadata
@@ -91,13 +95,16 @@ public sealed class ConversationThreadsController : ControllerBase
         [FromBody] SendMessageRequest request,
         CancellationToken ct)
     {
+        if (!TryGetUserId(out var userId, out var authFailure))
+            return authFailure;
+
         // Load thread
         var thread = await _threadRepo.GetByIdAsync(threadId, tenantId, ct);
         if (thread is null)
             return NotFound("Thread not found or expired");
         
         // Security: Verify ownership
-        if (thread.UserId != GetUserId())
+        if (thread.UserId != userId)
             return Forbid("You do not own this thread");
         
         // Execute agent with thread context
@@ -105,7 +112,7 @@ public sealed class ConversationThreadsController : ControllerBase
         {
             TenantId = tenantId,
             AgentKey = thread.AgentDefinitionId,
-            UserId = GetUserId(),
+            UserId = userId,
             UserMessage = request.Message,
             ContextJson = request.Context,
             CorrelationId = thread.Id,
@@ -152,12 +159,15 @@ public sealed class ConversationThreadsController : ControllerBase
         [FromQuery] int maxTurns = 50,
         CancellationToken ct = default)
     {
+        if (!TryGetUserId(out var userId, out var authFailure))
+            return authFailure;
+
         var thread = await _threadRepo.GetByIdAsync(threadId, tenantId, ct);
         if (thread is null)
             return NotFound(new { message = "Thread not found or expired." });
         
         // Security: Verify ownership
-        if (thread.UserId != GetUserId())
+        if (thread.UserId != userId)
             return Forbid("Thread access denied.");
         
         try
@@ -200,12 +210,15 @@ public sealed class ConversationThreadsController : ControllerBase
         [FromRoute] string threadId,
         CancellationToken ct)
     {
+        if (!TryGetUserId(out var userId, out var authFailure))
+            return authFailure;
+
         var thread = await _threadRepo.GetByIdAsync(threadId, tenantId, ct);
         if (thread is null)
             return NotFound();
         
         // Security: Verify ownership
-        if (thread.UserId != GetUserId())
+        if (thread.UserId != userId)
             return Forbid();
         
         return Ok(new ThreadResponse
@@ -231,15 +244,20 @@ public sealed class ConversationThreadsController : ControllerBase
         [FromQuery] string? agentId = null,
         CancellationToken ct = default)
     {
+        if (!TryGetUserId(out var userId, out var authFailure))
+            return authFailure;
+
         IReadOnlyList<ConversationThread> threads;
         
         if (!string.IsNullOrEmpty(agentId))
         {
-            threads = await _threadRepo.GetByAgentAsync(agentId, tenantId, ct: ct);
+            threads = (await _threadRepo.GetByAgentAsync(agentId, tenantId, ct: ct))
+                .Where(t => t.UserId == userId)
+                .ToList();
         }
         else
         {
-            threads = await _threadRepo.GetActiveByUserAsync(GetUserId(), tenantId, ct);
+            threads = await _threadRepo.GetActiveByUserAsync(userId, tenantId, ct);
         }
         
         var response = threads.Select(t => new ThreadResponse
@@ -267,15 +285,18 @@ public sealed class ConversationThreadsController : ControllerBase
         [FromRoute] string threadId,
         CancellationToken ct)
     {
+        if (!TryGetUserId(out var userId, out var authFailure))
+            return authFailure;
+
         var thread = await _threadRepo.GetByIdAsync(threadId, tenantId, ct);
         if (thread is null)
             return NotFound();
         
         // Security: Verify ownership
-        if (thread.UserId != GetUserId())
+        if (thread.UserId != userId)
             return Forbid();
         
-        var result = thread.Archive(GetUserId());
+        var result = thread.Archive(userId);
         if (!result.IsSuccess)
             return BadRequest(result.Error);
         
@@ -293,12 +314,15 @@ public sealed class ConversationThreadsController : ControllerBase
         [FromRoute] string threadId,
         CancellationToken ct)
     {
+        if (!TryGetUserId(out var userId, out var authFailure))
+            return authFailure;
+
         var thread = await _threadRepo.GetByIdAsync(threadId, tenantId, ct);
         if (thread is null)
             return NotFound();
         
         // Security: Verify ownership
-        if (thread.UserId != GetUserId())
+        if (thread.UserId != userId)
             return Forbid();
         
         var result = await _threadRepo.DeleteAsync(threadId, tenantId, ct);
@@ -310,10 +334,27 @@ public sealed class ConversationThreadsController : ControllerBase
     
     // --- Helpers ---
     
-    private string GetUserId()
+    private bool TryGetUserId(out string userId, out IActionResult failureResult)
     {
-        // TODO: Extract from JWT claims
-        return HttpContext.Items["UserId"] as string ?? "demo-user";
+        userId = string.Empty;
+        failureResult = Unauthorized();
+
+        var user = HttpContext?.User;
+        if (user?.Identity?.IsAuthenticated != true)
+            return false;
+
+        userId =
+            user.FindFirstValue("sub")
+            ?? user.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? user.FindFirstValue("oid");
+
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            failureResult = Forbid();
+            return false;
+        }
+
+        return true;
     }
     
     private static string GenerateThreadKey(AgentDefinition agent, string userId)
