@@ -1,0 +1,49 @@
+groups:
+  - name: agentflow-observability
+    rules:
+      - alert: AgentFlowCanaryDistributionImbalance
+        expr: |
+          abs(
+            (sum(rate(agentflow_canary_assignments_total{variant="challenger"}[15m])) /
+             clamp_min(sum(rate(agentflow_canary_assignments_total[15m])), 1)) - 0.10
+          ) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Canary split fuera del rango esperado"
+          description: "El tráfico challenger se desvió >5pp del target global 10%."
+
+      - alert: AgentFlowSegmentDegradation
+        expr: |
+          histogram_quantile(0.95, sum(rate(agentflow_executions_latency_by_segment_ms_bucket[10m])) by (le, segment)) > 3500
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Degradación de latencia p95 por segmento"
+          description: "Un segmento supera p95 de 3.5s de forma sostenida."
+
+      - alert: AgentFlowCostIncrease
+        expr: |
+          (
+            avg(rate(agentflow_tokens_cost_per_1k_usd_sum[30m]) / clamp_min(rate(agentflow_tokens_cost_per_1k_usd_count[30m]), 1))
+            /
+            clamp_min(avg(rate(agentflow_tokens_cost_per_1k_usd_sum[2h]) / clamp_min(rate(agentflow_tokens_cost_per_1k_usd_count[2h]), 1)), 0.0001)
+          ) > 1.30
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Incremento de costo/token"
+          description: "Costo por 1K tokens subió >30% contra baseline de 2h."
+
+      - alert: AgentFlowMcpToolFailuresSpike
+        expr: |
+          sum(rate(agentflow_tools_mcp_failures_total[10m])) > 0.2
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Pico de fallos MCP/tool"
+          description: "Fallos MCP por segundo exceden umbral operativo."

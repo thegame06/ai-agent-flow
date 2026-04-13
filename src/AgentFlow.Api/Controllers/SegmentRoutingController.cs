@@ -1,7 +1,10 @@
 using AgentFlow.Evaluation;
+using AgentFlow.Observability;
 using AgentFlow.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Diagnostics;
+using System.Diagnostics.Metrics;
 
 namespace AgentFlow.Api.Controllers;
 
@@ -39,6 +42,7 @@ public sealed class SegmentRoutingController : ControllerBase
         [FromBody] SegmentRoutingPreviewRequest request,
         CancellationToken ct)
     {
+        var sw = Stopwatch.StartNew();
         var ctx = _tenantContext.Current!;
         if (ctx.TenantId != tenantId && !ctx.IsPlatformAdmin)
             return Forbid();
@@ -52,6 +56,28 @@ public sealed class SegmentRoutingController : ControllerBase
 
         var decision = await _segmentRouting.SelectAgentForSegmentAsync(
             tenantId, agentId, context, ct);
+
+        sw.Stop();
+        var primarySegment = request.UserSegments.FirstOrDefault() ?? "unknown";
+        AgentFlowTelemetry.ApiEndpointLatency.Record(sw.Elapsed.TotalMilliseconds, new TagList
+        {
+            { "controller", "SegmentRoutingController" },
+            { "action", "PreviewRoutingAsync" }
+        });
+        AgentFlowTelemetry.SegmentRoutingDecisions.Add(1, new TagList
+        {
+            { "tenant_id", tenantId },
+            { "agent_id", agentId },
+            { "segment", primarySegment },
+            { "was_routed", decision.WasRouted.ToString().ToLowerInvariant() }
+        });
+        AgentFlowTelemetry.CanaryAssignments.Add(1, new TagList
+        {
+            { "tenant_id", tenantId },
+            { "agent_id", agentId },
+            { "segment", primarySegment },
+            { "variant", decision.SelectedAgentId == agentId ? "champion" : "challenger" }
+        });
 
         return Ok(new SegmentRoutingPreviewResponse
         {
@@ -75,6 +101,7 @@ public sealed class SegmentRoutingController : ControllerBase
         [FromRoute] string agentId,
         CancellationToken ct)
     {
+        var sw = Stopwatch.StartNew();
         var ctx = _tenantContext.Current!;
         if (ctx.TenantId != tenantId && !ctx.IsPlatformAdmin)
             return Forbid();
@@ -83,6 +110,13 @@ public sealed class SegmentRoutingController : ControllerBase
 
         if (config is null)
             return NotFound(new { error = "No segment routing configured for this agent" });
+
+        sw.Stop();
+        AgentFlowTelemetry.ApiEndpointLatency.Record(sw.Elapsed.TotalMilliseconds, new TagList
+        {
+            { "controller", "SegmentRoutingController" },
+            { "action", "GetSegmentRoutingAsync" }
+        });
 
         return Ok(new SegmentRoutingConfigurationDto
         {
@@ -114,6 +148,7 @@ public sealed class SegmentRoutingController : ControllerBase
         [FromBody] SegmentRoutingUpdateRequest request,
         CancellationToken ct)
     {
+        var sw = Stopwatch.StartNew();
         var ctx = _tenantContext.Current!;
         if (ctx.TenantId != tenantId && !ctx.IsPlatformAdmin)
             return Forbid();
@@ -143,6 +178,12 @@ public sealed class SegmentRoutingController : ControllerBase
         _logger.LogInformation(
             "Segment routing configured for agent {AgentId} by {UserId}. Enabled={IsEnabled}, Rules={RuleCount}",
             agentId, ctx.UserId, request.IsEnabled, request.Rules.Count);
+        sw.Stop();
+        AgentFlowTelemetry.ApiEndpointLatency.Record(sw.Elapsed.TotalMilliseconds, new TagList
+        {
+            { "controller", "SegmentRoutingController" },
+            { "action", "SetSegmentRoutingAsync" }
+        });
 
         return Ok(new { message = "Segment routing configured successfully" });
     }
@@ -158,6 +199,7 @@ public sealed class SegmentRoutingController : ControllerBase
         [FromRoute] string agentId,
         CancellationToken ct)
     {
+        var sw = Stopwatch.StartNew();
         var ctx = _tenantContext.Current!;
         if (ctx.TenantId != tenantId && !ctx.IsPlatformAdmin)
             return Forbid();
@@ -173,6 +215,12 @@ public sealed class SegmentRoutingController : ControllerBase
         _logger.LogInformation(
             "Segment routing disabled for agent {AgentId} by {UserId}",
             agentId, ctx.UserId);
+        sw.Stop();
+        AgentFlowTelemetry.ApiEndpointLatency.Record(sw.Elapsed.TotalMilliseconds, new TagList
+        {
+            { "controller", "SegmentRoutingController" },
+            { "action", "DisableSegmentRoutingAsync" }
+        });
 
         return Ok(new { message = "Segment routing disabled" });
     }

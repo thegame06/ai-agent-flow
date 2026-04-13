@@ -1,9 +1,11 @@
 using AgentFlow.Abstractions;
 using AgentFlow.Evaluation;
+using AgentFlow.Observability;
 using AgentFlow.Domain.Repositories;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using System.Diagnostics.Metrics;
 using System.Text.Json;
 
 namespace AgentFlow.Evaluation;
@@ -113,6 +115,26 @@ public sealed class EvaluationBackgroundWorker : BackgroundService
 
         // 4. Persist Result
         await resultStore.SaveAsync(result, ct);
+
+        var executionVariant = execution.ParentExecutionId is null ? "champion" : "challenger";
+        var brain = execution.Input.Metadata.TryGetValue("brain", out var brainTag) && !string.IsNullOrWhiteSpace(brainTag)
+            ? brainTag.ToLowerInvariant()
+            : "unknown";
+        AgentFlowTelemetry.EvaluationComparisons.Add(1, new TagList
+        {
+            { "tenant_id", @event.TenantId },
+            { "agent_key", @event.AgentKey },
+            { "comparison", executionVariant == "challenger" ? "champion_challenger" : "single" },
+            { "variant", executionVariant },
+            { "brain", brain }
+        });
+        AgentFlowTelemetry.EvaluationScoreDelta.Record(Math.Abs(result.QualityScore - result.PolicyComplianceScore), new TagList
+        {
+            { "tenant_id", @event.TenantId },
+            { "agent_key", @event.AgentKey },
+            { "comparison", executionVariant == "challenger" ? "champion_challenger" : "single" },
+            { "brain", brain }
+        });
 
         // 5. Trigger Shadow Execution if configured
         var agentDef = await agentRepo.GetByIdAsync(@event.AgentKey, @event.TenantId, ct);

@@ -197,6 +197,79 @@ public sealed class AgentExecutionEngine : IAgentExecutor
             }
         }
 
+        var durationMs = execution.GetDuration()?.TotalMilliseconds ?? 0;
+        var totalTokens = execution.Steps.Sum(s => s.TokensUsed ?? 0);
+        var executionSegment = request.Metadata.TryGetValue("segment", out var segment) && !string.IsNullOrWhiteSpace(segment)
+            ? segment
+            : "default";
+        var variant = request.Metadata.TryGetValue("isShadow", out var isShadow) && isShadow.Equals("true", StringComparison.OrdinalIgnoreCase)
+            ? "challenger"
+            : "champion";
+        var brain = ResolveBrainTag(_brain);
+
+        AgentFlowTelemetry.ExecutionDuration.Record(durationMs, new TagList
+        {
+            { "agent_id", agentDef.Id.ToString() },
+            { "tenant_id", request.TenantId },
+            { "status", execution.Status.ToString().ToLowerInvariant() }
+        });
+
+        AgentFlowTelemetry.ExecutionLatencyBySegment.Record(durationMs, new TagList
+        {
+            { "segment", executionSegment },
+            { "variant", variant },
+            { "brain", brain }
+        });
+
+        AgentFlowTelemetry.ExecutionOutcomes.Add(1, new TagList
+        {
+            { "status", execution.Status.ToString().ToLowerInvariant() },
+            { "segment", executionSegment },
+            { "variant", variant },
+            { "brain", brain }
+        });
+
+        AgentFlowTelemetry.TokensUsed.Add(totalTokens, new TagList
+        {
+            { "agent_id", agentDef.Id.ToString() },
+            { "tenant_id", request.TenantId },
+            { "brain", brain }
+        });
+
+        var estimatedCostUsd = EstimateTokenCostUsd(totalTokens);
+        AgentFlowTelemetry.TokenCostPerExecution.Record(estimatedCostUsd, new TagList
+        {
+            { "agent_id", agentDef.Id.ToString() },
+            { "tenant_id", request.TenantId },
+            { "segment", executionSegment },
+            { "variant", variant },
+            { "brain", brain }
+        });
+        AgentFlowTelemetry.TokenCostPer1K.Record((totalTokens / 1000d) > 0 ? estimatedCostUsd / (totalTokens / 1000d) : 0d, new TagList
+        {
+            { "agent_id", agentDef.Id.ToString() },
+            { "tenant_id", request.TenantId },
+            { "brain", brain }
+        });
+
+        if (execution.Status == ExecutionStatus.Completed)
+        {
+            AgentFlowTelemetry.ExecutionsCompleted.Add(1, new TagList
+            {
+                { "agent_id", agentDef.Id.ToString() },
+                { "tenant_id", request.TenantId }
+            });
+        }
+        else if (execution.Status == ExecutionStatus.Failed)
+        {
+            AgentFlowTelemetry.ExecutionsFailed.Add(1, new TagList
+            {
+                { "agent_id", agentDef.Id.ToString() },
+                { "tenant_id", request.TenantId },
+                { "error", execution.ErrorCode ?? "Unknown" }
+            });
+        }
+
         return MapToResult(execution, agentDef, executedThreadId);
     }
 
@@ -430,7 +503,7 @@ public sealed class AgentExecutionEngine : IAgentExecutor
             var rationale = thinkResult.Rationale ?? string.Empty;
             ExecutionTracing.RecordThinkDecision(thinkActivity, thinkResult.Decision.ToString(), rationale);
             AgentFlowTelemetry.LlmLatency.Record(thinkSw.ElapsedMilliseconds, 
-                new TagList { { "agent_id", agentDef.Id.ToString() }, { "step", "think" } });
+                new TagList { { "agent_id", agentDef.Id.ToString() }, { "step", "think" }, { "brain", ResolveBrainTag(_brain) } });
 
             var thinkStep = new AgentStep
             {
@@ -1022,6 +1095,15 @@ if (!preResponsePolicy.IsSuccess) return Result<string?>.Failure(preResponsePoli
         if (!toolResult.IsSuccess)
         {
             AgentFlowTelemetry.ToolFailures.Add(1, new TagList { { "tool_name", toolName } });
+            if (binding.ToolId.StartsWith("mcp:", StringComparison.OrdinalIgnoreCase) ||
+                toolName.StartsWith("mcp.", StringComparison.OrdinalIgnoreCase))
+            {
+                AgentFlowTelemetry.McpToolFailures.Add(1, new TagList
+                {
+                    { "tool_name", toolName },
+                    { "tool_id", binding.ToolId }
+                });
+            }
             toolActivity?.SetStatus(ActivityStatusCode.Error, toolResult.ErrorMessage);
         }
 
@@ -1044,6 +1126,19 @@ if (!preResponsePolicy.IsSuccess) return Result<string?>.Failure(preResponsePoli
         await _executionRepo.AppendStepAsync(execution.Id, request.TenantId, actStep, ct);
 
         return Result<ToolExecutionResult>.Success(toolResult);
+    }
+
+    private static string ResolveBrainTag(IAgentBrain brain) => brain switch
+    {
+        MafBrain => "maf",
+        SemanticKernelBrain => "sk",
+        _ => brain.GetType().Name.ToLowerInvariant()
+    };
+
+    private static double EstimateTokenCostUsd(int totalTokens)
+    {
+        const double usdPer1kTokens = 0.003;
+        return (totalTokens / 1000d) * usdPer1kTokens;
     }
 
     private async Task<Result<ObserveResult>> ObserveAsync(
