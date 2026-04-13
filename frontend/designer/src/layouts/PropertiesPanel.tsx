@@ -10,7 +10,8 @@ import { AgentNodeData } from '../types/agent';
 export const PropertiesPanel = () => {
   const dispatch = useDispatch();
   const { id: agentId } = useParams<{ id: string }>();
-  const { nodes, selectedNodeId } = useSelector((state: RootState) => state.designer);
+  const { graph, selectedNodeId } = useSelector((state: RootState) => state.designer);
+  const { nodes } = graph;
   const selectedNode = nodes.find((n: Node<AgentNodeData>) => n.id === selectedNodeId);
 
   // If no node is selected, show Agent-Level configuration (Routing, Experimentation)

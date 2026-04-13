@@ -1,8 +1,16 @@
 import { useSelector } from 'react-redux';
-import { Zap, Save, Play, Settings } from 'lucide-react';
+import { Zap, Save, Play, Settings, FlaskConical } from 'lucide-react';
 import { RootState } from '../store';
+import { useNavigate, useParams } from 'react-router-dom';
 
-export const Header = () => {
+interface HeaderProps {
+  onSave?: () => void;
+  isSaving?: boolean;
+}
+
+export const Header = ({ onSave, isSaving = false }: HeaderProps) => {
+  const navigate = useNavigate();
+  const { id } = useParams<{ id: string }>();
   const { agentName, version, isDirty } = useSelector((state: RootState) => state.designer);
 
   return (
@@ -19,12 +27,16 @@ export const Header = () => {
           {isDirty && <span className="dirty-indicator">Draft</span>}
         </div>
       </div>
-      
+
       <div className="header-actions">
         <button className="btn-icon"><Settings size={18} /></button>
-        <button className="btn-secondary">
+        <button className="btn-secondary" onClick={onSave} disabled={isSaving}>
           <Save size={18} />
-          <span>Save</span>
+          <span>{isSaving ? 'Saving...' : 'Save'}</span>
+        </button>
+        <button className="btn-secondary" onClick={() => id && navigate(`/sandbox/${id}`)} disabled={!id || id === 'new'}>
+          <FlaskConical size={18} />
+          <span>Preview</span>
         </button>
         <button className="btn-primary">
           <Play size={18} fill="currentColor" />
@@ -55,10 +67,10 @@ export const Header = () => {
         .badge { background: var(--bg-tertiary); color: var(--fg-secondary); font-size: 0.7rem; padding: 2px 8px; border-radius: 99px; border: 1px solid var(--border-light); }
         .dirty-indicator { color: var(--warning); font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
         .header-actions { display: flex; align-items: center; gap: 12px; }
-        
+
         .btn-icon { background: transparent; color: var(--fg-secondary); padding: 8px; }
         .btn-icon:hover { color: var(--fg-primary); background: var(--border-light); }
-        
+
         .btn-secondary {
           background: var(--bg-tertiary);
           color: var(--fg-primary);
@@ -70,7 +82,7 @@ export const Header = () => {
           border: 1px solid var(--border-light);
         }
         .btn-secondary:hover { background: var(--border-strong); }
-        
+
         .btn-primary {
           background: var(--accent-primary);
           color: white;

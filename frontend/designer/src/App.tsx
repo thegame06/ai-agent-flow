@@ -6,6 +6,7 @@ import DesignerPage from './pages/DesignerPage';
 import AgentsPage from './pages/AgentsPage';
 import PoliciesPage from './pages/PoliciesPage';
 import PolicyDetailsPage from './pages/PolicyDetailsPage';
+import SandboxPage from './pages/SandboxPage';
 import '@xyflow/react/dist/style.css';
 
 // Placeholder pages for other modules
@@ -33,6 +34,7 @@ function ApplicationRouter() {
 
         {/* Specialized Workbench Pages (No Global Shell) */}
         <Route path="/designer/:id" element={<DesignerPage />} />
+        <Route path="/sandbox/:id" element={<SandboxPage />} />
         
         {/* Default Redirect */}
         <Route path="/" element={<Navigate to="/agents" replace />} />

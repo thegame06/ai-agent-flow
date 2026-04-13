@@ -1,25 +1,40 @@
 import { useCallback, useRef, DragEvent } from 'react';
-import { 
-  ReactFlow, 
-  Background, 
-  Controls, 
-  MiniMap, 
-  addEdge, 
-  Connection, 
-  useReactFlow 
+import {
+  ReactFlow,
+  Background,
+  Controls,
+  MiniMap,
+  addEdge,
+  applyEdgeChanges,
+  applyNodeChanges,
+  Connection,
+  EdgeChange,
+  NodeChange,
+  useReactFlow
 } from '@xyflow/react';
 import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from '../../store';
-import { setEdges, selectNode, addNode } from '../../store/slices/designerSlice';
+import { setEdges, setNodes, selectNode, addNode } from '../../store/slices/designerSlice';
 
 export const DesignerCanvas = () => {
   const dispatch = useDispatch();
-  const { nodes, edges } = useSelector((state: RootState) => state.designer);
+  const { graph } = useSelector((state: RootState) => state.designer);
+  const { nodes, edges } = graph;
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const { screenToFlowPosition } = useReactFlow();
 
   const onConnect = useCallback(
     (params: Connection) => dispatch(setEdges(addEdge(params, edges))),
+    [dispatch, edges]
+  );
+
+  const onNodesChange = useCallback(
+    (changes: NodeChange[]) => dispatch(setNodes(applyNodeChanges(changes, nodes) as typeof nodes)),
+    [dispatch, nodes]
+  );
+
+  const onEdgesChange = useCallback(
+    (changes: EdgeChange[]) => dispatch(setEdges(applyEdgeChanges(changes, edges))),
     [dispatch, edges]
   );
 
@@ -39,17 +54,17 @@ export const DesignerCanvas = () => {
 
       const position = screenToFlowPosition({
         x: event.clientX,
-        y: event.clientY,
+        y: event.clientY
       });
 
       const newNode = {
         id: `node_${Date.now()}`,
         type: nodeType,
         position,
-        data: { label: label },
-        style: { 
-          background: 'var(--bg-secondary)', 
-          color: 'var(--fg-primary)', 
+        data: { label: label, type: nodeType, description: '', config: {} },
+        style: {
+          background: 'var(--bg-secondary)',
+          color: 'var(--fg-primary)',
           border: '1px solid var(--border-strong)',
           borderRadius: '12px',
           padding: '12px',
@@ -69,8 +84,8 @@ export const DesignerCanvas = () => {
       <ReactFlow
         nodes={nodes}
         edges={edges}
-        onNodesChange={() => {}}
-        onEdgesChange={() => {}}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         onNodeClick={(_, node) => dispatch(selectNode(node.id))}
         onPaneClick={() => dispatch(selectNode(null))}
@@ -79,9 +94,9 @@ export const DesignerCanvas = () => {
       >
         <Background color="var(--border-light)" gap={24} size={1} />
         <Controls />
-        <MiniMap 
-          style={{ background: 'var(--bg-secondary)', borderRadius: '12px', border: '1px solid var(--border-light)' }} 
-          nodeColor="#334155" 
+        <MiniMap
+          style={{ background: 'var(--bg-secondary)', borderRadius: '12px', border: '1px solid var(--border-light)' }}
+          nodeColor="#334155"
           maskColor="rgba(0, 0, 0, 0.3)"
         />
       </ReactFlow>
