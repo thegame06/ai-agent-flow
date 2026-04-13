@@ -24,7 +24,6 @@ using AgentFlow.Security;
 using AgentFlow.TestRunner;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
-using Microsoft.SemanticKernel;
 using MongoDB.Bson.Serialization;
 using MongoDB.Driver;
 using System.Text;
@@ -211,55 +210,6 @@ public static class DependencyInjection
 
         // Register Brains
         services.AddAgentBrains(configuration);
-
-        return services;
-    }
-
-    private static IServiceCollection AddAgentBrains(this IServiceCollection services, IConfiguration configuration)
-    {
-        var defaultProviderStr = configuration["AgentBrain:DefaultProvider"] ?? "SemanticKernel";
-        if (!Enum.TryParse<BrainProvider>(defaultProviderStr, true, out var defaultProvider))
-        {
-            defaultProvider = BrainProvider.SemanticKernel;
-        }
-
-        // Register all implementations
-        services.AddScoped<SemanticKernelBrain>();
-        services.AddScoped<MafBrain>();
-
-        // Resolver for IAgentBrain
-        services.AddScoped<IAgentBrain>(sp =>
-        {
-            // Future: This could resolve based on AgentKey or TenantId from the request
-            return defaultProvider switch
-            {
-                BrainProvider.MicrosoftAgentFramework => sp.GetRequiredService<MafBrain>(),
-                _ => sp.GetRequiredService<SemanticKernelBrain>()
-            };
-        });
-
-        // Specific configuration for Semantic Kernel
-        services.AddScoped<Kernel>(sp =>
-        {
-            var config = sp.GetRequiredService<IConfiguration>();
-            var provider = config["SemanticKernel:Provider"] ?? "OpenAI";
-
-            if (provider == "AzureOpenAI")
-            {
-                return Kernel.CreateBuilder()
-                    .AddAzureOpenAIChatCompletion(
-                        deploymentName: config["SemanticKernel:AzureOpenAI:DeploymentName"]!,
-                        endpoint: config["SemanticKernel:AzureOpenAI:Endpoint"]!,
-                        apiKey: config["SemanticKernel:AzureOpenAI:ApiKey"]!)
-                    .Build();
-            }
-            
-            return Kernel.CreateBuilder()
-                .AddOpenAIChatCompletion(
-                    modelId: config["SemanticKernel:OpenAI:ModelId"] ?? "gpt-4o",
-                    apiKey: config["SemanticKernel:OpenAI:ApiKey"]!)
-                .Build();
-        });
 
         return services;
     }
