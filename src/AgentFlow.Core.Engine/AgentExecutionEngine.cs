@@ -327,7 +327,13 @@ public sealed class AgentExecutionEngine : IAgentExecutor
             ct.ThrowIfCancellationRequested();
 
             var memorySummary = await _memory.BuildContextSummaryAsync(
-                agentDef.Id, execution.Id, request.TenantId, currentMessage, ct);
+                agentDef.Id,
+                execution.Id,
+                request.TenantId,
+                currentMessage,
+                agentDef.Memory.VectorSearchTopK,
+                agentDef.Memory.VectorMinRelevanceScore,
+                ct);
 
             var availableTools = agentDef.AuthorizedTools
                 .Where(t => t.IsEnabled)

@@ -26,6 +26,8 @@ public sealed class AgentMemoryService : IAgentMemoryService
         string executionId,
         string tenantId,
         string currentQuery,
+        int? vectorTopK = null,
+        float? vectorMinScore = null,
         CancellationToken ct = default)
     {
         // 1. Fetch Working Memory
@@ -37,7 +39,7 @@ public sealed class AgentMemoryService : IAgentMemoryService
         // 3. Vector Memory search (if query is provided)
         var vectorHits = string.IsNullOrWhiteSpace(currentQuery) 
             ? "" 
-            : await SearchVectorMemoryFormattedAsync(agentId, tenantId, currentQuery, ct);
+            : await SearchVectorMemoryFormattedAsync(agentId, tenantId, currentQuery, vectorTopK ?? 5, vectorMinScore ?? 0.75f, ct);
 
         // 4. Combine into a prompt-friendly summary
         var summary = $"""
@@ -51,11 +53,11 @@ public sealed class AgentMemoryService : IAgentMemoryService
         return summary;
     }
 
-    private async Task<string> SearchVectorMemoryFormattedAsync(string agentId, string tenantId, string query, CancellationToken ct)
+    private async Task<string> SearchVectorMemoryFormattedAsync(string agentId, string tenantId, string query, int topK, float minScore, CancellationToken ct)
     {
         try 
         {
-            var hits = await Vector.SearchAsync(agentId, tenantId, query, ct: ct);
+            var hits = await Vector.SearchAsync(agentId, tenantId, query, topK, minScore, ct);
             if (!hits.Any()) return "No relevant semantic context found.";
 
             return string.Join("\n---\n", hits.Select(h => h.Content));

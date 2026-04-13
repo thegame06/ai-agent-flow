@@ -56,7 +56,7 @@ public static class DependencyInjection
             .AddSingleton<IAuthProfilesStore, InMemoryAuthProfilesStore>()
             .AddSecurity(configuration)
             .AddAgentEngine(configuration)
-            .AddMemoryServices()
+            .AddMemoryServices(configuration)
             .AddAgentFlowObservability(configuration["Telemetry:OtlpEndpoint"] ?? "http://localhost:4317")
             .AddMcpGateway(configuration);
 
@@ -269,12 +269,37 @@ public static class DependencyInjection
         return services;
     }
 
-    private static IServiceCollection AddMemoryServices(this IServiceCollection services)
+    private static IServiceCollection AddMemoryServices(this IServiceCollection services, IConfiguration configuration)
     {
         // services.AddSingleton<IWorkingMemory, InMemoryWorkingMemory>(); // Now handled by AddAgentFlowRedis
         services.AddScoped<ILongTermMemory, MongoLongTermMemory>();
         services.AddScoped<IAuditMemory, MongoAuditMemory>();
-        services.AddSingleton<IVectorMemory, NullVectorMemory>();
+
+        var qdrantSection = configuration.GetSection("Qdrant");
+        services.Configure<QdrantVectorMemoryOptions>(qdrantSection);
+
+        var qdrantOptions = qdrantSection.Get<QdrantVectorMemoryOptions>() ?? new QdrantVectorMemoryOptions();
+
+        if (qdrantOptions.Enabled)
+        {
+            if (string.Equals(qdrantOptions.Transport, "Grpc", StringComparison.OrdinalIgnoreCase))
+            {
+                services.AddHttpClient<IVectorMemory, QdrantVectorMemory>((sp, httpClient) =>
+                {
+                    var opts = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<QdrantVectorMemoryOptions>>().Value;
+                    var endpoint = string.IsNullOrWhiteSpace(opts.GrpcEndpoint) ? opts.BaseUrl : opts.GrpcEndpoint;
+                    httpClient.BaseAddress = new Uri(endpoint!, UriKind.Absolute);
+                });
+            }
+            else
+            {
+                services.AddHttpClient<IVectorMemory, QdrantVectorMemory>();
+            }
+        }
+        else
+        {
+            services.AddSingleton<IVectorMemory, NullVectorMemory>();
+        }
 
         services.AddScoped<IAgentMemoryService, AgentMemoryService>();
 
