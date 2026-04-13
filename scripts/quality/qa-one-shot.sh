@@ -10,6 +10,9 @@ step() { echo; echo "== $1 =="; }
 step "Guardrail: no-mock runtime"
 bash "$ROOT_DIR/scripts/quality/no-mock-runtime.sh" && ok "no-mock guardrail"
 
+step "Brain contract gate"
+bash "$ROOT_DIR/scripts/quality/brain-contract-check.sh" && ok "brain contract check"
+
 step "Backend tests"
 dotnet test "$ROOT_DIR/tests/AgentFlow.Tests.Unit/AgentFlow.Tests.Unit.csproj" -v minimal >/tmp/qa-unit.log && ok "unit tests"
 dotnet test "$ROOT_DIR/tests/AgentFlow.Tests.Integration/AgentFlow.Tests.Integration.csproj" -v minimal >/tmp/qa-integration.log && ok "integration tests"
@@ -26,6 +29,7 @@ done
 step "Semáforo final"
 echo "Backend unit:       🟢"
 echo "Backend integration:🟢"
+echo "Brain contract:     🟢"
 echo "Frontend tests:     🟢"
 echo "Guardrail no-mock:  🟢"
 echo

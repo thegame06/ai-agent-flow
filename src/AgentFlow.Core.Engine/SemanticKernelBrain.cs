@@ -207,7 +207,7 @@ public sealed class SemanticKernelBrain : IAgentBrain
                 };
             }
 
-            return new ThinkResult
+            var parsedResult = new ThinkResult
             {
                 Rationale = rationale,
                 Decision = decision,
@@ -216,17 +216,20 @@ public sealed class SemanticKernelBrain : IAgentBrain
                 FinalAnswer = root.TryGetProperty("finalAnswer", out var fa) && !fa.ValueKind.Equals(JsonValueKind.Null) ? fa.GetString() : null,
                 TokensUsed = ExtractTokensUsed(metadata)
             };
+
+            return BrainContractValidator.NormalizeThinkResult(parsedResult, "SemanticKernel");
         }
         catch (JsonException jex)
         {
             _logger.LogWarning("LLM returned malformed JSON: {Error}. Attempting fallback.", jex.Message);
-            
-            // If the LLM failed to produce JSON but gave a text response, use it as FinalAnswer
+
             return new ThinkResult
             {
-                Rationale = "Auto-recovery: LLM response was not valid JSON.",
-                Decision = ThinkDecision.ProvideFinalAnswer,
-                FinalAnswer = json,
+                Rationale = BrainContractValidator.SerializeContractErrors(
+                    "SemanticKernel",
+                    "ThinkResult",
+                    [$"Malformed JSON: {jex.Message}"]),
+                Decision = ThinkDecision.Checkpoint,
                 TokensUsed = ExtractTokensUsed(metadata)
             };
         }
@@ -239,15 +242,19 @@ public sealed class SemanticKernelBrain : IAgentBrain
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
 
-            return new ObserveResult
+            var parsedResult = new ObserveResult
             {
                 Summary = root.TryGetProperty("summary", out var s) ? s.GetString() ?? "" : "",
                 GoalAchieved = root.TryGetProperty("goalAchieved", out var ga) && ga.GetBoolean()
             };
+
+            return BrainContractValidator.NormalizeObserveResult(parsedResult, "SemanticKernel");
         }
         catch
         {
-            return new ObserveResult { Summary = json, GoalAchieved = false };
+            return BrainContractValidator.NormalizeObserveResult(
+                new ObserveResult { Summary = json, GoalAchieved = false },
+                "SemanticKernel");
         }
     }
 

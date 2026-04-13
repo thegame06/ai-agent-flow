@@ -1,0 +1,46 @@
+{
+  "thinkCases": [
+    {
+      "name": "use-tool-valid",
+      "json": "{\"decision\":\"UseTool\",\"rationale\":\"Need external data\",\"nextToolName\":\"SearchKB\",\"nextToolInputJson\":\"{\\\"q\\\":\\\"status\\\"}\",\"finalAnswer\":null}",
+      "expectedDecision": "UseTool",
+      "expectedToolName": "SearchKB",
+      "expectFinalAnswer": false
+    },
+    {
+      "name": "final-answer-valid",
+      "json": "{\"decision\":\"ProvideFinalAnswer\",\"rationale\":\"Enough info\",\"nextToolName\":null,\"nextToolInputJson\":null,\"finalAnswer\":\"Done\"}",
+      "expectedDecision": "ProvideFinalAnswer",
+      "expectedToolName": null,
+      "expectFinalAnswer": true
+    },
+    {
+      "name": "tool-missing-fields-normalizes-checkpoint",
+      "json": "{\"decision\":\"UseTool\",\"rationale\":\"Need tool\",\"nextToolName\":null,\"nextToolInputJson\":null,\"finalAnswer\":null}",
+      "expectedDecision": "Checkpoint",
+      "expectedToolName": null,
+      "expectFinalAnswer": false
+    },
+    {
+      "name": "malformed-json-normalizes-checkpoint",
+      "json": "not-json-response",
+      "expectedDecision": "Checkpoint",
+      "expectedToolName": null,
+      "expectFinalAnswer": false
+    }
+  ],
+  "observeCases": [
+    {
+      "name": "observe-valid",
+      "json": "{\"summary\":\"Tool output indicates success\",\"goalAchieved\":true}",
+      "expectedGoalAchieved": true,
+      "expectSummaryContains": "success"
+    },
+    {
+      "name": "observe-missing-summary-normalized",
+      "json": "{\"goalAchieved\":false}",
+      "expectedGoalAchieved": false,
+      "expectSummaryContains": "BRAIN_CONTRACT_VIOLATION"
+    }
+  ]
+}
