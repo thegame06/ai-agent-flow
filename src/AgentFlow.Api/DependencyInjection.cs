@@ -266,6 +266,7 @@ public static class DependencyInjection
 
     private static IServiceCollection AddMcpGateway(this IServiceCollection services, IConfiguration configuration)
     {
+        services.AddSingleton<IMcpToolActionCatalog, AgentFlow.Infrastructure.Gateways.McpToolActionCatalog>();
         services.AddScoped<IMcpToolGateway, AgentFlow.Infrastructure.Gateways.McpToolGateway>();
         services.AddHostedService<AgentFlow.Infrastructure.Gateways.McpDiscoveryService>();
         return services;
