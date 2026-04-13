@@ -56,6 +56,7 @@ public sealed class HandoffEndpointTests
             new HandoffExecutionRequest
             {
                 SessionId = "sess-1",
+                ThreadId = "thread-1",
                 TargetAgentId = "collections-bot",
                 Intent = "collections_reminder",
                 PayloadJson = "{invalid-json}"
@@ -80,6 +81,7 @@ public sealed class HandoffEndpointTests
             new HandoffExecutionRequest
             {
                 SessionId = "sess-1",
+                ThreadId = "thread-1",
                 TargetAgentId = "collections-bot",
                 Intent = "collections_reminder",
                 PayloadJson = "{\"ok\":true}"
@@ -99,6 +101,9 @@ public sealed class HandoffEndpointTests
                 .Setup(x => x.ExecuteAsync(It.IsAny<AgentHandoffRequest>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new AgentHandoffResponse
                 {
+                    SessionId = "sess-1",
+                    ThreadId = "thread-1",
+                    CorrelationId = "corr-1",
                     Ok = true,
                     Retryable = false,
                     ResultJson = "{\"done\":true}"
@@ -114,6 +119,7 @@ public sealed class HandoffEndpointTests
             new HandoffExecutionRequest
             {
                 SessionId = "sess-1",
+                ThreadId = "thread-1",
                 CorrelationId = "corr-1",
                 TargetAgentId = "collections-bot",
                 Intent = "collections_reminder",
@@ -157,7 +163,7 @@ public sealed class HandoffEndpointTests
             .ReturnsAsync(true);
 
         handoff.Setup(x => x.ExecuteAsync(It.IsAny<AgentHandoffRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AgentHandoffResponse { Ok = true, Retryable = false, ResultJson = "{}" });
+            .ReturnsAsync(new AgentHandoffResponse { SessionId = "sess-1", ThreadId = "thread-1", CorrelationId = "corr-1", Ok = true, Retryable = false, ResultJson = "{}" });
 
         handoffPolicy.Setup(x => x.IsAllowed(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
             .Returns(true);

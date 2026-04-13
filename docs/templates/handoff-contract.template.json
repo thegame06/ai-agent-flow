@@ -1,7 +1,9 @@
 {
+  "contract_version": "1.0",
   "handoffRequest": {
     "tenant_id": "tenant_demo",
     "session_id": "sess_123",
+    "thread_id": "thread_123",
     "correlation_id": "corr_123",
     "target_agent": "collections-bot",
     "intent": "collections_reminder",
@@ -15,6 +17,10 @@
     }
   },
   "handoffResponse": {
+    "contract_version": "1.0",
+    "session_id": "sess_123",
+    "thread_id": "thread_123",
+    "correlation_id": "corr_123",
     "ok": true,
     "result": {
       "message_preview": "Hola, tienes un pago pendiente..."

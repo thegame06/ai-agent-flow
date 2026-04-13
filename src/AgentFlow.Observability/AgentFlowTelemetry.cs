@@ -62,6 +62,12 @@ public static class AgentFlowTelemetry
 
     public static readonly Histogram<double> LlmLatency =
         _meter.CreateHistogram<double>("agentflow.brain.latency_ms", "ms", "LLM call latency");
+
+    public static readonly Counter<long> HandoffHops =
+        _meter.CreateCounter<long>("agentflow.handoff.hops", "hops", "Total manager->subagent handoff hops");
+
+    public static readonly Histogram<double> HandoffHopLatency =
+        _meter.CreateHistogram<double>("agentflow.handoff.latency_ms", "ms", "Latency per manager->subagent handoff hop");
 }
 
 /// <summary>

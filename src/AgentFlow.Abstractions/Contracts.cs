@@ -894,9 +894,13 @@ public sealed record ExtensionHealthStatus
 
 public sealed record AgentHandoffRequest
 {
+    public const string CurrentContractVersion = "1.0";
+
     public required string TenantId { get; init; }
     public required string SessionId { get; init; }
+    public required string ThreadId { get; init; }
     public required string CorrelationId { get; init; }
+    public string ContractVersion { get; init; } = CurrentContractVersion;
     public required string SourceAgentKey { get; init; }
     public required string TargetAgentKey { get; init; }
     public required string Intent { get; init; }
@@ -915,6 +919,10 @@ public sealed record AgentHandoffToolCall
 
 public sealed record AgentHandoffResponse
 {
+    public required string SessionId { get; init; }
+    public required string ThreadId { get; init; }
+    public required string CorrelationId { get; init; }
+    public string ContractVersion { get; init; } = AgentHandoffRequest.CurrentContractVersion;
     public required bool Ok { get; init; }
     public string? ResultJson { get; init; }
     public string? ErrorCode { get; init; }

@@ -414,7 +414,9 @@ public sealed class AgentExecutionsController : ControllerBase
         {
             TenantId = tenantId,
             SessionId = body.SessionId,
+            ThreadId = body.ThreadId,
             CorrelationId = body.CorrelationId ?? body.SessionId,
+            ContractVersion = body.ContractVersion,
             SourceAgentKey = agentId,
             TargetAgentKey = body.TargetAgentId,
             Intent = body.Intent,
@@ -464,6 +466,10 @@ public sealed class AgentExecutionsController : ControllerBase
 
         return Ok(new HandoffExecutionResponse
         {
+            ContractVersion = result.ContractVersion,
+            SessionId = result.SessionId,
+            ThreadId = result.ThreadId,
+            CorrelationId = result.CorrelationId,
             Ok = result.Ok,
             ErrorCode = result.ErrorCode,
             Retryable = result.Retryable,
@@ -487,6 +493,12 @@ public sealed class AgentExecutionsController : ControllerBase
         if (string.IsNullOrWhiteSpace(body.TargetAgentId))
         {
             error = "targetAgentId is required.";
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(body.ThreadId))
+        {
+            error = "threadId is required.";
             return false;
         }
 
@@ -727,7 +739,9 @@ public sealed record HandoffPolicyDecisionResponse
 
 public sealed record HandoffExecutionRequest
 {
+    public string ContractVersion { get; init; } = AgentHandoffRequest.CurrentContractVersion;
     public required string SessionId { get; init; }
+    public required string ThreadId { get; init; }
     public string? CorrelationId { get; init; }
     public required string TargetAgentId { get; init; }
     public required string Intent { get; init; }
@@ -738,6 +752,10 @@ public sealed record HandoffExecutionRequest
 
 public sealed record HandoffExecutionResponse
 {
+    public string ContractVersion { get; init; } = AgentHandoffRequest.CurrentContractVersion;
+    public required string SessionId { get; init; }
+    public required string ThreadId { get; init; }
+    public required string CorrelationId { get; init; }
     public required bool Ok { get; init; }
     public string? ResultJson { get; init; }
     public string? ErrorCode { get; init; }

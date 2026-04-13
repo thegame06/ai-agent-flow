@@ -3,6 +3,7 @@ using AgentFlow.Core.Engine;
 using AgentFlow.Infrastructure.Gateways;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.SemanticKernel;
 
 namespace AgentFlow.Tests.Integration.Orchestration;
 
@@ -34,7 +35,10 @@ public class MafAndMcpContractsTests
             })
             .Build();
 
-        var brain = new MafBrain(config, NullLogger<MafBrain>.Instance);
+        var kernel = Kernel.CreateBuilder()
+            .AddOpenAIChatCompletion("gpt-4o-mini", "test-key")
+            .Build();
+        var brain = new MafBrain(kernel, config, NullLogger<MafBrain>.Instance);
 
         var result = await brain.ThinkAsync(new ThinkContext
         {

@@ -1,5 +1,6 @@
 using AgentFlow.Abstractions;
 using AgentFlow.Core.Engine;
+using AgentFlow.Security;
 using Moq;
 
 namespace AgentFlow.Tests.Unit.Engine;
@@ -20,12 +21,16 @@ public sealed class AgentHandoffExecutorTests
                 FinalResponse = "{\"ok\":true}"
             });
 
-        var handoff = new AgentHandoffExecutor(executor.Object);
+        var policy = new Mock<IManagerHandoffPolicy>();
+        policy.Setup(x => x.Evaluate("tenant-1", "manager-agent", "collections-bot"))
+            .Returns(new HandoffPolicyDecision(true, "target_in_allowlist", true, new[] { "collections-bot" }));
+        var handoff = new AgentHandoffExecutor(executor.Object, policy.Object);
 
         var response = await handoff.ExecuteAsync(new AgentHandoffRequest
         {
             TenantId = "tenant-1",
             SessionId = "sess-1",
+            ThreadId = "thread-1",
             CorrelationId = "corr-1",
             SourceAgentKey = "manager-agent",
             TargetAgentKey = "collections-bot",
@@ -41,6 +46,7 @@ public sealed class AgentHandoffExecutorTests
                 r.TenantId == "tenant-1" &&
                 r.AgentKey == "collections-bot" &&
                 r.SessionId == "sess-1" &&
+                r.ThreadId == "thread-1" &&
                 r.CorrelationId == "corr-1"),
             It.IsAny<CancellationToken>()), Times.Once);
     }
