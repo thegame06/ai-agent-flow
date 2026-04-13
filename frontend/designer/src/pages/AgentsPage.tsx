@@ -49,7 +49,7 @@ export default function AgentsPage() {
                 <Edit3 size={16} />
                 Edit
               </button>
-              <button className="btn-action">
+              <button className="btn-action" onClick={() => navigate(`/sandbox/${agent.id}`)}>
                 <Play size={16} />
                 Test
               </button>
