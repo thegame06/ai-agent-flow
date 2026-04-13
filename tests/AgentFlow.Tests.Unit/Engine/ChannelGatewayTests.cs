@@ -153,6 +153,9 @@ public sealed class ChannelGatewayTests
         handoffExecutor.Setup(x => x.ExecuteAsync(It.IsAny<AgentHandoffRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AgentHandoffResponse
             {
+                SessionId = session.Id,
+                ThreadId = session.Id,
+                CorrelationId = session.Id,
                 Ok = true,
                 ResultJson = "{\"message\":\"Delegated reply\"}",
                 StatePatch = new Dictionary<string, string> { ["lastExecutionId"] = "exec-sub" }

@@ -119,6 +119,7 @@ public sealed class ChannelGateway : IChannelGateway
                     {
                         TenantId = incomingMessage.TenantId,
                         SessionId = incomingMessage.SessionId,
+                        ThreadId = incomingMessage.SessionId,
                         CorrelationId = incomingMessage.SessionId,
                         SourceAgentKey = agentKey,
                         TargetAgentKey = handoff.TargetAgentId,
