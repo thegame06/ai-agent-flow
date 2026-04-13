@@ -2,9 +2,13 @@
   "title": "AgentFlow - Business & Technical Observability",
   "uid": "agentflow-observability",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "refresh": "30s",
-  "tags": ["agentflow", "observability", "canary"],
+  "tags": [
+    "agentflow",
+    "observability",
+    "canary"
+  ],
   "timezone": "utc",
   "panels": [
     {
@@ -19,9 +23,12 @@
     },
     {
       "id": 2,
-      "title": "Execution Latency p95 by Segment",
+      "title": "Execution Latency p50/p95 by Segment",
       "type": "timeseries",
       "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(agentflow_executions_latency_by_segment_ms_bucket[5m])) by (le, segment))"
+        },
         {
           "expr": "histogram_quantile(0.95, sum(rate(agentflow_executions_latency_by_segment_ms_bucket[5m])) by (le, segment))"
         }
@@ -101,6 +108,36 @@
         }
       ],
       "description": "Bound directly to EvaluationsController, SegmentRoutingController and FeatureFlagsController instrumentation."
+    },
+    {
+      "id": 10,
+      "title": "Retries by Tool",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum(rate(agentflow_execution_retries_total[5m])) by (tool_name)"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "title": "Denials by Tenant",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum(rate(agentflow_execution_denials_total[5m])) by (tenant_id, policy_decision)"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "title": "Cost per Flow (USD)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum by (correlation_id) (rate(agentflow_execution_cost_estimate_usd_sum[5m])) / clamp_min(sum by (correlation_id) (rate(agentflow_execution_cost_estimate_usd_count[5m])), 1)"
+        }
+      ]
     }
   ]
 }

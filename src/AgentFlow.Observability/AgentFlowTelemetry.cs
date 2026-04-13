@@ -101,6 +101,21 @@ public static class AgentFlowTelemetry
 
     public static readonly Histogram<double> ApiEndpointLatency =
         _meter.CreateHistogram<double>("agentflow.api.endpoint.latency_ms", "ms", "Endpoint latency by controller/action");
+
+    public static readonly Counter<long> ExecutionEvents =
+        _meter.CreateCounter<long>("agentflow.execution.events", "events", "Unified execution events by event_type/severity/policy");
+
+    public static readonly Histogram<double> ExecutionEventLatency =
+        _meter.CreateHistogram<double>("agentflow.execution.event.latency_ms", "ms", "Unified event latency");
+
+    public static readonly Counter<long> ExecutionRetries =
+        _meter.CreateCounter<long>("agentflow.execution.retries", "retries", "Execution retries by tool_name");
+
+    public static readonly Counter<long> ExecutionDenials =
+        _meter.CreateCounter<long>("agentflow.execution.denials", "denials", "Execution denials by policy decision");
+
+    public static readonly Histogram<double> ExecutionCostEstimate =
+        _meter.CreateHistogram<double>("agentflow.execution.cost_estimate_usd", "usd", "Estimated cost by flow/correlation id");
 }
 
 /// <summary>
