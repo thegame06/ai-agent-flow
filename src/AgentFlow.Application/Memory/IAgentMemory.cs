@@ -80,6 +80,8 @@ public interface IAgentMemoryService
         string executionId,
         string tenantId,
         string currentQuery,
+        int? vectorTopK = null,
+        float? vectorMinScore = null,
         CancellationToken ct = default);
 }
 
