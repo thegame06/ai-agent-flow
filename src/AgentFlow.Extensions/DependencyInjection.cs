@@ -20,6 +20,12 @@ public static class ExtensionDependencyInjection
         services.TryAddSingleton<IToolPlugin, AgentFlow.Extensions.Tools.RiskTesterTool>();
         services.TryAddSingleton<AgentFlow.Extensions.Tools.RiskTesterTool>();
 
+        
+        services.TryAddSingleton<IToolPlugin, AgentFlow.Extensions.Plugins.CrmConnectorPlugin>();
+        services.TryAddSingleton<IToolPlugin, AgentFlow.Extensions.Plugins.ErpConnectorPlugin>();
+        services.TryAddSingleton<IToolPlugin, AgentFlow.Extensions.Plugins.QueueConnectorPlugin>();
+        services.TryAddSingleton<IToolPlugin, AgentFlow.Extensions.Plugins.RagRetrieverPlugin>();
+
         // NOTE: Loan Officer demo plugins (BureauAPI, FinancialModel, EmailNotification)
         // use the new ToolSDK.IToolPlugin interface and are registered separately in
         // the integration tests - they don't use the legacy Abstractions.IToolPlugin.

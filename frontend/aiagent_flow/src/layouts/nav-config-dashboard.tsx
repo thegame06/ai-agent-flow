@@ -80,6 +80,11 @@ export const navData: NavSectionProps['data'] = [
         icon: ICONS.parameter,
       },
       {
+        title: 'Marketplace',
+        path: paths.dashboard.marketplace,
+        icon: ICONS.product,
+      },
+      {
         title: 'Orchestration',
         path: paths.dashboard.orchestration,
         icon: ICONS.analytics,

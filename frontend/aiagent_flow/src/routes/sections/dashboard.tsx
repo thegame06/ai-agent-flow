@@ -25,6 +25,7 @@ const ExecutionsPage = lazy(() => import('src/aiagentflow/pages/executions/Execu
 const ExecutionDetailPage = lazy(() => import('src/aiagentflow/pages/executions/Detail/ExecutionDetailPage'));
 const CheckpointsPage = lazy(() => import('src/aiagentflow/pages/checkpoints/CheckpointsPage'));
 const ToolsPage = lazy(() => import('src/aiagentflow/pages/tools/ToolsPage'));
+const MarketplacePage = lazy(() => import('src/aiagentflow/pages/tools/MarketplacePage'));
 const PoliciesPage = lazy(() => import('src/aiagentflow/pages/policies/PoliciesPage'));
 const AuditLogPage = lazy(() => import('src/aiagentflow/pages/audit/AuditPage'));
 const ModelsPage = lazy(() => import('src/aiagentflow/pages/models/ModelsPage'));
@@ -71,6 +72,7 @@ export const dashboardRoutes: RouteObject[] = [
       { path: 'executions/:executionId', element: <ExecutionDetailPage /> },
       { path: 'checkpoints', element: <CheckpointsPage /> },
       { path: 'tools', element: <ToolsPage /> },
+      { path: 'marketplace', element: <MarketplacePage /> },
       { path: 'orchestration', element: <ManagerOrchestrationPage /> },
       { path: 'threads', element: <ThreadsPage /> },
       { path: 'evaluations', element: <EvaluationsPage /> },
