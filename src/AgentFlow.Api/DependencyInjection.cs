@@ -226,6 +226,12 @@ public static class DependencyInjection
         // Register all implementations
         services.AddScoped<SemanticKernelBrain>();
         services.AddScoped<MafBrain>();
+        services.AddScoped<Func<BrainProvider, IAgentBrain>>(sp => provider => provider switch
+        {
+            BrainProvider.MicrosoftAgentFramework => sp.GetRequiredService<MafBrain>(),
+            _ => sp.GetRequiredService<SemanticKernelBrain>()
+        });
+        services.AddScoped<IAgentBrainResolver, AgentBrainResolver>();
 
         // Resolver for IAgentBrain
         services.AddScoped<IAgentBrain>(sp =>

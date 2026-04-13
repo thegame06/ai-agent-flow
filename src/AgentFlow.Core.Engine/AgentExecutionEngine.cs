@@ -23,7 +23,7 @@ public sealed class AgentExecutionEngine : IAgentExecutor
     private readonly IAgentDefinitionRepository _agentRepo;
     private readonly IAgentExecutionRepository _executionRepo;
     private readonly IConversationThreadRepository _threadRepo; // ✅ NEW: Thread persistence
-    private readonly IAgentBrain _brain;
+    private readonly IAgentBrainResolver _brainResolver;
     private readonly IToolExecutor _toolExecutor;
     private readonly IAgentMemoryService _memory;
     private readonly IPolicyEngine _policyEngine;
@@ -38,7 +38,7 @@ public sealed class AgentExecutionEngine : IAgentExecutor
         IAgentDefinitionRepository agentRepo,
         IAgentExecutionRepository executionRepo,
         IConversationThreadRepository threadRepo, // ✅ NEW
-        IAgentBrain brain,
+        IAgentBrainResolver brainResolver,
         IToolExecutor toolExecutor,
         IAgentMemoryService memory,
         IPolicyEngine policyEngine,
@@ -52,7 +52,7 @@ public sealed class AgentExecutionEngine : IAgentExecutor
         _agentRepo = agentRepo;
         _executionRepo = executionRepo;
         _threadRepo = threadRepo; // ✅ NEW
-        _brain = brain;
+        _brainResolver = brainResolver;
         _toolExecutor = toolExecutor;
         _memory = memory;
         _policyEngine = policyEngine;
@@ -109,6 +109,18 @@ public sealed class AgentExecutionEngine : IAgentExecutor
                 ErrorMessage = insertResult.Error!.Message
             };
         }
+
+        var brainResolution = await _brainResolver.ResolveAsync(
+            request.TenantId,
+            agentDef.Id.ToString(),
+            new AgentBrainExecutionContext
+            {
+                UserId = request.UserId,
+                ExecutionId = execution.Id,
+                Metadata = request.Metadata
+            },
+            ct);
+        var resolvedBrain = brainResolution.Brain;
 
         // --- 2. Start with timeout protection ---
         var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -205,7 +217,7 @@ public sealed class AgentExecutionEngine : IAgentExecutor
         var variant = request.Metadata.TryGetValue("isShadow", out var isShadow) && isShadow.Equals("true", StringComparison.OrdinalIgnoreCase)
             ? "challenger"
             : "champion";
-        var brain = ResolveBrainTag(_brain);
+        var brain = ResolveBrainTag(brainResolution.Provider);
 
         AgentFlowTelemetry.ExecutionDuration.Record(durationMs, new TagList
         {
@@ -422,7 +434,7 @@ public sealed class AgentExecutionEngine : IAgentExecutor
         if (agentDef.LoopConfig.PlannerType == PlannerType.Sequential && agentDef.WorkflowSteps.Count > 0)
         {
             var sequentialResult = await RunSequentialWorkflowAsync(
-                execution, agentDef, request, currentMessage, latestPayload, maxIterations, ct);
+                execution, agentDef, request, resolvedBrain, currentMessage, latestPayload, maxIterations, ct);
 
             if (!sequentialResult.IsSuccess)
                 return Result<string?>.Failure(sequentialResult.Error!);
@@ -498,12 +510,12 @@ public sealed class AgentExecutionEngine : IAgentExecutor
                 ThreadSnapshot = threadSnapshot // ✅ NEW: Pass thread history to LLM
             };
 
-            var thinkResult = await _brain.ThinkAsync(thinkCtx, ct);
+            var thinkResult = await resolvedBrain.ThinkAsync(thinkCtx, ct);
             thinkSw.Stop();
             var rationale = thinkResult.Rationale ?? string.Empty;
             ExecutionTracing.RecordThinkDecision(thinkActivity, thinkResult.Decision.ToString(), rationale);
             AgentFlowTelemetry.LlmLatency.Record(thinkSw.ElapsedMilliseconds, 
-                new TagList { { "agent_id", agentDef.Id.ToString() }, { "step", "think" }, { "brain", ResolveBrainTag(_brain) } });
+                new TagList { { "agent_id", agentDef.Id.ToString() }, { "step", "think" }, { "brain", ResolveBrainTag(brainResolution.Provider) } });
 
             var thinkStep = new AgentStep
             {
@@ -592,7 +604,7 @@ if (!preResponsePolicy.IsSuccess) return Result<string?>.Failure(preResponsePoli
                     if (!postToolPolicy.IsSuccess) return Result<string?>.Failure(postToolPolicy.Error!);
 
                     var observeResult = await ObserveAsync(
-                        execution, agentDef, request,
+                        execution, agentDef, request, resolvedBrain,
                         thinkResult.NextToolName!,
                         actResult.Value!,
                         ct);
@@ -702,6 +714,7 @@ if (!preResponsePolicy.IsSuccess) return Result<string?>.Failure(preResponsePoli
         AgentExecution execution,
         AgentDefinition agentDef,
         AgentExecutionRequest request,
+        IAgentBrain brain,
         string currentMessage,
         string? latestPayload,
         int maxIterations,
@@ -732,7 +745,7 @@ if (!preResponsePolicy.IsSuccess) return Result<string?>.Failure(preResponsePoli
                             ?? GetConfigString(currentStep.Config, "instruction")
                             ?? currentMessage;
 
-                        var thinkResult = await _brain.ThinkAsync(new ThinkContext
+                        var thinkResult = await brain.ThinkAsync(new ThinkContext
                         {
                             TenantId = request.TenantId,
                             ExecutionId = execution.Id,
@@ -830,7 +843,7 @@ if (!preResponsePolicy.IsSuccess) return Result<string?>.Failure(preResponsePoli
                 case "observe":
                 case "aggregate":
                     {
-                        var observe = await _brain.ObserveAsync(new ObserveContext
+                        var observe = await brain.ObserveAsync(new ObserveContext
                         {
                             TenantId = request.TenantId,
                             ToolName = currentStep.Label,
@@ -1128,11 +1141,11 @@ if (!preResponsePolicy.IsSuccess) return Result<string?>.Failure(preResponsePoli
         return Result<ToolExecutionResult>.Success(toolResult);
     }
 
-    private static string ResolveBrainTag(IAgentBrain brain) => brain switch
+    private static string ResolveBrainTag(BrainProvider provider) => provider switch
     {
-        MafBrain => "maf",
-        SemanticKernelBrain => "sk",
-        _ => brain.GetType().Name.ToLowerInvariant()
+        BrainProvider.MicrosoftAgentFramework => "maf",
+        BrainProvider.SemanticKernel => "sk",
+        _ => provider.ToString().ToLowerInvariant()
     };
 
     private static double EstimateTokenCostUsd(int totalTokens)
@@ -1145,6 +1158,7 @@ if (!preResponsePolicy.IsSuccess) return Result<string?>.Failure(preResponsePoli
         AgentExecution execution,
         AgentDefinition agentDef,
         AgentExecutionRequest request,
+        IAgentBrain brain,
         string toolName,
         ToolExecutionResult toolResult,
         CancellationToken ct)
@@ -1154,7 +1168,7 @@ if (!preResponsePolicy.IsSuccess) return Result<string?>.Failure(preResponsePoli
             ?.SetTag("agentflow.execution_id", execution.Id)
             ?.SetTag("agentflow.tool_name", toolName);
 
-        var observeResult = await _brain.ObserveAsync(new ObserveContext
+        var observeResult = await brain.ObserveAsync(new ObserveContext
         {
             TenantId = request.TenantId,
             ToolName = toolName,
