@@ -195,6 +195,70 @@ public sealed record AvailableToolDescriptor
 }
 
 // =========================================================================
+// EXECUTION PLANNING
+// =========================================================================
+
+public interface IExecutionPlanner
+{
+    Task<ExecutionPlan> CreatePlan(PlannerCreateContext context, CancellationToken ct = default);
+    Task<ExecutionPlan> RevisePlan(PlannerReviseContext context, CancellationToken ct = default);
+    PlanNextStepResult NextStep(PlannerNextStepContext context);
+}
+
+public sealed record PlannerCreateContext
+{
+    public required string TenantId { get; init; }
+    public required string ExecutionId { get; init; }
+    public required string Goal { get; init; }
+    public required string SystemPrompt { get; init; }
+    public PlannerType PlannerType { get; init; } = PlannerType.ReAct;
+    public int MaxSteps { get; init; } = 10;
+    public int TokenBudget { get; init; } = 100_000;
+    public IReadOnlyList<AvailableToolDescriptor> AvailableTools { get; init; } = [];
+}
+
+public sealed record PlannerReviseContext
+{
+    public required PlannerCreateContext BaseContext { get; init; }
+    public required ExecutionPlan CurrentPlan { get; init; }
+    public required string FailureReason { get; init; }
+    public int CompletedSteps { get; init; }
+}
+
+public sealed record PlannerNextStepContext
+{
+    public required ExecutionPlan Plan { get; init; }
+    public int CompletedSteps { get; init; }
+    public int RemainingTokenBudget { get; init; }
+    public int MaxSteps { get; init; }
+}
+
+public sealed record ExecutionPlan
+{
+    public string PlanId { get; init; } = Guid.NewGuid().ToString("N");
+    public int Revision { get; init; }
+    public string Goal { get; init; } = string.Empty;
+    public IReadOnlyList<PlannedExecutionStep> Steps { get; init; } = [];
+    public string? StopCriteria { get; init; }
+    public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.UtcNow;
+}
+
+public sealed record PlannedExecutionStep
+{
+    public string Id { get; init; } = Guid.NewGuid().ToString("N");
+    public string Description { get; init; } = string.Empty;
+    public string? SuggestedToolName { get; init; }
+    public string? SuccessCriteria { get; init; }
+}
+
+public sealed record PlanNextStepResult
+{
+    public bool ShouldStop { get; init; }
+    public string? StopReason { get; init; }
+    public PlannedExecutionStep? Step { get; init; }
+}
+
+// =========================================================================
 // TOOL PLUGIN
 // =========================================================================
 

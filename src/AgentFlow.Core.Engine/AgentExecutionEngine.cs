@@ -30,6 +30,8 @@ public sealed class AgentExecutionEngine : IAgentExecutor
     private readonly IAgentEventTransport _eventTransport;
     private readonly ICheckpointStore _checkpointStore;
     private readonly IToolRegistry _toolRegistry;
+    private readonly IExecutionPlanner _planner;
+    private readonly TokenBudgetService _tokenBudget;
     private readonly ILogger<AgentExecutionEngine> _logger;
 
     public AgentExecutionEngine(
@@ -43,6 +45,8 @@ public sealed class AgentExecutionEngine : IAgentExecutor
         IAgentEventTransport eventTransport,
         ICheckpointStore checkpointStore,
         IToolRegistry toolRegistry,
+        IExecutionPlanner planner,
+        TokenBudgetService tokenBudget,
         ILogger<AgentExecutionEngine> logger)
     {
         _agentRepo = agentRepo;
@@ -55,6 +59,8 @@ public sealed class AgentExecutionEngine : IAgentExecutor
         _eventTransport = eventTransport;
         _checkpointStore = checkpointStore;
         _toolRegistry = toolRegistry;
+        _planner = planner;
+        _tokenBudget = tokenBudget;
         _logger = logger;
     }
 
@@ -274,6 +280,8 @@ public sealed class AgentExecutionEngine : IAgentExecutor
         bool goalAchieved = false;
         string currentMessage = request.UserMessage;
         string? latestPayload = request.UserMessage;
+        ExecutionPlan? activePlan = null;
+        var completedPlanSteps = 0;
 
         // ✅ NEW: Load or create conversation thread if session enabled
         ConversationThread? currentThread = null;
@@ -309,6 +317,34 @@ public sealed class AgentExecutionEngine : IAgentExecutor
         var maxIterations = agentDef.LoopConfig.RuntimeMode == AgentFlow.Abstractions.RuntimeMode.Deterministic 
             ? 1 
             : agentDef.LoopConfig.MaxIterations;
+        var maxAllowedSteps = Math.Max(4, maxIterations * 4);
+
+        if (RequiresPlanningPhase(agentDef))
+        {
+            var availableToolsForPlan = agentDef.AuthorizedTools
+                .Where(t => t.IsEnabled)
+                .Select(t => new AvailableToolDescriptor
+                {
+                    Name = t.ToolName,
+                    Description = t.ToolName,
+                    InputSchemaJson = "{}"
+                })
+                .ToList();
+
+            activePlan = await _planner.CreatePlan(new PlannerCreateContext
+            {
+                TenantId = request.TenantId,
+                ExecutionId = execution.Id,
+                Goal = request.UserMessage,
+                SystemPrompt = agentDef.Brain.SystemPromptTemplate,
+                PlannerType = agentDef.LoopConfig.PlannerType,
+                MaxSteps = maxIterations,
+                TokenBudget = request.TokenBudget,
+                AvailableTools = availableToolsForPlan
+            }, ct);
+
+            await AppendPlanStepAsync(execution, request.TenantId, 0, "initial-plan", activePlan, ct);
+        }
 
         if (agentDef.LoopConfig.PlannerType == PlannerType.Sequential && agentDef.WorkflowSteps.Count > 0)
         {
@@ -325,6 +361,33 @@ public sealed class AgentExecutionEngine : IAgentExecutor
         while (!goalAchieved && execution.CurrentIteration < maxIterations)
         {
             ct.ThrowIfCancellationRequested();
+            if (execution.Steps.Count >= maxAllowedSteps)
+                return Result<string?>.Failure(Error.EngineError($"Maximum step guardrail reached ({maxAllowedSteps})."));
+
+            var budgetValidation = _tokenBudget.Validate(request.TokenBudget, execution.Steps.Sum(s => s.TokensUsed ?? 0), 500);
+            if (!budgetValidation.IsValid)
+                return Result<string?>.Failure(Error.EngineError(budgetValidation.ErrorMessage ?? "Token budget exhausted."));
+
+            if (activePlan is not null)
+            {
+                var planDecision = _planner.NextStep(new PlannerNextStepContext
+                {
+                    Plan = activePlan,
+                    CompletedSteps = completedPlanSteps,
+                    RemainingTokenBudget = budgetValidation.RemainingBudget,
+                    MaxSteps = maxIterations
+                });
+
+                if (planDecision.ShouldStop)
+                {
+                    return Result<string?>.Failure(Error.EngineError(planDecision.StopReason ?? "Planning stop criteria reached."));
+                }
+
+                if (planDecision.Step is not null)
+                {
+                    currentMessage = $"Goal: {request.UserMessage}\nCurrent plan step: {planDecision.Step.Description}";
+                }
+            }
 
             var memorySummary = await _memory.BuildContextSummaryAsync(
                 agentDef.Id,
@@ -420,7 +483,35 @@ if (!preResponsePolicy.IsSuccess) return Result<string?>.Failure(preResponsePoli
                         thinkResult.NextToolInputJson!,
                         ct);
 
-                    if (!actResult.IsSuccess) return Result<string?>.Failure(actResult.Error!);
+                    if (!actResult.IsSuccess)
+                    {
+                        if (activePlan is not null)
+                        {
+                            activePlan = await _planner.RevisePlan(new PlannerReviseContext
+                            {
+                                BaseContext = new PlannerCreateContext
+                                {
+                                    TenantId = request.TenantId,
+                                    ExecutionId = execution.Id,
+                                    Goal = request.UserMessage,
+                                    SystemPrompt = agentDef.Brain.SystemPromptTemplate,
+                                    PlannerType = agentDef.LoopConfig.PlannerType,
+                                    MaxSteps = maxIterations,
+                                    TokenBudget = request.TokenBudget,
+                                    AvailableTools = availableTools
+                                },
+                                CurrentPlan = activePlan,
+                                FailureReason = actResult.Error!.Message,
+                                CompletedSteps = completedPlanSteps
+                            }, ct);
+
+                            await AppendPlanStepAsync(execution, request.TenantId, execution.CurrentIteration, "replan-tool-failure", activePlan, ct);
+                            completedPlanSteps = 0;
+                            continue;
+                        }
+
+                        return Result<string?>.Failure(actResult.Error!);
+                    }
 
                     // === POST-TOOL POLICY CHECK ===
                     var postToolPolicy = await EvaluatePoliciesAsync(PolicyCheckpoint.PostTool, execution, agentDef, request, 
@@ -450,6 +541,7 @@ if (!preResponsePolicy.IsSuccess) return Result<string?>.Failure(preResponsePoli
                     }
                     else
                     {
+                        completedPlanSteps++;
                         currentMessage = $"Previous observation: {observeResult.Value.Summary}. Continue with: {request.UserMessage}";
                     }
                     break;
@@ -500,6 +592,37 @@ if (!preResponsePolicy.IsSuccess) return Result<string?>.Failure(preResponsePoli
         }
 
         return Result<string?>.Success(currentThread?.Id);
+    }
+
+    private static bool RequiresPlanningPhase(AgentDefinition agentDef)
+        => agentDef.LoopConfig.PlannerType is PlannerType.TreeOfThought
+            || (agentDef.LoopConfig.PlannerType == PlannerType.Sequential && agentDef.WorkflowSteps.Count == 0);
+
+    private async Task AppendPlanStepAsync(
+        AgentExecution execution,
+        string tenantId,
+        int iteration,
+        string reason,
+        ExecutionPlan plan,
+        CancellationToken ct)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var step = new AgentStep
+        {
+            StepType = StepType.Plan,
+            Iteration = iteration,
+            StartedAt = now,
+            CompletedAt = now,
+            DurationMs = 0,
+            InputJson = JsonSerializer.Serialize(new { reason, planRevision = plan.Revision }),
+            OutputJson = JsonSerializer.Serialize(plan),
+            LlmResponse = JsonSerializer.Serialize(plan),
+            ThinkingRationale = reason,
+            IsSuccess = true
+        };
+
+        execution.AppendStep(step);
+        await _executionRepo.AppendStepAsync(execution.Id, tenantId, step, ct);
     }
 
     private async Task<Result<string?>> RunSequentialWorkflowAsync(

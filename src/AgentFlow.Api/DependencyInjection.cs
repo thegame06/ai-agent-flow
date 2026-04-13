@@ -206,6 +206,8 @@ public static class DependencyInjection
         services.AddScoped<IToolAuthorizationService, DefaultToolAuthorizationService>();
         services.AddSingleton<IToolSandbox, DefaultToolSandbox>();
         services.AddSingleton<IToolRegistry, ExtensionToolRegistry>();
+        services.AddScoped<IExecutionPlanner, AutonomousPlanner>();
+        services.AddSingleton(_ => new TokenBudgetService(TokenBudgetConfig.Default));
 
         // Register Brains
         services.AddAgentBrains(configuration);
