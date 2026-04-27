@@ -22,9 +22,9 @@ interface DesignerState {
 const initialNodes: Node<AgentNodeData>[] = [
   {
     id: 'start',
-    type: 'input',
+    type: 'studioNode',
     position: { x: 250, y: 50 },
-    data: { label: 'User Request Received', type: 'think', description: '' },
+    data: { label: 'User Request Received', type: 'think', description: '', config: { outputs: ['intent'], transitions: ['success'] } },
     style: { background: '#1e293b', color: '#fff', border: '1px solid #334155', width: 180 }
   }
 ];
@@ -75,7 +75,7 @@ export const mapDtoToGraph = (dto: AgentDesignerDto): PersistedGraphState => {
   const nodes: Node<AgentNodeData>[] = dto.steps.map((step) =>
     applyDefaultStyle({
       id: step.id,
-      type: step.type === 'think' ? 'default' : step.type,
+      type: 'studioNode',
       position: {
         x: step.position.x,
         y: step.position.y

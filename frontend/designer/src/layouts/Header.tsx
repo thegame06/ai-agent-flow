@@ -1,24 +1,42 @@
 import { useSelector } from 'react-redux';
-import { Zap, Save, Play, Settings, FlaskConical } from 'lucide-react';
+import { Zap, Save, Play, Settings, FlaskConical, Shield } from 'lucide-react';
 import { RootState } from '../store';
 import { useNavigate, useParams } from 'react-router-dom';
 
 interface HeaderProps {
   onSave?: () => void;
   isSaving?: boolean;
+  hasBlockingIssues?: boolean;
 }
 
-export const Header = ({ onSave, isSaving = false }: HeaderProps) => {
+const getStudioPermissions = (): string[] => {
+  const raw = localStorage.getItem('studio_permissions');
+  if (!raw) {
+    return ['studio.view', 'studio.edit'];
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as string[];
+    return Array.isArray(parsed) ? parsed : ['studio.view'];
+  } catch {
+    return ['studio.view'];
+  }
+};
+
+export const Header = ({ onSave, isSaving = false, hasBlockingIssues = false }: HeaderProps) => {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const { agentName, version, isDirty } = useSelector((state: RootState) => state.designer);
+  const permissions = getStudioPermissions();
+  const canEdit = permissions.includes('studio.edit');
+  const canPublish = permissions.includes('studio.publish');
 
   return (
     <header className="app-header">
       <div className="header-left">
         <div className="logo-container">
           <div className="logo-icon"><Zap size={20} fill="#6366f1" /></div>
-          <span className="logo-text">AgentFlow <span className="logo-accent">Designer</span></span>
+          <span className="logo-text">AgentFlow <span className="logo-accent">Studio</span></span>
         </div>
         <div className="v-divider" />
         <div className="agent-meta">
@@ -29,8 +47,9 @@ export const Header = ({ onSave, isSaving = false }: HeaderProps) => {
       </div>
 
       <div className="header-actions">
+        <div className="perm-chip"><Shield size={14} /> {permissions.join(', ')}</div>
         <button className="btn-icon"><Settings size={18} /></button>
-        <button className="btn-secondary" onClick={onSave} disabled={isSaving}>
+        <button className="btn-secondary" onClick={onSave} disabled={isSaving || !canEdit}>
           <Save size={18} />
           <span>{isSaving ? 'Saving...' : 'Save'}</span>
         </button>
@@ -38,24 +57,14 @@ export const Header = ({ onSave, isSaving = false }: HeaderProps) => {
           <FlaskConical size={18} />
           <span>Preview</span>
         </button>
-        <button className="btn-primary">
+        <button className="btn-primary" disabled={!canPublish || hasBlockingIssues}>
           <Play size={18} fill="currentColor" />
           <span>Deploy</span>
         </button>
       </div>
 
       <style>{`
-        .app-header {
-          height: 64px;
-          background: var(--bg-secondary);
-          border-bottom: 1px solid var(--border-light);
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          padding: 0 24px;
-          z-index: 100;
-          backdrop-filter: var(--glass);
-        }
+        .app-header { height: 64px; background: var(--bg-secondary); border-bottom: 1px solid var(--border-light); display: flex; align-items: center; justify-content: space-between; padding: 0 24px; z-index: 100; backdrop-filter: var(--glass); }
         .header-left { display: flex; align-items: center; gap: 20px; }
         .logo-container { display: flex; align-items: center; gap: 10px; cursor: pointer; }
         .logo-icon { background: var(--accent-soft); padding: 6px; border-radius: 8px; display: flex; }
@@ -67,32 +76,12 @@ export const Header = ({ onSave, isSaving = false }: HeaderProps) => {
         .badge { background: var(--bg-tertiary); color: var(--fg-secondary); font-size: 0.7rem; padding: 2px 8px; border-radius: 99px; border: 1px solid var(--border-light); }
         .dirty-indicator { color: var(--warning); font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
         .header-actions { display: flex; align-items: center; gap: 12px; }
-
+        .perm-chip { display: flex; align-items: center; gap: 6px; color: var(--fg-secondary); font-size: 12px; background: var(--bg-tertiary); border: 1px solid var(--border-light); border-radius: 999px; padding: 4px 10px; }
         .btn-icon { background: transparent; color: var(--fg-secondary); padding: 8px; }
         .btn-icon:hover { color: var(--fg-primary); background: var(--border-light); }
-
-        .btn-secondary {
-          background: var(--bg-tertiary);
-          color: var(--fg-primary);
-          padding: 8px 16px;
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          font-size: 0.85rem;
-          border: 1px solid var(--border-light);
-        }
+        .btn-secondary { background: var(--bg-tertiary); color: var(--fg-primary); padding: 8px 16px; display: flex; align-items: center; gap: 8px; font-size: 0.85rem; border: 1px solid var(--border-light); }
         .btn-secondary:hover { background: var(--border-strong); }
-
-        .btn-primary {
-          background: var(--accent-primary);
-          color: white;
-          padding: 8px 16px;
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          font-size: 0.85rem;
-          box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
-        }
+        .btn-primary { background: var(--accent-primary); color: white; padding: 8px 16px; display: flex; align-items: center; gap: 8px; font-size: 0.85rem; box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3); }
         .btn-primary:hover { background: var(--accent-hover); transform: translateY(-1px); }
       `}</style>
     </header>

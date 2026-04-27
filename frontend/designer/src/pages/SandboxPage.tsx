@@ -49,8 +49,8 @@ export default function SandboxPage() {
   return (
     <div className="sandbox-page">
       <header className="sandbox-header">
-        <button className="btn-secondary" onClick={() => navigate(`/designer/${agentId}`)}>
-          <ArrowLeft size={16} /> Volver al diseñador
+        <button className="btn-secondary" onClick={() => navigate(`/studio/${agentId}`)}>
+          <ArrowLeft size={16} /> Volver al Studio
         </button>
         <h1>Sandbox Preview</h1>
       </header>

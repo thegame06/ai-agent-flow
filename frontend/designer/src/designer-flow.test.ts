@@ -3,17 +3,20 @@ import { Edge, Node } from '@xyflow/react';
 import { AgentNodeData } from './types/agent';
 import { computeTotalTokens, mapStepToTimeline } from './pages/sandbox/sandbox-utils';
 import { mapGraphToDesignerDto } from './store/slices/designerSlice';
+import { buildSimulationSteps, validateStudioGraph } from './utils/studioValidation';
 
 describe('designer -> preview -> inspect flow helpers', () => {
   it('maps graph nodes and edges to DesignerStepDto connections', () => {
     const nodes: Node<AgentNodeData>[] = [
       {
         id: 'think-1',
+        type: 'studioNode',
         position: { x: 0, y: 0 },
         data: { label: 'Think', type: 'think', description: 'reason' },
       },
       {
         id: 'act-1',
+        type: 'studioNode',
         position: { x: 200, y: 0 },
         data: { label: 'Act', type: 'act', description: 'tool call' },
       }
@@ -35,6 +38,43 @@ describe('designer -> preview -> inspect flow helpers', () => {
 
     expect(dto.steps).toHaveLength(2);
     expect(dto.steps[0].connections).toEqual(['act-1']);
+  });
+
+  it('reports invalid variable references and nodes without exit', () => {
+    const nodes: Node<AgentNodeData>[] = [
+      {
+        id: 'start',
+        type: 'studioNode',
+        position: { x: 0, y: 0 },
+        data: { label: 'Start', type: 'think', description: 'Use {{missingVar}}' }
+      }
+    ];
+
+    const issues = validateStudioGraph(nodes, []);
+    expect(issues.some((issue) => issue.id.includes('invalid-var'))).toBe(true);
+    expect(issues.some((issue) => issue.id.includes('no-exit'))).toBe(true);
+  });
+
+  it('builds guided simulation with variable context', () => {
+    const nodes: Node<AgentNodeData>[] = [
+      {
+        id: 'start',
+        type: 'studioNode',
+        position: { x: 0, y: 0 },
+        data: { label: 'Start', type: 'think', description: '', config: { outputs: ['intent'] } }
+      },
+      {
+        id: 'final',
+        type: 'studioNode',
+        position: { x: 200, y: 0 },
+        data: { label: 'Final', type: 'output', description: '' }
+      }
+    ];
+    const edges: Edge[] = [{ id: 'start-final', source: 'start', target: 'final' }];
+
+    const steps = buildSimulationSteps(nodes, edges);
+    expect(steps).toHaveLength(2);
+    expect(steps[0].variables.intent).toContain('value_1');
   });
 
   it('maps preview execution steps into inspectable timeline and sums tokens', () => {

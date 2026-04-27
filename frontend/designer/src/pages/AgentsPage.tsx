@@ -17,7 +17,7 @@ export default function AgentsPage() {
           <h1>Agent Registry</h1>
           <p>Manage and deploy your autonomous AI agents</p>
         </div>
-        <button className="btn-primary" onClick={() => navigate('/designer/new')}>
+        <button className="btn-primary" onClick={() => navigate('/studio/new')}>
           <Plus size={18} />
           Create New Agent
         </button>
@@ -45,7 +45,7 @@ export default function AgentsPage() {
               </div>
             </div>
             <div className="card-footer">
-              <button className="btn-action" onClick={() => navigate(`/designer/${agent.id}`)}>
+              <button className="btn-action" onClick={() => navigate(`/studio/${agent.id}`)}>
                 <Edit3 size={16} />
                 Edit
               </button>
