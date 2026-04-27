@@ -7,6 +7,7 @@ import { Header } from '../layouts/Header';
 import { Sidebar } from '../layouts/Sidebar';
 import { PropertiesPanel } from '../layouts/PropertiesPanel';
 import { DesignerCanvas } from '../components/designer/DesignerCanvas';
+import { SimulationPanel } from '../components/designer/SimulationPanel';
 import { RootState } from '../store';
 import {
   hydrateFromAgentDto,
@@ -15,6 +16,7 @@ import {
   setLoading,
   setSaveError
 } from '../store/slices/designerSlice';
+import { DesignValidationIssue } from '../types/studio';
 
 const TENANT_ID = 'default-tenant';
 
@@ -24,6 +26,7 @@ export default function DesignerPage() {
   const { id } = useParams<{ id: string }>();
   const designerState = useSelector((state: RootState) => state.designer);
   const [isSaving, setIsSaving] = useState(false);
+  const [validationIssues, setValidationIssues] = useState<DesignValidationIssue[]>([]);
 
   const isNew = useMemo(() => !id || id === 'new', [id]);
 
@@ -45,7 +48,7 @@ export default function DesignerPage() {
       }
     };
 
-    load();
+    void load();
   }, [dispatch, id, isNew]);
 
   const onSave = async () => {
@@ -58,7 +61,7 @@ export default function DesignerPage() {
       if (isNew) {
         const created = await AgentsApi.createAgent(TENANT_ID, payload);
         dispatch(hydrateFromAgentDto(created));
-        navigate(`/designer/${created.id}`, { replace: true });
+        navigate(`/studio/${created.id}`, { replace: true });
       } else if (id) {
         const updated = await AgentsApi.updateAgent(TENANT_ID, id, payload);
         dispatch(hydrateFromAgentDto(updated));
@@ -74,13 +77,23 @@ export default function DesignerPage() {
 
   return (
     <div className="app-layout">
-      <Header onSave={onSave} isSaving={isSaving} />
+      <Header onSave={onSave} isSaving={isSaving} hasBlockingIssues={validationIssues.some((issue) => issue.severity === 'error')} />
       <div className="content-area">
         <Sidebar />
         <main className="main-canvas">
+          {validationIssues.length > 0 && (
+            <div className="validation-banner">
+              {validationIssues.map((issue) => (
+                <div key={issue.id} className={`issue ${issue.severity}`}>
+                  {issue.message}
+                </div>
+              ))}
+            </div>
+          )}
           <ReactFlowProvider>
-            <DesignerCanvas />
+            <DesignerCanvas onValidationChange={setValidationIssues} />
           </ReactFlowProvider>
+          <SimulationPanel />
         </main>
         <PropertiesPanel />
       </div>
@@ -101,7 +114,20 @@ export default function DesignerPage() {
         .main-canvas {
           flex: 1;
           position: relative;
+          display: flex;
+          flex-direction: column;
         }
+        .validation-banner {
+          padding: 8px 12px;
+          border-bottom: 1px solid var(--border-light);
+          background: var(--bg-secondary);
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+        .issue { font-size: 12px; }
+        .issue.error { color: #f87171; }
+        .issue.warning { color: #fbbf24; }
       `}</style>
     </div>
   );

@@ -9,7 +9,6 @@ import PolicyDetailsPage from './pages/PolicyDetailsPage';
 import SandboxPage from './pages/SandboxPage';
 import '@xyflow/react/dist/style.css';
 
-// Placeholder pages for other modules
 const Placeholder = ({ title }: { title: string }) => (
   <div style={{ padding: 40 }}>
     <h1>{title}</h1>
@@ -21,7 +20,6 @@ function ApplicationRouter() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Main Application Shell */}
         <Route element={<AppLayout />}>
           <Route path="/agents" element={<AgentsPage />} />
           <Route path="/dashboard" element={<Placeholder title="Dashboard" />} />
@@ -32,11 +30,10 @@ function ApplicationRouter() {
           <Route path="/settings" element={<Placeholder title="Settings" />} />
         </Route>
 
-        {/* Specialized Workbench Pages (No Global Shell) */}
+        <Route path="/studio/:id" element={<DesignerPage />} />
         <Route path="/designer/:id" element={<DesignerPage />} />
         <Route path="/sandbox/:id" element={<SandboxPage />} />
-        
-        {/* Default Redirect */}
+
         <Route path="/" element={<Navigate to="/agents" replace />} />
       </Routes>
     </BrowserRouter>

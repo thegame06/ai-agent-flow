@@ -11,7 +11,7 @@ Incluye:
 - **Motor de ejecución** para flujos tipo Think → Plan → Act → Observe.
 - **Gobernanza empresarial**: políticas por segmento, checkpoints HITL y evaluación shadow/champion-challenger.
 - **Extensibilidad** por plugins de herramientas y enrutamiento de modelos.
-- **Frontend React** para operación (dashboard, agentes, ejecuciones, checkpoints).
+- **Frontend React** para operación (dashboard, agentes, ejecuciones, checkpoints) y **Studio** para diseño visual de flujos.
 
 ## ¿Por qué existe? ¿Qué problema resuelve?
 
