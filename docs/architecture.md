@@ -6,6 +6,8 @@
 
 ---
 
+> Arquitectura de producto por suites (Studio/Connect/Control): ver [`PRODUCT-ARCHITECTURE.md`](./PRODUCT-ARCHITECTURE.md).
+
 ## 🎯 Decisión Arquitectónica Central
 
 **DSL Composable + Runtime Controlado + Gobernanza Centralizada**
