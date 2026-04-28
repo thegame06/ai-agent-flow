@@ -1,6 +1,7 @@
 using AgentFlow.Abstractions;
 using AgentFlow.Core.Engine;
 using AgentFlow.Infrastructure.Gateways;
+using Castle.Core.Configuration;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.SemanticKernel;
@@ -67,7 +68,11 @@ public class MafAndMcpContractsTests
             })
             .Build();
 
-        var gateway = new McpToolGateway(config, new InMemoryTenantMcpSettingsStore(), NullLogger<McpToolGateway>.Instance);
+        var gateway = new McpToolGateway(
+            config, 
+            new InMemoryTenantMcpSettingsStore(),
+            new McpToolActionCatalog(),
+            NullLogger<McpToolGateway>.Instance);
 
         var result = await gateway.ExecuteAsync(
             "demo",
