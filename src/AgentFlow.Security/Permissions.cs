@@ -38,6 +38,8 @@ public static class AgentFlowPermissions
     public const string ConnectRead = "connect:read";
     public const string ConnectManage = "connect:manage";
     public const string ConnectOperate = "connect:operate";
+    public const string ConnectSecretRotate = "connect:secret:rotate";
+    public const string ConnectUseResource = "connect:resource:use";
 
     // Audit permissions
     public const string AuditRead = "audit:read";
@@ -73,7 +75,8 @@ public static class AgentFlowRoles
         AgentFlowPermissions.ExecutionHandoff,
         AgentFlowPermissions.ToolExecuteLow,
         AgentFlowPermissions.ToolExecuteMedium,
-        AgentFlowPermissions.ConnectOperate
+        AgentFlowPermissions.ConnectOperate,
+        AgentFlowPermissions.ConnectUseResource
     ];
 
     public static readonly string[] Developer =
@@ -84,7 +87,8 @@ public static class AgentFlowRoles
         AgentFlowPermissions.ToolCreate,
         AgentFlowPermissions.ToolUpdate,
         AgentFlowPermissions.ToolExecuteHigh,
-        AgentFlowPermissions.ConnectManage
+        AgentFlowPermissions.ConnectManage,
+        AgentFlowPermissions.ConnectSecretRotate
     ];
 
     public static readonly string[] Admin =

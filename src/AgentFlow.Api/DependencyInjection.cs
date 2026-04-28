@@ -41,6 +41,8 @@ public static class DependencyInjection
         this IServiceCollection services,
         IConfiguration configuration)
     {
+        services.AddDataProtection();
+
         services
             .AddDslEngine()
             .AddPolicyEngine()
@@ -56,6 +58,7 @@ public static class DependencyInjection
             .AddChannelGateway(configuration)
             .AddSingleton<IAuthProfilesStore, InMemoryAuthProfilesStore>()
             .AddScoped<IConnectStore, MongoConnectStore>()
+            .AddScoped<ITenantConnectionStore, MongoTenantConnectionStore>()
             .AddSecurity(configuration)
             .AddAgentEngine(configuration)
             .AddMemoryServices(configuration)
