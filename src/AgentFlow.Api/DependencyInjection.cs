@@ -1,5 +1,6 @@
 using AgentFlow.Abstractions;
 using AgentFlow.Api.AuthProfiles;
+using AgentFlow.Api.Connect;
 using AgentFlow.Application.Channels;
 using AgentFlow.Application.Memory;
 using AgentFlow.Caching.Redis;
@@ -54,6 +55,7 @@ public static class DependencyInjection
             .AddRepositories()
             .AddChannelGateway(configuration)
             .AddSingleton<IAuthProfilesStore, InMemoryAuthProfilesStore>()
+            .AddScoped<IConnectStore, MongoConnectStore>()
             .AddSecurity(configuration)
             .AddAgentEngine(configuration)
             .AddMemoryServices(configuration)

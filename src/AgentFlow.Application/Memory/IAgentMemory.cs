@@ -136,5 +136,6 @@ public enum AuditEventType
     HandoffRequested,
     HandoffCompleted,
     HandoffFailed,
-    RoutingDecision
+    RoutingDecision,
+    ConnectOperation
 }
