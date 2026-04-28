@@ -130,9 +130,9 @@ public sealed class TenantConnectionsController : ControllerBase
         var secret = await _store.GetSecretAsync(tenantId, connectionId, ct);
         var checks = BuildChecks(connection, secret);
 
-        var status = checks.All(x => x.status == ConnectionHealthStatus.Healthy)
+        var status = checks.All(x => x.Status == ConnectionHealthStatus.Healthy)
             ? ConnectionHealthStatus.Healthy
-            : checks.Any(x => x.status == ConnectionHealthStatus.Unhealthy)
+            : checks.Any(x => x.Status == ConnectionHealthStatus.Unhealthy)
                 ? ConnectionHealthStatus.Unhealthy
                 : ConnectionHealthStatus.Degraded;
 
@@ -226,23 +226,19 @@ public sealed class TenantConnectionsController : ControllerBase
         });
     }
 
-    private static IReadOnlyList<object> BuildChecks(TenantConnectionContract connection, TenantConnectionSecretContract? secret)
+    private static IReadOnlyList<ConnectionHealthCheck> BuildChecks(TenantConnectionContract connection, TenantConnectionSecretContract? secret)
     {
-        var checks = new List<object>();
+        var checks = new List<ConnectionHealthCheck>();
 
-        checks.Add(new
-        {
-            check = "config.present",
-            status = connection.Config.Count > 0 ? ConnectionHealthStatus.Healthy : ConnectionHealthStatus.Unhealthy,
-            detail = connection.Config.Count > 0 ? "Configuration is present." : "Configuration is empty."
-        });
+        checks.Add(new ConnectionHealthCheck(
+            "config.present",
+            connection.Config.Count > 0 ? ConnectionHealthStatus.Healthy : ConnectionHealthStatus.Unhealthy,
+            connection.Config.Count > 0 ? "Configuration is present." : "Configuration is empty."));
 
-        checks.Add(new
-        {
-            check = "secret.exists",
-            status = secret is null ? ConnectionHealthStatus.Unhealthy : ConnectionHealthStatus.Healthy,
-            detail = secret is null ? "No secret configured." : $"Secret version {secret.Version} found."
-        });
+        checks.Add(new ConnectionHealthCheck(
+            "secret.exists",
+            secret is null ? ConnectionHealthStatus.Unhealthy : ConnectionHealthStatus.Healthy,
+            secret is null ? "No secret configured." : $"Secret version {secret.Version} found."));
 
         if (secret is not null)
         {
@@ -254,14 +250,12 @@ public sealed class TenantConnectionsController : ControllerBase
                 _ => ConnectionHealthStatus.Healthy
             };
 
-            checks.Add(new
-            {
-                check = "secret.expiry",
-                status = expiryStatus,
-                detail = secret.ExpiresAt is null
+            checks.Add(new ConnectionHealthCheck(
+                "secret.expiry",
+                expiryStatus,
+                secret.ExpiresAt is null
                     ? "Secret has no expiration date."
-                    : $"Secret expires at {secret.ExpiresAt:O}."
-            });
+                    : $"Secret expires at {secret.ExpiresAt:O}."));
         }
 
         var requiredConfigKey = connection.Type switch
@@ -273,12 +267,10 @@ public sealed class TenantConnectionsController : ControllerBase
             _ => "endpoint"
         };
 
-        checks.Add(new
-        {
-            check = "config.required-key",
-            status = connection.Config.ContainsKey(requiredConfigKey) ? ConnectionHealthStatus.Healthy : ConnectionHealthStatus.Unhealthy,
-            detail = $"Required key for {connection.Type}: {requiredConfigKey}."
-        });
+        checks.Add(new ConnectionHealthCheck(
+            "config.required-key",
+            connection.Config.ContainsKey(requiredConfigKey) ? ConnectionHealthStatus.Healthy : ConnectionHealthStatus.Unhealthy,
+            $"Required key for {connection.Type}: {requiredConfigKey}."));
 
         return checks;
     }
@@ -370,3 +362,8 @@ public sealed record ConnectionResponse(
     DateTimeOffset? SecretExpiresAt,
     DateTimeOffset UpdatedAt,
     string UpdatedBy);
+
+public sealed record ConnectionHealthCheck(
+    string Check,
+    ConnectionHealthStatus Status,
+    string Detail);
