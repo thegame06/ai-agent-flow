@@ -143,7 +143,7 @@ public sealed class AgentExecutionEngine : IAgentExecutor
             TenantId = request.TenantId,
             UserId = request.UserId,
             EventType = AuditEventType.ExecutionStarted,
-            CorrelationId = request.CorrelationId,
+            CorrelationId = request.CorrelationId ?? string.Empty,
             EventJson = System.Text.Json.JsonSerializer.Serialize(new
             {
                 agentName = agentDef.Name,
@@ -156,7 +156,7 @@ public sealed class AgentExecutionEngine : IAgentExecutor
         string? executedThreadId = null;
         try
         {
-            var loopResult = await RunLoopAsync(execution, agentDef, request, linkedCt);
+            var loopResult = await RunLoopAsync(execution, agentDef, request, resolvedBrain, brainResolution.Provider, linkedCt);
 
             if (!loopResult.IsSuccess)
             {
@@ -327,7 +327,24 @@ public sealed class AgentExecutionEngine : IAgentExecutor
             UserMessage = execution.Input.UserMessage // Continue with original goal
         };
 
-        var resumeStatus = await RunLoopAsync(execution, agentDef, resumeRequest, ct);
+        var brainResolution = await _brainResolver.ResolveAsync(
+            tenantId,
+            agentDef.Id.ToString(),
+            new AgentBrainExecutionContext
+            {
+                UserId = decision.ApprovedBy,
+                ExecutionId = execution.Id,
+                Metadata = new Dictionary<string, string>()
+            },
+            ct);
+
+        var resumeStatus = await RunLoopAsync(
+            execution,
+            agentDef,
+            resumeRequest,
+            brainResolution.Brain,
+            brainResolution.Provider,
+            ct);
         
         if (!resumeStatus.IsSuccess)
         {
@@ -360,6 +377,8 @@ public sealed class AgentExecutionEngine : IAgentExecutor
         AgentExecution execution,
         AgentDefinition agentDef,
         AgentExecutionRequest request,
+        IAgentBrain resolvedBrain,
+        BrainProvider resolvedBrainProvider,
         CancellationToken ct)
     {
         bool goalAchieved = false;
@@ -459,7 +478,7 @@ public sealed class AgentExecutionEngine : IAgentExecutor
                 {
                     Plan = activePlan,
                     CompletedSteps = completedPlanSteps,
-                    RemainingTokenBudget = budgetValidation.RemainingBudget,
+                    RemainingTokenBudget = budgetValidation.RemainingTokens,
                     MaxSteps = maxIterations
                 });
 
@@ -515,7 +534,7 @@ public sealed class AgentExecutionEngine : IAgentExecutor
             var rationale = thinkResult.Rationale ?? string.Empty;
             ExecutionTracing.RecordThinkDecision(thinkActivity, thinkResult.Decision.ToString(), rationale);
             AgentFlowTelemetry.LlmLatency.Record(thinkSw.ElapsedMilliseconds, 
-                new TagList { { "agent_id", agentDef.Id.ToString() }, { "step", "think" }, { "brain", ResolveBrainTag(brainResolution.Provider) } });
+                new TagList { { "agent_id", agentDef.Id.ToString() }, { "step", "think" }, { "brain", ResolveBrainTag(resolvedBrainProvider) } });
 
             var thinkStep = new AgentStep
             {
