@@ -1,6 +1,6 @@
 # AgentFlow
 
-Framework modular para construir, ejecutar y gobernar agentes de IA empresariales en .NET, con APIs, motor de ejecución, políticas, evaluación y frontend de operación.
+Framework modular para construir, operar y gobernar agentes de IA empresariales en .NET, organizado por suites de producto: **Studio**, **Connect** y **Control**.
 
 ## ¿Qué hace este proyecto?
 
@@ -11,7 +11,24 @@ Incluye:
 - **Motor de ejecución** para flujos tipo Think → Plan → Act → Observe.
 - **Gobernanza empresarial**: políticas por segmento, checkpoints HITL y evaluación shadow/champion-challenger.
 - **Extensibilidad** por plugins de herramientas y enrutamiento de modelos.
-- **Frontend React** para operación (dashboard, agentes, ejecuciones, checkpoints) y **Studio** para diseño visual de flujos.
+- **Producto por suites**:
+  - **Studio**: diseño, publicación y evaluación de agentes.
+  - **Connect**: operación de canales, sesiones y ejecuciones en vivo.
+  - **Control**: seguridad, compliance, observabilidad y administración.
+
+## Modelo de producto (nuevo)
+
+La narrativa oficial de AgentFlow se organiza en tres suites:
+
+1. **Studio (Build Time)**: donde equipos de producto y builders diseñan, prueban y publican capacidades de agentes.
+2. **Connect (Run Time)**: donde equipos de operación gestionan conversaciones, canales y ejecución en producción.
+3. **Control (Governance Time)**: donde seguridad, compliance y plataforma gobiernan riesgos, accesos y evidencia.
+
+Documentos clave del modelo:
+- Arquitectura de producto: [`docs/PRODUCT-ARCHITECTURE.md`](./docs/PRODUCT-ARCHITECTURE.md)
+- Matriz de capacidades: [`docs/CAPABILITY-MATRIX.md`](./docs/CAPABILITY-MATRIX.md)
+- Roadmap trimestral por suite: [`docs/ROADMAP-QUARTERLY-STUDIO-CONNECT-CONTROL.md`](./docs/ROADMAP-QUARTERLY-STUDIO-CONNECT-CONTROL.md)
+- Deck narrativo: [`docs/PRODUCT-MODEL-DECK.md`](./docs/PRODUCT-MODEL-DECK.md)
 
 ## ¿Por qué existe? ¿Qué problema resuelve?
 
@@ -99,35 +116,9 @@ dotnet test tests/AgentFlow.Tests.Unit/AgentFlow.Tests.Unit.csproj
 **Salida esperada:**
 - `Passed` en suites de Domain, DSL, Engine, Policy y Evaluation.
 
-## Estado actual (validación reciente)
-
-### Backend
-- ✅ Build API en verde (`dotnet build src/AgentFlow.Api/AgentFlow.Api.csproj`)
-- ✅ Tests unitarios en verde
-- ✅ Tests de integración en verde
-- ✅ Guardrail `no-mock-runtime` activo y pasando
-
-### Frontend (`frontend/aiagent_flow`)
-- ✅ Lint en verde (con warnings no bloqueantes de hooks)
-- ✅ Build en verde
-- ✅ Tests smoke (`vitest`) en verde
-- ✅ Tenant dinámico (sin hardcode principal `tenant-1` en páginas core)
-- ✅ MCP Console operativa (discovery + invoke)
-- ✅ Tools operativas (invoke desde UI)
-- ✅ Policies operativas (create/publish + edición de reglas)
-- ✅ Settings persistente (GET/PUT por tenant)
-
-### Nota sobre mensajes de error vistos en logs
-Se observaron errores intermedios de compilación por ambigüedad de tipo (`PolicySetDefinition`) durante desarrollo.
-Esos errores ya fueron corregidos y el estado actual está validado en verde.
-
 ## Roadmap y progreso
 
-Consulta [`PROGRESS.md`](./PROGRESS.md) para ver:
-- hitos recientes,
-- prioridades actuales,
-- próximos entregables,
-- y formas concretas de colaborar.
+Consulta [`docs/ROADMAP-QUARTERLY-STUDIO-CONNECT-CONTROL.md`](./docs/ROADMAP-QUARTERLY-STUDIO-CONNECT-CONTROL.md) para objetivos trimestrales por suite y [`PROGRESS.md`](./PROGRESS.md) para hitos de ejecución.
 
 ## Licencia
 
