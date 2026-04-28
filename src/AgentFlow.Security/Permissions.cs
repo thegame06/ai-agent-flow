@@ -33,6 +33,12 @@ public static class AgentFlowPermissions
     public const string ToolExecuteHigh = "tool:execute:high";
     public const string ToolExecuteCritical = "tool:execute:critical"; // Requires MFA
 
+
+    // Connect module permissions
+    public const string ConnectRead = "connect:read";
+    public const string ConnectManage = "connect:manage";
+    public const string ConnectOperate = "connect:operate";
+
     // Audit permissions
     public const string AuditRead = "audit:read";
 
@@ -55,7 +61,8 @@ public static class AgentFlowRoles
     [
         AgentFlowPermissions.AgentRead,
         AgentFlowPermissions.ExecutionRead,
-        AgentFlowPermissions.ToolRead
+        AgentFlowPermissions.ToolRead,
+        AgentFlowPermissions.ConnectRead
     ];
 
     public static readonly string[] Operator =
@@ -65,7 +72,8 @@ public static class AgentFlowRoles
         AgentFlowPermissions.ExecutionCancel,
         AgentFlowPermissions.ExecutionHandoff,
         AgentFlowPermissions.ToolExecuteLow,
-        AgentFlowPermissions.ToolExecuteMedium
+        AgentFlowPermissions.ToolExecuteMedium,
+        AgentFlowPermissions.ConnectOperate
     ];
 
     public static readonly string[] Developer =
@@ -75,7 +83,8 @@ public static class AgentFlowRoles
         AgentFlowPermissions.AgentUpdate,
         AgentFlowPermissions.ToolCreate,
         AgentFlowPermissions.ToolUpdate,
-        AgentFlowPermissions.ToolExecuteHigh
+        AgentFlowPermissions.ToolExecuteHigh,
+        AgentFlowPermissions.ConnectManage
     ];
 
     public static readonly string[] Admin =
