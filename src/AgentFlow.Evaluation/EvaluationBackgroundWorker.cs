@@ -5,6 +5,7 @@ using AgentFlow.Domain.Repositories;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using System.Text.Json;
 
@@ -117,7 +118,7 @@ public sealed class EvaluationBackgroundWorker : BackgroundService
         await resultStore.SaveAsync(result, ct);
 
         var executionVariant = execution.ParentExecutionId is null ? "champion" : "challenger";
-        var brain = execution.Input.Metadata.TryGetValue("brain", out var brainTag) && !string.IsNullOrWhiteSpace(brainTag)
+        var brain = execution.Input.Variables.TryGetValue("brain", out var brainTag) && !string.IsNullOrWhiteSpace(brainTag)
             ? brainTag.ToLowerInvariant()
             : "unknown";
         AgentFlowTelemetry.EvaluationComparisons.Add(1, new TagList
