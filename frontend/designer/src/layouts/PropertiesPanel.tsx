@@ -51,6 +51,9 @@ export const PropertiesPanel = () => {
     dispatch(updateNodeData({ id: selectedNode.id, data: { [field]: value } }));
   };
 
+  const config = (selectedNode.data.config ?? {}) as Record<string, unknown>;
+  const outputs = Array.isArray(config.outputs) ? (config.outputs as string[]).join(', ') : '';
+
   return (
     <aside className="properties-panel">
       <div className="panel-header">
@@ -69,7 +72,25 @@ export const PropertiesPanel = () => {
 
         <div className="prop-section">
           <label>Internal Logic</label>
-          <textarea rows={4} placeholder="Define instructions or logic here..." />
+          <textarea
+            rows={4}
+            placeholder="Define instructions or logic here..."
+            value={String(selectedNode.data.description ?? '')}
+            onChange={(e) => handleChange('description', e.target.value)}
+          />
+        </div>
+
+        <div className="prop-section">
+          <label>Outputs (variables separadas por coma)</label>
+          <input
+            value={outputs}
+            onChange={(e) =>
+              handleChange('config', {
+                ...(selectedNode.data.config as Record<string, unknown>),
+                outputs: e.target.value.split(',').map((item) => item.trim()).filter(Boolean)
+              })
+            }
+          />
         </div>
 
         <div className="prop-section">
@@ -93,12 +114,15 @@ export const PropertiesPanel = () => {
 
 const styles = `
   .properties-panel {
-    width: 320px;
+    width: 300px;
     background: var(--bg-secondary);
-    border-left: 1px solid var(--border-light);
+    border: 1px solid var(--border-light);
+    border-radius: 12px;
     display: flex;
     flex-direction: column;
     z-index: 50;
+    max-height: calc(100vh - 180px);
+    box-shadow: var(--shadow-md);
   }
   .properties-panel.empty {
     justify-content: center;

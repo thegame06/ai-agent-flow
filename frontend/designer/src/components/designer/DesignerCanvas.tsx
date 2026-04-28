@@ -19,7 +19,7 @@ import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from '../../store';
 import { setEdges, setNodes, selectNode, addNode } from '../../store/slices/designerSlice';
 import { AgentNodeData } from '../../types/agent';
-import { DesignValidationIssue } from '../../types/studio';
+import { DesignValidationIssue, TransitionType } from '../../types/studio';
 import { validateStudioGraph } from '../../utils/studioValidation';
 import { StudioNode } from './StudioNode';
 
@@ -31,6 +31,8 @@ const nodeTypes = {
   studioNode: StudioNode
 };
 
+const TRANSITIONS: TransitionType[] = ['success', 'error', 'timeout', 'escalation'];
+
 const createStudioNode = (id: string, nodeType: string, label: string, position: { x: number; y: number }): Node<AgentNodeData> => ({
   id,
   type: 'studioNode',
@@ -41,7 +43,7 @@ const createStudioNode = (id: string, nodeType: string, label: string, position:
     description: '',
     config: {
       outputs: [],
-      transitions: ['default']
+      transitions: TRANSITIONS
     }
   },
   style: {
@@ -67,13 +69,16 @@ export const DesignerCanvas = ({ onValidationChange }: DesignerCanvasProps) => {
       if (!params.source || !params.target) {
         return;
       }
-      const transitionLabel = params.sourceHandle === 'out' ? 'default' : 'custom';
+      const transitionLabel = TRANSITIONS.includes((params.sourceHandle ?? 'success') as TransitionType)
+        ? (params.sourceHandle as TransitionType)
+        : 'success';
       const nextEdge: Edge = {
         ...params,
         id: `${params.source}->${params.target}-${Date.now()}`,
         type: 'smoothstep',
         markerEnd: { type: MarkerType.ArrowClosed },
         label: transitionLabel,
+        data: { transition: transitionLabel },
         animated: false
       };
       dispatch(setEdges(addEdge(nextEdge, edges)));

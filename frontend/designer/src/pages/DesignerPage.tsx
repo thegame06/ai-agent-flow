@@ -79,8 +79,13 @@ export default function DesignerPage() {
     <div className="app-layout">
       <Header onSave={onSave} isSaving={isSaving} hasBlockingIssues={validationIssues.some((issue) => issue.severity === 'error')} />
       <div className="content-area">
-        <Sidebar />
         <main className="main-canvas">
+          <div className="floating floating-left">
+            <Sidebar />
+          </div>
+          <div className="floating floating-right">
+            <PropertiesPanel />
+          </div>
           {validationIssues.length > 0 && (
             <div className="validation-banner">
               {validationIssues.map((issue) => (
@@ -95,7 +100,6 @@ export default function DesignerPage() {
           </ReactFlowProvider>
           <SimulationPanel />
         </main>
-        <PropertiesPanel />
       </div>
 
       <style>{`
@@ -108,14 +112,27 @@ export default function DesignerPage() {
         }
         .content-area {
           flex: 1;
-          display: flex;
+          display: block;
           overflow: hidden;
         }
         .main-canvas {
-          flex: 1;
+          height: 100%;
           position: relative;
           display: flex;
           flex-direction: column;
+          padding: 12px;
+          gap: 8px;
+        }
+        .floating {
+          position: absolute;
+          top: 16px;
+          z-index: 20;
+        }
+        .floating-left {
+          left: 16px;
+        }
+        .floating-right {
+          right: 16px;
         }
         .validation-banner {
           padding: 8px 12px;
