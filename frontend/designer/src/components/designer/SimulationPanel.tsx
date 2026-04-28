@@ -24,6 +24,10 @@ export const SimulationPanel = () => {
       {step ? (
         <>
           <div className="step-line">Step {currentStep + 1} / {steps.length}: <strong>{step.label}</strong></div>
+          <div className="step-meta">
+            <span>Tipo: <strong>{step.nodeType}</strong></span>
+            <span>Transición: <strong>{step.transition ?? 'N/A'}</strong></span>
+          </div>
           <div className="variables">
             {Object.entries(step.variables).map(([key, value]) => (
               <div key={key} className="var-row">
@@ -31,6 +35,10 @@ export const SimulationPanel = () => {
                 <code>{value}</code>
               </div>
             ))}
+          </div>
+          <div className="context-panel">
+            <div className="context-title">Context inspection</div>
+            <pre>{JSON.stringify(step.context, null, 2)}</pre>
           </div>
         </>
       ) : (
@@ -43,8 +51,12 @@ export const SimulationPanel = () => {
         .actions { display: flex; gap: 8px; }
         .actions button { background: var(--bg-tertiary); border: 1px solid var(--border-light); color: var(--fg-secondary); padding: 6px 10px; font-size: 12px; }
         .step-line { color: var(--fg-primary); font-size: 13px; margin-bottom: 8px; }
+        .step-meta { display: flex; gap: 12px; color: var(--fg-secondary); font-size: 12px; margin-bottom: 8px; }
         .variables { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
         .var-row { display: flex; justify-content: space-between; background: var(--bg-primary); border: 1px solid var(--border-light); border-radius: 8px; padding: 6px 8px; font-size: 12px; }
+        .context-panel { margin-top: 8px; border: 1px solid var(--border-light); border-radius: 8px; background: var(--bg-primary); }
+        .context-title { font-size: 12px; padding: 6px 8px; border-bottom: 1px solid var(--border-light); color: var(--fg-secondary); }
+        .context-panel pre { margin: 0; font-size: 11px; max-height: 120px; overflow: auto; padding: 8px; color: var(--fg-primary); }
         .empty { color: var(--fg-muted); font-size: 12px; }
       `}</style>
     </section>

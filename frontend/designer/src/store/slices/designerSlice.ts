@@ -24,7 +24,7 @@ const initialNodes: Node<AgentNodeData>[] = [
     id: 'start',
     type: 'studioNode',
     position: { x: 250, y: 50 },
-    data: { label: 'User Request Received', type: 'think', description: '', config: { outputs: ['intent'], transitions: ['success'] } },
+    data: { label: 'Inicio', type: 'start', description: '', config: { outputs: ['intent'], transitions: ['success', 'error', 'timeout', 'escalation'] } },
     style: { background: '#1e293b', color: '#fff', border: '1px solid #334155', width: 180 }
   }
 ];
@@ -94,6 +94,8 @@ export const mapDtoToGraph = (dto: AgentDesignerDto): PersistedGraphState => {
       id: `${step.id}->${targetId}`,
       source: step.id,
       target: targetId,
+      label: 'success',
+      data: { transition: 'success' },
       animated: false
     }))
   );

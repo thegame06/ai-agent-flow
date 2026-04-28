@@ -1,8 +1,9 @@
 import { Edge, Node } from '@xyflow/react';
 import { AgentNodeData } from '../types/agent';
-import { DesignValidationIssue, SimulationStep } from '../types/studio';
+import { DesignValidationIssue, SimulationStep, TransitionType } from '../types/studio';
 
 const VAR_REF_REGEX = /\{\{\s*([a-zA-Z_][\w.-]*)\s*\}\}/g;
+const ALLOWED_TRANSITIONS: TransitionType[] = ['success', 'error', 'timeout', 'escalation'];
 
 const getConnectedNodeIds = (nodes: Node<AgentNodeData>[], edges: Edge[]): Set<string> => {
   const connected = new Set<string>();
@@ -39,32 +40,61 @@ const getAvailableVariables = (nodes: Node<AgentNodeData>[]): Set<string> => {
 export const validateStudioGraph = (nodes: Node<AgentNodeData>[], edges: Edge[]): DesignValidationIssue[] => {
   const issues: DesignValidationIssue[] = [];
   const outgoingByNode = new Map<string, number>();
+  const incomingByNode = new Map<string, number>();
   const connectedNodeIds = getConnectedNodeIds(nodes, edges);
   const availableVars = getAvailableVariables(nodes);
+  const nodesById = new Set(nodes.map((node) => node.id));
 
   edges.forEach((edge) => {
     outgoingByNode.set(edge.source, (outgoingByNode.get(edge.source) ?? 0) + 1);
+    incomingByNode.set(edge.target, (incomingByNode.get(edge.target) ?? 0) + 1);
+
+    if (!nodesById.has(edge.source) || !nodesById.has(edge.target)) {
+      issues.push({
+        id: `broken-edge-${edge.id}`,
+        severity: 'error',
+        message: `La transición ${edge.id} apunta a un nodo inexistente.`
+      });
+    }
+
+    if (edge.label && !ALLOWED_TRANSITIONS.includes(String(edge.label) as TransitionType)) {
+      issues.push({
+        id: `invalid-transition-${edge.id}`,
+        severity: 'error',
+        nodeId: edge.source,
+        message: `La transición "${String(edge.label)}" no es válida. Usa success/error/timeout/escalation.`
+      });
+    }
   });
 
   nodes.forEach((node) => {
     if (!connectedNodeIds.has(node.id)) {
       issues.push({
         id: `isolated-${node.id}`,
-        severity: 'warning',
+        severity: 'error',
         nodeId: node.id,
-        message: `Node "${String(node.data.label ?? node.id)}" has no connections.`
+        message: `Nodo huérfano "${String(node.data.label ?? node.id)}" sin conexiones.`
       });
     }
 
     const hasNoExit = (outgoingByNode.get(node.id) ?? 0) === 0;
     const nodeType = String(node.data.type ?? node.type ?? '');
-    const terminalNode = nodeType === 'output';
+    const terminalNode = nodeType === 'output' || nodeType === 'end' || nodeType === 'fin';
     if (hasNoExit && !terminalNode) {
       issues.push({
         id: `no-exit-${node.id}`,
         severity: 'error',
         nodeId: node.id,
-        message: `Node "${String(node.data.label ?? node.id)}" has no outgoing transition.`
+        message: `Nodo "${String(node.data.label ?? node.id)}" sin transición de salida.`
+      });
+    }
+    const hasNoEntry = (incomingByNode.get(node.id) ?? 0) === 0 && node.id !== 'start';
+    if (hasNoEntry) {
+      issues.push({
+        id: `no-entry-${node.id}`,
+        severity: 'error',
+        nodeId: node.id,
+        message: `Nodo "${String(node.data.label ?? node.id)}" no es alcanzable desde Inicio.`
       });
     }
 
@@ -76,7 +106,7 @@ export const validateStudioGraph = (nodes: Node<AgentNodeData>[], edges: Edge[])
           id: `invalid-var-${node.id}-${ref}`,
           severity: 'error',
           nodeId: node.id,
-          message: `Variable reference {{${ref}}} in "${String(node.data.label ?? node.id)}" is not defined.`
+          message: `Variable rota {{${ref}}} en "${String(node.data.label ?? node.id)}".`
         });
       }
     });
@@ -109,14 +139,19 @@ export const buildSimulationSteps = (nodes: Node<AgentNodeData>[], edges: Edge[]
         runtimeVariables[outputVar.trim()] = `value_${steps.length + 1}_${index + 1}`;
       }
     });
+    const nextEdge = edges.find((edge) => edge.source === currentNode?.id);
 
     steps.push({
       nodeId: currentNode.id,
       label: String(currentNode.data.label ?? currentNode.id),
-      variables: { ...runtimeVariables }
+      nodeType: String(currentNode.data.type ?? 'unknown'),
+      transition: nextEdge?.label ? (String(nextEdge.label) as TransitionType) : undefined,
+      variables: { ...runtimeVariables },
+      context: {
+        currentNodeId: currentNode.id,
+        outgoingTransition: nextEdge?.label ? String(nextEdge.label) : 'none'
+      }
     });
-
-    const nextEdge = edges.find((edge) => edge.source === currentNode?.id);
     currentNode = nextEdge ? nodesById.get(nextEdge.target) : undefined;
   }
 

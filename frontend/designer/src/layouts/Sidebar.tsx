@@ -1,31 +1,16 @@
 import { DragEvent } from 'react';
-import { Cpu, Database, ShieldCheck, Plus, Search } from 'lucide-react';
+import { Plus, Search } from 'lucide-react';
 
 const NODE_TYPES = [
-  { 
-    group: 'Cognition', 
-    icon: <Cpu size={16} />, 
-    items: [
-      { type: 'think', label: 'Reasoning Step', color: '#6366f1' },
-      { type: 'output', label: 'Final Answer', color: '#10b981' }
-    ] 
-  },
-  { 
-    group: 'Capabilities', 
-    icon: <Database size={16} />, 
-    items: [
-      { type: 'tool', label: 'Tool Invocation', color: '#f59e0b' },
-      { type: 'memory', label: 'Knowledge Lookup', color: '#3b82f6' }
-    ] 
-  },
-  { 
-    group: 'Governance', 
-    icon: <ShieldCheck size={16} />, 
-    items: [
-      { type: 'policy', label: 'Security Check', color: '#ef4444' },
-      { type: 'human', label: 'Manual Review', color: '#8b5cf6' }
-    ] 
-  }
+  { type: 'start', label: 'Inicio', color: '#10b981' },
+  { type: 'ai_agent', label: 'AI Agent', color: '#6366f1' },
+  { type: 'message', label: 'Mensaje', color: '#0ea5e9' },
+  { type: 'condition', label: 'Condición', color: '#f59e0b' },
+  { type: 'api', label: 'API', color: '#22c55e' },
+  { type: 'db', label: 'DB', color: '#3b82f6' },
+  { type: 'webhook', label: 'Webhook', color: '#ec4899' },
+  { type: 'human', label: 'Humano', color: '#8b5cf6' },
+  { type: 'end', label: 'Fin', color: '#ef4444' }
 ];
 
 export const Sidebar = () => {
@@ -42,39 +27,36 @@ export const Sidebar = () => {
       </div>
 
       <div className="nodes-container">
-        {NODE_TYPES.map(group => (
-          <div key={group.group} className="node-group">
-            <div className="group-label">
-              {group.icon}
-              <span>{group.group}</span>
+        <div className="group-label">
+          <span>Nodos estándar</span>
+        </div>
+        <div className="group-items">
+          {NODE_TYPES.map(item => (
+            <div
+              key={item.label}
+              className="draggable-item"
+              draggable
+              onDragStart={(e) => onDragStart(e, item.type, item.label)}
+            >
+              <div className="item-dot" style={{ background: item.color }} />
+              <span className="item-label">{item.label}</span>
+              <Plus size={14} className="add-icon" />
             </div>
-            <div className="group-items">
-              {group.items.map(item => (
-                <div 
-                  key={item.label} 
-                  className="draggable-item"
-                  draggable
-                  onDragStart={(e) => onDragStart(e, item.type, item.label)}
-                >
-                  <div className="item-dot" style={{ background: item.color }} />
-                  <span className="item-label">{item.label}</span>
-                  <Plus size={14} className="add-icon" />
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
 
       <style>{`
         .designer-sidebar {
-          width: 280px;
+          width: 260px;
           background: var(--bg-secondary);
-          border-right: 1px solid var(--border-light);
+          border: 1px solid var(--border-light);
+          border-radius: 12px;
           display: flex;
           flex-direction: column;
-          padding: 20px;
-          gap: 24px;
+          padding: 14px;
+          gap: 12px;
+          box-shadow: var(--shadow-md);
         }
         .search-box {
           position: relative;
