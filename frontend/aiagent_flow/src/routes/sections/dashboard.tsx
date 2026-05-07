@@ -38,6 +38,7 @@ const SettingsPage = lazy(() => import('src/aiagentflow/pages/settings/SettingsP
 const ManagerOrchestrationPage = lazy(() => import('src/aiagentflow/pages/orchestration/ManagerOrchestrationPage'));
 const ThreadsPage = lazy(() => import('src/aiagentflow/pages/threads/ThreadsPage'));
 const EvaluationsPage = lazy(() => import('src/aiagentflow/pages/evaluations/EvaluationsPage'));
+const WorkflowsPage = lazy(() => import('src/aiagentflow/pages/workflows/WorkflowsPage'));
 
 // ----------------------------------------------------------------------
 
@@ -76,6 +77,7 @@ export const dashboardRoutes: RouteObject[] = [
       { path: 'orchestration', element: <ManagerOrchestrationPage /> },
       { path: 'threads', element: <ThreadsPage /> },
       { path: 'evaluations', element: <EvaluationsPage /> },
+      { path: 'studio/workflows', element: <WorkflowsPage /> },
       {
         path: 'governance',
         children: [

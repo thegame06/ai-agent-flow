@@ -113,6 +113,19 @@ export const endpoints = {
       archive: (tenantId: string, threadId: string) => `/api/v1/tenants/${tenantId}/threads/${threadId}/archive`,
       delete: (tenantId: string, threadId: string) => `/api/v1/tenants/${tenantId}/threads/${threadId}`,
     },
+    // Workflow Studio / Control
+    workflows: {
+      list: (tenantId: string) => `/api/v1/tenants/${tenantId}/studio/workflows`,
+      detail: (tenantId: string, workflowId: string) => `/api/v1/tenants/${tenantId}/studio/workflows/${workflowId}`,
+      upsert: (tenantId: string, workflowId: string) => `/api/v1/tenants/${tenantId}/studio/workflows/${workflowId}`,
+      publish: (tenantId: string, workflowId: string) => `/api/v1/tenants/${tenantId}/studio/workflows/${workflowId}/publish`,
+      runEvent: (tenantId: string) => `/api/v1/tenants/${tenantId}/studio/workflows/run-event`,
+      executions: (tenantId: string) => `/api/v1/tenants/${tenantId}/studio/workflows/executions`,
+      steps: (tenantId: string, executionId: string) => `/api/v1/tenants/${tenantId}/studio/workflows/executions/${executionId}/steps`,
+      retry: (tenantId: string, executionId: string) => `/api/v1/tenants/${tenantId}/studio/workflows/executions/${executionId}/retry`,
+      metrics: (tenantId: string) => `/api/v1/tenants/${tenantId}/control/workflows/metrics`,
+      auditEvents: (tenantId: string) => `/api/v1/tenants/${tenantId}/control/workflows/audit/events`,
+    },
     // Segment Routing
     segmentRouting: {
       getConfig: (tenantId: string, agentId: string) => `/api/v1/tenants/${tenantId}/segment-routing/agents/${agentId}`,

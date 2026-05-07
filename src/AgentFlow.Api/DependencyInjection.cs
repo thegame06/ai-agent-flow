@@ -1,6 +1,7 @@
 using AgentFlow.Abstractions;
 using AgentFlow.Api.AuthProfiles;
 using AgentFlow.Api.Connect;
+using AgentFlow.Api.Workflow;
 using AgentFlow.Application.Channels;
 using AgentFlow.Application.Memory;
 using AgentFlow.Caching.Redis;
@@ -58,12 +59,20 @@ public static class DependencyInjection
             .AddChannelGateway(configuration)
             .AddSingleton<IAuthProfilesStore, InMemoryAuthProfilesStore>()
             .AddScoped<IConnectStore, MongoConnectStore>()
+            .AddScoped<IWorkflowStudioStore, MongoWorkflowStudioStore>()
             .AddScoped<ITenantConnectionStore, MongoTenantConnectionStore>()
             .AddSecurity(configuration)
             .AddAgentEngine(configuration)
             .AddMemoryServices(configuration)
             .AddAgentFlowObservability(configuration["Telemetry:OtlpEndpoint"] ?? "http://localhost:4317")
             .AddMcpGateway(configuration);
+
+        services.AddSingleton<IWorkflowExecutionQueue, InMemoryWorkflowExecutionQueue>();
+        services.AddSingleton<IWorkflowSecurityPolicyService, WorkflowSecurityPolicyService>();
+        services.AddScoped<IWorkflowTriggerService, WorkflowTriggerService>();
+        services.AddScoped<IWorkflowAuditService, WorkflowAuditService>();
+        services.AddHostedService<WorkflowRuntimeWorker>();
+        services.AddHostedService<WorkflowCatalogSeeder>();
 
         return services;
     }

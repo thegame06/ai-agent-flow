@@ -99,6 +99,12 @@ export const navData: NavSectionProps['data'] = [
         path: paths.dashboard.evaluations,
         icon: ICONS.analytics,
       },
+      {
+        title: 'Studio Workflows',
+        path: paths.dashboard.workflows,
+        icon: ICONS.kanban,
+        info: <Label color="info">Studio</Label>,
+      },
     ],
   },
   /**
