@@ -15,6 +15,7 @@ public interface IConnectStore
     Task<ConnectCampaignContract> UpsertCampaignAsync(ConnectCampaignContract campaign, CancellationToken ct = default);
 
     Task<IReadOnlyList<ConnectInboxMessageContract>> GetInboxAsync(string tenantId, int limit, CancellationToken ct = default);
+    Task<ConnectInboxMessageContract?> GetInboxMessageByExternalKeyAsync(string tenantId, string externalEventKey, CancellationToken ct = default);
     Task<ConnectInboxMessageContract> CreateInboxMessageAsync(ConnectInboxMessageContract message, CancellationToken ct = default);
     Task<ConnectInboxMessageContract?> UpdateMessageStatusAsync(string tenantId, string messageId, ConnectOperationalStatus status, string updatedBy, string? lastError, CancellationToken ct = default);
 }
@@ -30,6 +31,22 @@ public sealed class MongoConnectStore : IConnectStore
         _templates = database.GetCollection<ConnectTemplateDocument>("connect_templates");
         _campaigns = database.GetCollection<ConnectCampaignDocument>("connect_campaigns");
         _inbox = database.GetCollection<ConnectInboxDocument>("connect_inbox");
+        EnsureIndexes();
+    }
+
+    private void EnsureIndexes()
+    {
+        var externalEventIndex = Builders<ConnectInboxDocument>.IndexKeys
+            .Ascending(x => x.TenantId)
+            .Ascending(x => x.ExternalEventKey);
+        _inbox.Indexes.CreateOne(new CreateIndexModel<ConnectInboxDocument>(
+            externalEventIndex,
+            new CreateIndexOptions
+            {
+                Name = "ux_inbox_tenant_external_event",
+                Unique = true,
+                Sparse = true
+            }));
     }
 
     public async Task<IReadOnlyList<ConnectTemplateContract>> GetTemplatesAsync(string tenantId, CancellationToken ct = default)
@@ -111,6 +128,17 @@ public sealed class MongoConnectStore : IConnectStore
         return docs.Select(ToContract).ToList();
     }
 
+    public async Task<ConnectInboxMessageContract?> GetInboxMessageByExternalKeyAsync(string tenantId, string externalEventKey, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(externalEventKey))
+            return null;
+
+        var doc = await _inbox.Find(x => x.TenantId == tenantId && x.ExternalEventKey == externalEventKey)
+            .SortByDescending(x => x.CreatedAt)
+            .FirstOrDefaultAsync(ct);
+        return doc is null ? null : ToContract(doc);
+    }
+
     public async Task<ConnectInboxMessageContract> CreateInboxMessageAsync(ConnectInboxMessageContract message, CancellationToken ct = default)
     {
         var doc = new ConnectInboxDocument
@@ -122,6 +150,7 @@ public sealed class MongoConnectStore : IConnectStore
             Content = message.Content,
             CampaignId = message.CampaignId,
             TemplateId = message.TemplateId,
+            ExternalEventKey = message.ExternalEventKey,
             Status = message.Status,
             LastError = message.LastError,
             CreatedAt = message.CreatedAt,
@@ -129,7 +158,19 @@ public sealed class MongoConnectStore : IConnectStore
             UpdatedBy = message.UpdatedBy
         };
 
-        await _inbox.InsertOneAsync(doc, cancellationToken: ct);
+        try
+        {
+            await _inbox.InsertOneAsync(doc, cancellationToken: ct);
+        }
+        catch (MongoWriteException ex) when (ex.WriteError?.Category == ServerErrorCategory.DuplicateKey && !string.IsNullOrWhiteSpace(message.ExternalEventKey))
+        {
+            var existing = await _inbox.Find(x => x.TenantId == message.TenantId && x.ExternalEventKey == message.ExternalEventKey)
+                .SortByDescending(x => x.CreatedAt)
+                .FirstOrDefaultAsync(ct);
+            if (existing is not null)
+                return ToContract(existing);
+            throw;
+        }
         return ToContract(doc);
     }
 
@@ -188,6 +229,7 @@ public sealed class MongoConnectStore : IConnectStore
         Content = doc.Content,
         CampaignId = doc.CampaignId,
         TemplateId = doc.TemplateId,
+        ExternalEventKey = doc.ExternalEventKey,
         Status = doc.Status,
         LastError = doc.LastError,
         CreatedAt = doc.CreatedAt,
@@ -239,6 +281,7 @@ public sealed class MongoConnectStore : IConnectStore
         public string Content { get; set; } = string.Empty;
         public string? CampaignId { get; set; }
         public string? TemplateId { get; set; }
+        public string? ExternalEventKey { get; set; }
         public ConnectOperationalStatus Status { get; set; }
         public string? LastError { get; set; }
         public DateTimeOffset CreatedAt { get; set; }

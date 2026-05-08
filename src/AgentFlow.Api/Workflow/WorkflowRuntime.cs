@@ -1,9 +1,12 @@
+using System;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading.Channels;
 using AgentFlow.Abstractions;
 using AgentFlow.Abstractions.Connect;
 using AgentFlow.Abstractions.Workflow;
 using AgentFlow.Api.Connect;
+using AgentFlow.Api.Controllers;
 using MongoDB.Driver;
 
 namespace AgentFlow.Api.Workflow;
@@ -286,11 +289,14 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
                 throw new InvalidOperationException("Activity ai.agent requires config.input or config.prompt.");
 
             var maxLatencyMs = ParseInt(GetConfig(resolvedConfig, "maxLatencyMs"), 30000);
+            var maxCostUsd = ParseDouble(GetConfig(resolvedConfig, "maxCostUsd"), -1);
             var dlpEnabled = ParseBool(GetConfig(resolvedConfig, "dlpEnabled"), true);
 
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct);
             linked.CancelAfter(TimeSpan.FromMilliseconds(maxLatencyMs));
 
+            var primaryModel = GetConfig(resolvedConfig, "model");
+            var fallbackModel = GetConfig(resolvedConfig, "fallbackModel");
             var request = new AgentExecutionRequest
             {
                 TenantId = tenantId,
@@ -301,8 +307,8 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
                 {
                     workflowExecutionId = execution.Id,
                     workflowDefinitionId = execution.WorkflowDefinitionId,
-                    model = GetConfig(resolvedConfig, "model"),
-                    fallbackModel = GetConfig(resolvedConfig, "fallbackModel"),
+                    model = primaryModel,
+                    fallbackModel,
                     knowledge = GetConfig(resolvedConfig, "knowledge")
                 }),
                 CorrelationId = execution.CorrelationId,
@@ -310,7 +316,18 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
                 Priority = ExecutionPriority.Normal
             };
 
-            var result = await agentExecutor.ExecuteAsync(request, linked.Token);
+            var (result, usedFallback) = await ExecuteAgentWithFallbackAsync(
+                agentExecutor,
+                request,
+                fallbackModel,
+                primaryModel,
+                linked.Token);
+            var estimatedCostUsd = EstimateTokenCostUsd(result.TotalTokensUsed);
+            if (maxCostUsd >= 0 && estimatedCostUsd > maxCostUsd)
+            {
+                throw new InvalidOperationException(
+                    $"ai.agent estimated cost {estimatedCostUsd:F6} USD exceeds maxCostUsd {maxCostUsd:F6}.");
+            }
             var response = result.FinalResponse ?? string.Empty;
             if (dlpEnabled)
                 response = ApplyBasicDlp(response);
@@ -319,6 +336,9 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
             {
                 executionId = result.ExecutionId,
                 status = result.Status.ToString(),
+                estimatedCostUsd,
+                model = usedFallback ? fallbackModel : primaryModel,
+                usedFallback,
                 response
             });
         }
@@ -451,9 +471,24 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
     {
         if (string.IsNullOrEmpty(input)) return input;
         var output = input;
-        output = output.Replace("password", "[redacted]", StringComparison.OrdinalIgnoreCase);
-        output = output.Replace("secret", "[redacted]", StringComparison.OrdinalIgnoreCase);
-        output = output.Replace("token", "[redacted]", StringComparison.OrdinalIgnoreCase);
+        output = System.Text.RegularExpressions.Regex.Replace(
+            output,
+            @"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}",
+            "[redacted-email]",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        output = System.Text.RegularExpressions.Regex.Replace(
+            output,
+            @"\b(?:\+?\d{1,3}[\s-]?)?(?:\(?\d{2,4}\)?[\s-]?)?\d{3,4}[\s-]?\d{4}\b",
+            "[redacted-phone]",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        output = System.Text.RegularExpressions.Regex.Replace(
+            output,
+            @"\b(?:\d[ -]*?){13,19}\b",
+            "[redacted-card]",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        output = output.Replace("password", "[redacted-secret]", StringComparison.OrdinalIgnoreCase);
+        output = output.Replace("secret", "[redacted-secret]", StringComparison.OrdinalIgnoreCase);
+        output = output.Replace("token", "[redacted-secret]", StringComparison.OrdinalIgnoreCase);
         return output;
     }
 
@@ -468,6 +503,46 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
     private static int ParseInt(string? raw, int fallback) => int.TryParse(raw, out var value) ? value : fallback;
     private static bool ParseBool(string? raw, bool fallback) => bool.TryParse(raw, out var value) ? value : fallback;
     private static decimal ParseDecimal(string? raw, decimal fallback) => decimal.TryParse(raw, out var value) ? value : fallback;
+    private static double ParseDouble(string? raw, double fallback) => double.TryParse(raw, out var value) ? value : fallback;
+    private static double EstimateTokenCostUsd(int totalTokens)
+    {
+        const double estimatedUsdPer1KTokens = 0.005d;
+        return Math.Round((totalTokens / 1000d) * estimatedUsdPer1KTokens, 6);
+    }
+
+    private static async Task<(AgentExecutionResult Result, bool UsedFallback)> ExecuteAgentWithFallbackAsync(
+        IAgentExecutor agentExecutor,
+        AgentExecutionRequest primaryRequest,
+        string? fallbackModel,
+        string? primaryModel,
+        CancellationToken ct)
+    {
+        try
+        {
+            var primary = await agentExecutor.ExecuteAsync(primaryRequest, ct);
+            if (primary.Status == ExecutionStatus.Completed || string.IsNullOrWhiteSpace(fallbackModel))
+                return (primary, false);
+        }
+        catch (OperationCanceledException) when (!string.IsNullOrWhiteSpace(fallbackModel))
+        {
+            // Fallback attempt below.
+        }
+
+        if (string.IsNullOrWhiteSpace(fallbackModel))
+            throw new InvalidOperationException("ai.agent failed and no fallbackModel is configured.");
+
+        var fallbackContext = JsonSerializer.Serialize(new
+        {
+            workflowExecutionId = primaryRequest.ThreadId,
+            model = primaryModel,
+            fallbackModel,
+            useFallback = true
+        });
+
+        var fallbackRequest = primaryRequest with { ContextJson = fallbackContext };
+        var fallback = await agentExecutor.ExecuteAsync(fallbackRequest, ct);
+        return (fallback, true);
+    }
 
     private sealed record WorkflowRuntimeDefinition
     {
@@ -492,7 +567,8 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
     private sealed record WorkflowCondition
     {
         public string? Key { get; init; }
-        public string? Equals { get; init; }
+        [JsonPropertyName("equals")]
+        public string? EqualsValue { get; init; }
         public string? NotEquals { get; init; }
     }
 
@@ -504,8 +580,8 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
         payload.TryGetValue(condition.Key, out var value);
         var normalized = value.ValueKind == JsonValueKind.Undefined ? null : value.ToString();
 
-        if (condition.Equals is not null)
-            return string.Equals(normalized, condition.Equals, StringComparison.OrdinalIgnoreCase);
+        if (condition.EqualsValue is not null)
+            return string.Equals(normalized, condition.EqualsValue, StringComparison.OrdinalIgnoreCase);
 
         if (condition.NotEquals is not null)
             return !string.Equals(normalized, condition.NotEquals, StringComparison.OrdinalIgnoreCase);

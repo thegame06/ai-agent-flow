@@ -43,6 +43,22 @@ public sealed class GenericWebhooksController : ControllerBase
         CancellationToken ct)
     {
         var now = DateTimeOffset.UtcNow;
+        var externalEventKey = BuildExternalEventKey(channel, payload);
+        if (!string.IsNullOrWhiteSpace(externalEventKey))
+        {
+            var existing = await _connectStore.GetInboxMessageByExternalKeyAsync(tenantId, externalEventKey, ct);
+            if (existing is not null)
+            {
+                return Ok(new
+                {
+                    status = "duplicate_accepted",
+                    tenantId,
+                    channel,
+                    inboxMessageId = existing.Id
+                });
+            }
+        }
+
         var recipient = ReadString(payload, "recipient")
             ?? ReadString(payload, "from")
             ?? ReadString(payload, "sender")
@@ -62,6 +78,7 @@ public sealed class GenericWebhooksController : ControllerBase
             Channel = channel,
             Recipient = recipient,
             Content = content,
+            ExternalEventKey = externalEventKey,
             Status = ConnectOperationalStatus.Queued,
             CreatedAt = now,
             UpdatedAt = now,
@@ -221,5 +238,29 @@ public sealed class GenericWebhooksController : ControllerBase
     {
         if (!source.TryGetValue(key, out var raw) || raw is null) return null;
         return raw.ToString();
+    }
+
+    private static string? BuildExternalEventKey(string channel, Dictionary<string, object?> payload)
+    {
+        var nativeId = ReadString(payload, "eventId")
+            ?? ReadString(payload, "event_id")
+            ?? ReadString(payload, "messageId")
+            ?? ReadString(payload, "message_id")
+            ?? ReadString(payload, "id");
+
+        if (!string.IsNullOrWhiteSpace(nativeId))
+            return $"{channel}:{nativeId}";
+
+        var from = ReadString(payload, "from") ?? ReadString(payload, "sender");
+        var recipient = ReadString(payload, "recipient");
+        var content = ReadString(payload, "message") ?? ReadString(payload, "content") ?? ReadString(payload, "text");
+        var timestamp = ReadString(payload, "timestamp") ?? ReadString(payload, "ts");
+        if (string.IsNullOrWhiteSpace(from) &&
+            string.IsNullOrWhiteSpace(recipient) &&
+            string.IsNullOrWhiteSpace(content) &&
+            string.IsNullOrWhiteSpace(timestamp))
+            return null;
+
+        return $"{channel}:{from}:{recipient}:{timestamp}:{content}".Trim();
     }
 }

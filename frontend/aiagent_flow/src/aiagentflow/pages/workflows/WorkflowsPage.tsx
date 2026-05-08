@@ -15,6 +15,7 @@ import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
 
 import { Iconify } from 'src/components/iconify';
 
+import { WORKFLOW_QUICKSTARTS } from './constants';
 import { RuntimeMetricsCard } from './components/RuntimeMetricsCard';
 import { AiAgentConfigDialog } from './components/AiAgentConfigDialog';
 import { useWorkflowEditorState } from './hooks/useWorkflowEditorState';
@@ -23,7 +24,6 @@ import { useWorkflowStudioRuntime } from './hooks/useWorkflowStudioRuntime';
 import { WorkflowExecutionsCard } from './components/WorkflowExecutionsCard';
 import { WorkflowVisualDesigner } from './components/WorkflowVisualDesigner';
 import { WorkflowDefinitionsCard } from './components/WorkflowDefinitionsCard';
-import { WORKFLOW_QUICKSTARTS } from './constants';
 
 import type { WorkflowDefinition } from './types';
 

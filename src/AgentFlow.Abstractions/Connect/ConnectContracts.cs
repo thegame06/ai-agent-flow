@@ -48,6 +48,7 @@ public sealed record ConnectInboxMessageContract
     public string Content { get; init; } = string.Empty;
     public string? CampaignId { get; init; }
     public string? TemplateId { get; init; }
+    public string? ExternalEventKey { get; init; }
     public ConnectOperationalStatus Status { get; init; } = ConnectOperationalStatus.Queued;
     public string? LastError { get; init; }
     public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.UtcNow;
