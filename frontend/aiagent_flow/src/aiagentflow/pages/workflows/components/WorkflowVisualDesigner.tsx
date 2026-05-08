@@ -58,6 +58,14 @@ type Props = {
   onRemoveActivityConfig: (index: number, key: string) => void;
 };
 
+type WorkflowNodeData = {
+  label: string;
+  activityType: string;
+  index: number;
+  onDuplicate?: () => void;
+  onDelete?: () => void;
+};
+
 const nodeColorByType = (type: string) => {
   if (type === 'ai.agent') return '#2667ff';
   if (type.startsWith('connect.')) return '#0ea5a3';
@@ -66,7 +74,7 @@ const nodeColorByType = (type: string) => {
   return '#64748b';
 };
 
-function WorkflowNodeCard({ data, selected }: NodeProps) {
+function WorkflowNodeCard({ data, selected }: NodeProps<Node<WorkflowNodeData>>) {
   const activityType = String(data.activityType ?? '');
   const label = String(data.label ?? activityType);
   const color = nodeColorByType(activityType);
@@ -112,7 +120,7 @@ function WorkflowNodeCard({ data, selected }: NodeProps) {
   );
 }
 
-function AiWorkflowNode({ data, selected }: NodeProps) {
+function AiWorkflowNode({ data, selected }: NodeProps<Node<WorkflowNodeData>>) {
   const label = String(data.label ?? 'AI Agent');
   return (
     <Box
@@ -154,7 +162,7 @@ function AiWorkflowNode({ data, selected }: NodeProps) {
   );
 }
 
-function ConnectWorkflowNode({ data, selected }: NodeProps) {
+function ConnectWorkflowNode({ data, selected }: NodeProps<Node<WorkflowNodeData>>) {
   const label = String(data.label ?? 'Connect');
   return (
     <Box
@@ -196,7 +204,7 @@ function ConnectWorkflowNode({ data, selected }: NodeProps) {
   );
 }
 
-function HumanWorkflowNode({ data, selected }: NodeProps) {
+function HumanWorkflowNode({ data, selected }: NodeProps<Node<WorkflowNodeData>>) {
   const label = String(data.label ?? 'Human');
   return (
     <Box
@@ -242,7 +250,7 @@ const toNodes = (
   activities: WorkflowActivityNode[],
   onDuplicate: (index: number) => void,
   onDelete: (index: number) => void
-): Node[] =>
+): Node<WorkflowNodeData>[] =>
   activities.map((activity, idx) => ({
     id: activity.id || `step-${idx + 1}`,
     position: activity.position ?? { x: 120 + (idx % 3) * 280, y: 100 + Math.floor(idx / 3) * 180 },
@@ -371,8 +379,8 @@ export function WorkflowVisualDesigner({
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [search, setSearch] = useState('');
   const [aiTab, setAiTab] = useState(0);
-  const [nodes, setNodes, onNodesChange] = useNodesState([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node<WorkflowNodeData>>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
 
   const duplicateNodeAt = useCallback((index: number) => {
     const source = activities[index];
