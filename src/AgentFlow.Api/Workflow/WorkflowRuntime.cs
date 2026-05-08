@@ -1,8 +1,10 @@
 using System.Text.Json;
 using System.Threading.Channels;
+using AgentFlow.Abstractions;
 using AgentFlow.Abstractions.Connect;
 using AgentFlow.Abstractions.Workflow;
 using AgentFlow.Api.Connect;
+using MongoDB.Driver;
 
 namespace AgentFlow.Api.Workflow;
 
@@ -68,6 +70,8 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
         var connectStore = scope.ServiceProvider.GetRequiredService<IConnectStore>();
         var audit = scope.ServiceProvider.GetRequiredService<IWorkflowAuditService>();
         var policy = scope.ServiceProvider.GetRequiredService<IWorkflowSecurityPolicyService>();
+        var agentExecutor = scope.ServiceProvider.GetRequiredService<IAgentExecutor>();
+        var database = scope.ServiceProvider.GetRequiredService<IMongoDatabase>();
 
         var execution = (await store.GetExecutionsAsync(item.TenantId, 500, ct))
             .FirstOrDefault(x => x.Id == item.ExecutionId);
@@ -134,6 +138,8 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
                         item.TenantId,
                         connectStore,
                         policy,
+                        agentExecutor,
+                        database,
                         current,
                         execution,
                         resolvedConfig,
@@ -186,6 +192,8 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
         string tenantId,
         IConnectStore connectStore,
         IWorkflowSecurityPolicyService policy,
+        IAgentExecutor agentExecutor,
+        IMongoDatabase database,
         WorkflowRuntimeActivity activity,
         WorkflowExecutionContract execution,
         Dictionary<string, string> resolvedConfig,
@@ -271,6 +279,122 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
             return JsonSerializer.Serialize(new { inboxMessageId = created.Id });
         }
 
+        if (string.Equals(activity.Type, "ai.agent", StringComparison.OrdinalIgnoreCase))
+        {
+            var input = GetConfig(resolvedConfig, "input", GetConfig(resolvedConfig, "prompt", string.Empty));
+            if (string.IsNullOrWhiteSpace(input))
+                throw new InvalidOperationException("Activity ai.agent requires config.input or config.prompt.");
+
+            var maxLatencyMs = ParseInt(GetConfig(resolvedConfig, "maxLatencyMs"), 30000);
+            var dlpEnabled = ParseBool(GetConfig(resolvedConfig, "dlpEnabled"), true);
+
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            linked.CancelAfter(TimeSpan.FromMilliseconds(maxLatencyMs));
+
+            var request = new AgentExecutionRequest
+            {
+                TenantId = tenantId,
+                AgentKey = GetConfig(resolvedConfig, "agentId", "default-agent") ?? "default-agent",
+                UserId = execution.RequestedBy,
+                UserMessage = input!,
+                ContextJson = JsonSerializer.Serialize(new
+                {
+                    workflowExecutionId = execution.Id,
+                    workflowDefinitionId = execution.WorkflowDefinitionId,
+                    model = GetConfig(resolvedConfig, "model"),
+                    fallbackModel = GetConfig(resolvedConfig, "fallbackModel"),
+                    knowledge = GetConfig(resolvedConfig, "knowledge")
+                }),
+                CorrelationId = execution.CorrelationId,
+                ThreadId = execution.Id,
+                Priority = ExecutionPriority.Normal
+            };
+
+            var result = await agentExecutor.ExecuteAsync(request, linked.Token);
+            var response = result.FinalResponse ?? string.Empty;
+            if (dlpEnabled)
+                response = ApplyBasicDlp(response);
+
+            return JsonSerializer.Serialize(new
+            {
+                executionId = result.ExecutionId,
+                status = result.Status.ToString(),
+                response
+            });
+        }
+
+        if (string.Equals(activity.Type, "kyc.document_check", StringComparison.OrdinalIgnoreCase))
+        {
+            var cases = database.GetCollection<KycCaseDto>("kyc_cases");
+            var caseId = Guid.NewGuid().ToString("N");
+            var score = CalculateSimpleScore(GetConfig(resolvedConfig, "documentNumber"), GetConfig(resolvedConfig, "fullName"));
+            var status = score >= 70 ? "approved" : "needs_review";
+
+            var dto = new KycCaseDto
+            {
+                CaseId = caseId,
+                TenantId = tenantId,
+                CustomerId = GetConfig(resolvedConfig, "customerId"),
+                FullName = GetConfig(resolvedConfig, "fullName"),
+                DocumentType = GetConfig(resolvedConfig, "documentType"),
+                DocumentNumber = GetConfig(resolvedConfig, "documentNumber"),
+                DecisionStatus = status,
+                RiskScore = score,
+                ReviewRequired = status != "approved",
+                Evidence = new List<string>(),
+                UpdatedAt = DateTimeOffset.UtcNow,
+                UpdatedBy = execution.RequestedBy
+            };
+            await cases.InsertOneAsync(dto, cancellationToken: ct);
+            return JsonSerializer.Serialize(new { caseId = dto.CaseId, decisionStatus = dto.DecisionStatus, riskScore = dto.RiskScore });
+        }
+
+        if (string.Equals(activity.Type, "kyc.review_case", StringComparison.OrdinalIgnoreCase))
+        {
+            var cases = database.GetCollection<KycCaseDto>("kyc_cases");
+            var caseId = GetConfig(resolvedConfig, "caseId");
+            if (string.IsNullOrWhiteSpace(caseId))
+                throw new InvalidOperationException("Activity kyc.review_case requires config.caseId.");
+
+            var existing = await cases.Find(x => x.CaseId == caseId && x.TenantId == tenantId).FirstOrDefaultAsync(ct);
+            if (existing is null)
+                throw new InvalidOperationException($"KYC case {caseId} not found.");
+
+            var approved = ParseBool(GetConfig(resolvedConfig, "approved"), true);
+            existing.DecisionStatus = approved ? "approved" : "rejected";
+            existing.ReviewRequired = false;
+            existing.ReviewNotes = GetConfig(resolvedConfig, "notes");
+            existing.UpdatedAt = DateTimeOffset.UtcNow;
+            existing.UpdatedBy = execution.RequestedBy;
+            await cases.ReplaceOneAsync(x => x.CaseId == caseId && x.TenantId == tenantId, existing, cancellationToken: ct);
+
+            return JsonSerializer.Serialize(new { caseId = existing.CaseId, decisionStatus = existing.DecisionStatus });
+        }
+
+        if (string.Equals(activity.Type, "payments.create_intent", StringComparison.OrdinalIgnoreCase))
+        {
+            var payments = database.GetCollection<PaymentIntentDto>("payment_intents");
+            var paymentId = Guid.NewGuid().ToString("N");
+            var amount = ParseDecimal(GetConfig(resolvedConfig, "amount"), 0);
+            if (amount <= 0)
+                throw new InvalidOperationException("Activity payments.create_intent requires config.amount > 0.");
+
+            var intent = new PaymentIntentDto
+            {
+                PaymentId = paymentId,
+                TenantId = tenantId,
+                CustomerId = GetConfig(resolvedConfig, "customerId"),
+                Amount = amount,
+                Currency = GetConfig(resolvedConfig, "currency", "USD") ?? "USD",
+                Reference = GetConfig(resolvedConfig, "reference"),
+                Status = "created",
+                CreatedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow
+            };
+            await payments.InsertOneAsync(intent, cancellationToken: ct);
+            return JsonSerializer.Serialize(new { paymentId = intent.PaymentId, status = intent.Status });
+        }
+
         throw new InvalidOperationException($"Unknown activity type '{activity.Type}'.");
     }
 
@@ -278,6 +402,8 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
         string tenantId,
         IConnectStore connectStore,
         IWorkflowSecurityPolicyService policy,
+        IAgentExecutor agentExecutor,
+        IMongoDatabase database,
         WorkflowRuntimeActivity activity,
         WorkflowExecutionContract execution,
         Dictionary<string, string> resolvedConfig,
@@ -295,7 +421,7 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
 
             try
             {
-                return await ExecuteActivityAsync(tenantId, connectStore, policy, activity, execution, resolvedConfig, linked.Token);
+                return await ExecuteActivityAsync(tenantId, connectStore, policy, agentExecutor, database, activity, execution, resolvedConfig, linked.Token);
             }
             catch (OperationCanceledException oce) when (!ct.IsCancellationRequested)
             {
@@ -320,6 +446,28 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
 
         return value ?? defaultValue;
     }
+
+    private static string ApplyBasicDlp(string input)
+    {
+        if (string.IsNullOrEmpty(input)) return input;
+        var output = input;
+        output = output.Replace("password", "[redacted]", StringComparison.OrdinalIgnoreCase);
+        output = output.Replace("secret", "[redacted]", StringComparison.OrdinalIgnoreCase);
+        output = output.Replace("token", "[redacted]", StringComparison.OrdinalIgnoreCase);
+        return output;
+    }
+
+    private static int CalculateSimpleScore(string? documentNumber, string? fullName)
+    {
+        var score = 50;
+        if (!string.IsNullOrWhiteSpace(documentNumber) && documentNumber.Length >= 8) score += 20;
+        if (!string.IsNullOrWhiteSpace(fullName) && fullName.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length >= 2) score += 20;
+        return Math.Clamp(score, 0, 100);
+    }
+
+    private static int ParseInt(string? raw, int fallback) => int.TryParse(raw, out var value) ? value : fallback;
+    private static bool ParseBool(string? raw, bool fallback) => bool.TryParse(raw, out var value) ? value : fallback;
+    private static decimal ParseDecimal(string? raw, decimal fallback) => decimal.TryParse(raw, out var value) ? value : fallback;
 
     private sealed record WorkflowRuntimeDefinition
     {

@@ -23,6 +23,7 @@ import { useWorkflowStudioRuntime } from './hooks/useWorkflowStudioRuntime';
 import { WorkflowExecutionsCard } from './components/WorkflowExecutionsCard';
 import { WorkflowVisualDesigner } from './components/WorkflowVisualDesigner';
 import { WorkflowDefinitionsCard } from './components/WorkflowDefinitionsCard';
+import { WORKFLOW_QUICKSTARTS } from './constants';
 
 import type { WorkflowDefinition } from './types';
 
@@ -121,6 +122,32 @@ export default function WorkflowsPage() {
         )}
 
         <Grid container spacing={3}>
+          <Grid item xs={12}>
+            <Card sx={{ p: 2 }}>
+              <Typography variant="h6" sx={{ mb: 1 }}>Workflow Quickstarts</Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Create ready-to-edit flows for Inbox, KYC and Payments.
+              </Typography>
+              <Stack direction="row" spacing={1} flexWrap="wrap">
+                {WORKFLOW_QUICKSTARTS.map((tpl) => (
+                  <Button
+                    key={tpl.id}
+                    variant="outlined"
+                    onClick={() => {
+                      setSelectedWorkflowId(null);
+                      setEditorField('id', tpl.id);
+                      setEditorField('name', tpl.name);
+                      setEditorField('triggerEventName', tpl.triggerEventName);
+                      setDefinitionJson(tpl.definitionJson);
+                    }}
+                  >
+                    {tpl.name}
+                  </Button>
+                ))}
+              </Stack>
+            </Card>
+          </Grid>
+
           <Grid item xs={12} md={4}>
             <WorkflowDefinitionsCard
               loading={loading}

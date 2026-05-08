@@ -37,10 +37,10 @@ public sealed class WebChatChannelHandler : IChannelHandler
         return Task.CompletedTask;
     }
 
-    public Task<ChannelMessage?> ProcessIncomingMessageAsync(object rawMessage, ChannelDefinition definition, CancellationToken ct = default)
+    public async Task<ChannelMessage?> ProcessIncomingMessageAsync(object rawMessage, ChannelDefinition definition, CancellationToken ct = default)
     {
         var webMessage = rawMessage as WebChatIncomingMessage;
-        if (webMessage == null) return Task.FromResult<ChannelMessage?>(null);
+        if (webMessage == null) return null;
 
         var userId = webMessage.UserId;
         var session = await GetOrCreateSessionAsync(
@@ -64,7 +64,7 @@ public sealed class WebChatChannelHandler : IChannelHandler
         session.RecordMessage();
         await _sessionRepo.UpdateAsync(session, ct);
 
-        return Task.FromResult<ChannelMessage?>(message);
+        return message;
     }
 
     public async Task<SendResult> SendReplyAsync(ChannelMessage message, ChannelDefinition definition, CancellationToken ct = default)

@@ -16,7 +16,11 @@ public sealed class WorkflowSecurityPolicyService : IWorkflowSecurityPolicyServi
     {
         "connect.send_whatsapp_template",
         "connect.update_inbox_status",
-        "connect.enqueue_campaign_message"
+        "connect.enqueue_campaign_message",
+        "ai.agent",
+        "kyc.document_check",
+        "kyc.review_case",
+        "payments.create_intent"
     };
 
     private const int MaxActivities = 100;

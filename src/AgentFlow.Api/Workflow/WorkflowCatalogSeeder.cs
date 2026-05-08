@@ -76,6 +76,63 @@ public sealed class WorkflowCatalogSeeder : IHostedService
                 UpdatedAt = DateTimeOffset.UtcNow,
                 UpdatedBy = actor
             }, cancellationToken);
+
+            await store.UpsertActivityAsync(new WorkflowActivityCatalogContract
+            {
+                TypeName = "kyc.document_check",
+                DisplayName = "KYC Document Check",
+                Category = "KYC",
+                Description = "Runs KYC document validation and returns caseId/decision.",
+                InputSchema = new Dictionary<string, string>
+                {
+                    ["customerId"] = "string",
+                    ["fullName"] = "string",
+                    ["documentType"] = "string",
+                    ["documentNumber"] = "string"
+                },
+                OutputSchema = new Dictionary<string, string>
+                {
+                    ["caseId"] = "string",
+                    ["decisionStatus"] = "approved|needs_review|rejected"
+                },
+                UpdatedAt = DateTimeOffset.UtcNow,
+                UpdatedBy = actor
+            }, cancellationToken);
+
+            await store.UpsertActivityAsync(new WorkflowActivityCatalogContract
+            {
+                TypeName = "kyc.review_case",
+                DisplayName = "KYC Review Case",
+                Category = "KYC",
+                Description = "Performs human review decision for KYC case.",
+                InputSchema = new Dictionary<string, string>
+                {
+                    ["caseId"] = "string",
+                    ["approved"] = "bool",
+                    ["notes"] = "string"
+                },
+                OutputSchema = new Dictionary<string, string> { ["decisionStatus"] = "approved|rejected" },
+                UpdatedAt = DateTimeOffset.UtcNow,
+                UpdatedBy = actor
+            }, cancellationToken);
+
+            await store.UpsertActivityAsync(new WorkflowActivityCatalogContract
+            {
+                TypeName = "payments.create_intent",
+                DisplayName = "Create Payment Intent",
+                Category = "Payments",
+                Description = "Creates payment intent and returns payment id.",
+                InputSchema = new Dictionary<string, string>
+                {
+                    ["customerId"] = "string",
+                    ["amount"] = "number",
+                    ["currency"] = "string",
+                    ["reference"] = "string"
+                },
+                OutputSchema = new Dictionary<string, string> { ["paymentId"] = "string", ["status"] = "created|confirmed" },
+                UpdatedAt = DateTimeOffset.UtcNow,
+                UpdatedBy = actor
+            }, cancellationToken);
         }
 
         var events = await store.GetEventsAsync(cancellationToken);
@@ -98,6 +155,26 @@ public sealed class WorkflowCatalogSeeder : IHostedService
                 DisplayName = "Campaign Scheduled",
                 Entity = "Campaign",
                 Description = "A campaign was scheduled and is ready for dispatch.",
+                UpdatedAt = DateTimeOffset.UtcNow,
+                UpdatedBy = actor
+            }, cancellationToken);
+
+            await store.UpsertEventAsync(new WorkflowEventCatalogContract
+            {
+                EventName = "kyc.document.submitted",
+                DisplayName = "KYC Document Submitted",
+                Entity = "KYC",
+                Description = "Customer uploaded document and KYC flow should start.",
+                UpdatedAt = DateTimeOffset.UtcNow,
+                UpdatedBy = actor
+            }, cancellationToken);
+
+            await store.UpsertEventAsync(new WorkflowEventCatalogContract
+            {
+                EventName = "payments.intent.created",
+                DisplayName = "Payment Intent Created",
+                Entity = "Payment",
+                Description = "Payment intent created and awaits confirmation/follow-up.",
                 UpdatedAt = DateTimeOffset.UtcNow,
                 UpdatedBy = actor
             }, cancellationToken);
