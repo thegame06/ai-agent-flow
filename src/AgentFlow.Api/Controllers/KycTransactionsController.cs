@@ -17,17 +17,26 @@ public sealed class KycTransactionsController : ControllerBase
 
         _kycCases.Indexes.CreateMany([
             new CreateIndexModel<KycCaseDto>(Builders<KycCaseDto>.IndexKeys.Ascending(x => x.TenantId).Descending(x => x.UpdatedAt)),
-            new CreateIndexModel<KycCaseDto>(Builders<KycCaseDto>.IndexKeys.Ascending(x => x.TenantId).Ascending(x => x.DecisionStatus))
+            new CreateIndexModel<KycCaseDto>(Builders<KycCaseDto>.IndexKeys.Ascending(x => x.TenantId).Ascending(x => x.DecisionStatus)),
+            new CreateIndexModel<KycCaseDto>(Builders<KycCaseDto>.IndexKeys.Ascending(x => x.TenantId).Ascending(x => x.IdempotencyKey), new CreateIndexOptions { Sparse = true, Unique = true })
         ]);
         _payments.Indexes.CreateMany([
             new CreateIndexModel<PaymentIntentDto>(Builders<PaymentIntentDto>.IndexKeys.Ascending(x => x.TenantId).Descending(x => x.UpdatedAt)),
-            new CreateIndexModel<PaymentIntentDto>(Builders<PaymentIntentDto>.IndexKeys.Ascending(x => x.TenantId).Ascending(x => x.Status))
+            new CreateIndexModel<PaymentIntentDto>(Builders<PaymentIntentDto>.IndexKeys.Ascending(x => x.TenantId).Ascending(x => x.Status)),
+            new CreateIndexModel<PaymentIntentDto>(Builders<PaymentIntentDto>.IndexKeys.Ascending(x => x.TenantId).Ascending(x => x.IdempotencyKey), new CreateIndexOptions { Sparse = true, Unique = true })
         ]);
     }
 
     [HttpPost("kyc/document-check")]
-    public IActionResult DocumentCheck([FromRoute] string tenantId, [FromBody] KycDocumentCheckRequest request)
+    public IActionResult DocumentCheck([FromRoute] string tenantId, [FromBody] KycDocumentCheckRequest request, [FromHeader(Name = "X-Idempotency-Key")] string? idempotencyKey = null)
     {
+        if (!string.IsNullOrWhiteSpace(idempotencyKey))
+        {
+            var existingByKey = _kycCases.Find(x => x.TenantId == tenantId && x.IdempotencyKey == idempotencyKey).FirstOrDefault();
+            if (existingByKey is not null)
+                return Ok(existingByKey);
+        }
+
         var caseId = Guid.NewGuid().ToString("N");
         var score = CalculateSimpleScore(request.DocumentNumber, request.FullName);
         var status = score >= 70 ? "approved" : "needs_review";
@@ -44,6 +53,9 @@ public sealed class KycTransactionsController : ControllerBase
             RiskScore = score,
             ReviewRequired = status != "approved",
             Evidence = new List<string>(request.EvidenceUrls ?? []),
+            IdempotencyKey = idempotencyKey,
+            Provider = "internal-mock-kyc",
+            ProviderReference = $"kyc-{caseId[..8]}",
             UpdatedAt = DateTimeOffset.UtcNow,
             UpdatedBy = "system"
         };
@@ -108,8 +120,15 @@ public sealed class KycTransactionsController : ControllerBase
     }
 
     [HttpPost("transactions/payments")]
-    public IActionResult CreatePayment([FromRoute] string tenantId, [FromBody] CreatePaymentIntentRequest request)
+    public IActionResult CreatePayment([FromRoute] string tenantId, [FromBody] CreatePaymentIntentRequest request, [FromHeader(Name = "X-Idempotency-Key")] string? idempotencyKey = null)
     {
+        if (!string.IsNullOrWhiteSpace(idempotencyKey))
+        {
+            var existingByKey = _payments.Find(x => x.TenantId == tenantId && x.IdempotencyKey == idempotencyKey).FirstOrDefault();
+            if (existingByKey is not null)
+                return Ok(existingByKey);
+        }
+
         var paymentId = Guid.NewGuid().ToString("N");
         var payment = new PaymentIntentDto
         {
@@ -120,6 +139,9 @@ public sealed class KycTransactionsController : ControllerBase
             Amount = request.Amount,
             Reference = request.Reference ?? $"pay-{paymentId[..8]}",
             Status = "created",
+            IdempotencyKey = idempotencyKey,
+            Provider = "internal-mock-payments",
+            ProviderReference = $"pay-{paymentId[..8]}",
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow
         };
@@ -136,6 +158,7 @@ public sealed class KycTransactionsController : ControllerBase
             return NotFound(new { message = "Payment not found." });
 
         existing.Status = "confirmed";
+        existing.FailureReason = null;
         existing.UpdatedAt = DateTimeOffset.UtcNow;
         _payments.ReplaceOne(x => x.PaymentId == paymentId && x.TenantId == tenantId, existing);
         return Ok(existing);
@@ -216,6 +239,9 @@ public sealed record KycCaseDto
     public string DecisionStatus { get; set; } = "needs_review";
     public string? ReviewNotes { get; set; }
     public List<string> Evidence { get; init; } = new();
+    public string? IdempotencyKey { get; init; }
+    public string? Provider { get; init; }
+    public string? ProviderReference { get; init; }
     public DateTimeOffset UpdatedAt { get; set; }
     public string? UpdatedBy { get; set; }
 }
@@ -229,6 +255,10 @@ public sealed record PaymentIntentDto
     public string Currency { get; init; } = "USD";
     public string Status { get; set; } = "created";
     public string? Reference { get; init; }
+    public string? IdempotencyKey { get; init; }
+    public string? Provider { get; init; }
+    public string? ProviderReference { get; init; }
+    public string? FailureReason { get; set; }
     public DateTimeOffset CreatedAt { get; init; }
     public DateTimeOffset UpdatedAt { get; set; }
 }

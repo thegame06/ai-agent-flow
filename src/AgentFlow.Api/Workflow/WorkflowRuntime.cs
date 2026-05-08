@@ -7,6 +7,7 @@ using AgentFlow.Abstractions.Connect;
 using AgentFlow.Abstractions.Workflow;
 using AgentFlow.Api.Connect;
 using AgentFlow.Api.Controllers;
+using AgentFlow.Domain.Repositories;
 using MongoDB.Driver;
 
 namespace AgentFlow.Api.Workflow;
@@ -74,6 +75,7 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
         var audit = scope.ServiceProvider.GetRequiredService<IWorkflowAuditService>();
         var policy = scope.ServiceProvider.GetRequiredService<IWorkflowSecurityPolicyService>();
         var agentExecutor = scope.ServiceProvider.GetRequiredService<IAgentExecutor>();
+        var threadRepo = scope.ServiceProvider.GetRequiredService<IConversationThreadRepository>();
         var database = scope.ServiceProvider.GetRequiredService<IMongoDatabase>();
 
         var execution = (await store.GetExecutionsAsync(item.TenantId, 500, ct))
@@ -142,6 +144,7 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
                         connectStore,
                         policy,
                         agentExecutor,
+                        threadRepo,
                         database,
                         current,
                         execution,
@@ -196,6 +199,7 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
         IConnectStore connectStore,
         IWorkflowSecurityPolicyService policy,
         IAgentExecutor agentExecutor,
+        IConversationThreadRepository threadRepo,
         IMongoDatabase database,
         WorkflowRuntimeActivity activity,
         WorkflowExecutionContract execution,
@@ -288,6 +292,13 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
             var queue = GetConfig(resolvedConfig, "queue");
             var priority = GetConfig(resolvedConfig, "priority", "normal");
             var status = !string.IsNullOrWhiteSpace(agentId) ? "assigned" : "queued";
+            await TryUpdateThreadInboxMetadataAsync(threadRepo, tenantId, execution, resolvedConfig, new Dictionary<string, string?>
+            {
+                ["assignedTo"] = agentId,
+                ["queue"] = queue,
+                ["priority"] = priority,
+                ["status"] = "Active"
+            }, ct);
             return JsonSerializer.Serialize(new
             {
                 assignmentStatus = status,
@@ -302,6 +313,13 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
             var team = GetConfig(resolvedConfig, "team", "support");
             var reason = GetConfig(resolvedConfig, "reason", "workflow_handoff");
             var priority = GetConfig(resolvedConfig, "priority", "normal");
+            await TryUpdateThreadInboxMetadataAsync(threadRepo, tenantId, execution, resolvedConfig, new Dictionary<string, string?>
+            {
+                ["handoffTeam"] = team,
+                ["handoffReason"] = reason,
+                ["priority"] = priority,
+                ["status"] = "Paused"
+            }, ct);
             return JsonSerializer.Serialize(new
             {
                 handoffStatus = "escalated",
@@ -452,6 +470,7 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
         IConnectStore connectStore,
         IWorkflowSecurityPolicyService policy,
         IAgentExecutor agentExecutor,
+        IConversationThreadRepository threadRepo,
         IMongoDatabase database,
         WorkflowRuntimeActivity activity,
         WorkflowExecutionContract execution,
@@ -470,7 +489,7 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
 
             try
             {
-                return await ExecuteActivityAsync(tenantId, connectStore, policy, agentExecutor, database, activity, execution, resolvedConfig, linked.Token);
+                return await ExecuteActivityAsync(tenantId, connectStore, policy, agentExecutor, threadRepo, database, activity, execution, resolvedConfig, linked.Token);
             }
             catch (OperationCanceledException oce) when (!ct.IsCancellationRequested)
             {
@@ -648,6 +667,29 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
         var prefix = $"steps.{(activity.Id ?? activity.Name ?? activity.Type)}";
         foreach (var prop in doc.RootElement.EnumerateObject())
             context[$"{prefix}.{prop.Name}"] = prop.Value.ToString();
+    }
+
+    private static async Task TryUpdateThreadInboxMetadataAsync(
+        IConversationThreadRepository threadRepo,
+        string tenantId,
+        WorkflowExecutionContract execution,
+        Dictionary<string, string> resolvedConfig,
+        Dictionary<string, string?> metadata,
+        CancellationToken ct)
+    {
+        var threadId = GetConfig(resolvedConfig, "threadId", execution.CorrelationId);
+        if (string.IsNullOrWhiteSpace(threadId))
+            return;
+
+        var thread = await threadRepo.GetByIdAsync(threadId, tenantId, ct);
+        if (thread is null)
+            return;
+
+        var result = thread.UpdateMetadata(metadata, execution.RequestedBy);
+        if (!result.IsSuccess)
+            return;
+
+        await threadRepo.UpdateAsync(thread, ct);
     }
 
     private static WorkflowRuntimeActivity? ResolveNext(

@@ -30,6 +30,7 @@ import MenuItem from '@mui/material/MenuItem';
 import Checkbox from '@mui/material/Checkbox';
 import TextField from '@mui/material/TextField';
 import FormGroup from '@mui/material/FormGroup';
+import IconButton from '@mui/material/IconButton';
 import Typography from '@mui/material/Typography';
 import FormControlLabel from '@mui/material/FormControlLabel';
 
@@ -89,12 +90,12 @@ function WorkflowNodeCard({ data, selected }: NodeProps) {
             {category}
           </Typography>
           <Stack direction="row" spacing={0.4}>
-            <Button size="small" onClick={() => data.onDuplicate?.()} sx={{ minWidth: 24, px: 0.6 }}>
-              D
-            </Button>
-            <Button size="small" color="error" onClick={() => data.onDelete?.()} sx={{ minWidth: 24, px: 0.6 }}>
-              X
-            </Button>
+            <IconButton size="small" onClick={() => data.onDuplicate?.()}>
+              <Iconify width={14} icon="mdi:content-copy" />
+            </IconButton>
+            <IconButton size="small" color="error" onClick={() => data.onDelete?.()}>
+              <Iconify width={14} icon="mdi:close" />
+            </IconButton>
           </Stack>
         </Stack>
         <Typography variant="body2" sx={{ fontWeight: 700, lineHeight: 1.2 }}>
@@ -131,12 +132,12 @@ function AiWorkflowNode({ data, selected }: NodeProps) {
             AI
           </Typography>
           <Stack direction="row" spacing={0.4}>
-            <Button size="small" onClick={() => data.onDuplicate?.()} sx={{ minWidth: 24, px: 0.6 }}>
-              D
-            </Button>
-            <Button size="small" color="error" onClick={() => data.onDelete?.()} sx={{ minWidth: 24, px: 0.6 }}>
-              X
-            </Button>
+            <IconButton size="small" onClick={() => data.onDuplicate?.()}>
+              <Iconify width={14} icon="mdi:content-copy" />
+            </IconButton>
+            <IconButton size="small" color="error" onClick={() => data.onDelete?.()}>
+              <Iconify width={14} icon="mdi:close" />
+            </IconButton>
           </Stack>
         </Stack>
         <Typography variant="body2" sx={{ fontWeight: 700, lineHeight: 1.2 }}>
@@ -173,12 +174,12 @@ function ConnectWorkflowNode({ data, selected }: NodeProps) {
             CONNECT
           </Typography>
           <Stack direction="row" spacing={0.4}>
-            <Button size="small" onClick={() => data.onDuplicate?.()} sx={{ minWidth: 24, px: 0.6 }}>
-              D
-            </Button>
-            <Button size="small" color="error" onClick={() => data.onDelete?.()} sx={{ minWidth: 24, px: 0.6 }}>
-              X
-            </Button>
+            <IconButton size="small" onClick={() => data.onDuplicate?.()}>
+              <Iconify width={14} icon="mdi:content-copy" />
+            </IconButton>
+            <IconButton size="small" color="error" onClick={() => data.onDelete?.()}>
+              <Iconify width={14} icon="mdi:close" />
+            </IconButton>
           </Stack>
         </Stack>
         <Typography variant="body2" sx={{ fontWeight: 700, lineHeight: 1.2 }}>
@@ -215,12 +216,12 @@ function HumanWorkflowNode({ data, selected }: NodeProps) {
             HUMAN
           </Typography>
           <Stack direction="row" spacing={0.4}>
-            <Button size="small" onClick={() => data.onDuplicate?.()} sx={{ minWidth: 24, px: 0.6 }}>
-              D
-            </Button>
-            <Button size="small" color="error" onClick={() => data.onDelete?.()} sx={{ minWidth: 24, px: 0.6 }}>
-              X
-            </Button>
+            <IconButton size="small" onClick={() => data.onDuplicate?.()}>
+              <Iconify width={14} icon="mdi:content-copy" />
+            </IconButton>
+            <IconButton size="small" color="error" onClick={() => data.onDelete?.()}>
+              <Iconify width={14} icon="mdi:close" />
+            </IconButton>
           </Stack>
         </Stack>
         <Typography variant="body2" sx={{ fontWeight: 700, lineHeight: 1.2 }}>
@@ -468,14 +469,14 @@ export function WorkflowVisualDesigner({
   };
 
   return (
-    <Card variant="outlined" sx={{ p: 1.5 }}>
+    <Card variant="outlined" sx={{ p: 1.5, borderRadius: 2 }}>
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
         <Typography variant="subtitle1">Workflow Canvas</Typography>
         <Stack direction="row" spacing={1}>
-          <Button size="small" variant="outlined" onClick={applyAutoLayoutGraph}>
+          <Button size="small" variant="outlined" onClick={applyAutoLayoutGraph} startIcon={<Iconify icon="mdi:graph-outline" />}>
             Auto Layout Graph
           </Button>
-          <Button size="small" variant="outlined" onClick={applyAutoLayoutGrid}>
+          <Button size="small" variant="outlined" onClick={applyAutoLayoutGrid} startIcon={<Iconify icon="mdi:grid" />}>
             Auto Layout
           </Button>
           <Button size="small" onClick={onAddActivity} startIcon={<Iconify icon="mingcute:add-line" />}>
