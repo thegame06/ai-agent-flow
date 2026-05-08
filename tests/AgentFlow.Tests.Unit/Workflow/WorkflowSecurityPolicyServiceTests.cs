@@ -12,6 +12,8 @@ public sealed class WorkflowSecurityPolicyServiceTests
         {
           "activities": [
             { "id": "a1", "type": "ai.agent", "timeoutMs": 1000, "retryCount": 0, "retryDelayMs": 0 },
+            { "id": "a1b", "type": "human.assign", "timeoutMs": 1000, "retryCount": 0, "retryDelayMs": 0 },
+            { "id": "a1c", "type": "human.handoff", "timeoutMs": 1000, "retryCount": 0, "retryDelayMs": 0 },
             { "id": "a2", "type": "kyc.document_check", "timeoutMs": 1000, "retryCount": 0, "retryDelayMs": 0 },
             { "id": "a3", "type": "kyc.review_case", "timeoutMs": 1000, "retryCount": 0, "retryDelayMs": 0 },
             { "id": "a4", "type": "payments.create_intent", "timeoutMs": 1000, "retryCount": 0, "retryDelayMs": 0 }

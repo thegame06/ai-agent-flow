@@ -73,6 +73,7 @@ export type AiAgentNodeConfig = {
 export type WorkflowActivityNode = {
   id: string;
   type: string;
+  position?: { x: number; y: number };
   name?: string;
   next?: string;
   onSuccess?: string;

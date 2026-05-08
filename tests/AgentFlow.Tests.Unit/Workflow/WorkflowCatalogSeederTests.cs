@@ -29,6 +29,8 @@ public sealed class WorkflowCatalogSeederTests
         Assert.Contains(activities, x => x.TypeName == "kyc.document_check");
         Assert.Contains(activities, x => x.TypeName == "kyc.review_case");
         Assert.Contains(activities, x => x.TypeName == "payments.create_intent");
+        Assert.Contains(activities, x => x.TypeName == "human.assign");
+        Assert.Contains(activities, x => x.TypeName == "human.handoff");
         Assert.Contains(events, x => x.EventName == "kyc.document.submitted");
         Assert.Contains(events, x => x.EventName == "payments.intent.created");
     }

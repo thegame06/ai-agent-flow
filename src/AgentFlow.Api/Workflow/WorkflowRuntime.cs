@@ -282,6 +282,35 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
             return JsonSerializer.Serialize(new { inboxMessageId = created.Id });
         }
 
+        if (string.Equals(activity.Type, "human.assign", StringComparison.OrdinalIgnoreCase))
+        {
+            var agentId = GetConfig(resolvedConfig, "agentId");
+            var queue = GetConfig(resolvedConfig, "queue");
+            var priority = GetConfig(resolvedConfig, "priority", "normal");
+            var status = !string.IsNullOrWhiteSpace(agentId) ? "assigned" : "queued";
+            return JsonSerializer.Serialize(new
+            {
+                assignmentStatus = status,
+                agentId,
+                queue,
+                priority
+            });
+        }
+
+        if (string.Equals(activity.Type, "human.handoff", StringComparison.OrdinalIgnoreCase))
+        {
+            var team = GetConfig(resolvedConfig, "team", "support");
+            var reason = GetConfig(resolvedConfig, "reason", "workflow_handoff");
+            var priority = GetConfig(resolvedConfig, "priority", "normal");
+            return JsonSerializer.Serialize(new
+            {
+                handoffStatus = "escalated",
+                team,
+                reason,
+                priority
+            });
+        }
+
         if (string.Equals(activity.Type, "ai.agent", StringComparison.OrdinalIgnoreCase))
         {
             var input = GetConfig(resolvedConfig, "input", GetConfig(resolvedConfig, "prompt", string.Empty));

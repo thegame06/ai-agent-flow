@@ -17,6 +17,8 @@ public sealed class WorkflowSecurityPolicyService : IWorkflowSecurityPolicyServi
         "connect.send_whatsapp_template",
         "connect.update_inbox_status",
         "connect.enqueue_campaign_message",
+        "human.assign",
+        "human.handoff",
         "ai.agent",
         "kyc.document_check",
         "kyc.review_case",

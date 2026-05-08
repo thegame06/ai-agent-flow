@@ -180,6 +180,13 @@ export function useWorkflowEditorState(activityCatalog: WorkflowActivityCatalogE
     updateActivity(aiDialogIndex, { aiAgent: nextAi });
   };
 
+  const updateAiAgentConfigAt = (index: number, patch: Partial<AiAgentNodeConfig>) => {
+    const target = activities[index];
+    if (!target) return;
+    const nextAi: AiAgentNodeConfig = { ...(target.aiAgent ?? DEFAULT_AI_AGENT_CONFIG), ...patch };
+    updateActivity(index, { aiAgent: nextAi });
+  };
+
   return {
     editor,
     activities,
@@ -207,6 +214,7 @@ export function useWorkflowEditorState(activityCatalog: WorkflowActivityCatalogE
     openAiConfig,
     closeAiConfig,
     updateAiAgentConfig,
+    updateAiAgentConfigAt,
     setSelectedWorkflowId: (id: string | null) => dispatch(setSelectedWorkflowId(id)),
   };
 }

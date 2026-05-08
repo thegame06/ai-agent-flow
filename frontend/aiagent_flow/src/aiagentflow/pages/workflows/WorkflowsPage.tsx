@@ -79,6 +79,7 @@ export default function WorkflowsPage() {
     openAiConfig,
     closeAiConfig,
     updateAiAgentConfig,
+    updateAiAgentConfigAt,
     setSelectedWorkflowId,
   } = useWorkflowEditorState(activityCatalog);
 
@@ -196,11 +197,14 @@ export default function WorkflowsPage() {
                   allowedTypes={allowedTypes}
                   requiredConfigByType={requiredConfigByType}
                   validationErrors={validationErrors}
+                  availableModels={availableModels}
+                  availableTools={availableTools}
                   onAddActivity={addActivity}
                   onUpdateActivity={updateActivity}
                   onRemoveActivity={removeActivity}
                   onApplyTypePreset={applyTypePreset}
                   onOpenAiConfig={openAiConfig}
+                  onUpdateAiAgentConfig={updateAiAgentConfigAt}
                   onAddActivityConfig={addActivityConfig}
                   onUpdateActivityConfig={updateActivityConfig}
                   onRemoveActivityConfig={removeActivityConfig}

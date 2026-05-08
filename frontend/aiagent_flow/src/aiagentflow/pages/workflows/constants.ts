@@ -5,6 +5,8 @@ export const ALLOWED_ACTIVITY_TYPES = [
   'connect.send_whatsapp_template',
   'connect.update_inbox_status',
   'connect.enqueue_campaign_message',
+  'human.assign',
+  'human.handoff',
   'kyc.document_check',
   'kyc.review_case',
   'payments.create_intent',
@@ -24,6 +26,15 @@ export const ACTIVITY_TYPE_PRESETS: Record<string, Record<string, string>> = {
     recipient: '{{payload.recipient}}',
     content: 'Campaign workflow message',
     channel: 'whatsapp',
+  },
+  'human.assign': {
+    queue: 'tier1-support',
+    priority: 'normal',
+  },
+  'human.handoff': {
+    team: 'support',
+    reason: 'needs-human-review',
+    priority: 'high',
   },
   'kyc.document_check': {
     customerId: '{{payload.customerId}}',

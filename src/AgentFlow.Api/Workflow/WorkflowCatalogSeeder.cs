@@ -79,6 +79,40 @@ public sealed class WorkflowCatalogSeeder : IHostedService
 
             await store.UpsertActivityAsync(new WorkflowActivityCatalogContract
             {
+                TypeName = "human.assign",
+                DisplayName = "Assign To Agent",
+                Category = "Human",
+                Description = "Routes the case/thread to a specific agent or queue.",
+                InputSchema = new Dictionary<string, string>
+                {
+                    ["agentId"] = "string",
+                    ["queue"] = "string",
+                    ["priority"] = "string"
+                },
+                OutputSchema = new Dictionary<string, string> { ["assignmentStatus"] = "assigned|queued" },
+                UpdatedAt = DateTimeOffset.UtcNow,
+                UpdatedBy = actor
+            }, cancellationToken);
+
+            await store.UpsertActivityAsync(new WorkflowActivityCatalogContract
+            {
+                TypeName = "human.handoff",
+                DisplayName = "Human Handoff",
+                Category = "Human",
+                Description = "Escalates the conversation to a human support team.",
+                InputSchema = new Dictionary<string, string>
+                {
+                    ["team"] = "string",
+                    ["reason"] = "string",
+                    ["priority"] = "string"
+                },
+                OutputSchema = new Dictionary<string, string> { ["handoffStatus"] = "escalated|queued" },
+                UpdatedAt = DateTimeOffset.UtcNow,
+                UpdatedBy = actor
+            }, cancellationToken);
+
+            await store.UpsertActivityAsync(new WorkflowActivityCatalogContract
+            {
                 TypeName = "kyc.document_check",
                 DisplayName = "KYC Document Check",
                 Category = "KYC",
