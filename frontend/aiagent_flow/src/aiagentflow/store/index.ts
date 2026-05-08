@@ -9,6 +9,8 @@ import executionsReducer from '../pages/executions/Redux/Slice';
 import evaluationsReducer from '../pages/evaluations/Redux/Slice';
 import designerReducer from '../pages/agents/Designer/designerSlice';
 import checkpointReducer from '../pages/checkpoints/checkpointSlice';
+import workflowEditorReducer from '../pages/workflows/store/workflowEditorSlice';
+import workflowRuntimeReducer from '../pages/workflows/store/workflowRuntimeSlice';
 import executionDetailReducer from '../pages/executions/Detail/executionDetailSlice';
 
 export const store = configureStore({
@@ -23,6 +25,8 @@ export const store = configureStore({
     executionDetail: executionDetailReducer,
     threads: threadsReducer,
     evaluations: evaluationsReducer,
+    workflowEditor: workflowEditorReducer,
+    workflowRuntime: workflowRuntimeReducer,
   },
 });
 

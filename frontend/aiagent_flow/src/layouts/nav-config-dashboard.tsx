@@ -100,6 +100,11 @@ export const navData: NavSectionProps['data'] = [
         icon: ICONS.analytics,
       },
       {
+        title: 'KYC & Payments',
+        path: paths.dashboard.kycPayments,
+        icon: ICONS.lock,
+      },
+      {
         title: 'Studio Workflows',
         path: paths.dashboard.workflows,
         icon: ICONS.kanban,

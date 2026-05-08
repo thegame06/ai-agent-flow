@@ -37,6 +37,18 @@ export const endpoints = {
   // AgentFlow API Endpoints (Multi-tenant)
   // ─────────────────────────────────────────────
   agentflow: {
+    channels: {
+      list: (tenantId: string) => `/api/v1/tenants/${tenantId}/channels`,
+      create: (tenantId: string) => `/api/v1/tenants/${tenantId}/channels`,
+      activate: (tenantId: string, channelId: string) => `/api/v1/tenants/${tenantId}/channels/${channelId}/activate`,
+      deactivate: (tenantId: string, channelId: string) => `/api/v1/tenants/${tenantId}/channels/${channelId}/deactivate`,
+      delete: (tenantId: string, channelId: string) => `/api/v1/tenants/${tenantId}/channels/${channelId}`,
+      status: (tenantId: string, channelId: string) => `/api/v1/tenants/${tenantId}/channels/${channelId}/status`,
+      qr: (tenantId: string, channelId: string) => `/api/v1/tenants/${tenantId}/channels/${channelId}/qr`,
+      routingGet: (tenantId: string, channelId: string) => `/api/v1/tenants/${tenantId}/channels/${channelId}/routing`,
+      routingUpdate: (tenantId: string, channelId: string) => `/api/v1/tenants/${tenantId}/channels/${channelId}/routing`,
+      routingPreview: (tenantId: string, channelId: string) => `/api/v1/tenants/${tenantId}/channels/${channelId}/routing/preview`,
+    },
     // Agents
     agents: {
       list: (tenantId: string) => `/api/v1/tenants/${tenantId}/agents`,
@@ -108,8 +120,10 @@ export const endpoints = {
       list: (tenantId: string) => `/api/v1/tenants/${tenantId}/threads`,
       create: (tenantId: string) => `/api/v1/tenants/${tenantId}/threads`,
       detail: (tenantId: string, threadId: string) => `/api/v1/tenants/${tenantId}/threads/${threadId}`,
+      metrics: (tenantId: string) => `/api/v1/tenants/${tenantId}/threads/metrics`,
       history: (tenantId: string, threadId: string) => `/api/v1/tenants/${tenantId}/threads/${threadId}/history`,
       sendMessage: (tenantId: string, threadId: string) => `/api/v1/tenants/${tenantId}/threads/${threadId}/messages`,
+      updateInbox: (tenantId: string, threadId: string) => `/api/v1/tenants/${tenantId}/threads/${threadId}/inbox`,
       archive: (tenantId: string, threadId: string) => `/api/v1/tenants/${tenantId}/threads/${threadId}/archive`,
       delete: (tenantId: string, threadId: string) => `/api/v1/tenants/${tenantId}/threads/${threadId}`,
     },
@@ -119,12 +133,22 @@ export const endpoints = {
       detail: (tenantId: string, workflowId: string) => `/api/v1/tenants/${tenantId}/studio/workflows/${workflowId}`,
       upsert: (tenantId: string, workflowId: string) => `/api/v1/tenants/${tenantId}/studio/workflows/${workflowId}`,
       publish: (tenantId: string, workflowId: string) => `/api/v1/tenants/${tenantId}/studio/workflows/${workflowId}/publish`,
+      catalogActivities: (tenantId: string) => `/api/v1/tenants/${tenantId}/studio/workflows/catalog/activities`,
       runEvent: (tenantId: string) => `/api/v1/tenants/${tenantId}/studio/workflows/run-event`,
       executions: (tenantId: string) => `/api/v1/tenants/${tenantId}/studio/workflows/executions`,
       steps: (tenantId: string, executionId: string) => `/api/v1/tenants/${tenantId}/studio/workflows/executions/${executionId}/steps`,
       retry: (tenantId: string, executionId: string) => `/api/v1/tenants/${tenantId}/studio/workflows/executions/${executionId}/retry`,
       metrics: (tenantId: string) => `/api/v1/tenants/${tenantId}/control/workflows/metrics`,
       auditEvents: (tenantId: string) => `/api/v1/tenants/${tenantId}/control/workflows/audit/events`,
+    },
+    kyc: {
+      documentCheck: (tenantId: string) => `/api/v1/tenants/${tenantId}/kyc/document-check`,
+      review: (tenantId: string, caseId: string) => `/api/v1/tenants/${tenantId}/kyc/review/${caseId}`,
+      caseById: (tenantId: string, caseId: string) => `/api/v1/tenants/${tenantId}/kyc/cases/${caseId}`,
+    },
+    transactions: {
+      createPayment: (tenantId: string) => `/api/v1/tenants/${tenantId}/transactions/payments`,
+      confirmPayment: (tenantId: string, paymentId: string) => `/api/v1/tenants/${tenantId}/transactions/payments/${paymentId}/confirm`,
     },
     // Segment Routing
     segmentRouting: {

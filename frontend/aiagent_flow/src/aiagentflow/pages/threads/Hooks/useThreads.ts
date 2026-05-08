@@ -4,6 +4,8 @@ import { useAppDispatch, useAppSelector } from 'src/aiagentflow/store/hooks';
 
 import {
   clearError,
+  updateThreadInbox,
+  fetchThreadMetrics,
   sendMessage,
   fetchThreads,
   deleteThread,
@@ -15,7 +17,9 @@ import {
 
 import type {
   Thread,
-  ThreadMessage} from '../Redux/Slice';
+  ThreadMessage,
+  InboxMetrics,
+  UpdateThreadInboxPayload} from '../Redux/Slice';
 
 // ----------------------------------------------------------------------
 
@@ -24,6 +28,7 @@ interface UseThreadsReturn {
   threads: Thread[];
   currentThread: Thread | null;
   messages: ThreadMessage[];
+  metrics: InboxMetrics | null;
   loading: boolean;
   error: string | null;
   total: number;
@@ -32,8 +37,10 @@ interface UseThreadsReturn {
   loadThreads: (agentId?: string, status?: string, limit?: number) => Promise<void>;
   loadThreadDetail: (threadId: string) => Promise<void>;
   loadThreadHistory: (threadId: string, limit?: number) => Promise<void>;
+  loadThreadMetrics: (agentId?: string) => Promise<void>;
   sendMessageToThread: (threadId: string, message: string) => Promise<void>;
   archiveThreadById: (threadId: string) => Promise<void>;
+  updateThreadInboxById: (payload: Omit<UpdateThreadInboxPayload, 'tenantId'>) => Promise<void>;
   deleteThreadById: (threadId: string) => Promise<void>;
   clearThreadState: () => void;
 }
@@ -42,7 +49,7 @@ interface UseThreadsReturn {
 
 export function useThreads(tenantId: string): UseThreadsReturn {
   const dispatch = useAppDispatch();
-  const { threads, currentThread, messages, loading, error, total } = useAppSelector(
+  const { threads, currentThread, messages, metrics, loading, error, total } = useAppSelector(
     (state) => state.threads
   );
 
@@ -90,6 +97,20 @@ export function useThreads(tenantId: string): UseThreadsReturn {
     [dispatch, tenantId]
   );
 
+  const loadThreadMetrics = useCallback(
+    async (agentId?: string) => {
+      await dispatch(fetchThreadMetrics({ tenantId, agentId })).unwrap();
+    },
+    [dispatch, tenantId]
+  );
+
+  const updateThreadInboxById = useCallback(
+    async (payload: Omit<UpdateThreadInboxPayload, 'tenantId'>) => {
+      await dispatch(updateThreadInbox({ ...payload, tenantId })).unwrap();
+    },
+    [dispatch, tenantId]
+  );
+
   const clearThreadState = useCallback(() => {
     dispatch(clearCurrentThread());
     dispatch(clearError());
@@ -99,22 +120,26 @@ export function useThreads(tenantId: string): UseThreadsReturn {
   useEffect(() => {
     if (!initialized && tenantId) {
       loadThreads(undefined, 'Active', 50);
+      loadThreadMetrics();
       setInitialized(true);
     }
-  }, [initialized, tenantId, loadThreads]);
+  }, [initialized, tenantId, loadThreads, loadThreadMetrics]);
 
   return {
     threads,
     currentThread,
     messages,
+    metrics,
     loading,
     error,
     total,
     loadThreads,
     loadThreadDetail,
     loadThreadHistory,
+    loadThreadMetrics,
     sendMessageToThread,
     archiveThreadById,
+    updateThreadInboxById,
     deleteThreadById,
     clearThreadState,
   };

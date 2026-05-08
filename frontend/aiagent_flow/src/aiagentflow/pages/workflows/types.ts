@@ -1,0 +1,107 @@
+export type WorkflowDefinition = {
+  id: string;
+  name: string;
+  triggerEventName: string;
+  version: number;
+  status: 'Draft' | 'Published' | 'Archived' | string;
+  definitionJson: string;
+  updatedAt: string;
+  updatedBy: string;
+};
+
+export type WorkflowExecution = {
+  id: string;
+  workflowDefinitionId: string;
+  triggerEventName: string;
+  correlationId: string;
+  status: 'Queued' | 'Running' | 'Completed' | 'Failed' | string;
+  error?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  requestedBy: string;
+};
+
+export type WorkflowStep = {
+  id: string;
+  activityType: string;
+  activityName: string;
+  status: string;
+  error?: string | null;
+  startedAt: string;
+  completedAt?: string | null;
+};
+
+export type WorkflowAuditEvent = {
+  id: string;
+  executionId: string;
+  workflowId: string;
+  actor: string;
+  correlationId: string;
+  occurredAt: string;
+  eventJson: string;
+};
+
+export type WorkflowRuntimeActivityMetric = {
+  activityType: string;
+  total: number;
+  succeeded: number;
+  avgLatencyMs: number;
+};
+
+export type WorkflowRuntimeMetrics = {
+  total: number;
+  successRate: number;
+  failureRate: number;
+  avgLatencyMs: number;
+  activityMetrics: WorkflowRuntimeActivityMetric[];
+};
+
+export type AiAgentNodeConfig = {
+  model: string;
+  instructions: string;
+  tools: string[];
+  context: string;
+  knowledge: string[];
+  fallbackModel?: string;
+  maxLatencyMs?: number;
+  maxCostUsd?: number;
+  dlpEnabled?: boolean;
+  temperature: number;
+  maxTokens: number;
+};
+
+export type WorkflowActivityNode = {
+  id: string;
+  type: string;
+  name?: string;
+  next?: string;
+  onSuccess?: string;
+  onFailure?: string;
+  timeoutMs?: number;
+  retryCount?: number;
+  retryDelayMs?: number;
+  config?: Record<string, string>;
+  aiAgent?: AiAgentNodeConfig;
+};
+
+export type WorkflowActivityCatalogEntry = {
+  typeName: string;
+  displayName: string;
+  inputSchema?: Record<string, string>;
+};
+
+export type ModelOption = {
+  modelId: string;
+  displayName?: string;
+};
+
+export type ToolOption = {
+  key: string;
+  displayName?: string;
+};
+
+export type SchemaFieldRule = {
+  key: string;
+  required: boolean;
+  defaultValue?: string;
+};

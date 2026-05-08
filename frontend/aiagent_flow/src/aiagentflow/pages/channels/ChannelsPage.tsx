@@ -23,7 +23,7 @@ import DialogActions from '@mui/material/DialogActions';
 import DialogContent from '@mui/material/DialogContent';
 import CircularProgress from '@mui/material/CircularProgress';
 
-import axios from 'src/lib/axios';
+import axios, { endpoints } from 'src/lib/axios';
 import { CONFIG } from 'src/global-config';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
@@ -83,6 +83,10 @@ export default function ChannelsPage() {
   const [sessionMessages, setSessionMessages] = useState<SessionMessageEvidence[]>([]);
   const [sessionLoading, setSessionLoading] = useState(false);
   const [candidateAgents, setCandidateAgents] = useState<{ id: string; name: string }[]>([]);
+  const [openRouting, setOpenRouting] = useState(false);
+  const [routingChannel, setRoutingChannel] = useState<Channel | null>(null);
+  const [routingForm, setRoutingForm] = useState({ defaultAgentId: '', routingAgentsCsv: '', routingCapacitiesCsv: '' });
+  const [routingPreview, setRoutingPreview] = useState<{ suggestedAgentId?: string; activeLoadByAgent?: Record<string, number> } | null>(null);
 
   const [form, setForm] = useState({
     name: '',
@@ -91,6 +95,8 @@ export default function ChannelsPage() {
     apiToken: '',
     phoneNumberId: '',
     defaultAgentId: '',
+    routingAgentsCsv: '',
+    routingCapacitiesCsv: '',
   });
 
   const channelTypes = [
@@ -106,7 +112,7 @@ export default function ChannelsPage() {
       setLoading(true);
       setError(null);
       const [channelsRes, sessionsRes, agentsRes] = await Promise.all([
-        axios.get(`/api/v1/tenants/${TENANT_ID}/channels`),
+        axios.get(endpoints.agentflow.channels.list(TENANT_ID)),
         axios.get(`/api/v1/tenants/${TENANT_ID}/channel-sessions?limit=50`),
         axios.get(`/api/v1/tenants/${TENANT_ID}/agents`),
       ]);
@@ -136,6 +142,7 @@ export default function ChannelsPage() {
       const config: Record<string, string> = {
         AuthMode: form.authMode,
         DefaultAgentId: form.defaultAgentId || 'default-agent',
+        RoutingAgents: form.routingAgentsCsv || '',
       };
 
       if (form.authMode === 'business') {
@@ -143,19 +150,80 @@ export default function ChannelsPage() {
         config.PhoneNumberId = form.phoneNumberId;
       }
 
-      await axios.post(`/api/v1/tenants/${TENANT_ID}/channels`, {
+      await axios.post(endpoints.agentflow.channels.create(TENANT_ID), {
         name: form.name.trim(),
         type: form.type,
         config,
       });
 
       setOpenCreate(false);
-      setForm({ name: '', type: 'WhatsApp', authMode: 'qr', apiToken: '', phoneNumberId: '', defaultAgentId: '' });
+      setForm({ name: '', type: 'WhatsApp', authMode: 'qr', apiToken: '', phoneNumberId: '', defaultAgentId: '', routingAgentsCsv: '', routingCapacitiesCsv: '' });
       await fetchAll();
     } catch (err: any) {
       alert(err?.message || 'Failed to create channel');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const openRoutingDialog = async (channel: Channel) => {
+    try {
+      const res = await axios.get(endpoints.agentflow.channels.routingGet(TENANT_ID, channel.id));
+      const routingAgents = (res.data?.routingAgents ?? []) as string[];
+      setRoutingChannel(channel);
+      setRoutingForm({
+        defaultAgentId: res.data?.defaultAgentId || channel.config?.DefaultAgentId || '',
+        routingAgentsCsv: routingAgents.join(','),
+        routingCapacitiesCsv: Object.entries(res.data?.routingCapacities || {}).map(([agentId, cap]) => `${agentId}:${cap}`).join(','),
+      });
+      setRoutingPreview(null);
+      setOpenRouting(true);
+    } catch (err: any) {
+      alert(err?.message || 'Failed to load channel routing');
+    }
+  };
+
+  const saveRouting = async () => {
+    if (!routingChannel) return;
+    try {
+      setSaving(true);
+      await axios.post(endpoints.agentflow.channels.routingUpdate(TENANT_ID, routingChannel.id), {
+        defaultAgentId: routingForm.defaultAgentId,
+        routingAgents: routingForm.routingAgentsCsv
+          .split(',')
+          .map((x) => x.trim())
+          .filter(Boolean),
+        routingCapacities: routingForm.routingCapacitiesCsv
+          .split(',')
+          .map((entry) => entry.trim())
+          .filter(Boolean)
+          .reduce<Record<string, number>>((acc, entry) => {
+            const [agentId, capRaw] = entry.split(':').map((x) => x.trim());
+            const cap = Number(capRaw);
+            if (agentId && Number.isFinite(cap) && cap > 0) acc[agentId] = cap;
+            return acc;
+          }, {}),
+      });
+      setOpenRouting(false);
+      setRoutingChannel(null);
+      await fetchAll();
+    } catch (err: any) {
+      alert(err?.message || 'Failed to update routing');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const runRoutingPreview = async () => {
+    if (!routingChannel) return;
+    try {
+      const res = await axios.get(endpoints.agentflow.channels.routingPreview(TENANT_ID, routingChannel.id));
+      setRoutingPreview({
+        suggestedAgentId: res.data?.suggestedAgentId,
+        activeLoadByAgent: res.data?.activeLoadByAgent || {},
+      });
+    } catch (err: any) {
+      alert(err?.message || 'Failed to run routing preview');
     }
   };
 
@@ -349,6 +417,9 @@ export default function ChannelsPage() {
                             <IconButton size="small" onClick={() => handleCheckHealth(c)}>
                               <Iconify icon="mdi:heart-pulse" />
                             </IconButton>
+                            <IconButton size="small" onClick={() => openRoutingDialog(c)}>
+                              <Iconify icon="solar:settings-bold" />
+                            </IconButton>
                             <IconButton size="small" color="error" onClick={() => handleDelete(c.id)}>
                               <Iconify icon="mingcute:delete-line" />
                             </IconButton>
@@ -470,12 +541,73 @@ export default function ChannelsPage() {
                 </MenuItem>
               ))}
             </TextField>
+            <TextField
+              label="Routing Agents (comma separated IDs)"
+              value={form.routingAgentsCsv}
+              onChange={(e) => setForm((p) => ({ ...p, routingAgentsCsv: e.target.value }))}
+              fullWidth
+              helperText="Used for round-robin by current load. Example: sales-agent,support-agent"
+            />
+            <TextField
+              label="Routing Capacities (agentId:max, CSV)"
+              value={form.routingCapacitiesCsv}
+              onChange={(e) => setForm((p) => ({ ...p, routingCapacitiesCsv: e.target.value }))}
+              fullWidth
+              helperText="Optional per-agent max active sessions. Example: sales-agent:20,support-agent:15"
+            />
           </Stack>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenCreate(false)}>Cancel</Button>
           <Button variant="contained" onClick={handleCreate} disabled={saving || !form.name}>
             {saving ? 'Creating...' : 'Create'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={openRouting} onClose={() => setOpenRouting(false)} fullWidth maxWidth="sm">
+        <DialogTitle>Routing Rules - {routingChannel?.name}</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ pt: 1 }}>
+            <TextField
+              select
+              label="Default Agent"
+              value={routingForm.defaultAgentId}
+              onChange={(e) => setRoutingForm((prev) => ({ ...prev, defaultAgentId: e.target.value }))}
+              fullWidth
+            >
+              {candidateAgents.map((agent) => (
+                <MenuItem key={agent.id} value={agent.id}>
+                  {agent.name} ({agent.id})
+                </MenuItem>
+              ))}
+            </TextField>
+            <TextField
+              label="Routing Agents (comma separated IDs)"
+              value={routingForm.routingAgentsCsv}
+              onChange={(e) => setRoutingForm((prev) => ({ ...prev, routingAgentsCsv: e.target.value }))}
+              fullWidth
+              helperText="These agents are used for automatic assignment by lower active load."
+            />
+            <TextField
+              label="Routing Capacities (agentId:max, CSV)"
+              value={routingForm.routingCapacitiesCsv}
+              onChange={(e) => setRoutingForm((prev) => ({ ...prev, routingCapacitiesCsv: e.target.value }))}
+              fullWidth
+              helperText="Capacity limits per agent. Example: a1:20,a2:15"
+            />
+            {routingPreview && (
+              <Alert severity="info">
+                Suggested: {routingPreview.suggestedAgentId || 'N/A'} | Load: {Object.entries(routingPreview.activeLoadByAgent || {}).map(([a, l]) => `${a}=${l}`).join(', ') || 'N/A'}
+              </Alert>
+            )}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={runRoutingPreview}>Preview Next Assignment</Button>
+          <Button onClick={() => setOpenRouting(false)}>Cancel</Button>
+          <Button variant="contained" onClick={saveRouting} disabled={saving}>
+            Save Routing
           </Button>
         </DialogActions>
       </Dialog>

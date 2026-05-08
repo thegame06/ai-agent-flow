@@ -10,13 +10,18 @@ export interface Thread {
   agentId: string;
   agentName?: string;
   userId?: string;
-  status: 'Active' | 'Archived' | 'Expired' | 'Completed';
+  status: 'Active' | 'Paused' | 'Archived' | 'Expired' | 'MaxTurnsReached';
   turnCount: number;
   maxTurns: number;
   createdAt: string;
   expiresAt?: string;
   lastActivityAt?: string;
   metadata?: Record<string, any>;
+  assignedTo?: string;
+  channel?: string;
+  tags?: string[];
+  slaDueAt?: string;
+  internalNote?: string;
 }
 
 export interface ThreadMessage {
@@ -32,9 +37,21 @@ export interface ThreadsState {
   threads: Thread[];
   currentThread: Thread | null;
   messages: ThreadMessage[];
+  metrics: InboxMetrics | null;
   loading: boolean;
   error: string | null;
   total: number;
+}
+
+export interface InboxMetrics {
+  totalThreads: number;
+  avgFirstResponseMinutes: number;
+  resolutionRatePercent: number;
+  slaBreaches: number;
+  threadsPerAgent: number;
+  threadsByAssignee: Record<string, number>;
+  backlogByChannel: Record<string, number>;
+  backlogByStatus: Record<string, number>;
 }
 
 // ----------------------------------------------------------------------
@@ -43,6 +60,7 @@ const initialState: ThreadsState = {
   threads: [],
   currentThread: null,
   messages: [],
+  metrics: null,
   loading: false,
   error: null,
   total: 0,
@@ -63,7 +81,23 @@ const normalizeThread = (raw: any): Thread => ({
   expiresAt: raw.expiresAt,
   lastActivityAt: raw.lastActivityAt,
   metadata: raw.metadata,
+  assignedTo: raw.metadata?.assignedTo,
+  channel: raw.metadata?.channel,
+  tags: raw.metadata?.tags ? String(raw.metadata.tags).split(',').filter(Boolean) : [],
+  slaDueAt: raw.metadata?.slaDueAt,
+  internalNote: raw.metadata?.internalNote,
 });
+
+export interface UpdateThreadInboxPayload {
+  tenantId: string;
+  threadId: string;
+  assignedTo?: string;
+  status?: string;
+  tags?: string[];
+  slaDueAt?: string;
+  internalNote?: string;
+  channel?: string;
+}
 
 export const fetchThreads = createAsyncThunk(
   'threads/fetchThreads',
@@ -161,6 +195,26 @@ export const deleteThread = createAsyncThunk(
   }
 );
 
+export const fetchThreadMetrics = createAsyncThunk(
+  'threads/fetchThreadMetrics',
+  async ({ tenantId, agentId }: { tenantId: string; agentId?: string }) => {
+    const params = new URLSearchParams();
+    if (agentId) params.append('agentId', agentId);
+    const query = params.toString();
+    const response = await axios.get(`${endpoints.agentflow.threads.metrics(tenantId)}${query ? `?${query}` : ''}`);
+    return response.data as InboxMetrics;
+  }
+);
+
+export const updateThreadInbox = createAsyncThunk(
+  'threads/updateThreadInbox',
+  async (payload: UpdateThreadInboxPayload) => {
+    const { tenantId, threadId, ...body } = payload;
+    const response = await axios.post(endpoints.agentflow.threads.updateInbox(tenantId, threadId), body);
+    return normalizeThread(response.data);
+  }
+);
+
 // ----------------------------------------------------------------------
 
 const slice = createSlice({
@@ -217,6 +271,19 @@ const slice = createSlice({
         state.loading = false;
         state.error = action.error.message || 'Failed to fetch thread history';
       })
+      // Fetch metrics
+      .addCase(fetchThreadMetrics.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(fetchThreadMetrics.fulfilled, (state, action) => {
+        state.loading = false;
+        state.metrics = action.payload;
+      })
+      .addCase(fetchThreadMetrics.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.error.message || 'Failed to fetch thread metrics';
+      })
       // Send message
       .addCase(sendMessage.pending, (state) => {
         state.loading = true;
@@ -243,6 +310,16 @@ const slice = createSlice({
         if (state.currentThread?.id === action.payload) {
           state.currentThread = null;
           state.messages = [];
+        }
+      })
+      // Update inbox metadata
+      .addCase(updateThreadInbox.fulfilled, (state, action) => {
+        const idx = state.threads.findIndex((t) => t.id === action.payload.id);
+        if (idx >= 0) {
+          state.threads[idx] = action.payload;
+        }
+        if (state.currentThread?.id === action.payload.id) {
+          state.currentThread = action.payload;
         }
       });
   },

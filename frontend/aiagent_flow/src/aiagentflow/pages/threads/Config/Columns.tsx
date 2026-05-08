@@ -7,11 +7,12 @@ import { Iconify } from 'src/components/iconify';
 // ----------------------------------------------------------------------
 
 export const getStatusChip = (status: string) => {
-  const colorMap: Record<string, 'success' | 'warning' | 'error' | 'default'> = {
+  const colorMap: Record<string, 'success' | 'warning' | 'error' | 'default' | 'info'> = {
     Active: 'success',
+    Paused: 'info',
     Archived: 'warning',
     Expired: 'error',
-    Completed: 'default',
+    MaxTurnsReached: 'default',
   };
 
   return (
@@ -46,6 +47,43 @@ export const threadsColumns: GridColDef[] = [
     renderCell: (params) => getStatusChip(params.value),
   },
   {
+    field: 'assignedTo',
+    headerName: 'Assigned',
+    width: 140,
+    valueFormatter: (value) => value || 'Unassigned',
+  },
+  {
+    field: 'channel',
+    headerName: 'Channel',
+    width: 120,
+    valueFormatter: (value) => value || 'N/A',
+  },
+  {
+    field: 'tags',
+    headerName: 'Tags',
+    width: 180,
+    renderCell: (params) => (Array.isArray(params.value) && params.value.length > 0 ? params.value.join(', ') : 'N/A'),
+  },
+  {
+    field: 'slaDueAt',
+    headerName: 'SLA',
+    width: 170,
+    renderCell: (params) => {
+      const value = params.value as string | undefined;
+      if (!value) return 'N/A';
+      const dueAt = new Date(value).getTime();
+      const isOverdue = Number.isFinite(dueAt) && dueAt < Date.now();
+      return (
+        <Chip
+          size="small"
+          label={new Date(value).toLocaleString()}
+          color={isOverdue ? 'error' : 'default'}
+          variant={isOverdue ? 'filled' : 'outlined'}
+        />
+      );
+    },
+  },
+  {
     field: 'turnCount',
     headerName: 'Turns',
     width: 80,
@@ -69,7 +107,7 @@ export const threadsColumns: GridColDef[] = [
   {
     field: 'actions',
     headerName: 'Actions',
-    width: 120,
+    width: 160,
     sortable: false,
     renderCell: (params) => (
       <Stack direction="row" spacing={1}>
@@ -80,6 +118,14 @@ export const threadsColumns: GridColDef[] = [
           title="Open Chat"
         >
           <Iconify icon="solar:chat-round-line-duotone" />
+        </IconButton>
+        <IconButton
+          size="small"
+          color="info"
+          onClick={() => params.row.onEditInbox?.(params.row.id)}
+          title="Edit Inbox"
+        >
+          <Iconify icon="solar:settings-linear" />
         </IconButton>
         {params.row.status === 'Active' && (
           <IconButton

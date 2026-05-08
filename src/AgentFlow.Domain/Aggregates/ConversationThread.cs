@@ -167,6 +167,63 @@ public sealed class ConversationThread : AggregateRoot
         
         return Result.Success();
     }
+
+    /// <summary>
+    /// Merge or remove metadata keys for inbox operations.
+    /// </summary>
+    public Result UpdateMetadata(Dictionary<string, string?> changes, string updatedBy)
+    {
+        if (changes.Count == 0)
+            return Result.Success();
+
+        var current = Metadata.ToDictionary(kv => kv.Key, kv => kv.Value);
+
+        foreach (var change in changes)
+        {
+            if (string.IsNullOrWhiteSpace(change.Key))
+                continue;
+
+            if (string.IsNullOrWhiteSpace(change.Value))
+            {
+                current.Remove(change.Key);
+            }
+            else
+            {
+                current[change.Key] = change.Value;
+            }
+        }
+
+        Metadata = current;
+        MarkUpdated(updatedBy);
+        return Result.Success();
+    }
+
+    public Result SetStatus(ThreadStatus status, string updatedBy)
+    {
+        if (Status == status)
+            return Result.Success();
+
+        return status switch
+        {
+            ThreadStatus.Active => ResumeOrReactivate(updatedBy),
+            ThreadStatus.Paused => Pause(updatedBy),
+            ThreadStatus.Archived => Archive(updatedBy),
+            _ => Result.Failure(Error.Validation(nameof(Status), $"Status '{status}' is not allowed for manual inbox updates."))
+        };
+    }
+
+    private Result ResumeOrReactivate(string updatedBy)
+    {
+        if (Status == ThreadStatus.Paused)
+            return Resume(updatedBy);
+
+        if (Status == ThreadStatus.Archived || Status == ThreadStatus.Expired || Status == ThreadStatus.MaxTurnsReached)
+            return Result.Failure(Error.Validation(nameof(Status), $"Cannot move thread from '{Status}' to Active."));
+
+        Status = ThreadStatus.Active;
+        MarkUpdated(updatedBy);
+        return Result.Success();
+    }
     
     /// <summary>
     /// Get condensed chat history for LLM context window.

@@ -168,6 +168,12 @@ public sealed class WhatsAppChannelHandler : IChannelHandler, IChannelQrProvider
         if (existing != null && !existing.IsExpired())
         {
             existing.RecordMessage();
+            if (string.IsNullOrWhiteSpace(existing.AgentId))
+            {
+                var selectedAgent = await SelectAgentForSessionAsync(definition, ct);
+                if (!string.IsNullOrWhiteSpace(selectedAgent))
+                    existing.LinkAgent(selectedAgent);
+            }
             await _sessionRepo.UpdateAsync(existing, ct);
             return existing;
         }
@@ -181,9 +187,61 @@ public sealed class WhatsAppChannelHandler : IChannelHandler, IChannelQrProvider
 
         session.SetExpiration(TimeSpan.FromHours(24));
         session.Metadata.TryAdd("display_name", context.UserDisplayName ?? "Unknown");
+        var assignedAgent = await SelectAgentForSessionAsync(definition, ct);
+        if (!string.IsNullOrWhiteSpace(assignedAgent))
+            session.LinkAgent(assignedAgent);
 
         await _sessionRepo.InsertAsync(session, ct);
         return session;
+    }
+
+    private async Task<string?> SelectAgentForSessionAsync(ChannelDefinition definition, CancellationToken ct)
+    {
+        var routingAgentsRaw = definition.Config.GetValueOrDefault("RoutingAgents");
+        if (string.IsNullOrWhiteSpace(routingAgentsRaw))
+        {
+            return definition.Config.GetValueOrDefault("DefaultAgentId");
+        }
+
+        var candidates = routingAgentsRaw
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (candidates.Count == 0)
+            return definition.Config.GetValueOrDefault("DefaultAgentId");
+
+        var active = await _sessionRepo.GetActiveByChannelAsync(definition.Id, definition.TenantId, ct);
+        var loadByAgent = active
+            .Where(s => !string.IsNullOrWhiteSpace(s.AgentId))
+            .GroupBy(s => s.AgentId!, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
+        var capacities = ParseRoutingCapacities(definition.Config.GetValueOrDefault("RoutingCapacities"));
+        var withinCapacity = candidates
+            .Where(agentId => !capacities.TryGetValue(agentId, out var max) || (loadByAgent.TryGetValue(agentId, out var current) ? current : 0) < max)
+            .ToList();
+        var pool = withinCapacity.Count > 0 ? withinCapacity : candidates;
+
+        return pool
+            .OrderBy(a => loadByAgent.TryGetValue(a, out var count) ? count : 0)
+            .ThenBy(a => a, StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault();
+    }
+
+    private static Dictionary<string, int> ParseRoutingCapacities(string? raw)
+    {
+        var result = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(raw))
+            return result;
+        var entries = raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        foreach (var entry in entries)
+        {
+            var parts = entry.Split(':', StringSplitOptions.TrimEntries);
+            if (parts.Length == 2 && int.TryParse(parts[1], out var cap) && cap > 0 && !string.IsNullOrWhiteSpace(parts[0]))
+                result[parts[0]] = cap;
+        }
+        return result;
     }
 
     public async Task<string?> GetQrCodeAsync(CancellationToken ct = default)
