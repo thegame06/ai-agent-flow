@@ -145,10 +145,12 @@ export const endpoints = {
       documentCheck: (tenantId: string) => `/api/v1/tenants/${tenantId}/kyc/document-check`,
       review: (tenantId: string, caseId: string) => `/api/v1/tenants/${tenantId}/kyc/review/${caseId}`,
       caseById: (tenantId: string, caseId: string) => `/api/v1/tenants/${tenantId}/kyc/cases/${caseId}`,
+      listCases: (tenantId: string) => `/api/v1/tenants/${tenantId}/kyc/cases`,
     },
     transactions: {
       createPayment: (tenantId: string) => `/api/v1/tenants/${tenantId}/transactions/payments`,
       confirmPayment: (tenantId: string, paymentId: string) => `/api/v1/tenants/${tenantId}/transactions/payments/${paymentId}/confirm`,
+      listPayments: (tenantId: string) => `/api/v1/tenants/${tenantId}/transactions/payments`,
     },
     // Segment Routing
     segmentRouting: {

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Helmet } from 'react-helmet-async';
 
 import Box from '@mui/material/Box';
@@ -10,6 +10,11 @@ import Button from '@mui/material/Button';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import CardContent from '@mui/material/CardContent';
+import Table from '@mui/material/Table';
+import TableRow from '@mui/material/TableRow';
+import TableBody from '@mui/material/TableBody';
+import TableCell from '@mui/material/TableCell';
+import TableHead from '@mui/material/TableHead';
 
 import axios, { endpoints } from 'src/lib/axios';
 import { CONFIG } from 'src/global-config';
@@ -37,6 +42,12 @@ export default function KycPaymentsPage() {
   const [error, setError] = useState<string | null>(null);
   const [kycCase, setKycCase] = useState<KycCase | null>(null);
   const [payment, setPayment] = useState<PaymentIntent | null>(null);
+  const [cases, setCases] = useState<KycCase[]>([]);
+  const [payments, setPayments] = useState<PaymentIntent[]>([]);
+  const [caseStatusFilter, setCaseStatusFilter] = useState('');
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState('');
+  const [casePage, setCasePage] = useState(1);
+  const [paymentPage, setPaymentPage] = useState(1);
 
   const [kycForm, setKycForm] = useState({
     customerId: '',
@@ -60,6 +71,23 @@ export default function KycPaymentsPage() {
     reference: '',
   });
 
+  const loadHistory = async () => {
+    try {
+      const [casesRes, paymentsRes] = await Promise.all([
+        axios.get(`${endpoints.agentflow.kyc.listCases(tenantId)}?page=${casePage}&pageSize=10${caseStatusFilter ? `&status=${encodeURIComponent(caseStatusFilter)}` : ''}`),
+        axios.get(`${endpoints.agentflow.transactions.listPayments(tenantId)}?page=${paymentPage}&pageSize=10${paymentStatusFilter ? `&status=${encodeURIComponent(paymentStatusFilter)}` : ''}`),
+      ]);
+      setCases(casesRes.data?.items ?? []);
+      setPayments(paymentsRes.data?.items ?? []);
+    } catch {
+      // keep current state
+    }
+  };
+
+  useEffect(() => {
+    loadHistory();
+  }, [casePage, paymentPage, caseStatusFilter, paymentStatusFilter]);
+
   const runDocumentCheck = async () => {
     try {
       setError(null);
@@ -75,6 +103,7 @@ export default function KycPaymentsPage() {
       });
       setKycCase(res.data);
       setReviewForm((prev) => ({ ...prev, caseId: res.data.caseId }));
+      await loadHistory();
     } catch (err: any) {
       setError(err?.message || 'Failed to run document check');
     }
@@ -89,6 +118,7 @@ export default function KycPaymentsPage() {
         reviewerId: reviewForm.reviewerId,
       });
       setKycCase(res.data);
+      await loadHistory();
     } catch (err: any) {
       setError(err?.message || 'Failed to submit review');
     }
@@ -104,6 +134,7 @@ export default function KycPaymentsPage() {
         reference: paymentForm.reference || undefined,
       });
       setPayment(res.data);
+      await loadHistory();
     } catch (err: any) {
       setError(err?.message || 'Failed to create payment');
     }
@@ -115,6 +146,7 @@ export default function KycPaymentsPage() {
       setError(null);
       const res = await axios.post(endpoints.agentflow.transactions.confirmPayment(tenantId, payment.paymentId));
       setPayment(res.data);
+      await loadHistory();
     } catch (err: any) {
       setError(err?.message || 'Failed to confirm payment');
     }
@@ -196,6 +228,72 @@ export default function KycPaymentsPage() {
                   <Typography variant="subtitle2" sx={{ mt: 1 }}>Payment</Typography>
                   <pre style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{JSON.stringify(payment, null, 2)}</pre>
                 </Stack>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid item xs={12}>
+            <Card>
+              <CardContent>
+                <Typography variant="h6" sx={{ mb: 1 }}>KYC Cases History</Typography>
+                <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
+                  <TextField size="small" label="Status filter" value={caseStatusFilter} onChange={(e) => { setCaseStatusFilter(e.target.value); setCasePage(1); }} />
+                  <Button size="small" variant="outlined" onClick={() => setCasePage((p) => Math.max(1, p - 1))}>Prev</Button>
+                  <Button size="small" variant="outlined" onClick={() => setCasePage((p) => p + 1)}>Next</Button>
+                </Stack>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Case ID</TableCell>
+                      <TableCell>Status</TableCell>
+                      <TableCell>Risk</TableCell>
+                      <TableCell>Review Required</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {cases.map((item) => (
+                      <TableRow key={item.caseId}>
+                        <TableCell>{item.caseId}</TableCell>
+                        <TableCell>{item.decisionStatus}</TableCell>
+                        <TableCell>{item.riskScore}</TableCell>
+                        <TableCell>{item.reviewRequired ? 'Yes' : 'No'}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid item xs={12}>
+            <Card>
+              <CardContent>
+                <Typography variant="h6" sx={{ mb: 1 }}>Payments History</Typography>
+                <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
+                  <TextField size="small" label="Status filter" value={paymentStatusFilter} onChange={(e) => { setPaymentStatusFilter(e.target.value); setPaymentPage(1); }} />
+                  <Button size="small" variant="outlined" onClick={() => setPaymentPage((p) => Math.max(1, p - 1))}>Prev</Button>
+                  <Button size="small" variant="outlined" onClick={() => setPaymentPage((p) => p + 1)}>Next</Button>
+                </Stack>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Payment ID</TableCell>
+                      <TableCell>Status</TableCell>
+                      <TableCell>Amount</TableCell>
+                      <TableCell>Currency</TableCell>
+                      <TableCell>Reference</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {payments.map((item) => (
+                      <TableRow key={item.paymentId}>
+                        <TableCell>{item.paymentId}</TableCell>
+                        <TableCell>{item.status}</TableCell>
+                        <TableCell>{item.amount}</TableCell>
+                        <TableCell>{item.currency}</TableCell>
+                        <TableCell>{item.reference || '-'}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
               </CardContent>
             </Card>
           </Grid>

@@ -1,5 +1,5 @@
-using System.Collections.Concurrent;
 using Microsoft.AspNetCore.Mvc;
+using MongoDB.Driver;
 
 namespace AgentFlow.Api.Controllers;
 
@@ -7,8 +7,23 @@ namespace AgentFlow.Api.Controllers;
 [Route("api/v1/tenants/{tenantId}")]
 public sealed class KycTransactionsController : ControllerBase
 {
-    private static readonly ConcurrentDictionary<string, KycCaseDto> KycCases = new(StringComparer.OrdinalIgnoreCase);
-    private static readonly ConcurrentDictionary<string, PaymentIntentDto> Payments = new(StringComparer.OrdinalIgnoreCase);
+    private readonly IMongoCollection<KycCaseDto> _kycCases;
+    private readonly IMongoCollection<PaymentIntentDto> _payments;
+
+    public KycTransactionsController(IMongoDatabase database)
+    {
+        _kycCases = database.GetCollection<KycCaseDto>("kyc_cases");
+        _payments = database.GetCollection<PaymentIntentDto>("payment_intents");
+
+        _kycCases.Indexes.CreateMany([
+            new CreateIndexModel<KycCaseDto>(Builders<KycCaseDto>.IndexKeys.Ascending(x => x.TenantId).Descending(x => x.UpdatedAt)),
+            new CreateIndexModel<KycCaseDto>(Builders<KycCaseDto>.IndexKeys.Ascending(x => x.TenantId).Ascending(x => x.DecisionStatus))
+        ]);
+        _payments.Indexes.CreateMany([
+            new CreateIndexModel<PaymentIntentDto>(Builders<PaymentIntentDto>.IndexKeys.Ascending(x => x.TenantId).Descending(x => x.UpdatedAt)),
+            new CreateIndexModel<PaymentIntentDto>(Builders<PaymentIntentDto>.IndexKeys.Ascending(x => x.TenantId).Ascending(x => x.Status))
+        ]);
+    }
 
     [HttpPost("kyc/document-check")]
     public IActionResult DocumentCheck([FromRoute] string tenantId, [FromBody] KycDocumentCheckRequest request)
@@ -33,14 +48,15 @@ public sealed class KycTransactionsController : ControllerBase
             UpdatedBy = "system"
         };
 
-        KycCases[caseId] = dto;
+        _kycCases.InsertOne(dto);
         return Ok(dto);
     }
 
     [HttpPost("kyc/review/{caseId}")]
     public IActionResult ReviewCase([FromRoute] string tenantId, [FromRoute] string caseId, [FromBody] KycReviewRequest request)
     {
-        if (!KycCases.TryGetValue(caseId, out var existing) || !string.Equals(existing.TenantId, tenantId, StringComparison.OrdinalIgnoreCase))
+        var existing = _kycCases.Find(x => x.CaseId == caseId && x.TenantId == tenantId).FirstOrDefault();
+        if (existing is null)
             return NotFound(new { message = "KYC case not found." });
 
         existing.DecisionStatus = request.Approved ? "approved" : "rejected";
@@ -48,17 +64,47 @@ public sealed class KycTransactionsController : ControllerBase
         existing.ReviewNotes = request.Notes;
         existing.UpdatedAt = DateTimeOffset.UtcNow;
         existing.UpdatedBy = request.ReviewerId ?? "reviewer";
-        KycCases[caseId] = existing;
+        _kycCases.ReplaceOne(x => x.CaseId == caseId && x.TenantId == tenantId, existing);
         return Ok(existing);
     }
 
     [HttpGet("kyc/cases/{caseId}")]
     public IActionResult GetCase([FromRoute] string tenantId, [FromRoute] string caseId)
     {
-        if (!KycCases.TryGetValue(caseId, out var existing) || !string.Equals(existing.TenantId, tenantId, StringComparison.OrdinalIgnoreCase))
+        var existing = _kycCases.Find(x => x.CaseId == caseId && x.TenantId == tenantId).FirstOrDefault();
+        if (existing is null)
             return NotFound(new { message = "KYC case not found." });
 
         return Ok(existing);
+    }
+
+    [HttpGet("kyc/cases")]
+    public IActionResult ListCases(
+        [FromRoute] string tenantId,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20,
+        [FromQuery] string? status = null,
+        [FromQuery] DateTimeOffset? from = null,
+        [FromQuery] DateTimeOffset? to = null)
+    {
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 200);
+        var filter = Builders<KycCaseDto>.Filter.Eq(x => x.TenantId, tenantId);
+        if (!string.IsNullOrWhiteSpace(status))
+            filter &= Builders<KycCaseDto>.Filter.Eq(x => x.DecisionStatus, status);
+        if (from.HasValue)
+            filter &= Builders<KycCaseDto>.Filter.Gte(x => x.UpdatedAt, from.Value);
+        if (to.HasValue)
+            filter &= Builders<KycCaseDto>.Filter.Lte(x => x.UpdatedAt, to.Value);
+
+        var total = _kycCases.CountDocuments(filter);
+        var items = _kycCases.Find(filter)
+            .SortByDescending(x => x.UpdatedAt)
+            .Skip((page - 1) * pageSize)
+            .Limit(pageSize)
+            .ToList();
+
+        return Ok(new { total, page, pageSize, items });
     }
 
     [HttpPost("transactions/payments")]
@@ -78,20 +124,50 @@ public sealed class KycTransactionsController : ControllerBase
             UpdatedAt = DateTimeOffset.UtcNow
         };
 
-        Payments[paymentId] = payment;
+        _payments.InsertOne(payment);
         return Ok(payment);
     }
 
     [HttpPost("transactions/payments/{paymentId}/confirm")]
     public IActionResult ConfirmPayment([FromRoute] string tenantId, [FromRoute] string paymentId)
     {
-        if (!Payments.TryGetValue(paymentId, out var existing) || !string.Equals(existing.TenantId, tenantId, StringComparison.OrdinalIgnoreCase))
+        var existing = _payments.Find(x => x.PaymentId == paymentId && x.TenantId == tenantId).FirstOrDefault();
+        if (existing is null)
             return NotFound(new { message = "Payment not found." });
 
         existing.Status = "confirmed";
         existing.UpdatedAt = DateTimeOffset.UtcNow;
-        Payments[paymentId] = existing;
+        _payments.ReplaceOne(x => x.PaymentId == paymentId && x.TenantId == tenantId, existing);
         return Ok(existing);
+    }
+
+    [HttpGet("transactions/payments")]
+    public IActionResult ListPayments(
+        [FromRoute] string tenantId,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20,
+        [FromQuery] string? status = null,
+        [FromQuery] DateTimeOffset? from = null,
+        [FromQuery] DateTimeOffset? to = null)
+    {
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 200);
+        var filter = Builders<PaymentIntentDto>.Filter.Eq(x => x.TenantId, tenantId);
+        if (!string.IsNullOrWhiteSpace(status))
+            filter &= Builders<PaymentIntentDto>.Filter.Eq(x => x.Status, status);
+        if (from.HasValue)
+            filter &= Builders<PaymentIntentDto>.Filter.Gte(x => x.UpdatedAt, from.Value);
+        if (to.HasValue)
+            filter &= Builders<PaymentIntentDto>.Filter.Lte(x => x.UpdatedAt, to.Value);
+
+        var total = _payments.CountDocuments(filter);
+        var items = _payments.Find(filter)
+            .SortByDescending(x => x.UpdatedAt)
+            .Skip((page - 1) * pageSize)
+            .Limit(pageSize)
+            .ToList();
+
+        return Ok(new { total, page, pageSize, items });
     }
 
     private static int CalculateSimpleScore(string? documentNumber, string? fullName)
