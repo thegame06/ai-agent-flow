@@ -100,6 +100,8 @@ public class ConversationThreadsControllerAuthTests
         var controller = new ConversationThreadsController(
             threadRepo,
             new StubAgentDefinitionRepository(),
+            new StubChannelSessionRepository(),
+            new StubChannelDefinitionRepository(),
             new StubAgentExecutor(),
             NullLogger<ConversationThreadsController>.Instance)
         {
@@ -202,5 +204,39 @@ public class ConversationThreadsControllerAuthTests
 
         public Task<bool> ExistsAsync(string id, string tenantId, CancellationToken ct = default)
             => Task.FromResult(false);
+    }
+
+    private sealed class StubChannelSessionRepository : IChannelSessionRepository
+    {
+        public Task<ChannelSession?> GetByIdAsync(string id, string tenantId, CancellationToken ct = default)
+            => Task.FromResult<ChannelSession?>(null);
+
+        public Task<ChannelSession?> GetByChannelAndIdentifierAsync(string channelId, string customerIdentifier, string tenantId, CancellationToken ct = default)
+            => Task.FromResult<ChannelSession?>(null);
+
+        public Task<IReadOnlyList<ChannelSession>> GetActiveByChannelAsync(string channelId, string tenantId, CancellationToken ct = default)
+            => Task.FromResult<IReadOnlyList<ChannelSession>>(Array.Empty<ChannelSession>());
+
+        public Task<IReadOnlyList<ChannelSession>> GetByAgentAsync(string agentId, string tenantId, CancellationToken ct = default)
+            => Task.FromResult<IReadOnlyList<ChannelSession>>(Array.Empty<ChannelSession>());
+
+        public Task InsertAsync(ChannelSession session, CancellationToken ct = default) => Task.CompletedTask;
+        public Task UpdateAsync(ChannelSession session, CancellationToken ct = default) => Task.CompletedTask;
+    }
+
+    private sealed class StubChannelDefinitionRepository : IChannelDefinitionRepository
+    {
+        public Task<ChannelDefinition?> GetByIdAsync(string id, string tenantId, CancellationToken ct = default)
+            => Task.FromResult<ChannelDefinition?>(null);
+
+        public Task<IReadOnlyList<ChannelDefinition>> GetByTypeAsync(ChannelType type, string tenantId, CancellationToken ct = default)
+            => Task.FromResult<IReadOnlyList<ChannelDefinition>>(Array.Empty<ChannelDefinition>());
+
+        public Task<IReadOnlyList<ChannelDefinition>> GetActiveChannelsAsync(string tenantId, CancellationToken ct = default)
+            => Task.FromResult<IReadOnlyList<ChannelDefinition>>(Array.Empty<ChannelDefinition>());
+
+        public Task InsertAsync(ChannelDefinition channel, CancellationToken ct = default) => Task.CompletedTask;
+        public Task UpdateAsync(ChannelDefinition channel, CancellationToken ct = default) => Task.CompletedTask;
+        public Task DeleteAsync(string id, string tenantId, CancellationToken ct = default) => Task.CompletedTask;
     }
 }
