@@ -53,10 +53,9 @@ type Props = {
   availableModels: ModelOption[];
   availableTools: ToolOption[];
   integrations: WorkflowIntegrationStatus[];
-  onAddActivity: () => void;
+  onAddActivity: (activityType?: string, patch?: Partial<WorkflowActivityNode>) => void;
   onUpdateActivity: (index: number, patch: Partial<WorkflowActivityNode>) => void;
   onRemoveActivity: (index: number) => void;
-  onApplyTypePreset: (index: number, activityType: string) => void;
   onOpenAiConfig: (index: number) => void;
   onUpdateAiAgentConfig: (index: number, patch: Partial<typeof DEFAULT_AI_AGENT_CONFIG>) => void;
   onAddActivityConfig: (index: number) => void;
@@ -376,7 +375,6 @@ export function WorkflowVisualDesigner({
   onAddActivity,
   onUpdateActivity,
   onRemoveActivity,
-  onApplyTypePreset,
   onOpenAiConfig,
   onUpdateAiAgentConfig,
   onAddActivityConfig,
@@ -395,16 +393,16 @@ export function WorkflowVisualDesigner({
   const duplicateNodeAt = useCallback((index: number) => {
     const source = activities[index];
     if (!source) return;
-    onAddActivity();
     const nextIndex = activities.length;
     const newId = `${source.id || 'step'}_copy_${Date.now()}`;
-    onUpdateActivity(nextIndex, {
+    onAddActivity(source.type, {
       ...source,
       id: newId,
       name: source.name ? `${source.name} (copy)` : undefined,
       position: source.position ? { x: source.position.x + 40, y: source.position.y + 40 } : undefined,
     });
-  }, [activities, onAddActivity, onUpdateActivity]);
+    setSelectedIndex(nextIndex);
+  }, [activities, onAddActivity]);
 
   const deleteNodeAt = useCallback((index: number) => {
     const target = activities[index];
@@ -485,20 +483,20 @@ export function WorkflowVisualDesigner({
   };
 
   const addByType = (type: string) => {
-    onAddActivity();
     const index = activities.length;
-    onUpdateActivity(index, {
+    onAddActivity(type, {
       id: `step-${Date.now()}`,
-      type,
+      name: activityTypeLabel(type),
       aiAgent: type === 'ai.agent' ? { ...DEFAULT_AI_AGENT_CONFIG } : undefined,
     });
-    onApplyTypePreset(index, type);
+    setSelectedIndex(index);
+    setInspectorSection(type === 'ai.agent' ? 'ia' : 'general');
   };
 
   return (
     <Card variant="outlined" sx={{ p: 1.5, borderRadius: 2 }}>
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
-        <Typography variant="subtitle1">Workflow Canvas</Typography>
+        <Typography variant="subtitle1">Brain Studio</Typography>
         <Stack direction="row" spacing={1}>
           <Button size="small" variant="outlined" onClick={() => setShowValidation(true)}>Validaciones</Button>
           <Tooltip title="Auto layout por grafo">
@@ -507,7 +505,7 @@ export function WorkflowVisualDesigner({
           <Tooltip title="Auto layout en grilla">
             <IconButton size="small" onClick={applyAutoLayoutGrid}><Iconify icon="mdi:grid" /></IconButton>
           </Tooltip>
-          <Button size="small" onClick={onAddActivity} startIcon={<Iconify icon="mingcute:add-line" />}>Agregar nodo</Button>
+          <Button size="small" onClick={() => onAddActivity()} startIcon={<Iconify icon="mingcute:add-line" />}>Nodo basico</Button>
         </Stack>
       </Stack>
 
@@ -591,7 +589,15 @@ export function WorkflowVisualDesigner({
       >
         {selected && selectedIndex !== null && (
           <Stack spacing={1}>
-            <Typography variant="subtitle1">Node Config</Typography>
+            <Stack direction="row" justifyContent="space-between" alignItems="center">
+              <Box>
+                <Typography variant="subtitle1">{selected.name || activityTypeLabel(selected.type)}</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Configura solo lo esencial. Lo tecnico esta en Runtime y Debug.
+                </Typography>
+              </Box>
+              <Chip size="small" label={activityTypeLabel(selected.type)} />
+            </Stack>
             <Divider />
             <Accordion expanded={inspectorSection === 'general'} onChange={(_, e) => setInspectorSection(e ? 'general' : '')}>
               <AccordionSummary expandIcon={<Iconify icon="mdi:chevron-down" />}>
@@ -600,13 +606,13 @@ export function WorkflowVisualDesigner({
               <AccordionDetails>
                 <Stack spacing={1}>
                   <TextField
-                    label="ID"
+                    label="ID interno"
                     value={selected.id}
                     onChange={(e) => onUpdateActivity(selectedIndex, { id: e.target.value })}
                     size="small"
                   />
                   <TextField
-                    label="Tipo"
+                    label="Tipo de nodo"
                     select
                     value={selected.type}
                     onChange={(e) => onUpdateActivity(selectedIndex, { type: e.target.value })}
@@ -625,7 +631,7 @@ export function WorkflowVisualDesigner({
                     size="small"
                   />
                   <TextField
-                    label="Siguiente"
+                    label="Siguiente nodo"
                     value={selected.next ?? ''}
                     onChange={(e) => onUpdateActivity(selectedIndex, { next: e.target.value || undefined })}
                     size="small"
@@ -719,7 +725,7 @@ export function WorkflowVisualDesigner({
             {selected.type === 'ai.agent' && (
               <Accordion expanded={inspectorSection === 'ia'} onChange={(_, e) => setInspectorSection(e ? 'ia' : '')}>
                 <AccordionSummary expandIcon={<Iconify icon="mdi:chevron-down" />}>
-                  <Typography variant="subtitle2">IA</Typography>
+                  <Typography variant="subtitle2">Agente de IA</Typography>
                 </AccordionSummary>
                 <AccordionDetails>
 
@@ -727,13 +733,13 @@ export function WorkflowVisualDesigner({
                 <Tabs value={aiTab} onChange={(_, v) => setAiTab(v)}>
                   <Tab label="General" />
                   <Tab label="Herramientas" />
-                  <Tab label="Knowledge" />
+                  <Tab label="Contexto" />
                   <Tab label="Avanzado" />
                 </Tabs>
                 {aiTab === 0 && (
                   <Stack spacing={1}>
                     <TextField
-                      label="Model"
+                      label="Modelo"
                       select
                       value={selected.aiAgent?.model ?? DEFAULT_AI_AGENT_CONFIG.model}
                       onChange={(e) => onUpdateAiAgentConfig(selectedIndex, { model: e.target.value })}
@@ -749,7 +755,7 @@ export function WorkflowVisualDesigner({
                       ))}
                     </TextField>
                     <TextField
-                      label="Instructions"
+                      label="Instruccion"
                       multiline
                       minRows={4}
                       value={selected.aiAgent?.instructions ?? ''}

@@ -2,7 +2,7 @@ import type { PayloadAction } from '@reduxjs/toolkit';
 
 import { createSlice } from '@reduxjs/toolkit';
 
-import { DEFAULT_DEFINITION, ACTIVITY_TYPE_PRESETS } from '../constants';
+import { DEFAULT_DEFINITION } from '../constants';
 
 import type { WorkflowEditorDraft, WorkflowEditorState } from './types';
 import type { WorkflowDefinition, WorkflowActivityNode } from '../types';
@@ -86,16 +86,8 @@ const workflowEditorSlice = createSlice({
       state.activities = parseActivitiesFromJson(DEFAULT_DEFINITION);
       state.isDirty = true;
     },
-    addActivity(state, action: PayloadAction<{ defaultType: string }>) {
-      const { defaultType } = action.payload;
-      state.activities.push({
-        id: `step_${state.activities.length + 1}`,
-        type: defaultType,
-        timeoutMs: 30000,
-        retryCount: 0,
-        retryDelayMs: 0,
-        config: { ...(ACTIVITY_TYPE_PRESETS[defaultType] ?? {}) },
-      });
+    addActivity(state, action: PayloadAction<WorkflowActivityNode>) {
+      state.activities.push(action.payload);
       state.draft.definitionJson = syncDefinitionJsonFromActivities(
         state.draft.definitionJson,
         state.activities

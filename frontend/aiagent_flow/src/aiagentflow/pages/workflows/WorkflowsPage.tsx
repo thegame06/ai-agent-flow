@@ -78,7 +78,6 @@ export default function WorkflowsPage() {
     addActivity,
     updateActivity,
     removeActivity,
-    applyTypePreset,
     addActivityConfig,
     updateActivityConfig,
     removeActivityConfig,
@@ -122,9 +121,9 @@ export default function WorkflowsPage() {
       <DashboardContent maxWidth="xl">
         <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Box>
-            <Typography variant="h4">Studio de Workflows</Typography>
+            <Typography variant="h4">Brain Studio</Typography>
             <Typography variant="body2" sx={{ color: 'text.secondary', mt: 0.5 }}>
-              Disena, publica y ejecuta automatizaciones conectadas a tus canales.
+              Construye flujos conversacionales con agentes, integraciones y acciones operativas.
             </Typography>
           </Box>
           <Stack direction="row" spacing={1}>
@@ -146,9 +145,9 @@ export default function WorkflowsPage() {
         <Grid container spacing={3}>
           <Grid item xs={12}>
             <Card sx={{ p: 2 }}>
-              <Typography variant="h6" sx={{ mb: 1 }}>Plantillas rapidas de Workflow</Typography>
+              <Typography variant="h6" sx={{ mb: 1 }}>Punto de partida</Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Crea flujos listos para editar para Inbox, KYC y Pagos.
+                Selecciona una plantilla y ajusta el flujo en el canvas.
               </Typography>
               <Stack direction="row" spacing={1} flexWrap="wrap">
                 {quickstarts.map((tpl) => (
@@ -182,7 +181,7 @@ export default function WorkflowsPage() {
           <Grid item xs={12} md={8}>
             <Card sx={{ p: 2 }}>
               <Typography variant="h6" sx={{ mb: 2 }}>
-                Editor
+                Constructor
               </Typography>
               <ToggleButtonGroup
                 value={editorMode}
@@ -192,7 +191,7 @@ export default function WorkflowsPage() {
                   if (v) setEditorMode(v);
                 }}
               >
-                <ToggleButton value="builder">Constructor</ToggleButton>
+                <ToggleButton value="builder">Builder</ToggleButton>
                 <ToggleButton value="advanced">Avanzado</ToggleButton>
               </ToggleButtonGroup>
               <ToggleButtonGroup
@@ -203,7 +202,7 @@ export default function WorkflowsPage() {
                   if (v) setDesignType(v);
                 }}
               >
-                <ToggleButton value="workflow">Workflow Conversacional</ToggleButton>
+                <ToggleButton value="workflow">Workflow conversacional</ToggleButton>
                 <ToggleButton value="tool">Tool tecnica</ToggleButton>
               </ToggleButtonGroup>
               <Stack spacing={2}>
@@ -248,7 +247,6 @@ export default function WorkflowsPage() {
                   onAddActivity={addActivity}
                   onUpdateActivity={updateActivity}
                   onRemoveActivity={removeActivity}
-                  onApplyTypePreset={applyTypePreset}
                   onOpenAiConfig={openAiConfig}
                   onUpdateAiAgentConfig={updateAiAgentConfigAt}
                   onAddActivityConfig={addActivityConfig}
@@ -262,7 +260,7 @@ export default function WorkflowsPage() {
                     onClick={() => saveWorkflow({ ...editor, designType }, designValidationErrors)}
                     disabled={saving || !editor.id}
                   >
-                    {saving ? 'Guardando...' : 'Guardar'}
+                    {saving ? 'Guardando...' : 'Guardar borrador'}
                   </Button>
                   <Button
                     variant="outlined"

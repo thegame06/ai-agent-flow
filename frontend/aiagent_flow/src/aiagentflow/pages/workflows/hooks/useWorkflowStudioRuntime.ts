@@ -46,13 +46,9 @@ export function useWorkflowStudioRuntime(tenantId: string) {
       definitionJson: string;
       designType?: 'workflow' | 'tool';
     },
-    validationErrors: string[]
+    _validationErrors: string[]
   ) => {
     if (!workflow.id || !workflow.name.trim()) return;
-    if (validationErrors.length > 0) {
-      dispatch(setWorkflowRuntimeError(`Validation failed: ${validationErrors[0]}`));
-      return;
-    }
     const result = await dispatch(saveWorkflowDraft({ tenantId, workflow }));
     if (saveWorkflowDraft.fulfilled.match(result)) {
       await dispatch(fetchWorkflowRuntimeData(tenantId));

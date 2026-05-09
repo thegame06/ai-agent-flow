@@ -17,6 +17,7 @@ import TableRow from '@mui/material/TableRow';
 import TableBody from '@mui/material/TableBody';
 import TableCell from '@mui/material/TableCell';
 import TableHead from '@mui/material/TableHead';
+import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import CardContent from '@mui/material/CardContent';
 import { alpha, useTheme } from '@mui/material/styles';
@@ -163,14 +164,55 @@ export default function OverviewPage() {
 
       <DashboardContent maxWidth="xl">
         {/* ── Header ── */}
-        <Box sx={{ mb: 5 }}>
-          <Typography variant="h4" sx={{ fontWeight: 800 }}>
-            Command Center
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Real-time overview of your AI agents, executions, and platform health.
-          </Typography>
-        </Box>
+        <Paper
+          variant="outlined"
+          sx={{
+            mb: 4,
+            p: { xs: 3, md: 5 },
+            borderRadius: 3,
+            background:
+              'radial-gradient(circle at top left, rgba(38,103,255,0.12), transparent 34%), linear-gradient(135deg, #fbfcff 0%, #f4f7fb 100%)',
+          }}
+        >
+          <Stack spacing={3} alignItems="center" textAlign="center">
+            <Box>
+              <Typography variant="overline" color="text.secondary">
+                Inicio
+              </Typography>
+              <Typography variant="h3" sx={{ fontWeight: 800 }}>
+                Jelou, Bladimir
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Construye flujos, conecta canales y revisa la operacion desde un solo lugar.
+              </Typography>
+            </Box>
+            <Paper sx={{ p: 1.5, width: 1, maxWidth: 760, borderRadius: 2, boxShadow: 6 }}>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                <TextField fullWidth placeholder="Que quieres construir o revisar?" size="small" />
+                <Button
+                  component={RouterLink}
+                  href={paths.dashboard.workflows}
+                  variant="contained"
+                  startIcon={<Iconify icon="mdi:hammer-wrench" />}
+                >
+                  Construir
+                </Button>
+              </Stack>
+            </Paper>
+            <Stack direction="row" spacing={1} flexWrap="wrap" justifyContent="center">
+              {[
+                ['Brain Studio', paths.dashboard.workflows],
+                ['Marketplace', paths.dashboard.marketplace],
+                ['Bandeja', paths.dashboard.threads],
+                ['Canales', paths.dashboard.system.channels],
+              ].map(([label, href]) => (
+                <Button key={label} component={RouterLink} href={href} variant="outlined" size="small">
+                  {label}
+                </Button>
+              ))}
+            </Stack>
+          </Stack>
+        </Paper>
 
         {/* ── Metrics Grid ── */}
         <Grid container spacing={3} sx={{ mb: 4 }}>

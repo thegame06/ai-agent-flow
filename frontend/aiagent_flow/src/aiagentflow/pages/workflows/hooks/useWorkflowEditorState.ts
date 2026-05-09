@@ -116,9 +116,24 @@ export function useWorkflowEditorState(activityCatalog: WorkflowActivityCatalogE
     dispatch(updateActivityAction({ index, patch }));
   };
 
-  const addActivity = () => {
-    const defaultType = allowedTypes[0] ?? 'connect.send_whatsapp_template';
-    dispatch(addActivityAction({ defaultType }));
+  const addActivity = (
+    activityType?: string,
+    patch: Partial<WorkflowActivityNode> = {}
+  ) => {
+    const type = activityType ?? allowedTypes[0] ?? 'connect.send_whatsapp_template';
+    const preset = dynamicPresetByType[type] ?? ACTIVITY_TYPE_PRESETS[type] ?? {};
+    dispatch(
+      addActivityAction({
+        id: `step-${Date.now()}`,
+        type,
+        timeoutMs: 30000,
+        retryCount: 0,
+        retryDelayMs: 0,
+        config: { ...preset },
+        aiAgent: type === 'ai.agent' ? { ...DEFAULT_AI_AGENT_CONFIG } : undefined,
+        ...patch,
+      })
+    );
   };
 
   const removeActivity = (index: number) => {

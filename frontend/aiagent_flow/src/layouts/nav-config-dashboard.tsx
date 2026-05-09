@@ -46,129 +46,95 @@ const ICONS = {
 // ----------------------------------------------------------------------
 
 export const navData: NavSectionProps['data'] = [
-  /**
-   * Command Center
-   */
   {
-    subheader: 'Command Center',
+    subheader: 'Inicio',
     items: [
       {
-        title: 'Overview',
+        title: 'Inicio',
         path: paths.dashboard.overview,
         icon: ICONS.dashboard,
       },
+    ],
+  },
+  {
+    subheader: 'Construccion',
+    items: [
       {
-        title: 'Agents',
-        path: paths.dashboard.agents,
-        icon: ICONS.user,
-        info: <Label color="info">v{CONFIG.appVersion}</Label>,
+        title: 'Brain Studio',
+        path: paths.dashboard.workflows,
+        icon: ICONS.kanban,
+        info: <Label color="info">Studio</Label>,
       },
       {
-        title: 'Executions',
+        title: 'Agentes',
+        path: paths.dashboard.agents,
+        icon: ICONS.user,
+      },
+      {
+        title: 'Ejecuciones',
         path: paths.dashboard.executions,
         icon: ICONS.analytics,
       },
       {
-        title: 'Review Queue',
+        title: 'Revision humana',
         path: paths.dashboard.checkpoints,
         icon: ICONS.order,
         info: <Label color="warning">HITL</Label>,
       },
+    ],
+  },
+  {
+    subheader: 'Gestion',
+    items: [
       {
-        title: 'Extensions / Tools',
-        path: paths.dashboard.tools,
-        icon: ICONS.parameter,
+        title: 'Bandeja de entrada',
+        path: paths.dashboard.threads,
+        icon: ICONS.chat,
       },
+      {
+        title: 'KYC y pagos',
+        path: paths.dashboard.kycPayments,
+        icon: ICONS.lock,
+      },
+    ],
+  },
+  {
+    subheader: 'Integraciones',
+    items: [
       {
         title: 'Marketplace',
         path: paths.dashboard.marketplace,
         icon: ICONS.product,
       },
       {
-        title: 'Orchestration',
-        path: paths.dashboard.orchestration,
-        icon: ICONS.analytics,
-      },
-      {
-        title: 'Threads',
-        path: paths.dashboard.threads,
-        icon: ICONS.chat,
-      },
-      {
-        title: 'Evaluations',
-        path: paths.dashboard.evaluations,
-        icon: ICONS.analytics,
-      },
-      {
-        title: 'KYC & Payments',
-        path: paths.dashboard.kycPayments,
-        icon: ICONS.lock,
-      },
-      {
-        title: 'Studio Workflows',
-        path: paths.dashboard.workflows,
-        icon: ICONS.kanban,
-        info: <Label color="info">Studio</Label>,
-      },
-    ],
-  },
-  /**
-   * Governance
-   */
-  {
-    subheader: 'Governance',
-    items: [
-      {
-        title: 'Policy Engine',
-        path: paths.dashboard.governance.root,
-        icon: ICONS.lock,
+        title: 'Conectores',
+        path: paths.dashboard.tools,
+        icon: ICONS.parameter,
         children: [
-          { title: 'Policies', path: paths.dashboard.governance.policies },
-          { title: 'Audit Trail', path: paths.dashboard.governance.audit },
+          { title: 'Tools', path: paths.dashboard.tools },
+          { title: 'Canales', path: paths.dashboard.system.channels },
+          { title: 'MCP', path: paths.dashboard.system.mcp },
         ],
       },
     ],
   },
-  /**
-   * Infrastructure
-   */
   {
-    subheader: 'Infrastructure',
+    subheader: 'Administracion',
     items: [
       {
-        title: 'Model Routing',
-        path: paths.dashboard.system.models,
-        icon: ICONS.product,
-      },
-      {
-        title: 'Auth Profiles',
-        path: paths.dashboard.system.authProfiles,
-        icon: ICONS.lock,
-      },
-      {
-        title: 'MCP Console',
-        path: paths.dashboard.system.mcp,
-        icon: ICONS.parameter,
-      },
-      {
-        title: 'Channels',
-        path: paths.dashboard.system.channels,
-        icon: ICONS.channel,
-      },
-      {
-        title: 'Segment Routing',
-        path: paths.dashboard.system.segmentRouting,
-        icon: ICONS.analytics,
-      },
-      {
-        title: 'Feature Flags',
-        path: paths.dashboard.system.featureFlags,
-        icon: ICONS.label,
-      },
-      {
-        title: 'Settings',
+        title: 'Configuracion',
         path: paths.dashboard.system.settings,
         icon: ICONS.parameter,
+        children: [
+          { title: 'Modelos', path: paths.dashboard.system.models },
+          { title: 'Auth profiles', path: paths.dashboard.system.authProfiles },
+          { title: 'Segmentos', path: paths.dashboard.system.segmentRouting },
+          { title: 'Feature flags', path: paths.dashboard.system.featureFlags },
+          { title: 'Politicas', path: paths.dashboard.governance.policies },
+          { title: 'Auditoria', path: paths.dashboard.governance.audit },
+          { title: 'Evaluaciones', path: paths.dashboard.evaluations },
+          { title: 'Orquestacion', path: paths.dashboard.orchestration },
+        ],
       },
     ],
   },
