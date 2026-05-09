@@ -12,6 +12,64 @@ export const ALLOWED_ACTIVITY_TYPES = [
   'payments.create_intent',
 ] as const;
 
+export const WORKFLOW_DESIGN_TYPES = ['workflow', 'tool'] as const;
+export type WorkflowDesignType = (typeof WORKFLOW_DESIGN_TYPES)[number];
+
+export const TOOL_ACTIVITY_TYPES = [
+  'ai.agent',
+  'human.assign',
+  'human.handoff',
+  'kyc.document_check',
+  'kyc.review_case',
+  'payments.create_intent',
+] as const;
+
+export const ACTIVITY_TYPE_LABELS_ES: Record<string, string> = {
+  'ai.agent': 'Agente de IA',
+  'connect.send_whatsapp_template': 'Enviar plantilla de WhatsApp',
+  'connect.update_inbox_status': 'Actualizar estado de conversacion',
+  'connect.enqueue_campaign_message': 'Encolar mensaje de campana',
+  'human.assign': 'Asignar a agente',
+  'human.handoff': 'Escalar a atencion humana',
+  'kyc.document_check': 'Validacion de documento KYC',
+  'kyc.review_case': 'Revision humana KYC',
+  'payments.create_intent': 'Crear intencion de pago',
+};
+
+export const ACTIVITY_TYPE_CATEGORY_ES: Record<string, string> = {
+  ai: 'IA',
+  connect: 'Conexiones',
+  human: 'Atencion Humana',
+  kyc: 'Identidad (KYC)',
+  payments: 'Pagos',
+  other: 'Otros',
+};
+
+export function activityTypeLabel(type: string): string {
+  return ACTIVITY_TYPE_LABELS_ES[type] ?? type;
+}
+
+export const WORKFLOW_STATUS_LABELS_ES: Record<string, string> = {
+  Draft: 'Borrador',
+  Published: 'Publicado',
+  Archived: 'Archivado',
+};
+
+export const EXECUTION_STATUS_LABELS_ES: Record<string, string> = {
+  Queued: 'En cola',
+  Running: 'En ejecucion',
+  Completed: 'Completada',
+  Failed: 'Fallida',
+};
+
+export function workflowStatusLabel(status: string): string {
+  return WORKFLOW_STATUS_LABELS_ES[status] ?? status;
+}
+
+export function executionStatusLabel(status: string): string {
+  return EXECUTION_STATUS_LABELS_ES[status] ?? status;
+}
+
 export const ACTIVITY_TYPE_PRESETS: Record<string, Record<string, string>> = {
   'connect.send_whatsapp_template': {
     recipient: '{{payload.recipient}}',
@@ -104,7 +162,7 @@ export const DEFAULT_DEFINITION = JSON.stringify(
 export const WORKFLOW_QUICKSTARTS: Array<{ id: string; name: string; triggerEventName: string; definitionJson: string }> = [
   {
     id: 'wf-inbox-auto-route',
-    name: 'Inbox Auto Route + Acknowledge',
+    name: 'Enrutamiento automatico de Inbox + Acuse',
     triggerEventName: 'connect.message.received',
     definitionJson: JSON.stringify(
       {
@@ -134,7 +192,7 @@ export const WORKFLOW_QUICKSTARTS: Array<{ id: string; name: string; triggerEven
   },
   {
     id: 'wf-kyc-document-check',
-    name: 'KYC Document Check Flow',
+    name: 'Flujo KYC de validacion documental',
     triggerEventName: 'kyc.document.submitted',
     definitionJson: JSON.stringify(
       {
@@ -165,7 +223,7 @@ export const WORKFLOW_QUICKSTARTS: Array<{ id: string; name: string; triggerEven
   },
   {
     id: 'wf-payment-followup',
-    name: 'Payment Intent + Follow-up',
+    name: 'Intencion de pago + seguimiento',
     triggerEventName: 'payments.intent.created',
     definitionJson: JSON.stringify(
       {
@@ -197,3 +255,4 @@ export const WORKFLOW_QUICKSTARTS: Array<{ id: string; name: string; triggerEven
     ),
   },
 ];
+

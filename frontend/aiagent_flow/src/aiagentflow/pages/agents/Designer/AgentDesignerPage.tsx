@@ -1,4 +1,4 @@
-import type { RootState, AppDispatch } from 'src/aiagentflow/store';
+﻿import type { RootState, AppDispatch } from 'src/aiagentflow/store';
 
 import { useParams } from 'react-router';
 import { useState, useEffect } from 'react';
@@ -54,16 +54,16 @@ import {
 import type { AgentStep } from './types';
 
 
-// ── Helpers ──
+// â”€â”€ Helpers â”€â”€
 const STEP_TYPES = [
-  { value: 'think', label: 'Think', icon: 'mdi:head-lightbulb', color: '#7C4DFF' },
-  { value: 'plan', label: 'Plan', icon: 'mdi:map-outline', color: '#00BCD4' },
-  { value: 'act', label: 'Act', icon: 'mdi:lightning-bolt', color: '#FF9800' },
-  { value: 'observe', label: 'Observe', icon: 'mdi:eye-outline', color: '#4CAF50' },
-  { value: 'decide', label: 'Decision Gate', icon: 'mdi:source-branch', color: '#E91E63' },
-  { value: 'aggregate', label: 'Aggregator', icon: 'mdi:graph-outline', color: '#3F51B5' },
-  { value: 'tool_call', label: 'Tool Call', icon: 'mdi:wrench-outline', color: '#607D8B' },
-  { value: 'human_review', label: 'Human Review', icon: 'mdi:account-check', color: '#795548' },
+  { value: 'think', label: 'Razonar', icon: 'mdi:head-lightbulb', color: '#7C4DFF' },
+  { value: 'plan', label: 'Planificar', icon: 'mdi:map-outline', color: '#00BCD4' },
+  { value: 'act', label: 'Actuar', icon: 'mdi:lightning-bolt', color: '#FF9800' },
+  { value: 'observe', label: 'Observar', icon: 'mdi:eye-outline', color: '#4CAF50' },
+  { value: 'decide', label: 'Decision', icon: 'mdi:source-branch', color: '#E91E63' },
+  { value: 'aggregate', label: 'Agregador', icon: 'mdi:graph-outline', color: '#3F51B5' },
+  { value: 'tool_call', label: 'Tool', icon: 'mdi:wrench-outline', color: '#607D8B' },
+  { value: 'human_review', label: 'Revision humana', icon: 'mdi:account-check', color: '#795548' },
 ] as const;
 
 const FALLBACK_MODELS = ['gpt-4o', 'gpt-4o-mini', 'claude-3.5-sonnet', 'gemini-2.0-flash'];
@@ -104,16 +104,16 @@ interface ToolOption {
   description: string;
 }
 
-// ══════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // TAB PANELS
-// ══════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 function TabGeneral({ draft, dispatch }: { draft: any; dispatch: any }) {
   return (
     <Stack spacing={3}>
       <TextField
         fullWidth
-        label="Agent Name"
+        label="Nombre del agente"
         value={draft.name}
         onChange={(e) => dispatch(updateField({ field: 'name', value: e.target.value }))}
         placeholder="e.g. CustomerSupport-v2"
@@ -122,7 +122,7 @@ function TabGeneral({ draft, dispatch }: { draft: any; dispatch: any }) {
         fullWidth
         multiline
         rows={3}
-        label="Description"
+        label="Descripcion"
         value={draft.description}
         onChange={(e) => dispatch(updateField({ field: 'description', value: e.target.value }))}
         placeholder="Describe the agent's purpose and capabilities..."
@@ -135,10 +135,10 @@ function TabGeneral({ draft, dispatch }: { draft: any; dispatch: any }) {
           sx={{ width: 150 }}
         />
         <FormControl sx={{ minWidth: 150 }}>
-          <InputLabel>Status</InputLabel>
+          <InputLabel>Estado</InputLabel>
           <Select
             value={draft.status}
-            label="Status"
+            label="Estado"
             onChange={(e) => dispatch(updateField({ field: 'status', value: e.target.value }))}
           >
             <MenuItem value="Draft">Draft</MenuItem>
@@ -151,33 +151,33 @@ function TabGeneral({ draft, dispatch }: { draft: any; dispatch: any }) {
         fullWidth
         multiline
         rows={6}
-        label="System Prompt"
+        label="Instrucciones del agente"
         value={draft.systemPrompt}
         onChange={(e) => dispatch(updateField({ field: 'systemPrompt', value: e.target.value }))}
         placeholder="You are a helpful agent that..."
         sx={{ fontFamily: 'monospace' }}
       />
       <Box>
-        <Typography variant="subtitle2" sx={{ mb: 1 }}>Tags</Typography>
+        <Typography variant="subtitle2" sx={{ mb: 1 }}>Etiquetas</Typography>
         <Stack direction="row" spacing={1} flexWrap="wrap">
           {draft.tags.map((tag: string, i: number) => (
             <Chip
               key={i}
               label={tag}
               onDelete={() => {
-                const newTags = draft.tags.filter((_: string, idx: number) => idx !== i);
-                dispatch(updateField({ field: 'tags', value: newTags }));
+                const newEtiquetas = draft.tags.filter((_: string, idx: number) => idx !== i);
+                dispatch(updateField({ field: 'tags', value: newEtiquetas }));
               }}
               size="small"
             />
           ))}
           <Chip
             icon={<Iconify icon="mdi:plus" width={16} />}
-            label="Add tag"
+            label="Agregar etiqueta"
             variant="outlined"
             size="small"
             onClick={() => {
-              const tag = prompt('Enter tag name:');
+              const tag = prompt('Ingresa etiqueta:');
               if (tag) dispatch(updateField({ field: 'tags', value: [...draft.tags, tag] }));
             }}
           />
@@ -191,11 +191,11 @@ function TabSteps({ draft, dispatch, theme }: { draft: any; dispatch: any; theme
   return (
     <Stack spacing={3}>
       <Alert severity="info" variant="outlined">
-        Select <strong>Sequential</strong> planner to execute prompt chains, decision gates, and parallel tool aggregation from these steps.
+        Usa el planificador <strong>Sequential</strong> para ejecutar cadenas de prompts, decisiones y agregacion de tools en paralelo.
       </Alert>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Typography variant="subtitle1" fontWeight={700}>
-          Agent Loop Steps ({draft.steps.length})
+          Pasos del flujo del agente ({draft.steps.length})
         </Typography>
       </Box>
 
@@ -233,10 +233,10 @@ function TabSteps({ draft, dispatch, theme }: { draft: any; dispatch: any; theme
         ))}
       </Paper>
 
-      {/* Step List */}
+      {/* Paso List */}
       {draft.steps.length === 0 && (
         <Alert severity="info" variant="outlined">
-          No steps defined yet. Add steps to define the agent&apos;s cognitive loop.
+          Aun no hay pasos. Agrega pasos para definir el flujo del agente.
         </Alert>
       )}
 
@@ -265,20 +265,20 @@ function TabSteps({ draft, dispatch, theme }: { draft: any; dispatch: any; theme
               <Box sx={{ flex: 1 }}>
                 <TextField
                   size="small"
-                  label="Step label"
+                  label="Nombre del paso"
                   value={step.label}
                   onChange={(e) => dispatch(updateStep({ id: step.id, changes: { label: e.target.value } }))}
                   sx={{ minWidth: 220 }}
                 />
                 <Typography variant="caption" color="text.secondary">
-                  Step {idx + 1} · {step.type.replace('_', ' ').toUpperCase()}
+                  Paso {idx + 1} Â· {step.type.replace('_', ' ').toUpperCase()}
                 </Typography>
                 <TextField
                   size="small"
                   fullWidth
                   multiline
                   minRows={2}
-                  label="Description"
+                  label="Descripcion"
                   value={step.description}
                   onChange={(e) => dispatch(updateStep({ id: step.id, changes: { description: e.target.value } }))}
                   sx={{ mt: 1 }}
@@ -288,7 +288,7 @@ function TabSteps({ draft, dispatch, theme }: { draft: any; dispatch: any; theme
                   fullWidth
                   multiline
                   minRows={4}
-                  label="Config (JSON)"
+                  label="Configuracion (JSON)"
                   value={JSON.stringify(step.config ?? {}, null, 2)}
                   onChange={(e) => {
                     try {
@@ -301,8 +301,8 @@ function TabSteps({ draft, dispatch, theme }: { draft: any; dispatch: any; theme
                   sx={{ mt: 1 }}
                 />
               </Box>
-              <Label color="default" variant="soft">{step.type}</Label>
-              <Tooltip title="Remove step">
+        <Label color="default" variant="soft">{stepType?.label ?? step.type}</Label>
+              <Tooltip title="Eliminar paso">
                 <IconButton
                   size="small"
                   color="error"
@@ -324,7 +324,7 @@ function TabGuardrails({ draft, dispatch }: { draft: any; dispatch: any }) {
   const g = draft.guardrails;
   return (
     <Stack spacing={3}>
-      <Typography variant="subtitle1" fontWeight={700}>Execution Limits</Typography>
+      <Typography variant="subtitle1" fontWeight={700}>Limites de ejecucion</Typography>
       <Stack direction="row" spacing={3}>
         <TextField
           label="Max Steps"
@@ -334,31 +334,31 @@ function TabGuardrails({ draft, dispatch }: { draft: any; dispatch: any }) {
           sx={{ width: 160 }}
         />
         <TextField
-          label="Timeout/Step (ms)"
+          label="Timeout/Paso (ms)"
           type="number"
           value={g.timeoutPerStepMs}
           onChange={(e) => dispatch(updateGuardrails({ timeoutPerStepMs: Number(e.target.value) }))}
           sx={{ width: 180 }}
         />
         <TextField
-          label="Max Tokens"
+          label="Max tokens"
           type="number"
           value={g.maxTokensPerExecution}
           onChange={(e) => dispatch(updateGuardrails({ maxTokensPerExecution: Number(e.target.value) }))}
           sx={{ width: 180 }}
         />
         <TextField
-          label="Max Retries"
+          label="Max reintentos"
           type="number"
           value={g.maxRetries}
           onChange={(e) => dispatch(updateGuardrails({ maxRetries: Number(e.target.value) }))}
           sx={{ width: 140 }}
         />
         <FormControl sx={{ width: 180 }}>
-          <InputLabel>Planner</InputLabel>
+          <InputLabel>Planificador</InputLabel>
           <Select
             value={g.plannerType}
-            label="Planner"
+            label="Planificador"
             onChange={(e) => dispatch(updateGuardrails({ plannerType: e.target.value }))}
           >
             <MenuItem value="ReAct">ReAct</MenuItem>
@@ -367,25 +367,25 @@ function TabGuardrails({ draft, dispatch }: { draft: any; dispatch: any }) {
           </Select>
         </FormControl>
         <FormControl sx={{ width: 180 }}>
-          <InputLabel>Runtime</InputLabel>
+          <InputLabel>Modo runtime</InputLabel>
           <Select
             value={g.runtimeMode}
-            label="Runtime"
+            label="Modo runtime"
             onChange={(e) => dispatch(updateGuardrails({ runtimeMode: e.target.value }))}
           >
             <MenuItem value="Autonomous">Autonomous</MenuItem>
-            <MenuItem value="Deterministic">Deterministic</MenuItem>
+            <MenuItem value="Determinista">Determinista</MenuItem>
           </Select>
         </FormControl>
       </Stack>
 
       <Divider />
-      <Typography variant="subtitle1" fontWeight={700}>Security & Governance</Typography>
+      <Typography variant="subtitle1" fontWeight={700}>Seguridad y gobierno</Typography>
 
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Box>
-          <Typography variant="subtitle2">Parallel Tool Calls</Typography>
-          <Typography variant="caption" color="text.secondary">Enable fan-out/fan-in when a tool step specifies multiple tool names</Typography>
+          <Typography variant="subtitle2">Tools en paralelo</Typography>
+          <Typography variant="caption" color="text.secondary">Permite fan-out/fan-in cuando un paso de tool define varios nombres.</Typography>
         </Box>
         <Switch
           checked={g.allowParallelToolCalls}
@@ -395,8 +395,8 @@ function TabGuardrails({ draft, dispatch }: { draft: any; dispatch: any }) {
 
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Box>
-          <Typography variant="subtitle2">Prompt Injection Guard</Typography>
-          <Typography variant="caption" color="text.secondary">Scan all inputs for injection attacks</Typography>
+          <Typography variant="subtitle2">Proteccion contra prompt injection</Typography>
+          <Typography variant="caption" color="text.secondary">Escanea entradas para detectar ataques de inyeccion.</Typography>
         </Box>
         <Switch
           checked={g.enablePromptInjectionGuard}
@@ -405,8 +405,8 @@ function TabGuardrails({ draft, dispatch }: { draft: any; dispatch: any }) {
       </Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Box>
-          <Typography variant="subtitle2">PII Protection</Typography>
-          <Typography variant="caption" color="text.secondary">Block responses containing sensitive data</Typography>
+          <Typography variant="subtitle2">Proteccion de datos sensibles</Typography>
+          <Typography variant="caption" color="text.secondary">Bloquea respuestas con datos sensibles.</Typography>
         </Box>
         <Switch
           checked={g.enablePIIProtection}
@@ -418,8 +418,8 @@ function TabGuardrails({ draft, dispatch }: { draft: any; dispatch: any }) {
         <Stack spacing={2}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <Box>
-              <Typography variant="subtitle2" color="info.main">Human-in-the-Loop (HITL)</Typography>
-              <Typography variant="caption" color="text.secondary">Enable manual review checkpoints</Typography>
+              <Typography variant="subtitle2" color="info.main">Humano en el loop (HITL)</Typography>
+              <Typography variant="caption" color="text.secondary">Habilita checkpoints de revision manual.</Typography>
             </Box>
             <Switch
               checked={g.hitl.enabled}
@@ -430,7 +430,7 @@ function TabGuardrails({ draft, dispatch }: { draft: any; dispatch: any }) {
           {g.hitl.enabled && (
              <Stack spacing={2} sx={{ pl: 2, borderLeft: `2px solid ${theme.palette.info.light}` }}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Typography variant="body2">Review all tool calls</Typography>
+                  <Typography variant="body2">Revisar todas las llamadas de tools</Typography>
                   <Switch 
                      size="small"
                      checked={g.hitl.requireReviewOnAllToolCalls}
@@ -438,7 +438,7 @@ function TabGuardrails({ draft, dispatch }: { draft: any; dispatch: any }) {
                   />
                 </Box>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Typography variant="body2">Review on policy escalation</Typography>
+                  <Typography variant="body2">Revisar en escalamiento de politica</Typography>
                   <Switch 
                      size="small"
                      checked={g.hitl.requireReviewOnPolicyEscalation}
@@ -446,7 +446,7 @@ function TabGuardrails({ draft, dispatch }: { draft: any; dispatch: any }) {
                   />
                 </Box>
                 <Box>
-                  <Typography variant="body2" sx={{ mb: 1 }}>Confidence threshold to skip review: {g.hitl.confidenceThreshold}</Typography>
+                  <Typography variant="body2" sx={{ mb: 1 }}>Umbral de confianza para omitir revision: {g.hitl.confidenceThreshold}</Typography>
                   <Slider
                     value={g.hitl.confidenceThreshold}
                     min={0}
@@ -468,12 +468,12 @@ function TabMemory({ draft, dispatch }: { draft: any; dispatch: any }) {
   const m = draft.memory;
   return (
     <Stack spacing={2.5}>
-      <Typography variant="subtitle1" fontWeight={700}>Memory Configuration</Typography>
+      <Typography variant="subtitle1" fontWeight={700}>Configuracion de memoria</Typography>
       {([
-        { key: 'workingMemory' as const, label: 'Working Memory', desc: 'Short-term context for the current execution', icon: 'mdi:brain' },
-        { key: 'longTermMemory' as const, label: 'Long-Term Memory', desc: 'Persistent knowledge across executions (MongoDB)', icon: 'mdi:database' },
-        { key: 'vectorMemory' as const, label: 'Vector Memory', desc: 'Semantic search via embeddings (Vector DB)', icon: 'mdi:vector-polyline' },
-        { key: 'auditMemory' as const, label: 'Audit Memory', desc: 'Immutable execution log (always enabled)', icon: 'mdi:shield-check' },
+        { key: 'workingMemory' as const, label: 'Memoria de trabajo', desc: 'Contexto de corto plazo para la ejecucion actual', icon: 'mdi:brain' },
+        { key: 'longTermMemory' as const, label: 'Memoria de largo plazo', desc: 'Conocimiento persistente entre ejecuciones (MongoDB)', icon: 'mdi:database' },
+        { key: 'vectorMemory' as const, label: 'Memoria vectorial', desc: 'Busqueda semantica con embeddings (Vector DB)', icon: 'mdi:vector-polyline' },
+        { key: 'auditMemory' as const, label: 'Memoria de auditoria', desc: 'Bitacora inmutable de ejecucion (siempre activa)', icon: 'mdi:shield-check' },
       ]).map(({ key, label, desc, icon }) => (
         <Paper key={key} variant="outlined" sx={{ p: 2 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -525,18 +525,18 @@ function TabTools({
 
   return (
     <Stack spacing={2.5}>
-      <Typography variant="subtitle1" fontWeight={700}>Tool Bindings</Typography>
+      <Typography variant="subtitle1" fontWeight={700}>Vinculacion de tools</Typography>
       <Typography variant="body2" color="text.secondary">
-        Select which platform tools this agent is allowed to execute.
+        Selecciona que tools de la plataforma puede ejecutar este agente.
       </Typography>
 
       <Paper variant="outlined" sx={{ p: 2 }}>
         <Typography variant="subtitle2" sx={{ mb: 1.5 }}>
-          Bound Tools ({draft.tools.length})
+          Tools vinculadas ({draft.tools.length})
         </Typography>
         {draft.tools.length === 0 ? (
           <Alert severity="warning" variant="outlined">
-            No tools bound yet. If the agent needs tool execution, bind at least one tool.
+            Aun no hay tools vinculadas. Si el agente necesita tools, vincula al menos una.
           </Alert>
         ) : (
           <Stack spacing={1}>
@@ -560,13 +560,13 @@ function TabTools({
 
       <Paper variant="outlined" sx={{ p: 2 }}>
         <Typography variant="subtitle2" sx={{ mb: 1.5 }}>
-          Available Platform Tools
+          Tools disponibles en la plataforma
         </Typography>
         {loading ? (
-          <Typography variant="body2" color="text.secondary">Loading tools...</Typography>
+          <Typography variant="body2" color="text.secondary">Cargando tools...</Typography>
         ) : availableTools.length === 0 ? (
           <Alert severity="info" variant="outlined">
-            No tools discovered from the Extensions API.
+            No se detectaron tools desde Extensions API.
           </Alert>
         ) : (
           <Stack spacing={1}>
@@ -587,7 +587,7 @@ function TabTools({
                   disabled={selectedToolIds.has(tool.extensionId)}
                   onClick={() => bindTool(tool)}
                 >
-                  {selectedToolIds.has(tool.extensionId) ? 'Bound' : 'Bind'}
+                  {selectedToolIds.has(tool.extensionId) ? 'Vinculada' : 'Vincular'}
                 </Button>
               </Box>
             ))}
@@ -618,18 +618,18 @@ function TabModel({
 
   return (
     <Stack spacing={3}>
-      <Typography variant="subtitle1" fontWeight={700}>LLM Configuration</Typography>
+      <Typography variant="subtitle1" fontWeight={700}>Configuracion del modelo IA</Typography>
       <Alert severity="info" variant="outlined">
-        Models are loaded from Model Routing API when available. If not accessible, fallback options are shown.
+        Los modelos se cargan desde Model Routing API. Si no esta disponible, se muestran opciones fallback.
       </Alert>
       {loading && (
-        <Typography variant="body2" color="text.secondary">Loading model catalog...</Typography>
+        <Typography variant="body2" color="text.secondary">Cargando catalogo de modelos...</Typography>
       )}
       <FormControl fullWidth>
-        <InputLabel>Provider</InputLabel>
+        <InputLabel>Proveedor</InputLabel>
         <Select
           value={mc.provider}
-          label="Provider"
+          label="Proveedor"
           onChange={(e) => dispatch(updateModel({ provider: e.target.value }))}
         >
           {(providers.length > 0 ? providers : ['OpenAI']).map((provider) => (
@@ -639,20 +639,20 @@ function TabModel({
       </FormControl>
       <Stack direction="row" spacing={3}>
         <FormControl fullWidth>
-          <InputLabel>Primary Model</InputLabel>
+          <InputLabel>Modelo principal</InputLabel>
           <Select
             value={mc.primaryModel}
-            label="Primary Model"
+            label="Modelo principal"
             onChange={(e) => dispatch(updateModel({ primaryModel: e.target.value }))}
           >
             {modelOptions.map((m) => <MenuItem key={m} value={m}>{m}</MenuItem>)}
           </Select>
         </FormControl>
         <FormControl fullWidth>
-          <InputLabel>Fallback Model</InputLabel>
+          <InputLabel>Modelo de respaldo</InputLabel>
           <Select
             value={mc.fallbackModel}
-            label="Fallback Model"
+            label="Modelo de respaldo"
             onChange={(e) => dispatch(updateModel({ fallbackModel: e.target.value }))}
           >
             {modelOptions.map((m) => <MenuItem key={m} value={m}>{m}</MenuItem>)}
@@ -662,7 +662,7 @@ function TabModel({
 
       <Box>
         <Typography variant="subtitle2" gutterBottom>
-          Temperature: {mc.temperature}
+          Temperatura: {mc.temperature}
         </Typography>
         <Slider
           value={mc.temperature}
@@ -673,13 +673,13 @@ function TabModel({
           valueLabelDisplay="auto"
         />
         <Stack direction="row" justifyContent="space-between">
-          <Typography variant="caption" color="text.secondary">Deterministic</Typography>
-          <Typography variant="caption" color="text.secondary">Creative</Typography>
+          <Typography variant="caption" color="text.secondary">Determinista</Typography>
+          <Typography variant="caption" color="text.secondary">Creativo</Typography>
         </Stack>
       </Box>
 
       <TextField
-        label="Max Response Tokens"
+        label="Max tokens de respuesta"
         type="number"
         value={mc.maxResponseTokens}
         onChange={(e) => dispatch(updateModel({ maxResponseTokens: Number(e.target.value) }))}
@@ -689,11 +689,11 @@ function TabModel({
   );
 }
 
-// ══════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // MAIN PAGE
-// ══════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
-const TAB_LABELS = ['General', 'Agent Loop', 'Canvas', 'Guardrails', 'Memory', 'Tools', 'Model'];
+const TAB_LABELS = ['General', 'Flujo', 'Lienzo', 'Modo runtime', 'Memoria', 'Integraciones', 'Modelo IA'];
 const TAB_ICONS = [
   'mdi:information-outline',
   'mdi:repeat',
@@ -782,7 +782,7 @@ export default function AgentDesignerPage() {
         return (
           <Stack spacing={2}>
             <Alert severity="info" variant="outlined">
-              Canvas is a visual editor of step relationships. Runtime behavior is still enforced by engine policies and loop mode.
+              Canvas is a visual editor of step relationships. Modo runtime behavior is still enforced by engine policies and loop mode.
             </Alert>
             <AgentFlowCanvas steps={draft.steps} />
           </Stack>
@@ -817,26 +817,26 @@ export default function AgentDesignerPage() {
   return (
     <>
       <Helmet>
-        <title>{draft.name || 'New Agent'} — Designer | {CONFIG.appName}</title>
+        <title>{draft.name || 'New Agent'} â€” Designer | {CONFIG.appName}</title>
       </Helmet>
 
       <DashboardContent maxWidth="lg">
         {/* Error Banner */}
         {Object.keys(errors).length > 0 && (
           <Alert severity="error" sx={{ mb: 3 }}>
-            {Object.values(errors).join(' · ')}
+            {Object.values(errors).join(' Â· ')}
           </Alert>
         )}
 
         {/* Header */}
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
           <Box>
-            <Typography variant="h4">Agent Designer</Typography>
+            <Typography variant="h4">Studio de Agente IA</Typography>
             <Typography variant="body2" color="text.secondary">
-              {draft.name || 'Untitled Agent'} · v{draft.version}
+              {draft.name || 'Agente sin nombre'} Â· v{draft.version}
               {isDirty && (
                 <Chip
-                  label="Unsaved changes"
+                  label="Cambios sin guardar"
                   size="small"
                   color="warning"
                   variant="soft"
@@ -844,7 +844,7 @@ export default function AgentDesignerPage() {
                 />
               )}
               {saving && (
-                <Chip label="Saving..." size="small" color="info" variant="soft" sx={{ ml: 1 }} />
+                <Chip label="Guardando..." size="small" color="info" variant="soft" sx={{ ml: 1 }} />
               )}
             </Typography>
           </Box>
@@ -855,7 +855,7 @@ export default function AgentDesignerPage() {
               startIcon={<Iconify icon="mdi:refresh" />}
               onClick={() => dispatch(resetDraft())}
             >
-              Reset
+              Reiniciar
             </Button>
             <Button
               variant="contained"
@@ -863,7 +863,7 @@ export default function AgentDesignerPage() {
               disabled={!isDirty || saving}
               onClick={handleSave}
             >
-              {saving ? 'Saving...' : 'Save Draft'}
+              {saving ? 'Guardando...' : 'Guardar borrador'}
             </Button>
             <Button
               variant="contained"
@@ -872,7 +872,7 @@ export default function AgentDesignerPage() {
               disabled={!draft.name || draft.steps.length === 0 || !draft.id || saving}
               onClick={handlePublish}
             >
-              Publish
+              Publicar
             </Button>
           </Stack>
         </Box>
@@ -906,3 +906,5 @@ export default function AgentDesignerPage() {
     </>
   );
 }
+
+

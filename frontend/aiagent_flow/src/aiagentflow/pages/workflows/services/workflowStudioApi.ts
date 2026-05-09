@@ -9,6 +9,8 @@ export const workflowStudioApi = {
     axios.get(endpoints.agentflow.workflows.catalogActivities(tenantId)).catch(() => ({ data: [] })),
   getModels: () => axios.get('/api/v1/model-routing/models').catch(() => ({ data: [] })),
   getTools: () => axios.get('/api/v1/extensions/tools').catch(() => ({ data: [] })),
+  getIntegrationStatus: (tenantId: string) =>
+    axios.get(`${endpoints.agentflow.workflows.list(tenantId)}/integrations/status`).catch(() => ({ data: [] })),
   upsertDefinition: (tenantId: string, workflowId: string, body: unknown) =>
     axios.put(endpoints.agentflow.workflows.upsert(tenantId, workflowId), body),
   publishDefinition: (tenantId: string, workflowId: string) =>

@@ -101,6 +101,17 @@ export type ToolOption = {
   displayName?: string;
 };
 
+export type WorkflowIntegrationStatus = {
+  key: string;
+  displayName: string;
+  category: 'channel' | 'extension';
+  enabled: boolean;
+  connected: boolean;
+  secretsConfigured: boolean;
+  capabilities: string[];
+  detail?: string;
+};
+
 export type SchemaFieldRule = {
   key: string;
   required: boolean;

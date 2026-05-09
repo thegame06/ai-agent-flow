@@ -35,6 +35,7 @@ const initialState: WorkflowRuntimeState = {
   activityCatalog: [],
   availableModels: [],
   availableTools: [],
+  integrations: [],
 };
 
 const workflowRuntimeSlice = createSlice({
@@ -69,6 +70,7 @@ const workflowRuntimeSlice = createSlice({
           key: t.key,
           displayName: t.displayName,
         }));
+        state.integrations = (action.payload.integrations as any[]) ?? [];
       })
       .addCase(fetchWorkflowRuntimeData.rejected, (state, action) => {
         state.loading = false;

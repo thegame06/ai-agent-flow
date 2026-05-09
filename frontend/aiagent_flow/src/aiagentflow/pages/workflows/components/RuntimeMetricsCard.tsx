@@ -4,6 +4,8 @@ import Alert from '@mui/material/Alert';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 
+import { activityTypeLabel } from '../constants';
+
 import type { WorkflowAuditEvent, WorkflowRuntimeMetrics } from '../types';
 
 type Props = {
@@ -15,41 +17,41 @@ export function RuntimeMetricsCard({ metrics, auditEvents }: Props) {
   return (
     <Card sx={{ p: 2 }}>
       <Typography variant="h6" sx={{ mb: 2 }}>
-        Runtime Metrics
+        Métricas de ejecución
       </Typography>
       {!metrics ? (
-        <Alert severity="info">Metrics unavailable.</Alert>
+        <Alert severity="info">Métricas no disponibles.</Alert>
       ) : (
         <Stack spacing={1.2}>
           <Typography variant="body2">
             Total: <strong>{metrics.total ?? 0}</strong>
           </Typography>
           <Typography variant="body2">
-            Success Rate: <strong>{Math.round((metrics.successRate ?? 0) * 100)}%</strong>
+            Tasa de éxito: <strong>{Math.round((metrics.successRate ?? 0) * 100)}%</strong>
           </Typography>
           <Typography variant="body2">
-            Failure Rate: <strong>{Math.round((metrics.failureRate ?? 0) * 100)}%</strong>
+            Tasa de fallo: <strong>{Math.round((metrics.failureRate ?? 0) * 100)}%</strong>
           </Typography>
           <Typography variant="body2">
-            Avg Latency: <strong>{metrics.avgLatencyMs ?? 0} ms</strong>
+            Latencia promedio: <strong>{metrics.avgLatencyMs ?? 0} ms</strong>
           </Typography>
           <Typography variant="subtitle2" sx={{ mt: 1 }}>
-            Top Activities
+            Actividades principales
           </Typography>
           <Stack spacing={0.8}>
             {(metrics.activityMetrics ?? []).slice(0, 5).map((a) => (
               <Box key={a.activityType} sx={{ p: 1, border: 1, borderColor: 'divider', borderRadius: 1 }}>
                 <Typography variant="caption" fontWeight={700}>
-                  {a.activityType}
+                  {activityTypeLabel(a.activityType)}
                 </Typography>
                 <Typography variant="caption" display="block" color="text.secondary">
-                  {a.succeeded}/{a.total} success - {a.avgLatencyMs} ms avg
+                  {a.succeeded}/{a.total} éxito - {a.avgLatencyMs} ms promedio
                 </Typography>
               </Box>
             ))}
           </Stack>
           <Typography variant="subtitle2" sx={{ mt: 1 }}>
-            Recent Audit
+            Auditoría reciente
           </Typography>
           <Stack spacing={0.8}>
             {auditEvents.slice(0, 5).map((event) => (
@@ -64,7 +66,7 @@ export function RuntimeMetricsCard({ metrics, auditEvents }: Props) {
             ))}
             {auditEvents.length === 0 && (
               <Typography variant="caption" color="text.secondary">
-                No audit events yet.
+                Aún no hay eventos de auditoría.
               </Typography>
             )}
           </Stack>

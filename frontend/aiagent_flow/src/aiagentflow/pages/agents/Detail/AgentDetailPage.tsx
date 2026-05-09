@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { Helmet } from 'react-helmet-async';
 
 import Box from '@mui/material/Box';
@@ -158,7 +158,7 @@ export default function AgentDetailPage() {
       <DashboardContent maxWidth="xl">
         <Box sx={{ textAlign: 'center', py: 10 }}>
           <Typography variant="h6" color="text.secondary">
-            Agent not found
+            Agente no encontrado
           </Typography>
           <Button variant="outlined" onClick={handleBack} sx={{ mt: 2 }}>
             Go Back
@@ -182,7 +182,7 @@ export default function AgentDetailPage() {
             onClick={handleBack}
             sx={{ mb: 2 }}
           >
-            Back to Agents
+            Volver a Agentes
           </Button>
 
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -220,9 +220,9 @@ export default function AgentDetailPage() {
 
         {/* Tabs */}
         <Tabs value={currentTab} onChange={(e, value) => setCurrentTab(value)} sx={{ mb: 3 }}>
-          <Tab label="Overview" value="overview" />
-          <Tab label="Configuration" value="configuration" />
-          <Tab label="Execution History" value="executions" />
+          <Tab label="Resumen" value="overview" />
+          <Tab label="Configuracion" value="configuration" />
+          <Tab label="Historial de ejecuciones" value="executions" />
         </Tabs>
 
         {/* Tab Panels */}
@@ -233,7 +233,7 @@ export default function AgentDetailPage() {
               <Card>
                 <CardContent>
                   <Typography variant="h6" gutterBottom>
-                    Basic Information
+                    Informacion basica
                   </Typography>
                   <Divider sx={{ mb: 2 }} />
                   <Stack spacing={2}>
@@ -281,7 +281,7 @@ export default function AgentDetailPage() {
               <Card>
                 <CardContent>
                   <Typography variant="h6" gutterBottom>
-                    Configuration Summary
+                    Resumen de configuracion
                   </Typography>
                   <Divider sx={{ mb: 2 }} />
                   <Stack spacing={2}>
@@ -435,7 +435,7 @@ export default function AgentDetailPage() {
 
                 {policyDecision && (
                   <Alert severity={policyDecision.allowed ? 'success' : 'error'} sx={{ mt: 2 }}>
-                    Decision: <strong>{policyDecision.allowed ? 'ALLOW' : 'DENY'}</strong> · reason: <strong>{policyDecision.reason}</strong>{' '}
+                    Decision: <strong>{policyDecision.allowed ? 'ALLOW' : 'DENY'}</strong> Â· reason: <strong>{policyDecision.reason}</strong>{' '}
                     ({policyDecision.hasExplicitPolicy ? 'explicit policy' : 'fallback/default'})
                   </Alert>
                 )}
@@ -445,7 +445,7 @@ export default function AgentDetailPage() {
             <Card>
               <CardContent>
                 <Typography variant="h6" gutterBottom>
-                  Full Configuration
+                  Configuracion completa
                 </Typography>
               <Divider sx={{ mb: 2 }} />
               <Box
@@ -469,13 +469,13 @@ export default function AgentDetailPage() {
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
-                Recent Executions
+                Ejecuciones recientes
               </Typography>
               <Divider sx={{ mb: 2 }} />
               {executions.length === 0 ? (
                 <Box sx={{ textAlign: 'center', py: 5 }}>
                   <Typography variant="body2" color="text.secondary">
-                    No executions yet
+                    Aun no hay ejecuciones
                   </Typography>
                 </Box>
               ) : (
@@ -514,3 +514,4 @@ export default function AgentDetailPage() {
     </>
   );
 }
+

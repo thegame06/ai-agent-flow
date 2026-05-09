@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Helmet } from 'react-helmet-async';
 
 import Box from '@mui/material/Box';
@@ -8,6 +9,8 @@ import Stack from '@mui/material/Stack';
 import Button from '@mui/material/Button';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
+import ToggleButton from '@mui/material/ToggleButton';
+import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 
 import { CONFIG } from 'src/global-config';
 import { DashboardContent } from 'src/layouts/dashboard';
@@ -15,7 +18,6 @@ import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
 
 import { Iconify } from 'src/components/iconify';
 
-import { WORKFLOW_QUICKSTARTS } from './constants';
 import { RuntimeMetricsCard } from './components/RuntimeMetricsCard';
 import { AiAgentConfigDialog } from './components/AiAgentConfigDialog';
 import { useWorkflowEditorState } from './hooks/useWorkflowEditorState';
@@ -24,10 +26,13 @@ import { useWorkflowStudioRuntime } from './hooks/useWorkflowStudioRuntime';
 import { WorkflowExecutionsCard } from './components/WorkflowExecutionsCard';
 import { WorkflowVisualDesigner } from './components/WorkflowVisualDesigner';
 import { WorkflowDefinitionsCard } from './components/WorkflowDefinitionsCard';
+import { TOOL_ACTIVITY_TYPES, WORKFLOW_QUICKSTARTS, type WorkflowDesignType } from './constants';
 
 import type { WorkflowDefinition } from './types';
 
 export default function WorkflowsPage() {
+  const [editorMode, setEditorMode] = useState<'builder' | 'advanced'>('builder');
+  const [designType, setDesignType] = useState<WorkflowDesignType>('workflow');
   const tenantId = useTenantId();
   const {
     loading,
@@ -43,6 +48,7 @@ export default function WorkflowsPage() {
     activityCatalog,
     availableModels,
     availableTools,
+    integrations,
     setError,
     setStepsOpen,
     loadAll,
@@ -83,11 +89,26 @@ export default function WorkflowsPage() {
     setSelectedWorkflowId,
   } = useWorkflowEditorState(activityCatalog);
 
+  const uiAllowedTypes =
+    designType === 'tool' ? allowedTypes.filter((t) => TOOL_ACTIVITY_TYPES.includes(t as any)) : allowedTypes;
+  const quickstarts =
+    designType === 'tool'
+      ? WORKFLOW_QUICKSTARTS.filter((q) => q.id.includes('kyc') || q.id.includes('payment'))
+      : WORKFLOW_QUICKSTARTS;
+  const designValidationErrors = [
+    ...validationErrors,
+    ...(designType === 'tool'
+      ? activities
+          .filter((a) => !TOOL_ACTIVITY_TYPES.includes(a.type as any))
+          .map((a) => `El nodo ${a.id || a.type} no esta permitido en modo Tool tecnica.`)
+      : []),
+  ];
+
   const handleSelectWorkflow = (wf: WorkflowDefinition) => {
     selectWorkflow(wf);
   };
 
-  const handleCreateNew = () => {
+  const handleCreateNuevo = () => {
     setSelectedWorkflowId(null);
     createNew();
   };
@@ -95,23 +116,23 @@ export default function WorkflowsPage() {
   return (
     <>
       <Helmet>
-        <title>Studio Workflows | {CONFIG.appName}</title>
+        <title>Studio de Workflows | {CONFIG.appName}</title>
       </Helmet>
 
       <DashboardContent maxWidth="xl">
         <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Box>
-            <Typography variant="h4">Studio Workflows</Typography>
+            <Typography variant="h4">Studio de Workflows</Typography>
             <Typography variant="body2" sx={{ color: 'text.secondary', mt: 0.5 }}>
-              Build, publish and run workflow automations connected to Connect channels.
+              Disena, publica y ejecuta automatizaciones conectadas a tus canales.
             </Typography>
           </Box>
           <Stack direction="row" spacing={1}>
             <Button variant="outlined" startIcon={<Iconify icon="mdi:refresh" />} onClick={loadAll}>
-              Refresh
+              Actualizar
             </Button>
-            <Button variant="contained" startIcon={<Iconify icon="mingcute:add-line" />} onClick={handleCreateNew}>
-              New
+            <Button variant="contained" startIcon={<Iconify icon="mingcute:add-line" />} onClick={handleCreateNuevo}>
+              Nuevo
             </Button>
           </Stack>
         </Box>
@@ -125,12 +146,12 @@ export default function WorkflowsPage() {
         <Grid container spacing={3}>
           <Grid item xs={12}>
             <Card sx={{ p: 2 }}>
-              <Typography variant="h6" sx={{ mb: 1 }}>Workflow Quickstarts</Typography>
+              <Typography variant="h6" sx={{ mb: 1 }}>Plantillas rapidas de Workflow</Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Create ready-to-edit flows for Inbox, KYC and Payments.
+                Crea flujos listos para editar para Inbox, KYC y Pagos.
               </Typography>
               <Stack direction="row" spacing={1} flexWrap="wrap">
-                {WORKFLOW_QUICKSTARTS.map((tpl) => (
+                {quickstarts.map((tpl) => (
                   <Button
                     key={tpl.id}
                     variant="outlined"
@@ -163,42 +184,67 @@ export default function WorkflowsPage() {
               <Typography variant="h6" sx={{ mb: 2 }}>
                 Editor
               </Typography>
+              <ToggleButtonGroup
+                value={editorMode}
+                exclusive
+                size="small"
+                onChange={(_, v) => {
+                  if (v) setEditorMode(v);
+                }}
+              >
+                <ToggleButton value="builder">Constructor</ToggleButton>
+                <ToggleButton value="advanced">Avanzado</ToggleButton>
+              </ToggleButtonGroup>
+              <ToggleButtonGroup
+                value={designType}
+                exclusive
+                size="small"
+                onChange={(_, v) => {
+                  if (v) setDesignType(v);
+                }}
+              >
+                <ToggleButton value="workflow">Workflow Conversacional</ToggleButton>
+                <ToggleButton value="tool">Tool tecnica</ToggleButton>
+              </ToggleButtonGroup>
               <Stack spacing={2}>
                 <TextField
-                  label="Workflow ID"
+                  label="ID del workflow"
                   value={editor.id}
                   onChange={(e) => setEditorField('id', e.target.value)}
                   fullWidth
                 />
                 <TextField
-                  label="Name"
+                  label="Nombre"
                   value={editor.name}
                   onChange={(e) => setEditorField('name', e.target.value)}
                   fullWidth
                 />
                 <TextField
-                  label="Trigger Event"
+                  label="Evento disparador"
                   value={editor.triggerEventName}
                   onChange={(e) => setEditorField('triggerEventName', e.target.value)}
                   fullWidth
                 />
-                <TextField
-                  label="Definition JSON"
-                  value={editor.definitionJson}
-                  onChange={(e) => setDefinitionJson(e.target.value)}
-                  multiline
-                  minRows={14}
-                  maxRows={24}
-                  fullWidth
-                />
+                {editorMode === 'advanced' && (
+                  <TextField
+                    label="JSON de definicion"
+                    value={editor.definitionJson}
+                    onChange={(e) => setDefinitionJson(e.target.value)}
+                    multiline
+                    minRows={14}
+                    maxRows={24}
+                    fullWidth
+                  />
+                )}
 
                 <WorkflowVisualDesigner
                   activities={activities}
-                  allowedTypes={allowedTypes}
+                  allowedTypes={uiAllowedTypes}
                   requiredConfigByType={requiredConfigByType}
-                  validationErrors={validationErrors}
+                  validationErrors={designValidationErrors}
                   availableModels={availableModels}
                   availableTools={availableTools}
+                  integrations={integrations}
                   onAddActivity={addActivity}
                   onUpdateActivity={updateActivity}
                   onRemoveActivity={removeActivity}
@@ -213,17 +259,17 @@ export default function WorkflowsPage() {
                 <Stack direction="row" spacing={1}>
                   <Button
                     variant="contained"
-                    onClick={() => saveWorkflow(editor, validationErrors)}
+                    onClick={() => saveWorkflow({ ...editor, designType }, designValidationErrors)}
                     disabled={saving || !editor.id}
                   >
-                    {saving ? 'Saving...' : 'Save'}
+                    {saving ? 'Guardando...' : 'Guardar'}
                   </Button>
                   <Button
                     variant="outlined"
-                    onClick={() => publishWorkflow(editor.id, hasSelection, validationErrors)}
-                    disabled={!hasSelection || validationErrors.length > 0}
+                    onClick={() => publishWorkflow(editor.id, hasSelection, designValidationErrors)}
+                    disabled={!hasSelection || designValidationErrors.length > 0}
                   >
-                    Publish
+                    Publicar
                   </Button>
                   <Button
                     variant="outlined"
@@ -231,7 +277,7 @@ export default function WorkflowsPage() {
                     onClick={() => runEvent(editor.triggerEventName)}
                     disabled={running}
                   >
-                    {running ? 'Running...' : 'Run Event'}
+                    {running ? 'Ejecutando...' : 'Ejecutar evento'}
                   </Button>
                 </Stack>
               </Stack>
@@ -265,3 +311,5 @@ export default function WorkflowsPage() {
     </>
   );
 }
+
+

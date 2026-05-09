@@ -26,19 +26,24 @@ import Stack from '@mui/material/Stack';
 import Button from '@mui/material/Button';
 import Drawer from '@mui/material/Drawer';
 import Divider from '@mui/material/Divider';
+import Tooltip from '@mui/material/Tooltip';
 import MenuItem from '@mui/material/MenuItem';
 import Checkbox from '@mui/material/Checkbox';
+import Collapse from '@mui/material/Collapse';
 import TextField from '@mui/material/TextField';
 import FormGroup from '@mui/material/FormGroup';
+import Accordion from '@mui/material/Accordion';
 import IconButton from '@mui/material/IconButton';
 import Typography from '@mui/material/Typography';
+import AccordionSummary from '@mui/material/AccordionSummary';
+import AccordionDetails from '@mui/material/AccordionDetails';
 import FormControlLabel from '@mui/material/FormControlLabel';
 
 import { Iconify } from 'src/components/iconify';
 
-import { DEFAULT_AI_AGENT_CONFIG } from '../constants';
+import { activityTypeLabel, DEFAULT_AI_AGENT_CONFIG, ACTIVITY_TYPE_CATEGORY_ES } from '../constants';
 
-import type { ToolOption, ModelOption, WorkflowActivityNode } from '../types';
+import type { ToolOption, ModelOption, WorkflowActivityNode, WorkflowIntegrationStatus } from '../types';
 
 type Props = {
   activities: WorkflowActivityNode[];
@@ -47,6 +52,7 @@ type Props = {
   validationErrors: string[];
   availableModels: ModelOption[];
   availableTools: ToolOption[];
+  integrations: WorkflowIntegrationStatus[];
   onAddActivity: () => void;
   onUpdateActivity: (index: number, patch: Partial<WorkflowActivityNode>) => void;
   onRemoveActivity: (index: number) => void;
@@ -95,7 +101,7 @@ function WorkflowNodeCard({ data, selected }: NodeProps<Node<WorkflowNodeData>>)
       <Stack spacing={0.4}>
         <Stack direction="row" justifyContent="space-between" alignItems="center">
           <Typography variant="caption" sx={{ color, fontWeight: 700 }}>
-            {category}
+            {ACTIVITY_TYPE_CATEGORY_ES[activityType.split('.')[0] ?? 'other'] ?? category}
           </Typography>
           <Stack direction="row" spacing={0.4}>
             <IconButton size="small" onClick={() => data.onDuplicate?.()}>
@@ -109,8 +115,8 @@ function WorkflowNodeCard({ data, selected }: NodeProps<Node<WorkflowNodeData>>)
         <Typography variant="body2" sx={{ fontWeight: 700, lineHeight: 1.2 }}>
           {label}
         </Typography>
-        <Typography variant="caption" color="text.secondary" sx={{ wordBreak: 'break-all' }}>
-          {activityType}
+        <Typography variant="caption" color="text.secondary" sx={{ wordBreak: 'break-word' }}>
+          {activityTypeLabel(activityType)}
         </Typography>
       </Stack>
       <Handle type="source" position={Position.Right} id="next" style={{ top: '35%' }} />
@@ -152,7 +158,7 @@ function AiWorkflowNode({ data, selected }: NodeProps<Node<WorkflowNodeData>>) {
           {label}
         </Typography>
         <Typography variant="caption" color="text.secondary">
-          model orchestration
+          orquestacion de modelo
         </Typography>
       </Stack>
       <Handle type="source" position={Position.Right} id="next" style={{ top: '35%' }} />
@@ -194,7 +200,7 @@ function ConnectWorkflowNode({ data, selected }: NodeProps<Node<WorkflowNodeData
           {label}
         </Typography>
         <Typography variant="caption" color="text.secondary">
-          outbound and status
+          envios y estado
         </Typography>
       </Stack>
       <Handle type="source" position={Position.Right} id="next" style={{ top: '35%' }} />
@@ -236,7 +242,7 @@ function HumanWorkflowNode({ data, selected }: NodeProps<Node<WorkflowNodeData>>
           {label}
         </Typography>
         <Typography variant="caption" color="text.secondary">
-          handoff and assignment
+          escalacion y asignacion
         </Typography>
       </Stack>
       <Handle type="source" position={Position.Right} id="next" style={{ top: '35%' }} />
@@ -255,7 +261,7 @@ const toNodes = (
     id: activity.id || `step-${idx + 1}`,
     position: activity.position ?? { x: 120 + (idx % 3) * 280, y: 100 + Math.floor(idx / 3) * 180 },
     data: {
-      label: activity.name || activity.id || activity.type,
+      label: activity.name || activity.id || activityTypeLabel(activity.type),
       activityType: activity.type,
       index: idx,
       onDuplicate: () => onDuplicate(idx),
@@ -366,6 +372,7 @@ export function WorkflowVisualDesigner({
   validationErrors,
   availableModels,
   availableTools,
+  integrations,
   onAddActivity,
   onUpdateActivity,
   onRemoveActivity,
@@ -379,6 +386,9 @@ export function WorkflowVisualDesigner({
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [search, setSearch] = useState('');
   const [aiTab, setAiTab] = useState(0);
+  const [showValidation, setShowValidation] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [inspectorSection, setInspectorSection] = useState<string>('general');
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<WorkflowNodeData>>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
 
@@ -420,6 +430,15 @@ export function WorkflowVisualDesigner({
     () => (selectedIndex !== null && selectedIndex >= 0 ? activities[selectedIndex] : null),
     [activities, selectedIndex]
   );
+  const selectedIntegration = useMemo(() => {
+    if (!selected?.type.startsWith('connect.')) return null;
+    const channel = (selected.config?.channel ?? '').toLowerCase();
+    if (channel) {
+      const byChannel = integrations.find((x) => x.category === 'channel' && x.key === `channel:${channel}`);
+      if (byChannel) return byChannel;
+    }
+    return integrations.find((x) => x.category === 'channel') ?? null;
+  }, [integrations, selected]);
 
   const categorizedTypes = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -481,33 +500,26 @@ export function WorkflowVisualDesigner({
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
         <Typography variant="subtitle1">Workflow Canvas</Typography>
         <Stack direction="row" spacing={1}>
-          <Button size="small" variant="outlined" onClick={applyAutoLayoutGraph} startIcon={<Iconify icon="mdi:graph-outline" />}>
-            Auto Layout Graph
-          </Button>
-          <Button size="small" variant="outlined" onClick={applyAutoLayoutGrid} startIcon={<Iconify icon="mdi:grid" />}>
-            Auto Layout
-          </Button>
-          <Button size="small" onClick={onAddActivity} startIcon={<Iconify icon="mingcute:add-line" />}>
-            Add Step
-          </Button>
+          <Button size="small" variant="outlined" onClick={() => setShowValidation(true)}>Validaciones</Button>
+          <Tooltip title="Auto layout por grafo">
+            <IconButton size="small" onClick={applyAutoLayoutGraph}><Iconify icon="mdi:graph-outline" /></IconButton>
+          </Tooltip>
+          <Tooltip title="Auto layout en grilla">
+            <IconButton size="small" onClick={applyAutoLayoutGrid}><Iconify icon="mdi:grid" /></IconButton>
+          </Tooltip>
+          <Button size="small" onClick={onAddActivity} startIcon={<Iconify icon="mingcute:add-line" />}>Agregar nodo</Button>
         </Stack>
       </Stack>
-
-      {validationErrors.length > 0 && (
-        <Alert severity="warning" sx={{ mb: 1 }}>
-          {validationErrors.slice(0, 3).join(' | ')}
-        </Alert>
-      )}
 
       <Grid container spacing={1.5}>
         <Grid item xs={12} md={3}>
           <Card variant="outlined" sx={{ p: 1.2, height: 560, overflow: 'auto' }}>
             <Typography variant="subtitle2" sx={{ mb: 1 }}>
-              Activity Palette
+              Biblioteca de nodos
             </Typography>
             <TextField
               size="small"
-              label="Search"
+              label="Buscar"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               fullWidth
@@ -519,7 +531,7 @@ export function WorkflowVisualDesigner({
                   <Box key={category} sx={{ mb: 0.5 }}>
                     <Stack direction="row" alignItems="center" spacing={0.8} sx={{ mb: 0.6 }}>
                       <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase' }}>
-                        {category}
+                        {ACTIVITY_TYPE_CATEGORY_ES[category] ?? category}
                       </Typography>
                       <Chip size="small" label={types.length} />
                     </Stack>
@@ -531,7 +543,7 @@ export function WorkflowVisualDesigner({
                           onClick={() => addByType(type)}
                           sx={{ justifyContent: 'flex-start', textTransform: 'none' }}
                         >
-                          {type}
+                          {activityTypeLabel(type)}
                         </Button>
                       ))}
                     </Stack>
@@ -581,96 +593,142 @@ export function WorkflowVisualDesigner({
           <Stack spacing={1}>
             <Typography variant="subtitle1">Node Config</Typography>
             <Divider />
-            <TextField
-              label="ID"
-              value={selected.id}
-              onChange={(e) => onUpdateActivity(selectedIndex, { id: e.target.value })}
-              size="small"
-            />
-            <TextField
-              label="Type"
-              select
-              value={selected.type}
-              onChange={(e) => onUpdateActivity(selectedIndex, { type: e.target.value })}
-              size="small"
-            >
-              {allowedTypes.map((type) => (
-                <MenuItem key={type} value={type}>
-                  {type}
-                </MenuItem>
-              ))}
-            </TextField>
-            <TextField
-              label="Name"
-              value={selected.name ?? ''}
-              onChange={(e) => onUpdateActivity(selectedIndex, { name: e.target.value || undefined })}
-              size="small"
-            />
-            <TextField
-              label="Next"
-              value={selected.next ?? ''}
-              onChange={(e) => onUpdateActivity(selectedIndex, { next: e.target.value || undefined })}
-              size="small"
-            />
-            <TextField
-              label="On Success"
-              value={selected.onSuccess ?? ''}
-              onChange={(e) => onUpdateActivity(selectedIndex, { onSuccess: e.target.value || undefined })}
-              size="small"
-            />
-            <TextField
-              label="On Failure"
-              value={selected.onFailure ?? ''}
-              onChange={(e) => onUpdateActivity(selectedIndex, { onFailure: e.target.value || undefined })}
-              size="small"
-            />
+            <Accordion expanded={inspectorSection === 'general'} onChange={(_, e) => setInspectorSection(e ? 'general' : '')}>
+              <AccordionSummary expandIcon={<Iconify icon="mdi:chevron-down" />}>
+                <Typography variant="subtitle2">General</Typography>
+              </AccordionSummary>
+              <AccordionDetails>
+                <Stack spacing={1}>
+                  <TextField
+                    label="ID"
+                    value={selected.id}
+                    onChange={(e) => onUpdateActivity(selectedIndex, { id: e.target.value })}
+                    size="small"
+                  />
+                  <TextField
+                    label="Tipo"
+                    select
+                    value={selected.type}
+                    onChange={(e) => onUpdateActivity(selectedIndex, { type: e.target.value })}
+                    size="small"
+                  >
+                    {allowedTypes.map((type) => (
+                      <MenuItem key={type} value={type}>
+                        {activityTypeLabel(type)}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                  <TextField
+                    label="Nombre"
+                    value={selected.name ?? ''}
+                    onChange={(e) => onUpdateActivity(selectedIndex, { name: e.target.value || undefined })}
+                    size="small"
+                  />
+                  <TextField
+                    label="Siguiente"
+                    value={selected.next ?? ''}
+                    onChange={(e) => onUpdateActivity(selectedIndex, { next: e.target.value || undefined })}
+                    size="small"
+                  />
+                  <TextField
+                    label="Exito"
+                    value={selected.onSuccess ?? ''}
+                    onChange={(e) => onUpdateActivity(selectedIndex, { onSuccess: e.target.value || undefined })}
+                    size="small"
+                  />
+                  <TextField
+                    label="Fallo"
+                    value={selected.onFailure ?? ''}
+                    onChange={(e) => onUpdateActivity(selectedIndex, { onFailure: e.target.value || undefined })}
+                    size="small"
+                  />
+                </Stack>
+              </AccordionDetails>
+            </Accordion>
             {(selected.type.startsWith('connect.') || selected.type.startsWith('human.')) && (
-              <Card variant="outlined" sx={{ p: 1, backgroundColor: '#f8fafc' }}>
-                <Typography variant="caption" color="text.secondary">
-                  Contextual Config
-                </Typography>
-                {selected.type.startsWith('connect.') && (
-                  <Stack spacing={1} sx={{ mt: 0.8 }}>
-                    <TextField
-                      label="Recipient"
-                      size="small"
-                      value={selected.config?.recipient ?? ''}
-                      onChange={(e) => onUpdateActivityConfig(selectedIndex, 'recipient', e.target.value)}
-                    />
-                    <TextField
-                      label="Message / Content"
-                      size="small"
-                      value={selected.config?.content ?? ''}
-                      onChange={(e) => onUpdateActivityConfig(selectedIndex, 'content', e.target.value)}
-                    />
-                  </Stack>
-                )}
-                {selected.type.startsWith('human.') && (
-                  <Stack spacing={1} sx={{ mt: 0.8 }}>
-                    <TextField
-                      label="Queue / Team"
-                      size="small"
-                      value={selected.config?.queue ?? ''}
-                      onChange={(e) => onUpdateActivityConfig(selectedIndex, 'queue', e.target.value)}
-                    />
-                    <TextField
-                      label="Priority"
-                      size="small"
-                      value={selected.config?.priority ?? ''}
-                      onChange={(e) => onUpdateActivityConfig(selectedIndex, 'priority', e.target.value)}
-                    />
-                  </Stack>
-                )}
-              </Card>
+              <Accordion expanded={inspectorSection === 'integraciones'} onChange={(_, e) => setInspectorSection(e ? 'integraciones' : '')}>
+                <AccordionSummary expandIcon={<Iconify icon="mdi:chevron-down" />}>
+                  <Typography variant="subtitle2">Integraciones</Typography>
+                </AccordionSummary>
+                <AccordionDetails>
+                  <Card variant="outlined" sx={{ p: 1, backgroundColor: '#f8fafc' }}>
+                    <Typography variant="caption" color="text.secondary">
+                      Configuracion contextual
+                    </Typography>
+                    {selected.type.startsWith('connect.') && (
+                      <Stack spacing={1} sx={{ mt: 0.8 }}>
+                        <Box sx={{ p: 1, borderRadius: 1, border: '1px solid #bae6fd', bgcolor: '#f0f9ff' }}>
+                          <Typography variant="caption" fontWeight={700}>
+                            Integracion de canal
+                          </Typography>
+                          <Typography variant="caption" display="block" color="text.secondary">
+                            Capacidad: {selectedIntegration?.capabilities?.join(', ') || 'send, status'}
+                          </Typography>
+                          <Typography
+                            variant="caption"
+                            display="block"
+                            color={selectedIntegration?.connected ? 'success.main' : 'warning.main'}
+                          >
+                            Estado auth: {selectedIntegration?.connected ? 'Conectado' : 'No conectado'}
+                          </Typography>
+                          <Typography
+                            variant="caption"
+                            display="block"
+                            color={selectedIntegration?.secretsConfigured ? 'success.main' : 'warning.main'}
+                          >
+                            Secret requerido: {selectedIntegration?.secretsConfigured ? 'Resuelto' : 'Pendiente'}
+                          </Typography>
+                          <Typography variant="caption" display="block" color="text.secondary">
+                            Fuente: {selectedIntegration?.displayName || 'Sin canal configurado'}
+                          </Typography>
+                        </Box>
+                        <TextField
+                          label="Recipient"
+                          size="small"
+                          value={selected.config?.recipient ?? ''}
+                          onChange={(e) => onUpdateActivityConfig(selectedIndex, 'recipient', e.target.value)}
+                        />
+                        <TextField
+                          label="Mensaje / Contenido"
+                          size="small"
+                          value={selected.config?.content ?? ''}
+                          onChange={(e) => onUpdateActivityConfig(selectedIndex, 'content', e.target.value)}
+                        />
+                      </Stack>
+                    )}
+                    {selected.type.startsWith('human.') && (
+                      <Stack spacing={1} sx={{ mt: 0.8 }}>
+                        <TextField
+                          label="Cola / Equipo"
+                          size="small"
+                          value={selected.config?.queue ?? ''}
+                          onChange={(e) => onUpdateActivityConfig(selectedIndex, 'queue', e.target.value)}
+                        />
+                        <TextField
+                          label="Prioridad"
+                          size="small"
+                          value={selected.config?.priority ?? ''}
+                          onChange={(e) => onUpdateActivityConfig(selectedIndex, 'priority', e.target.value)}
+                        />
+                      </Stack>
+                    )}
+                  </Card>
+                </AccordionDetails>
+              </Accordion>
             )}
-
             {selected.type === 'ai.agent' && (
+              <Accordion expanded={inspectorSection === 'ia'} onChange={(_, e) => setInspectorSection(e ? 'ia' : '')}>
+                <AccordionSummary expandIcon={<Iconify icon="mdi:chevron-down" />}>
+                  <Typography variant="subtitle2">IA</Typography>
+                </AccordionSummary>
+                <AccordionDetails>
+
               <>
                 <Tabs value={aiTab} onChange={(_, v) => setAiTab(v)}>
                   <Tab label="General" />
-                  <Tab label="Tools" />
+                  <Tab label="Herramientas" />
                   <Tab label="Knowledge" />
-                  <Tab label="Advanced" />
+                  <Tab label="Avanzado" />
                 </Tabs>
                 {aiTab === 0 && (
                   <Stack spacing={1}>
@@ -731,7 +789,7 @@ export function WorkflowVisualDesigner({
                 {aiTab === 2 && (
                   <Stack spacing={1}>
                     <TextField
-                      label="Knowledge Sources"
+                      label="Fuentes de conocimiento"
                       multiline
                       minRows={3}
                       value={(selected.aiAgent?.knowledge ?? []).join(',')}
@@ -746,7 +804,7 @@ export function WorkflowVisualDesigner({
                       size="small"
                     />
                     <TextField
-                      label="Context"
+                      label="Contexto"
                       multiline
                       minRows={3}
                       value={selected.aiAgent?.context ?? ''}
@@ -758,13 +816,13 @@ export function WorkflowVisualDesigner({
                 {aiTab === 3 && (
                   <Stack spacing={1}>
                     <TextField
-                      label="Fallback Model"
+                      label="Modelo de respaldo"
                       value={selected.aiAgent?.fallbackModel ?? DEFAULT_AI_AGENT_CONFIG.fallbackModel}
                       onChange={(e) => onUpdateAiAgentConfig(selectedIndex, { fallbackModel: e.target.value })}
                       size="small"
                     />
                     <TextField
-                      label="Max Latency (ms)"
+                      label="Latencia maxima (ms)"
                       type="number"
                       value={selected.aiAgent?.maxLatencyMs ?? DEFAULT_AI_AGENT_CONFIG.maxLatencyMs}
                       onChange={(e) =>
@@ -775,7 +833,7 @@ export function WorkflowVisualDesigner({
                       size="small"
                     />
                     <TextField
-                      label="Max Cost (USD)"
+                      label="Costo maximo (USD)"
                       type="number"
                       value={selected.aiAgent?.maxCostUsd ?? DEFAULT_AI_AGENT_CONFIG.maxCostUsd}
                       onChange={(e) =>
@@ -792,29 +850,75 @@ export function WorkflowVisualDesigner({
                           onChange={(e) => onUpdateAiAgentConfig(selectedIndex, { dlpEnabled: e.target.checked })}
                         />
                       }
-                      label="Enable DLP"
+                      label="Habilitar DLP"
                     />
                     <Button variant="outlined" onClick={() => onOpenAiConfig(selectedIndex)}>
-                      Advanced Dialog
+                      Configuracion avanzada
                     </Button>
                   </Stack>
                 )}
               </>
+                </AccordionDetails>
+              </Accordion>
             )}
+            <Accordion expanded={inspectorSection === 'runtime'} onChange={(_, e) => setInspectorSection(e ? 'runtime' : '')}>
+              <AccordionSummary expandIcon={<Iconify icon="mdi:chevron-down" />}>
+                <Typography variant="subtitle2">Runtime</Typography>
+              </AccordionSummary>
+              <AccordionDetails>
+                <Button
+                  size="small"
+                  variant="text"
+                  onClick={() => setShowAdvanced((s) => !s)}
+                  sx={{ justifyContent: 'flex-start', mb: 1 }}
+                >
+                  {showAdvanced ? 'Ocultar avanzado' : 'Mostrar avanzado'}
+                </Button>
+                <Collapse in={showAdvanced}>
+                  <Stack spacing={1}>
+                    <TextField
+                      label="Timeout (ms)"
+                      size="small"
+                      type="number"
+                      value={selected.timeoutMs ?? 30000}
+                      onChange={(e) => onUpdateActivity(selectedIndex, { timeoutMs: Number(e.target.value || 30000) })}
+                    />
+                    <TextField
+                      label="Reintentos"
+                      size="small"
+                      type="number"
+                      value={selected.retryCount ?? 0}
+                      onChange={(e) => onUpdateActivity(selectedIndex, { retryCount: Number(e.target.value || 0) })}
+                    />
+                    <TextField
+                      label="Delay reintento (ms)"
+                      size="small"
+                      type="number"
+                      value={selected.retryDelayMs ?? 0}
+                      onChange={(e) => onUpdateActivity(selectedIndex, { retryDelayMs: Number(e.target.value || 0) })}
+                    />
+                  </Stack>
+                </Collapse>
+              </AccordionDetails>
+            </Accordion>
 
-            <Divider />
-            <Stack direction="row" justifyContent="space-between" alignItems="center">
-              <Typography variant="caption" color="text.secondary">
-                Config
-                {requiredConfigByType[selected.type]?.length
-                  ? ` (required: ${requiredConfigByType[selected.type].join(', ')})`
-                  : ''}
-              </Typography>
-              <Button size="small" onClick={() => onAddActivityConfig(selectedIndex)}>
-                Add
-              </Button>
-            </Stack>
-            {Object.entries(selected.config ?? {}).map(([key, value]) => (
+            <Accordion expanded={inspectorSection === 'debug'} onChange={(_, e) => setInspectorSection(e ? 'debug' : '')}>
+              <AccordionSummary expandIcon={<Iconify icon="mdi:chevron-down" />}>
+                <Typography variant="subtitle2">Debug</Typography>
+              </AccordionSummary>
+              <AccordionDetails>
+                <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+                  <Typography variant="caption" color="text.secondary">
+                    Config
+                    {requiredConfigByType[selected.type]?.length
+                      ? ` (required: ${requiredConfigByType[selected.type].join(', ')})`
+                      : ''}
+                  </Typography>
+                  <Button size="small" onClick={() => onAddActivityConfig(selectedIndex)}>
+                    Add
+                  </Button>
+                </Stack>
+                {Object.entries(selected.config ?? {}).map(([key, value]) => (
               <Grid container spacing={1} key={`${selected.id}_${key}`}>
                 <Grid item xs={4}>
                   <TextField
@@ -848,13 +952,34 @@ export function WorkflowVisualDesigner({
                   </Button>
                 </Grid>
               </Grid>
-            ))}
+                ))}
+              </AccordionDetails>
+            </Accordion>
             <Button color="error" variant="outlined" onClick={() => onRemoveActivity(selectedIndex)}>
               Remove Node
             </Button>
           </Stack>
         )}
       </Drawer>
+
+      <Drawer
+        anchor="right"
+        open={showValidation}
+        onClose={() => setShowValidation(false)}
+        PaperProps={{ sx: { width: 360, p: 2 } }}
+      >
+        <Typography variant="subtitle1" sx={{ mb: 1 }}>Validaciones</Typography>
+        {validationErrors.length === 0 ? (
+          <Alert severity="success">Sin errores de validacion.</Alert>
+        ) : (
+          <Stack spacing={1}>
+            {validationErrors.map((err, idx) => (
+              <Alert key={`v_${idx}`} severity="warning">{err}</Alert>
+            ))}
+          </Stack>
+        )}
+      </Drawer>
     </Card>
   );
 }
+

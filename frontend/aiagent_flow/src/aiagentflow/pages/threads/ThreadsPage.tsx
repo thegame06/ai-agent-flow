@@ -151,19 +151,19 @@ export default function ThreadsPage() {
   return (
     <>
       <Helmet>
-        <title>Conversation Threads | {CONFIG.appName}</title>
+        <title>Hilos de conversacion | {CONFIG.appName}</title>
       </Helmet>
 
       <DashboardContent maxWidth="xl">
         <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Box>
-            <Typography variant="h4">Conversation Threads</Typography>
+            <Typography variant="h4">Inbox - Hilos de conversacion</Typography>
             <Typography variant="body2" sx={{ color: 'text.secondary', mt: 1 }}>
-              Manage and view conversation history across all agents.
+              Opera conversaciones, backlog y SLA desde una sola bandeja.
             </Typography>
           </Box>
           <Button variant="outlined" startIcon={<Iconify icon="solar:refresh-line-duotone" />} onClick={handleRefresh}>
-            Refresh
+            Actualizar
           </Button>
         </Box>
 
@@ -175,30 +175,30 @@ export default function ThreadsPage() {
 
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 2 }}>
           <Card sx={{ p: 2, flex: 1 }}>
-            <Typography variant="subtitle2" color="text.secondary">Avg First Response</Typography>
+            <Typography variant="subtitle2" color="text.secondary">Primera respuesta prom.</Typography>
             <Typography variant="h5">{avgFirstResponse} min</Typography>
           </Card>
           <Card sx={{ p: 2, flex: 1 }}>
-            <Typography variant="subtitle2" color="text.secondary">Resolution Rate</Typography>
+            <Typography variant="subtitle2" color="text.secondary">Tasa de resolucion</Typography>
             <Typography variant="h5">{resolutionRate}%</Typography>
           </Card>
           <Card sx={{ p: 2, flex: 1 }}>
-            <Typography variant="subtitle2" color="text.secondary">Threads per Agent</Typography>
+            <Typography variant="subtitle2" color="text.secondary">Hilos por agente</Typography>
             <Typography variant="h5">{threadsPerAgent}</Typography>
           </Card>
           <Card sx={{ p: 2, flex: 1 }}>
-            <Typography variant="subtitle2" color="text.secondary">SLA Breaches</Typography>
+            <Typography variant="subtitle2" color="text.secondary">Incumplimientos SLA</Typography>
             <Typography variant="h5" color={slaBreaches > 0 ? 'error.main' : 'text.primary'}>{slaBreaches}</Typography>
           </Card>
         </Stack>
         <Card sx={{ p: 2, mb: 2 }}>
-          <Typography variant="subtitle2" sx={{ mb: 1 }}>Backlog by Channel</Typography>
+          <Typography variant="subtitle2" sx={{ mb: 1 }}>Backlog por canal</Typography>
           <Stack direction="row" spacing={1} flexWrap="wrap">
             {Object.entries(metrics?.backlogByChannel || {}).map(([key, value]) => (
               <Chip key={key} label={`${key}: ${value}`} size="small" />
             ))}
           </Stack>
-          <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>Backlog by Status</Typography>
+          <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>Backlog por estado</Typography>
           <Stack direction="row" spacing={1} flexWrap="wrap">
             {Object.entries(metrics?.backlogByStatus || {}).map(([key, value]) => (
               <Chip key={key} label={`${key}: ${value}`} size="small" />
@@ -211,25 +211,25 @@ export default function ThreadsPage() {
           <Stack direction="row" spacing={2} sx={{ mb: 3 }}>
             <TextField
               select
-              label="Filter by Agent"
+              label="Filtrar por agente"
               value={filterAgent}
               onChange={(e) => setFilterAgent(e.target.value)}
               size="small"
               sx={{ width: 200 }}
             >
-              <MenuItem value="">All Agents</MenuItem>
+              <MenuItem value="">Todos los agentes</MenuItem>
               {/* Could populate from agents list if needed */}
             </TextField>
 
             <TextField
               select
-              label="Filter by Status"
+              label="Filtrar por estado"
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
               size="small"
               sx={{ width: 150 }}
             >
-              <MenuItem value="">All Statuses</MenuItem>
+              <MenuItem value="">Todos los estados</MenuItem>
               <MenuItem value="Active">Active</MenuItem>
               <MenuItem value="Archived">Archived</MenuItem>
               <MenuItem value="Expired">Expired</MenuItem>
@@ -237,7 +237,7 @@ export default function ThreadsPage() {
               <MenuItem value="MaxTurnsReached">MaxTurnsReached</MenuItem>
             </TextField>
             <Button variant="contained" color="info" onClick={handleAutoAssign}>
-              Auto-assign Unassigned
+              Autoasignar sin asignacion
             </Button>
           </Stack>
 
@@ -254,7 +254,7 @@ export default function ThreadsPage() {
               slotProps={{
                 toolbar: {
                   showQuickFilter: true,
-                  quickFilterProps: { placeholder: 'Search threads...' },
+                  quickFilterProps: { placeholder: 'Buscar hilos...' },
                 },
               }}
               initialState={{
@@ -274,53 +274,53 @@ export default function ThreadsPage() {
 
       {/* Archive Confirmation Dialog */}
       <Dialog open={openArchiveDialog} onClose={() => setOpenArchiveDialog(false)}>
-        <DialogTitle>Archive Thread</DialogTitle>
+        <DialogTitle>Archivar hilo</DialogTitle>
         <DialogContent>
-          <Typography>Are you sure you want to archive this thread? It will be moved to archived status.</Typography>
+          <Typography>Seguro que deseas archivar este hilo? Se movera al estado archivado.</Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setOpenArchiveDialog(false)}>Cancel</Button>
+          <Button onClick={() => setOpenArchiveDialog(false)}>Cancelar</Button>
           <Button variant="contained" color="warning" onClick={confirmArchive}>
-            Archive
+            Archivar
           </Button>
         </DialogActions>
       </Dialog>
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={openDeleteDialog} onClose={() => setOpenDeleteDialog(false)}>
-        <DialogTitle>Delete Thread</DialogTitle>
+        <DialogTitle>Eliminar hilo</DialogTitle>
         <DialogContent>
           <Typography color="error">
-            Are you sure you want to permanently delete this thread? This action cannot be undone.
+            Seguro que deseas eliminar este hilo permanentemente? Esta accion no se puede deshacer.
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setOpenDeleteDialog(false)}>Cancel</Button>
+          <Button onClick={() => setOpenDeleteDialog(false)}>Cancelar</Button>
           <Button variant="contained" color="error" onClick={confirmDelete}>
-            Delete
+            Eliminar
           </Button>
         </DialogActions>
       </Dialog>
 
       <Dialog open={openInboxDialog} onClose={() => setOpenInboxDialog(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Edit Inbox Metadata</DialogTitle>
+        <DialogTitle>Editar metadata de inbox</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
-            <TextField label="Assigned To" value={inboxForm.assignedTo} onChange={(e) => setInboxForm((prev) => ({ ...prev, assignedTo: e.target.value }))} fullWidth />
-            <TextField select label="Status" value={inboxForm.status} onChange={(e) => setInboxForm((prev) => ({ ...prev, status: e.target.value }))} fullWidth>
+            <TextField label="Asignado a" value={inboxForm.assignedTo} onChange={(e) => setInboxForm((prev) => ({ ...prev, assignedTo: e.target.value }))} fullWidth />
+            <TextField select label="Estado" value={inboxForm.status} onChange={(e) => setInboxForm((prev) => ({ ...prev, status: e.target.value }))} fullWidth>
               <MenuItem value="Active">Active</MenuItem>
               <MenuItem value="Paused">Paused</MenuItem>
               <MenuItem value="Archived">Archived</MenuItem>
             </TextField>
-            <TextField label="Channel" value={inboxForm.channel} onChange={(e) => setInboxForm((prev) => ({ ...prev, channel: e.target.value }))} fullWidth />
-            <TextField label="Tags (comma separated)" value={inboxForm.tags} onChange={(e) => setInboxForm((prev) => ({ ...prev, tags: e.target.value }))} fullWidth />
-            <TextField type="datetime-local" label="SLA Due At" value={inboxForm.slaDueAt} onChange={(e) => setInboxForm((prev) => ({ ...prev, slaDueAt: e.target.value }))} fullWidth InputLabelProps={{ shrink: true }} />
-            <TextField label="Internal Note" value={inboxForm.internalNote} onChange={(e) => setInboxForm((prev) => ({ ...prev, internalNote: e.target.value }))} multiline minRows={3} fullWidth />
+            <TextField label="Canal" value={inboxForm.channel} onChange={(e) => setInboxForm((prev) => ({ ...prev, channel: e.target.value }))} fullWidth />
+            <TextField label="Etiquetas (separadas por coma)" value={inboxForm.tags} onChange={(e) => setInboxForm((prev) => ({ ...prev, tags: e.target.value }))} fullWidth />
+            <TextField type="datetime-local" label="SLA vence en" value={inboxForm.slaDueAt} onChange={(e) => setInboxForm((prev) => ({ ...prev, slaDueAt: e.target.value }))} fullWidth InputLabelProps={{ shrink: true }} />
+            <TextField label="Nota interna" value={inboxForm.internalNote} onChange={(e) => setInboxForm((prev) => ({ ...prev, internalNote: e.target.value }))} multiline minRows={3} fullWidth />
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setOpenInboxDialog(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handleSaveInbox}>Save</Button>
+          <Button onClick={() => setOpenInboxDialog(false)}>Cancelar</Button>
+          <Button variant="contained" onClick={handleSaveInbox}>Guardar</Button>
         </DialogActions>
       </Dialog>
     </>

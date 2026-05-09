@@ -1,5 +1,7 @@
 using AgentFlow.Abstractions.Workflow;
 using AgentFlow.Api.Workflow;
+using AgentFlow.Domain.Repositories;
+using AgentFlow.Extensions;
 using AgentFlow.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -15,6 +17,8 @@ public sealed class WorkflowStudioController : ControllerBase
     private readonly IWorkflowTriggerService _triggerService;
     private readonly IWorkflowAuditService _audit;
     private readonly IWorkflowSecurityPolicyService _policy;
+    private readonly IChannelDefinitionRepository _channelRepo;
+    private readonly IExtensionRegistry _extensionRegistry;
     private readonly ITenantContextAccessor _tenantContext;
 
     public WorkflowStudioController(
@@ -22,12 +26,16 @@ public sealed class WorkflowStudioController : ControllerBase
         IWorkflowTriggerService triggerService,
         IWorkflowAuditService audit,
         IWorkflowSecurityPolicyService policy,
+        IChannelDefinitionRepository channelRepo,
+        IExtensionRegistry extensionRegistry,
         ITenantContextAccessor tenantContext)
     {
         _store = store;
         _triggerService = triggerService;
         _audit = audit;
         _policy = policy;
+        _channelRepo = channelRepo;
+        _extensionRegistry = extensionRegistry;
         _tenantContext = tenantContext;
     }
 
@@ -36,6 +44,54 @@ public sealed class WorkflowStudioController : ControllerBase
     {
         if (!CanAccessCatalog()) return Forbid();
         return Ok(await _store.GetActivitiesAsync(ct));
+    }
+
+    [HttpGet("integrations/status")]
+    public async Task<IActionResult> GetIntegrationStatus([FromRoute] string tenantId, CancellationToken ct)
+    {
+        if (!CanAccessTenant(tenantId)) return Forbid();
+
+        var channels = await _channelRepo.GetAllAsync(tenantId, ct);
+        var extensionStates = await _extensionRegistry.GetTenantExtensionStatesAsync(tenantId, ct);
+
+        var items = new List<object>();
+
+        foreach (var channel in channels)
+        {
+            var authMode = channel.Config.GetValueOrDefault("AuthMode");
+            var hasSecret = !string.IsNullOrWhiteSpace(channel.Config.GetValueOrDefault("ApiToken")) ||
+                            !string.IsNullOrWhiteSpace(channel.Config.GetValueOrDefault("PhoneNumberId")) ||
+                            !string.IsNullOrWhiteSpace(authMode);
+
+            items.Add(new
+            {
+                key = $"channel:{channel.Type.ToString().ToLowerInvariant()}",
+                displayName = channel.Name,
+                category = "channel",
+                enabled = channel.Status == AgentFlow.Domain.Aggregates.ChannelStatus.Active,
+                connected = channel.Status == AgentFlow.Domain.Aggregates.ChannelStatus.Active,
+                secretsConfigured = hasSecret,
+                capabilities = new[] { "send", "status" },
+                detail = channel.Type.ToString()
+            });
+        }
+
+        foreach (var state in extensionStates)
+        {
+            items.Add(new
+            {
+                key = $"extension:{state.Key}",
+                displayName = state.Key,
+                category = "extension",
+                enabled = state.Value,
+                connected = true,
+                secretsConfigured = true,
+                capabilities = new[] { "tool-call" },
+                detail = state.Value ? "Enabled" : "Disabled"
+            });
+        }
+
+        return Ok(items);
     }
 
     [HttpPut("catalog/activities/{typeName}")]

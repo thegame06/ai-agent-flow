@@ -1,5 +1,5 @@
 import { Helmet } from 'react-helmet-async';
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useCallback } from 'react';
 
 import Card from '@mui/material/Card';
 import Chip from '@mui/material/Chip';
@@ -40,7 +40,7 @@ export default function MarketplacePage() {
   const [installed, setInstalled] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setError(null);
     try {
       const [catalogRes, statesRes] = await Promise.all([
@@ -51,13 +51,13 @@ export default function MarketplacePage() {
       setEntries(catalogRes.data ?? []);
       setInstalled(statesRes.data ?? {});
     } catch (err: any) {
-      setError(err?.message || 'Failed to load marketplace');
+      setError(err?.message || 'Error cargando marketplace');
     }
-  };
+  }, [query, tenantId]);
 
   useEffect(() => {
     load();
-  }, [tenantId]);
+  }, [load]);
 
   const visibleEntries = useMemo(
     () => entries.filter((e) => !query || `${e.name} ${e.extensionId}`.toLowerCase().includes(query.toLowerCase())),
@@ -96,17 +96,17 @@ export default function MarketplacePage() {
   return (
     <>
       <Helmet>
-        <title>Extension Marketplace | {CONFIG.appName}</title>
+        <title>Marketplace de extensiones | {CONFIG.appName}</title>
       </Helmet>
       <DashboardContent maxWidth="xl">
         <Stack spacing={2} sx={{ mb: 3 }}>
-          <Typography variant="h4">Extension Marketplace</Typography>
+          <Typography variant="h4">Tools - Marketplace de extensiones</Typography>
           <Typography variant="body2" color="text.secondary">
-            Browse, search, install and update plugins by tenant.
+            Explora, instala y actualiza integraciones y plugins por tenant.
           </Typography>
           <Stack direction="row" spacing={1}>
-            <TextField value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search plugin/vendor" size="small" />
-            <Button variant="outlined" onClick={load}>Refresh</Button>
+            <TextField value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar plugin/vendor" size="small" />
+            <Button variant="outlined" onClick={load}>Actualizar</Button>
           </Stack>
         </Stack>
 
@@ -126,14 +126,14 @@ export default function MarketplacePage() {
                     <Stack direction="row" spacing={1} flexWrap="wrap">
                       <Chip label={entry.metadata.vendor} size="small" />
                       <Chip label={entry.metadata.riskLevel} size="small" color="warning" />
-                      <Chip label={entry.metadata.signatureValid ? 'Signed' : 'Unsigned'} size="small" color={entry.metadata.signatureValid ? 'success' : 'default'} />
-                      {entry.metadata.isQuarantined && <Chip label="Quarantine" color="error" size="small" />}
+                      <Chip label={entry.metadata.signatureValid ? 'Firmado' : 'No firmado'} size="small" color={entry.metadata.signatureValid ? 'success' : 'default'} />
+                      {entry.metadata.isQuarantined && <Chip label="Cuarentena" color="error" size="small" />}
                     </Stack>
-                    <Typography variant="caption">Compatibility: {entry.metadata.compatibility}</Typography>
-                    <Typography variant="caption">Permissions: {(entry.metadata.permissions || []).join(', ') || 'none'}</Typography>
+                    <Typography variant="caption">Compatibilidad: {entry.metadata.compatibility}</Typography>
+                    <Typography variant="caption">Permisos: {(entry.metadata.permissions || []).join(', ') || 'ninguno'}</Typography>
                     <Stack direction="row" spacing={1}>
-                      <Button variant="contained" disabled={!!installed[entry.extensionId] || entry.metadata.isQuarantined} onClick={() => install(entry.extensionId)}>Install</Button>
-                      <Button variant="outlined" onClick={() => update(entry)}>Update metadata</Button>
+                      <Button variant="contained" disabled={!!installed[entry.extensionId] || entry.metadata.isQuarantined} onClick={() => install(entry.extensionId)}>Instalar</Button>
+                      <Button variant="outlined" onClick={() => update(entry)}>Actualizar metadata</Button>
                     </Stack>
                   </Stack>
                 </CardContent>

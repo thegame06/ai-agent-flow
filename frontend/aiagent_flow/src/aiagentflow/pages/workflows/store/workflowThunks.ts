@@ -11,12 +11,13 @@ type RuntimePayload = {
   activityCatalog: any[];
   availableModels: any[];
   availableTools: any[];
+  integrations: any[];
 };
 
 export const fetchWorkflowRuntimeData = createAsyncThunk(
   'workflowRuntime/fetchRuntimeData',
   async (tenantId: string): Promise<RuntimePayload> => {
-    const [wfRes, exRes, metRes, auditRes, catalogRes, modelsRes, toolsRes] =
+    const [wfRes, exRes, metRes, auditRes, catalogRes, modelsRes, toolsRes, integrationsRes] =
       await Promise.all([
         workflowStudioApi.getDefinitions(tenantId),
         workflowStudioApi.getExecutions(tenantId),
@@ -25,7 +26,9 @@ export const fetchWorkflowRuntimeData = createAsyncThunk(
         workflowStudioApi.getCatalogActivities(tenantId),
         workflowStudioApi.getModels(),
         workflowStudioApi.getTools(),
+        workflowStudioApi.getIntegrationStatus(tenantId),
       ]);
+    const integrations = Array.isArray(integrationsRes.data) ? integrationsRes.data : [];
 
     return {
       workflows: wfRes.data ?? [],
@@ -35,6 +38,7 @@ export const fetchWorkflowRuntimeData = createAsyncThunk(
       activityCatalog: catalogRes.data ?? [],
       availableModels: Array.isArray(modelsRes.data) ? modelsRes.data : [],
       availableTools: Array.isArray(toolsRes.data) ? toolsRes.data : [],
+      integrations,
     };
   }
 );
@@ -58,7 +62,9 @@ export const saveWorkflowDraft = createAsyncThunk(
       name: workflow.name.trim(),
       triggerEventName: workflow.triggerEventName.trim(),
       definitionJson: workflow.definitionJson,
-      metadata: {},
+      metadata: {
+        designType: (workflow as any).designType ?? 'workflow',
+      },
     });
     return workflow;
   }

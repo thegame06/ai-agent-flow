@@ -7,6 +7,7 @@ import type {
   WorkflowDefinition,
   WorkflowActivityNode,
   WorkflowRuntimeMetrics,
+  WorkflowIntegrationStatus,
   WorkflowActivityCatalogEntry,
 } from '../types';
 
@@ -38,4 +39,5 @@ export type WorkflowRuntimeState = {
   activityCatalog: WorkflowActivityCatalogEntry[];
   availableModels: ModelOption[];
   availableTools: ToolOption[];
+  integrations: WorkflowIntegrationStatus[];
 };

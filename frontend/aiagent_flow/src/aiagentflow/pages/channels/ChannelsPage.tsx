@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Helmet } from 'react-helmet-async';
+﻿import { Helmet } from 'react-helmet-async';
+import { useState, useEffect, useCallback } from 'react';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -107,7 +107,7 @@ export default function ChannelsPage() {
     { value: 'Slack', label: 'Slack', icon: 'mdi:slack' },
   ];
 
-  const fetchAll = async () => {
+  const fetchAll = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -124,15 +124,15 @@ export default function ChannelsPage() {
         .map((a: any) => ({ id: a.id, name: a.name }));
       setCandidateAgents(agents);
     } catch (err: any) {
-      setError(err?.message || 'Failed to load channels');
+      setError(err?.message || 'Error cargando canales');
     } finally {
       setLoading(false);
     }
-  };
+  }, [TENANT_ID]);
 
   useEffect(() => {
     fetchAll();
-  }, []);
+  }, [fetchAll]);
 
   const handleCreate = async () => {
     if (!form.name.trim()) return;
@@ -160,7 +160,7 @@ export default function ChannelsPage() {
       setForm({ name: '', type: 'WhatsApp', authMode: 'qr', apiToken: '', phoneNumberId: '', defaultAgentId: '', routingAgentsCsv: '', routingCapacitiesCsv: '' });
       await fetchAll();
     } catch (err: any) {
-      alert(err?.message || 'Failed to create channel');
+      alert(err?.message || 'Error creando canal');
     } finally {
       setSaving(false);
     }
@@ -179,7 +179,7 @@ export default function ChannelsPage() {
       setRoutingPreview(null);
       setOpenRouting(true);
     } catch (err: any) {
-      alert(err?.message || 'Failed to load channel routing');
+      alert(err?.message || 'Error cargando reglas de enrutamiento');
     }
   };
 
@@ -208,7 +208,7 @@ export default function ChannelsPage() {
       setRoutingChannel(null);
       await fetchAll();
     } catch (err: any) {
-      alert(err?.message || 'Failed to update routing');
+      alert(err?.message || 'Error actualizando enrutamiento');
     } finally {
       setSaving(false);
     }
@@ -223,7 +223,7 @@ export default function ChannelsPage() {
         activeLoadByAgent: res.data?.activeLoadByAgent || {},
       });
     } catch (err: any) {
-      alert(err?.message || 'Failed to run routing preview');
+      alert(err?.message || 'Error ejecutando vista previa de enrutamiento');
     }
   };
 
@@ -234,7 +234,7 @@ export default function ChannelsPage() {
 
   const handleActivate = async (channel: Channel) => {
     try {
-      const res = await axios.post(`/api/v1/tenants/${TENANT_ID}/channels/${channel.id}/activate`);
+      await axios.post(`/api/v1/tenants/${TENANT_ID}/channels/${channel.id}/activate`);
 
       if (channel.type === 'WhatsApp' && channel.config?.AuthMode === 'qr') {
         setSelectedChannel(channel);
@@ -251,29 +251,29 @@ export default function ChannelsPage() {
 
       await fetchAll();
     } catch (err: any) {
-      setError(err?.response?.data?.message || err?.message || 'Failed to activate channel');
+      setError(err?.response?.data?.message || err?.message || 'Error activando canal');
     }
   };
 
   const handleDeactivate = async (channelId: string) => {
-    if (!confirm('Deactivate this channel?')) return;
+    if (!confirm('Desactivar este canal?')) return;
 
     try {
       await axios.post(`/api/v1/tenants/${TENANT_ID}/channels/${channelId}/deactivate`);
       await fetchAll();
     } catch (err: any) {
-      alert(err?.message || 'Failed to deactivate channel');
+      alert(err?.message || 'Error desactivando canal');
     }
   };
 
   const handleDelete = async (channelId: string) => {
-    if (!confirm('Delete this channel permanently?')) return;
+    if (!confirm('Eliminar este canal permanentemente?')) return;
 
     try {
       await axios.delete(`/api/v1/tenants/${TENANT_ID}/channels/${channelId}`);
       await fetchAll();
     } catch (err: any) {
-      alert(err?.message || 'Failed to delete channel');
+      alert(err?.message || 'Error eliminando canal');
     }
   };
 
@@ -285,7 +285,7 @@ export default function ChannelsPage() {
         : '';
       alert(`Health: ${res.data.healthy ? 'OK' : 'UNHEALTHY'} - ${res.data.message || 'n/a'}${qrSuffix}`);
     } catch (err: any) {
-      alert(err?.message || 'Health check failed');
+      alert(err?.message || 'Error en health check');
     }
   };
 
@@ -296,7 +296,7 @@ export default function ChannelsPage() {
       const res = await axios.get(`/api/v1/tenants/${TENANT_ID}/channel-sessions/${session.id}/messages?limit=50`);
       setSessionMessages((res.data ?? []) as SessionMessageEvidence[]);
     } catch (err: any) {
-      alert(err?.message || 'Failed to load session messages');
+      alert(err?.message || 'Error cargando mensajes de sesion');
     } finally {
       setSessionLoading(false);
     }
@@ -330,7 +330,7 @@ export default function ChannelsPage() {
     }
 
     setQrPolling(false);
-    setError('QR polling finished. If still pending, use Refresh QR.');
+    setError('Finalizo el polling de QR. Si sigue pendiente, usa Refrescar QR.');
   };
 
   const getStatusColor = (status: string) => {
@@ -359,13 +359,13 @@ export default function ChannelsPage() {
       <DashboardContent maxWidth="xl">
         <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Box>
-            <Typography variant="h4">Communication Channels</Typography>
+            <Typography variant="h4">Connect - Canales de comunicacion</Typography>
             <Typography variant="body2" sx={{ color: 'text.secondary', mt: 1 }}>
-              Manage WhatsApp, Web Chat, API and other communication channels for your agents.
+              Administra conexiones, salud del canal y evidencia operacional.
             </Typography>
           </Box>
           <Button variant="contained" startIcon={<Iconify icon="mingcute:add-line" />} onClick={() => setOpenCreate(true)}>
-            Add Channel
+            Agregar canal
           </Button>
         </Box>
 
@@ -374,20 +374,20 @@ export default function ChannelsPage() {
         <Grid container spacing={3}>
           <Grid item xs={12} md={7}>
             <Card sx={{ p: 2 }}>
-              <Typography variant="h6" sx={{ mb: 2 }}>Channels</Typography>
+              <Typography variant="h6" sx={{ mb: 2 }}>Canales conectados</Typography>
               {loading ? (
                 <Box sx={{ py: 4, textAlign: 'center' }}><CircularProgress /></Box>
               ) : channels.length === 0 ? (
-                <Alert severity="info">No channels configured yet.</Alert>
+                <Alert severity="info">Aun no hay canales configurados.</Alert>
               ) : (
                 <Table size="small">
                   <TableHead>
                     <TableRow>
-                      <TableCell>Name</TableCell>
-                      <TableCell>Type</TableCell>
-                      <TableCell>Status</TableCell>
-                      <TableCell>Activity</TableCell>
-                      <TableCell align="right">Actions</TableCell>
+                      <TableCell>Nombre</TableCell>
+                      <TableCell>Tipo</TableCell>
+                      <TableCell>Estado</TableCell>
+                      <TableCell>Actividad</TableCell>
+                      <TableCell align="right">Acciones</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
@@ -401,17 +401,17 @@ export default function ChannelsPage() {
                           <Chip label={c.status} size="small" color={getStatusColor(c.status) as any} />
                         </TableCell>
                         <TableCell>
-                          {c.lastActivityAt ? new Date(c.lastActivityAt).toLocaleString() : 'Never'}
+                          {c.lastActivityAt ? new Date(c.lastActivityAt).toLocaleString() : 'Nunca'}
                         </TableCell>
                         <TableCell align="right">
                           <Stack direction="row" spacing={1} justifyContent="flex-end">
                             {c.status === 'Active' ? (
                               <Button size="small" variant="outlined" color="warning" onClick={() => handleDeactivate(c.id)}>
-                                Deactivate
+                                Desactivar
                               </Button>
                             ) : (
                               <Button size="small" variant="outlined" color="success" onClick={() => handleActivate(c)}>
-                                Activate
+                                Activar
                               </Button>
                             )}
                             <IconButton size="small" onClick={() => handleCheckHealth(c)}>
@@ -435,9 +435,9 @@ export default function ChannelsPage() {
 
           <Grid item xs={12} md={5}>
             <Card sx={{ p: 2 }}>
-              <Typography variant="h6" sx={{ mb: 2 }}>Active Sessions</Typography>
+              <Typography variant="h6" sx={{ mb: 2 }}>Sesiones activas</Typography>
               {sessions.length === 0 ? (
-                <Alert severity="info">No active sessions.</Alert>
+                <Alert severity="info">No hay sesiones activas.</Alert>
               ) : (
                 <Stack spacing={2} sx={{ maxHeight: 600, overflow: 'auto' }}>
                   {sessions.slice(0, 10).map((s) => (
@@ -448,13 +448,13 @@ export default function ChannelsPage() {
                       </Box>
                       <Typography variant="body2" fontWeight={700}>{s.identifier}</Typography>
                       <Typography variant="caption" color="text.secondary">
-                        Agent: {s.agentId ?? '—'} • Thread: {s.threadId?.slice(0, 8) ?? '—'}
+                        Agente: {s.agentId ?? '-'} â€¢ Hilo: {s.threadId?.slice(0, 8) ?? '-'}
                       </Typography>
                       <Typography variant="caption" display="block" sx={{ mt: 0.5 }}>
-                        Last: {new Date(s.lastActivityAt).toLocaleString()}
+                        Ultima: {new Date(s.lastActivityAt).toLocaleString()}
                       </Typography>
                       <Button size="small" sx={{ mt: 1 }} onClick={() => openSessionEvidence(s)}>
-                        View Evidence
+                        Ver evidencia
                       </Button>
                     </Box>
                   ))}
@@ -467,11 +467,11 @@ export default function ChannelsPage() {
 
       {/* Create Channel Dialog */}
       <Dialog open={openCreate} onClose={() => setOpenCreate(false)} fullWidth maxWidth="sm">
-        <DialogTitle>Create Channel</DialogTitle>
+        <DialogTitle>Crear canal</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ pt: 1 }}>
             <TextField
-              label="Channel Name"
+              label="Nombre del canal"
               value={form.name}
               onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
               placeholder="WhatsApp Support"
@@ -480,7 +480,7 @@ export default function ChannelsPage() {
 
             <TextField
               select
-              label="Channel Type"
+              label="Tipo de canal"
               value={form.type}
               onChange={(e) => setForm((p) => ({ ...p, type: e.target.value }))}
               fullWidth
@@ -496,12 +496,12 @@ export default function ChannelsPage() {
               <>
                 <TextField
                   select
-                  label="Authentication Mode"
+                  label="Modo de autenticacion"
                   value={form.authMode}
                   onChange={(e) => setForm((p) => ({ ...p, authMode: e.target.value }))}
                   fullWidth
                 >
-                  <MenuItem value="qr">QR Code (like OpenClaw)</MenuItem>
+                  <MenuItem value="qr">Codigo QR (tipo OpenClaw)</MenuItem>
                   <MenuItem value="business">WhatsApp Business API</MenuItem>
                 </TextField>
 
@@ -516,7 +516,7 @@ export default function ChannelsPage() {
                       type="password"
                     />
                     <TextField
-                      label="Phone Number ID"
+                      label="ID de numero telefonico"
                       value={form.phoneNumberId}
                       onChange={(e) => setForm((p) => ({ ...p, phoneNumberId: e.target.value }))}
                       placeholder="123456789"
@@ -529,11 +529,11 @@ export default function ChannelsPage() {
 
             <TextField
               select
-              label="Default Agent"
+              label="Agente por defecto"
               value={form.defaultAgentId}
               onChange={(e) => setForm((p) => ({ ...p, defaultAgentId: e.target.value }))}
               fullWidth
-              helperText={candidateAgents.length === 0 ? 'No agents available' : 'Select the default agent for this channel'}
+              helperText={candidateAgents.length === 0 ? 'No hay agentes disponibles' : 'Selecciona el agente por defecto para este canal'}
             >
               {candidateAgents.map((agent) => (
                 <MenuItem key={agent.id} value={agent.id}>
@@ -542,36 +542,36 @@ export default function ChannelsPage() {
               ))}
             </TextField>
             <TextField
-              label="Routing Agents (comma separated IDs)"
+              label="Agentes de enrutamiento (IDs separados por coma)"
               value={form.routingAgentsCsv}
               onChange={(e) => setForm((p) => ({ ...p, routingAgentsCsv: e.target.value }))}
               fullWidth
-              helperText="Used for round-robin by current load. Example: sales-agent,support-agent"
+              helperText="Se usa round-robin por carga actual. Ejemplo: sales-agent,support-agent"
             />
             <TextField
-              label="Routing Capacities (agentId:max, CSV)"
+              label="Capacidades de enrutamiento (agentId:max, CSV)"
               value={form.routingCapacitiesCsv}
               onChange={(e) => setForm((p) => ({ ...p, routingCapacitiesCsv: e.target.value }))}
               fullWidth
-              helperText="Optional per-agent max active sessions. Example: sales-agent:20,support-agent:15"
+              helperText="Maximo opcional de sesiones activas por agente. Ejemplo: sales-agent:20,support-agent:15"
             />
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setOpenCreate(false)}>Cancel</Button>
+          <Button onClick={() => setOpenCreate(false)}>Cancelar</Button>
           <Button variant="contained" onClick={handleCreate} disabled={saving || !form.name}>
-            {saving ? 'Creating...' : 'Create'}
+            {saving ? 'Creando...' : 'Crear'}
           </Button>
         </DialogActions>
       </Dialog>
 
       <Dialog open={openRouting} onClose={() => setOpenRouting(false)} fullWidth maxWidth="sm">
-        <DialogTitle>Routing Rules - {routingChannel?.name}</DialogTitle>
+        <DialogTitle>Reglas de enrutamiento - {routingChannel?.name}</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ pt: 1 }}>
             <TextField
               select
-              label="Default Agent"
+              label="Agente por defecto"
               value={routingForm.defaultAgentId}
               onChange={(e) => setRoutingForm((prev) => ({ ...prev, defaultAgentId: e.target.value }))}
               fullWidth
@@ -583,51 +583,51 @@ export default function ChannelsPage() {
               ))}
             </TextField>
             <TextField
-              label="Routing Agents (comma separated IDs)"
+              label="Agentes de enrutamiento (IDs separados por coma)"
               value={routingForm.routingAgentsCsv}
               onChange={(e) => setRoutingForm((prev) => ({ ...prev, routingAgentsCsv: e.target.value }))}
               fullWidth
-              helperText="These agents are used for automatic assignment by lower active load."
+              helperText="Estos agentes se usan para asignacion automatica por menor carga activa."
             />
             <TextField
-              label="Routing Capacities (agentId:max, CSV)"
+              label="Capacidades de enrutamiento (agentId:max, CSV)"
               value={routingForm.routingCapacitiesCsv}
               onChange={(e) => setRoutingForm((prev) => ({ ...prev, routingCapacitiesCsv: e.target.value }))}
               fullWidth
-              helperText="Capacity limits per agent. Example: a1:20,a2:15"
+              helperText="Limites de capacidad por agente. Ejemplo: a1:20,a2:15"
             />
             {routingPreview && (
               <Alert severity="info">
-                Suggested: {routingPreview.suggestedAgentId || 'N/A'} | Load: {Object.entries(routingPreview.activeLoadByAgent || {}).map(([a, l]) => `${a}=${l}`).join(', ') || 'N/A'}
+                Sugerido: {routingPreview.suggestedAgentId || 'N/A'} | Carga: {Object.entries(routingPreview.activeLoadByAgent || {}).map(([a, l]) => `${a}=${l}`).join(', ') || 'N/A'}
               </Alert>
             )}
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={runRoutingPreview}>Preview Next Assignment</Button>
-          <Button onClick={() => setOpenRouting(false)}>Cancel</Button>
+          <Button onClick={runRoutingPreview}>Vista previa de proxima asignacion</Button>
+          <Button onClick={() => setOpenRouting(false)}>Cancelar</Button>
           <Button variant="contained" onClick={saveRouting} disabled={saving}>
-            Save Routing
+            Guardar enrutamiento
           </Button>
         </DialogActions>
       </Dialog>
 
       {/* QR Code Dialog */}
       <Dialog open={!!qrCode} onClose={() => setQrCode(null)} maxWidth="sm">
-        <DialogTitle>Scan QR Code - {selectedChannel?.name}</DialogTitle>
+        <DialogTitle>Escanear codigo QR - {selectedChannel?.name}</DialogTitle>
         <DialogContent>
           <Box sx={{ textAlign: 'center', py: 3 }}>
             {qrCode && (
               <>
                 <img src={qrCode} alt="WhatsApp QR" style={{ maxWidth: '100%', height: 'auto' }} />
                 <Alert severity="info" sx={{ mt: 2 }}>
-                  Open WhatsApp on your phone → Settings → Linked Devices → Link a Device → Scan this QR code
+                  Abre WhatsApp en tu telefono, luego ve a Configuracion, Dispositivos vinculados, Vincular dispositivo y escanea este codigo QR.
                 </Alert>
               </>
             )}
             {qrPolling && (
               <Alert severity="warning" sx={{ mt: 2 }}>
-                Waiting for connection confirmation... attempt {qrPollRounds}/10
+                Esperando confirmacion de conexion... intento {qrPollRounds}/10
               </Alert>
             )}
           </Box>
@@ -650,15 +650,15 @@ export default function ChannelsPage() {
             }}
             disabled={qrPolling}
           >
-            Refresh QR
+            Refrescar QR
           </Button>
-          <Button onClick={() => setQrCode(null)}>Close</Button>
+          <Button onClick={() => setQrCode(null)}>Cerrar</Button>
         </DialogActions>
       </Dialog>
 
       {/* Session Evidence Dialog */}
       <Dialog open={!!selectedSession} onClose={() => setSelectedSession(null)} fullWidth maxWidth="md">
-        <DialogTitle>Session Evidence - {selectedSession?.identifier}</DialogTitle>
+        <DialogTitle>Evidencia de sesion - {selectedSession?.identifier}</DialogTitle>
         <DialogContent>
           {sessionLoading ? (
             <Box sx={{ py: 4, textAlign: 'center' }}><CircularProgress /></Box>
@@ -668,15 +668,15 @@ export default function ChannelsPage() {
                 ExecutionId: {firstExecutionId || 'N/A'} | MsgIn: {messageIdIn || 'N/A'} | MsgOut: {messageIdOut || 'N/A'} | Latency: {latencyMs} ms
               </Alert>
               {sessionMessages.length === 0 ? (
-                <Alert severity="warning">No messages found for this session.</Alert>
+                <Alert severity="warning">No se encontraron mensajes para esta sesion.</Alert>
               ) : (
                 <Table size="small">
                   <TableHead>
                     <TableRow>
-                      <TableCell>Direction</TableCell>
-                      <TableCell>Content</TableCell>
+                      <TableCell>Direccion</TableCell>
+                      <TableCell>Contenido</TableCell>
                       <TableCell>Status</TableCell>
-                      <TableCell>Created</TableCell>
+                      <TableCell>Creado</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
@@ -697,9 +697,10 @@ export default function ChannelsPage() {
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setSelectedSession(null)}>Close</Button>
+          <Button onClick={() => setSelectedSession(null)}>Cerrar</Button>
         </DialogActions>
       </Dialog>
     </>
   );
 }
+

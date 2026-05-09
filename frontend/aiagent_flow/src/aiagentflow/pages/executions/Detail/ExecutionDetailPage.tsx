@@ -1,4 +1,4 @@
-import type { RootState, AppDispatch } from 'src/aiagentflow/store';
+﻿import type { RootState, AppDispatch } from 'src/aiagentflow/store';
 
 import { useEffect } from 'react';
 import { useParams } from 'react-router';
@@ -41,7 +41,7 @@ import { clearDetail, fetchExecutionDetail } from './executionDetailSlice';
 
 import type { ExecutionStep } from './executionDetailSlice';
 
-// ── Step type metadata ──
+// â”€â”€ Step type metadata â”€â”€
 
 const STEP_META: Record<string, { icon: string; color: string; label: string }> = {
   think: { icon: 'mdi:head-lightbulb', color: '#7C4DFF', label: 'Think' },
@@ -57,7 +57,7 @@ function getStepMeta(type: string) {
   return STEP_META[type] || { icon: 'mdi:help-circle', color: '#9E9E9E', label: type };
 }
 
-// ── Status Chip ──
+// â”€â”€ Status Chip â”€â”€
 
 function StatusChip({ status }: { status: string }) {
   const colors: Record<string, 'success' | 'warning' | 'error' | 'info' | 'default'> = {
@@ -69,7 +69,7 @@ function StatusChip({ status }: { status: string }) {
   return <Chip label={status} size="small" color={colors[status] || 'default'} variant="soft" />;
 }
 
-// ── JSON viewer ──
+// â”€â”€ JSON viewer â”€â”€
 
 function JsonViewer({ data, label }: { data?: string; label: string }) {
   const theme = useTheme();
@@ -109,7 +109,7 @@ function JsonViewer({ data, label }: { data?: string; label: string }) {
   );
 }
 
-// ── Decision Trace Step ──
+// â”€â”€ Decision Trace Step â”€â”€
 
 function DecisionTraceStep({ step, isLast }: { step: ExecutionStep; isLast: boolean }) {
   const theme = useTheme();
@@ -201,9 +201,9 @@ function DecisionTraceStep({ step, isLast }: { step: ExecutionStep; isLast: bool
   );
 }
 
-// ══════════════════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // EXECUTION DETAIL PAGE
-// ══════════════════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 export default function ExecutionDetailPage() {
   const dispatch = useDispatch<AppDispatch>();
@@ -227,7 +227,7 @@ export default function ExecutionDetailPage() {
         <Box sx={{ textAlign: 'center', py: 10 }}>
           <CircularProgress size={48} />
           <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-            Loading execution trace...
+            Cargando traza de ejecucion...
           </Typography>
         </Box>
       </DashboardContent>
@@ -247,7 +247,7 @@ export default function ExecutionDetailPage() {
   return (
     <>
       <Helmet>
-        <title>Execution {executionId?.slice(0, 8)}… | {CONFIG.appName}</title>
+        <title>Execution {executionId?.slice(0, 8)}â€¦ | {CONFIG.appName}</title>
       </Helmet>
 
       <DashboardContent maxWidth="lg">
@@ -258,7 +258,7 @@ export default function ExecutionDetailPage() {
           startIcon={<Iconify icon="mdi:arrow-left" />}
           sx={{ mb: 2, color: 'text.secondary' }}
         >
-          Back to Executions
+          Volver a Ejecuciones
         </Button>
 
         {/* Header */}
@@ -286,30 +286,30 @@ export default function ExecutionDetailPage() {
                     <StatusChip status={detail.status} />
                   </Stack>
                   <Typography variant="body2" color="text.secondary">
-                    Execution ID: {detail.id}
+                    ID de ejecucion: {detail.id}
                   </Typography>
                 </Box>
               </Stack>
 
               {/* Metrics */}
               <Stack direction="row" spacing={3} divider={<Divider orientation="vertical" flexItem />}>
-                <Tooltip title="Total Steps Executed">
+                <Tooltip title="Total de pasos ejecutados">
                   <Box sx={{ textAlign: 'center' }}>
                     <Typography variant="h5" fontWeight={800} color="primary.main">
                       {detail.totalSteps}
                     </Typography>
-                    <Typography variant="caption" color="text.secondary">Steps</Typography>
+                    <Typography variant="caption" color="text.secondary">Pasos</Typography>
                   </Box>
                 </Tooltip>
-                <Tooltip title="Total Duration">
+                <Tooltip title="Duracion total">
                   <Box sx={{ textAlign: 'center' }}>
                     <Typography variant="h5" fontWeight={800} color="info.main">
                       {detail.durationMs}ms
                     </Typography>
-                    <Typography variant="caption" color="text.secondary">Duration</Typography>
+                    <Typography variant="caption" color="text.secondary">Duracion</Typography>
                   </Box>
                 </Tooltip>
-                <Tooltip title="Step Success Rate">
+                <Tooltip title="Tasa de exito de pasos">
                   <Box sx={{ textAlign: 'center' }}>
                     <Typography
                       variant="h5"
@@ -318,7 +318,7 @@ export default function ExecutionDetailPage() {
                     >
                       {Math.round(successRate * 100)}%
                     </Typography>
-                    <Typography variant="caption" color="text.secondary">Success</Typography>
+                    <Typography variant="caption" color="text.secondary">Exito</Typography>
                   </Box>
                 </Tooltip>
                 {detail.qualityScore !== undefined && (
@@ -327,7 +327,7 @@ export default function ExecutionDetailPage() {
                       <Typography variant="h5" fontWeight={800} sx={{ color: 'secondary.main' }}>
                         {Math.round(detail.qualityScore * 100)}%
                       </Typography>
-                      <Typography variant="caption" color="text.secondary">Quality</Typography>
+                      <Typography variant="caption" color="text.secondary">Calidad</Typography>
                     </Box>
                   </Tooltip>
                 )}
@@ -353,7 +353,7 @@ export default function ExecutionDetailPage() {
                 <CardContent>
                   <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
                     <Iconify icon="mdi:account-voice" width={20} sx={{ color: 'primary.main' }} />
-                    <Typography variant="subtitle1" fontWeight={700}>User Input</Typography>
+                    <Typography variant="subtitle1" fontWeight={700}>Entrada del usuario</Typography>
                   </Stack>
                   <Paper variant="outlined" sx={{ p: 2, bgcolor: alpha(theme.palette.primary.main, 0.02) }}>
                     <Typography variant="body2">{detail.input.userMessage}</Typography>
@@ -368,7 +368,7 @@ export default function ExecutionDetailPage() {
                   <CardContent>
                     <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
                       <Iconify icon="mdi:message-check" width={20} sx={{ color: 'success.main' }} />
-                      <Typography variant="subtitle1" fontWeight={700}>Final Response</Typography>
+                    <Typography variant="subtitle1" fontWeight={700}>Respuesta final</Typography>
                     </Stack>
                     {detail.output.finalResponse && (
                       <Paper variant="outlined" sx={{ p: 2, bgcolor: alpha(theme.palette.success.main, 0.02) }}>
@@ -386,11 +386,11 @@ export default function ExecutionDetailPage() {
                   <CardContent>
                     <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>
                       <Iconify icon="mdi:shield-search" width={20} sx={{ color: 'secondary.main' }} />
-                      <Typography variant="subtitle1" fontWeight={700}>Evaluation</Typography>
+                      <Typography variant="subtitle1" fontWeight={700}>Evaluacion</Typography>
                     </Stack>
                     <Stack spacing={1}>
                       <Stack direction="row" justifyContent="space-between">
-                        <Typography variant="body2" color="text.secondary">Hallucination Risk</Typography>
+                        <Typography variant="body2" color="text.secondary">Riesgo de alucinacion</Typography>
                         <Chip
                           label={detail.hallucinationRisk}
                           size="small"
@@ -411,15 +411,15 @@ export default function ExecutionDetailPage() {
               <CardContent>
                 <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
                   <Iconify icon="mdi:timeline-clock-outline" width={22} sx={{ color: 'primary.main' }} />
-                  <Typography variant="h6" fontWeight={700}>Decision Trace</Typography>
-                  <Chip label={`${detail.steps.length} steps`} size="small" variant="soft" />
+                  <Typography variant="h6" fontWeight={700}>Traza de decisiones</Typography>
+                    <Chip label={`${detail.steps.length} pasos`} size="small" variant="soft" />
                 </Stack>
 
                 {detail.steps.length === 0 ? (
                   <Paper variant="outlined" sx={{ p: 4, textAlign: 'center' }}>
                     <Iconify icon="mdi:timeline-question-outline" width={40} sx={{ color: 'text.disabled', mb: 1 }} />
                     <Typography variant="body2" color="text.secondary">
-                      No steps recorded for this execution.
+                      No hay pasos registrados para esta ejecucion.
                     </Typography>
                   </Paper>
                 ) : (
@@ -441,3 +441,4 @@ export default function ExecutionDetailPage() {
     </>
   );
 }
+

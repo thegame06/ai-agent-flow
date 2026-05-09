@@ -28,6 +28,7 @@ export function useWorkflowStudioRuntime(tenantId: string) {
   const activityCatalog = useAppSelector((state) => state.workflowRuntime.activityCatalog);
   const availableModels = useAppSelector((state) => state.workflowRuntime.availableModels);
   const availableTools = useAppSelector((state) => state.workflowRuntime.availableTools);
+  const integrations = useAppSelector((state) => state.workflowRuntime.integrations);
 
   const loadAll = useCallback(async () => {
     await dispatch(fetchWorkflowRuntimeData(tenantId));
@@ -43,6 +44,7 @@ export function useWorkflowStudioRuntime(tenantId: string) {
       name: string;
       triggerEventName: string;
       definitionJson: string;
+      designType?: 'workflow' | 'tool';
     },
     validationErrors: string[]
   ) => {
@@ -105,6 +107,7 @@ export function useWorkflowStudioRuntime(tenantId: string) {
     activityCatalog,
     availableModels,
     availableTools,
+    integrations,
     setError: (value: string | null) => dispatch(setWorkflowRuntimeError(value)),
     setStepsOpen: (value: boolean) => dispatch(setWorkflowStepsOpen(value)),
     loadAll,

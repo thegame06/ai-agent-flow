@@ -13,6 +13,8 @@ import Typography from '@mui/material/Typography';
 
 import { Iconify } from 'src/components/iconify';
 
+import { executionStatusLabel } from '../constants';
+
 import type { WorkflowExecution } from '../types';
 
 type Props = {
@@ -25,16 +27,16 @@ export function WorkflowExecutionsCard({ executions, onOpenSteps, onRetryExecuti
   return (
     <Card sx={{ p: 2 }}>
       <Typography variant="h6" sx={{ mb: 2 }}>
-        Recent Executions
+        Ejecuciones recientes
       </Typography>
       <Table size="small">
         <TableHead>
           <TableRow>
             <TableCell>ID</TableCell>
             <TableCell>Workflow</TableCell>
-            <TableCell>Status</TableCell>
-            <TableCell>Created</TableCell>
-            <TableCell align="right">Actions</TableCell>
+            <TableCell>Estado</TableCell>
+            <TableCell>Creado</TableCell>
+            <TableCell align="right">Acciones</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
@@ -45,7 +47,7 @@ export function WorkflowExecutionsCard({ executions, onOpenSteps, onRetryExecuti
               <TableCell>
                 <Chip
                   size="small"
-                  label={ex.status}
+                  label={executionStatusLabel(ex.status)}
                   color={ex.status === 'Completed' ? 'success' : ex.status === 'Failed' ? 'error' : 'default'}
                 />
               </TableCell>
@@ -57,7 +59,7 @@ export function WorkflowExecutionsCard({ executions, onOpenSteps, onRetryExecuti
                   </IconButton>
                   {ex.status === 'Failed' && (
                     <Button size="small" color="warning" onClick={() => onRetryExecution(ex.id)}>
-                      Retry
+                      Reintentar
                     </Button>
                   )}
                 </Stack>
@@ -67,7 +69,7 @@ export function WorkflowExecutionsCard({ executions, onOpenSteps, onRetryExecuti
           {executions.length === 0 && (
             <TableRow>
               <TableCell colSpan={5}>
-                <Alert severity="info">No workflow executions yet.</Alert>
+                <Alert severity="info">Aun no hay ejecuciones de workflow.</Alert>
               </TableCell>
             </TableRow>
           )}
@@ -76,3 +78,4 @@ export function WorkflowExecutionsCard({ executions, onOpenSteps, onRetryExecuti
     </Card>
   );
 }
+

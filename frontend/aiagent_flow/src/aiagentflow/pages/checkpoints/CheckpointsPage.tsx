@@ -1,4 +1,4 @@
-import type { RootState, AppDispatch } from 'src/aiagentflow/store';
+﻿import type { RootState, AppDispatch } from 'src/aiagentflow/store';
 
 import { useState, useEffect } from 'react';
 import { Helmet } from 'react-helmet-async';
@@ -34,7 +34,7 @@ import { fetchCheckpoints, decideCheckpoint } from './checkpointSlice';
 
 import type { Checkpoint } from './checkpointSlice';
 
-// ─── Checkpoint Card ─────────────────────────────────────────────────────
+// â”€â”€â”€ Checkpoint Card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function CheckpointCard({
   checkpoint,
   onApprove,
@@ -89,14 +89,14 @@ function CheckpointCard({
             </Avatar>
             <Box>
               <Typography variant="h6" sx={{ color: isHighRisk ? 'error.dark' : 'text.primary', display: 'flex', alignItems: 'center', gap: 1 }}>
-                {isHighRisk ? 'Critical Authorization' : 'Action Review Required'}
+                {isHighRisk ? 'Autorizacion critica' : 'Revision de accion requerida'}
                 {isHighRisk && (
-                    <Chip label="High Risk" size="small" color="error" variant="soft" sx={{ fontSize: '0.65rem', height: 18, fontWeight: 800 }} />
+                    <Chip label="Alto riesgo" size="small" color="error" variant="soft" sx={{ fontSize: '0.65rem', height: 18, fontWeight: 800 }} />
                 )}
               </Typography>
               <Typography variant="caption" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                 <Iconify icon="mdi:clock-outline" width={14} />
-                Received {timeSince} · TraceId: {checkpoint.executionId}
+                Recibido {timeSince} · TraceId: {checkpoint.executionId}
               </Typography>
             </Box>
           </Stack>
@@ -114,7 +114,7 @@ function CheckpointCard({
         {/* Security Justification */}
         <Box sx={{ mb: 3 }}>
              <Typography variant="overline" color="text.secondary" sx={{ mb: 1, display: 'block', letterSpacing: 1 }}>
-                Governance Context
+                Contexto de gobierno
              </Typography>
              <Paper
                 variant="outlined"
@@ -135,14 +135,14 @@ function CheckpointCard({
         {/* Technical Drilldown */}
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={4} sx={{ mb: 3 }}>
             <Box sx={{ flex: 1 }}>
-                 <Typography variant="overline" color="text.secondary" sx={{ mb: 1, display: 'block' }}>Tool Metadata</Typography>
+                  <Typography variant="overline" color="text.secondary" sx={{ mb: 1, display: 'block' }}>Metadata de tool</Typography>
                  <Stack spacing={1.5}>
                     <Stack direction="row" spacing={1} alignItems="center">
                         <Badge overlap="circular" anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }} 
                                badgeContent={<Iconify icon="mdi:server-network" sx={{ color: 'primary.main', bgcolor: 'background.paper', borderRadius: '50%' }} width={12} />}>
                             <Iconify icon="mdi:application-cog-outline" width={20} sx={{ color: 'text.secondary' }} />
                         </Badge>
-                        <Typography variant="body2">Tool: <strong>{checkpoint.toolName || 'General Flow'}</strong></Typography>
+                        <Typography variant="body2">Tool: <strong>{checkpoint.toolName || 'Flujo general'}</strong></Typography>
                     </Stack>
                     
                     {checkpoint.llmRationale && (
@@ -159,7 +159,7 @@ function CheckpointCard({
             </Box>
 
             <Box sx={{ flex: 1.5 }}>
-                  <Typography variant="overline" color="text.secondary" sx={{ mb: 1, display: 'block' }}>Payload Inspection</Typography>
+                  <Typography variant="overline" color="text.secondary" sx={{ mb: 1, display: 'block' }}>Inspeccion de payload</Typography>
                   <Paper
                     sx={{
                       p: 2,
@@ -180,7 +180,7 @@ function CheckpointCard({
                              {formatJson(checkpoint.toolInputJson)}
                          </Box>
                     ) : (
-                        <Typography variant="caption" color="text.disabled">No payload data provided.</Typography>
+                        <Typography variant="caption" color="text.disabled">No se proporciono payload.</Typography>
                     )}
                   </Paper>
             </Box>
@@ -198,7 +198,7 @@ function CheckpointCard({
             onClick={() => onReject(checkpoint)}
             sx={{ borderRadius: 1.2, fontWeight: 700 }}
           >
-            Refuse Access
+            Rechazar acceso
           </Button>
           <Button
             variant="contained"
@@ -213,7 +213,7 @@ function CheckpointCard({
                 boxShadow: isHighRisk ? theme.customShadows.error : theme.customShadows.success
             }}
           >
-            {isHighRisk ? 'Authorize Critical Action' : 'Approve & Resume'}
+            {isHighRisk ? 'Autorizar accion critica' : 'Aprobar y continuar'}
           </Button>
         </Stack>
       </CardContent>
@@ -221,16 +221,16 @@ function CheckpointCard({
   );
 }
 
-// ── Helpers ──
+// â”€â”€ Helpers â”€â”€
 
 function getTimeSince(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
   const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
+  if (mins < 1) return 'justo ahora';
+  if (mins < 60) return `hace ${mins}m`;
   const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  return `${Math.floor(hrs / 24)}d ago`;
+  if (hrs < 24) return `hace ${hrs}h`;
+  return `hace ${Math.floor(hrs / 24)}d`;
 }
 
 function formatJson(str: string): string {
@@ -241,9 +241,9 @@ function formatJson(str: string): string {
   }
 }
 
-// ══════════════════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // CHECKPOINTS PAGE
-// ══════════════════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 export default function CheckpointsPage() {
   const dispatch = useDispatch<AppDispatch>();
@@ -293,7 +293,7 @@ export default function CheckpointsPage() {
   return (
     <>
       <Helmet>
-        <title>Review Queue | {CONFIG.appName}</title>
+        <title>Cola de revision | {CONFIG.appName}</title>
       </Helmet>
 
       <DashboardContent maxWidth="lg">
@@ -302,14 +302,14 @@ export default function CheckpointsPage() {
           <Box>
             <Stack direction="row" alignItems="center" spacing={1.5}>
               <Typography variant="h4" fontWeight={800}>
-                Review Queue
+                Cola de revision
               </Typography>
               <Badge badgeContent={items.length} color="warning" max={99}>
                 <Iconify icon="mdi:bell-ring-outline" width={24} sx={{ color: 'text.secondary' }} />
               </Badge>
             </Stack>
             <Typography variant="body2" color="text.secondary">
-              Approve or reject agent actions that require human verification.
+              Aprueba o rechaza acciones del agente que requieren verificacion humana.
             </Typography>
           </Box>
           <Button
@@ -318,7 +318,7 @@ export default function CheckpointsPage() {
             startIcon={<Iconify icon="mdi:refresh" />}
             onClick={() => dispatch(fetchCheckpoints(tenantId))}
           >
-            Refresh
+            Actualizar
           </Button>
         </Stack>
 
@@ -345,10 +345,10 @@ export default function CheckpointsPage() {
               sx={{ color: 'success.main', mb: 2 }}
             />
             <Typography variant="h6" fontWeight={700} sx={{ mb: 1 }}>
-              All Clear!
+              Todo en orden
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              No pending reviews. All agent executions are running smoothly.
+              No hay revisiones pendientes. Las ejecuciones van correctamente.
             </Typography>
           </Paper>
         )}
@@ -358,7 +358,7 @@ export default function CheckpointsPage() {
           <Box sx={{ textAlign: 'center', py: 6 }}>
             <CircularProgress />
             <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-              Loading pending reviews...
+              Cargando revisiones pendientes...
             </Typography>
           </Box>
         )}
@@ -381,30 +381,31 @@ export default function CheckpointsPage() {
       <Dialog open={!!rejectDialog} onClose={() => setRejectDialog(null)} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <Iconify icon="mdi:alert" sx={{ color: 'error.main' }} />
-          Reject Execution
+          Rechazar ejecucion
         </DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Provide feedback on why this action is being rejected. The execution will be marked as failed.
+            Indica por que esta accion se rechaza. La ejecucion quedara como fallida.
           </Typography>
           <TextField
             autoFocus
             fullWidth
             multiline
             rows={3}
-            label="Rejection Reason"
-            placeholder="Explain why this action should not proceed..."
+            label="Motivo de rechazo"
+            placeholder="Explica por que esta accion no debe continuar..."
             value={rejectFeedback}
             onChange={(e) => setRejectFeedback(e.target.value)}
           />
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={() => setRejectDialog(null)}>Cancel</Button>
+          <Button onClick={() => setRejectDialog(null)}>Cancelar</Button>
           <Button variant="contained" color="error" onClick={confirmReject}>
-            Confirm Rejection
+            Confirmar rechazo
           </Button>
         </DialogActions>
       </Dialog>
     </>
   );
 }
+
