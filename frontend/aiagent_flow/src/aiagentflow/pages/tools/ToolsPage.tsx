@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
 import { Helmet } from 'react-helmet-async';
+import { useState, useEffect, useCallback } from 'react';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -13,12 +13,16 @@ import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import CardContent from '@mui/material/CardContent';
 
+import { paths } from 'src/routes/paths';
+import { RouterLink } from 'src/routes/components';
+
 import axios from 'src/lib/axios';
 import { CONFIG } from 'src/global-config';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
 
 import { Label } from 'src/components/label';
+import { Iconify } from 'src/components/iconify';
 
 interface ToolRow {
   name: string;
@@ -62,7 +66,7 @@ export default function ToolsPage() {
   const [runLoading, setRunLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchTools = async () => {
+  const fetchTools = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -73,11 +77,11 @@ export default function ToolsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [tenantId]);
 
   useEffect(() => {
     fetchTools();
-  }, [tenantId]);
+  }, [fetchTools]);
 
   const toggleTool = async (row: ToolRow, enabled: boolean) => {
     try {
@@ -105,17 +109,17 @@ export default function ToolsPage() {
   };
 
   const columns: any[] = [
-    { field: 'name', headerName: 'Tool', minWidth: 190, flex: 1 },
+    { field: 'name', headerName: 'Herramienta', minWidth: 190, flex: 1 },
     { field: 'version', headerName: 'Version', width: 120 },
     {
       field: 'riskLevel',
-      headerName: 'Risk',
+      headerName: 'Riesgo',
       width: 120,
       renderCell: (params: any) => <Label variant="soft">{params.value}</Label>,
     },
     {
       field: 'health',
-      headerName: 'Health',
+      headerName: 'Estado',
       width: 140,
       renderCell: (params: any) => (
         <Label variant="soft" color={params.value === 'Healthy' ? 'success' : 'error'}>
@@ -125,7 +129,7 @@ export default function ToolsPage() {
     },
     {
       field: 'enabled',
-      headerName: 'Enabled',
+      headerName: 'Activa',
       width: 130,
       renderCell: (params: any) => (
         <Switch checked={!!params.value} onChange={(e) => toggleTool(params.row, e.target.checked)} />
@@ -136,19 +140,43 @@ export default function ToolsPage() {
   return (
     <>
       <Helmet>
-        <title>Extensions & Tools | {CONFIG.appName}</title>
+        <title>Conectores y Tools | {CONFIG.appName}</title>
       </Helmet>
 
       <DashboardContent maxWidth="xl">
         <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Box>
-            <Typography variant="h4">Platform Tools & Extensions</Typography>
+            <Typography variant="h4">Conectores y herramientas</Typography>
             <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-              Tenant-aware tool status, health, and invoke testing.
+              Administra capacidades disponibles para agentes, workflows e integraciones.
             </Typography>
           </Box>
-          <Button variant="outlined" onClick={fetchTools}>Refresh</Button>
+          <Button variant="outlined" onClick={fetchTools}>Actualizar</Button>
         </Box>
+
+        <Grid container spacing={2} sx={{ mb: 3 }}>
+          {[
+            ['Marketplace', 'Instala nuevas capacidades', paths.dashboard.marketplace, 'mdi:storefront-outline'],
+            ['Canales', 'Conecta WhatsApp, web chat y APIs', paths.dashboard.system.channels, 'mdi:message-processing-outline'],
+            ['MCP', 'Expone tools externas para agentes', paths.dashboard.system.mcp, 'mdi:connection'],
+          ].map(([title, subtitle, href, icon]) => (
+            <Grid item xs={12} md={4} key={title}>
+              <Card
+                component={RouterLink}
+                href={href}
+                sx={{ p: 2, textDecoration: 'none', color: 'inherit', height: '100%' }}
+              >
+                <Stack direction="row" spacing={1.5} alignItems="center">
+                  <Iconify icon={icon} width={28} sx={{ color: 'primary.main' }} />
+                  <Box>
+                    <Typography variant="subtitle2">{title}</Typography>
+                    <Typography variant="caption" color="text.secondary">{subtitle}</Typography>
+                  </Box>
+                </Stack>
+              </Card>
+            </Grid>
+          ))}
+        </Grid>
 
         {error && (
           <Alert severity="error" sx={{ mb: 2 }} action={<Button color="inherit" size="small" onClick={fetchTools}>Retry</Button>}>
@@ -180,11 +208,11 @@ export default function ToolsPage() {
               <CardContent>
                 <Stack spacing={2}>
                   <Typography variant="subtitle1">
-                    {selectedTool ? `Tool Test: ${selectedTool.name}` : 'Select a tool to test'}
+                    {selectedTool ? `Probar herramienta: ${selectedTool.name}` : 'Selecciona una herramienta'}
                   </Typography>
 
                   <TextField
-                    label="Input JSON"
+                    label="Entrada JSON"
                     value={inputJson}
                     onChange={(e) => setInputJson(e.target.value)}
                     fullWidth
@@ -194,10 +222,10 @@ export default function ToolsPage() {
                   />
 
                   <Button variant="contained" onClick={runToolTest} disabled={!selectedTool || runLoading}>
-                    Invoke Tool
+                    Probar herramienta
                   </Button>
 
-                  <TextField label="Result" value={result} fullWidth multiline minRows={12} InputProps={{ readOnly: true }} />
+                  <TextField label="Resultado" value={result} fullWidth multiline minRows={12} InputProps={{ readOnly: true }} />
                 </Stack>
               </CardContent>
             </Card>

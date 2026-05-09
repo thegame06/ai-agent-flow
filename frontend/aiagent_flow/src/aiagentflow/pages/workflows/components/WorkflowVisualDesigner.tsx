@@ -41,7 +41,12 @@ import FormControlLabel from '@mui/material/FormControlLabel';
 
 import { Iconify } from 'src/components/iconify';
 
-import { activityTypeLabel, DEFAULT_AI_AGENT_CONFIG, ACTIVITY_TYPE_CATEGORY_ES } from '../constants';
+import {
+  activityTypeLabel,
+  ACTIVITY_TYPE_PRESETS,
+  DEFAULT_AI_AGENT_CONFIG,
+  ACTIVITY_TYPE_CATEGORY_ES,
+} from '../constants';
 
 import type { ToolOption, ModelOption, WorkflowActivityNode, WorkflowIntegrationStatus } from '../types';
 
@@ -66,9 +71,22 @@ type Props = {
 type WorkflowNodeData = {
   label: string;
   activityType: string;
+  description: string;
+  badge?: string;
   index: number;
   onDuplicate?: () => void;
   onDelete?: () => void;
+};
+
+const activityDescription = (type: string) => {
+  if (type === 'ai.agent') return 'Decide, responde o usa herramientas';
+  if (type === 'connect.send_whatsapp_template') return 'Envia una plantilla aprobada';
+  if (type === 'connect.enqueue_campaign_message') return 'Programa un mensaje saliente';
+  if (type === 'connect.update_inbox_status') return 'Actualiza la bandeja de entrada';
+  if (type.startsWith('human.')) return 'Escala o asigna a un equipo';
+  if (type.startsWith('kyc.')) return 'Valida identidad o revision';
+  if (type.startsWith('payments.')) return 'Crea o gestiona pagos';
+  return 'Accion del flujo';
 };
 
 const nodeColorByType = (type: string) => {
@@ -82,6 +100,7 @@ const nodeColorByType = (type: string) => {
 function WorkflowNodeCard({ data, selected }: NodeProps<Node<WorkflowNodeData>>) {
   const activityType = String(data.activityType ?? '');
   const label = String(data.label ?? activityType);
+  const description = String(data.description ?? activityDescription(activityType));
   const color = nodeColorByType(activityType);
   const category = activityType.split('.')[0]?.toUpperCase() ?? 'STEP';
 
@@ -115,8 +134,9 @@ function WorkflowNodeCard({ data, selected }: NodeProps<Node<WorkflowNodeData>>)
           {label}
         </Typography>
         <Typography variant="caption" color="text.secondary" sx={{ wordBreak: 'break-word' }}>
-          {activityTypeLabel(activityType)}
+          {description}
         </Typography>
+        {data.badge && <Chip size="small" label={String(data.badge)} sx={{ alignSelf: 'flex-start' }} />}
       </Stack>
       <Handle type="source" position={Position.Right} id="next" style={{ top: '35%' }} />
       <Handle type="source" position={Position.Right} id="success" style={{ top: '55%', background: '#16a34a' }} />
@@ -127,6 +147,7 @@ function WorkflowNodeCard({ data, selected }: NodeProps<Node<WorkflowNodeData>>)
 
 function AiWorkflowNode({ data, selected }: NodeProps<Node<WorkflowNodeData>>) {
   const label = String(data.label ?? 'AI Agent');
+  const model = String(data.badge ?? 'modelo pendiente');
   return (
     <Box
       sx={{
@@ -157,8 +178,9 @@ function AiWorkflowNode({ data, selected }: NodeProps<Node<WorkflowNodeData>>) {
           {label}
         </Typography>
         <Typography variant="caption" color="text.secondary">
-          orquestacion de modelo
+          Agente configurado para decidir y ejecutar tools
         </Typography>
+        <Chip size="small" color="primary" variant="soft" label={model} sx={{ alignSelf: 'flex-start' }} />
       </Stack>
       <Handle type="source" position={Position.Right} id="next" style={{ top: '35%' }} />
       <Handle type="source" position={Position.Right} id="success" style={{ top: '55%', background: '#16a34a' }} />
@@ -169,6 +191,7 @@ function AiWorkflowNode({ data, selected }: NodeProps<Node<WorkflowNodeData>>) {
 
 function ConnectWorkflowNode({ data, selected }: NodeProps<Node<WorkflowNodeData>>) {
   const label = String(data.label ?? 'Connect');
+  const badge = data.badge ? String(data.badge) : 'canal';
   return (
     <Box
       sx={{
@@ -199,8 +222,9 @@ function ConnectWorkflowNode({ data, selected }: NodeProps<Node<WorkflowNodeData
           {label}
         </Typography>
         <Typography variant="caption" color="text.secondary">
-          envios y estado
+          {String(data.description ?? 'envios y estado')}
         </Typography>
+        <Chip size="small" label={badge} sx={{ alignSelf: 'flex-start' }} />
       </Stack>
       <Handle type="source" position={Position.Right} id="next" style={{ top: '35%' }} />
       <Handle type="source" position={Position.Right} id="success" style={{ top: '55%', background: '#16a34a' }} />
@@ -262,6 +286,10 @@ const toNodes = (
     data: {
       label: activity.name || activity.id || activityTypeLabel(activity.type),
       activityType: activity.type,
+      description: activityDescription(activity.type),
+      badge: activity.type === 'ai.agent'
+        ? activity.aiAgent?.model
+        : activity.config?.channel || activity.config?.status,
       index: idx,
       onDuplicate: () => onDuplicate(idx),
       onDelete: () => onDelete(idx),
@@ -428,6 +456,17 @@ export function WorkflowVisualDesigner({
     () => (selectedIndex !== null && selectedIndex >= 0 ? activities[selectedIndex] : null),
     [activities, selectedIndex]
   );
+  const requiredKeys = selected ? requiredConfigByType[selected.type] ?? [] : [];
+  const handleSelectedTypeChange = (type: string) => {
+    if (selectedIndex === null) return;
+    onUpdateActivity(selectedIndex, {
+      type,
+      name: activityTypeLabel(type),
+      config: { ...(ACTIVITY_TYPE_PRESETS[type] ?? {}) },
+      aiAgent: type === 'ai.agent' ? { ...DEFAULT_AI_AGENT_CONFIG } : undefined,
+    });
+    setInspectorSection(type === 'ai.agent' ? 'ia' : 'general');
+  };
   const selectedIntegration = useMemo(() => {
     if (!selected?.type.startsWith('connect.')) return null;
     const channel = (selected.config?.channel ?? '').toLowerCase();
@@ -539,9 +578,14 @@ export function WorkflowVisualDesigner({
                           key={type}
                           variant="outlined"
                           onClick={() => addByType(type)}
-                          sx={{ justifyContent: 'flex-start', textTransform: 'none' }}
+                          sx={{ justifyContent: 'flex-start', textTransform: 'none', py: 1 }}
                         >
-                          {activityTypeLabel(type)}
+                          <Stack alignItems="flex-start" spacing={0.2}>
+                            <Typography variant="body2">{activityTypeLabel(type)}</Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              {activityDescription(type)}
+                            </Typography>
+                          </Stack>
                         </Button>
                       ))}
                     </Stack>
@@ -606,16 +650,10 @@ export function WorkflowVisualDesigner({
               <AccordionDetails>
                 <Stack spacing={1}>
                   <TextField
-                    label="ID interno"
-                    value={selected.id}
-                    onChange={(e) => onUpdateActivity(selectedIndex, { id: e.target.value })}
-                    size="small"
-                  />
-                  <TextField
                     label="Tipo de nodo"
                     select
                     value={selected.type}
-                    onChange={(e) => onUpdateActivity(selectedIndex, { type: e.target.value })}
+                    onChange={(e) => handleSelectedTypeChange(e.target.value)}
                     size="small"
                   >
                     {allowedTypes.map((type) => (
@@ -628,24 +666,6 @@ export function WorkflowVisualDesigner({
                     label="Nombre"
                     value={selected.name ?? ''}
                     onChange={(e) => onUpdateActivity(selectedIndex, { name: e.target.value || undefined })}
-                    size="small"
-                  />
-                  <TextField
-                    label="Siguiente nodo"
-                    value={selected.next ?? ''}
-                    onChange={(e) => onUpdateActivity(selectedIndex, { next: e.target.value || undefined })}
-                    size="small"
-                  />
-                  <TextField
-                    label="Exito"
-                    value={selected.onSuccess ?? ''}
-                    onChange={(e) => onUpdateActivity(selectedIndex, { onSuccess: e.target.value || undefined })}
-                    size="small"
-                  />
-                  <TextField
-                    label="Fallo"
-                    value={selected.onFailure ?? ''}
-                    onChange={(e) => onUpdateActivity(selectedIndex, { onFailure: e.target.value || undefined })}
                     size="small"
                   />
                 </Stack>
@@ -765,32 +785,37 @@ export function WorkflowVisualDesigner({
                   </Stack>
                 )}
                 {aiTab === 1 && (
-                  <FormGroup>
-                    {(availableTools.length > 0
+                  <Stack spacing={1}>
+                    <Typography variant="caption" color="text.secondary">
+                      Selecciona las herramientas que este agente puede usar durante el flujo.
+                    </Typography>
+                    <FormGroup>
+                      {(availableTools.length > 0
                       ? availableTools
                       : [{ key: 'http.request', displayName: 'HTTP Request' }]
-                    ).map((tool) => {
-                      const selectedToolsSet = new Set(selected.aiAgent?.tools ?? []);
-                      const checked = selectedToolsSet.has(tool.key);
-                      return (
-                        <FormControlLabel
-                          key={tool.key}
-                          control={
-                            <Checkbox
-                              checked={checked}
-                              onChange={(e) => {
-                                const next = new Set(selected.aiAgent?.tools ?? []);
-                                if (e.target.checked) next.add(tool.key);
-                                else next.delete(tool.key);
-                                onUpdateAiAgentConfig(selectedIndex, { tools: Array.from(next) });
-                              }}
-                            />
-                          }
-                          label={tool.displayName || tool.key}
-                        />
-                      );
-                    })}
-                  </FormGroup>
+                      ).map((tool) => {
+                        const selectedToolsSet = new Set(selected.aiAgent?.tools ?? []);
+                        const checked = selectedToolsSet.has(tool.key);
+                        return (
+                          <FormControlLabel
+                            key={tool.key}
+                            control={
+                              <Checkbox
+                                checked={checked}
+                                onChange={(e) => {
+                                  const next = new Set(selected.aiAgent?.tools ?? []);
+                                  if (e.target.checked) next.add(tool.key);
+                                  else next.delete(tool.key);
+                                  onUpdateAiAgentConfig(selectedIndex, { tools: Array.from(next) });
+                                }}
+                              />
+                            }
+                            label={tool.displayName || tool.key}
+                          />
+                        );
+                      })}
+                    </FormGroup>
+                  </Stack>
                 )}
                 {aiTab === 2 && (
                   <Stack spacing={1}>
@@ -872,6 +897,32 @@ export function WorkflowVisualDesigner({
                 <Typography variant="subtitle2">Runtime</Typography>
               </AccordionSummary>
               <AccordionDetails>
+                <Stack spacing={1} sx={{ mb: 1 }}>
+                  <TextField
+                    label="ID interno"
+                    value={selected.id}
+                    onChange={(e) => onUpdateActivity(selectedIndex, { id: e.target.value })}
+                    size="small"
+                  />
+                  <TextField
+                    label="Siguiente nodo"
+                    value={selected.next ?? ''}
+                    onChange={(e) => onUpdateActivity(selectedIndex, { next: e.target.value || undefined })}
+                    size="small"
+                  />
+                  <TextField
+                    label="Exito"
+                    value={selected.onSuccess ?? ''}
+                    onChange={(e) => onUpdateActivity(selectedIndex, { onSuccess: e.target.value || undefined })}
+                    size="small"
+                  />
+                  <TextField
+                    label="Fallo"
+                    value={selected.onFailure ?? ''}
+                    onChange={(e) => onUpdateActivity(selectedIndex, { onFailure: e.target.value || undefined })}
+                    size="small"
+                  />
+                </Stack>
                 <Button
                   size="small"
                   variant="text"
@@ -916,8 +967,8 @@ export function WorkflowVisualDesigner({
                 <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
                   <Typography variant="caption" color="text.secondary">
                     Config
-                    {requiredConfigByType[selected.type]?.length
-                      ? ` (required: ${requiredConfigByType[selected.type].join(', ')})`
+                    {requiredKeys.length
+                      ? ` (requeridos: ${requiredKeys.join(', ')})`
                       : ''}
                   </Typography>
                   <Button size="small" onClick={() => onAddActivityConfig(selectedIndex)}>

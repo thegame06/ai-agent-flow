@@ -116,7 +116,7 @@ export const ACTIVITY_TYPE_PRESETS: Record<string, Record<string, string>> = {
 
 export const DEFAULT_AI_AGENT_CONFIG: AiAgentNodeConfig = {
   model: 'gpt-4o',
-  instructions: '',
+  instructions: 'Responde al cliente de forma clara, breve y segura usando el contexto disponible.',
   tools: [],
   context: '',
   knowledge: [],

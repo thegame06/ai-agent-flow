@@ -1,5 +1,5 @@
 import { Helmet } from 'react-helmet-async';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -51,16 +51,16 @@ export default function McpPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const loadSettings = async () => {
+  const loadSettings = useCallback(async () => {
     try {
       const res = await axios.get(`/api/v1/tenants/${tenantId}/mcp/settings`);
       setSettings(res.data);
     } catch {
       setSettings(null);
     }
-  };
+  }, [tenantId]);
   
-  const loadServers = async () => {
+  const loadServers = useCallback(async () => {
     setError(null);
     try {
       const res = await axios.get('/api/v1/mcp/servers');
@@ -69,12 +69,12 @@ export default function McpPage() {
     } catch (e: any) {
       setError(e?.message || 'Failed to load MCP servers');
     }
-  };
+  }, [selectedServer]);
   
   useEffect(() => {
     loadSettings();
     loadServers();
-  }, [tenantId]);
+  }, [loadServers, loadSettings]);
 
   const loadTools = async () => {
     if (!selectedServer) return;
@@ -133,13 +133,13 @@ export default function McpPage() {
   return (
     <>
       <Helmet>
-        <title>MCP Console | {CONFIG.appName}</title>
+        <title>MCP para agentes | {CONFIG.appName}</title>
       </Helmet>
       <DashboardContent maxWidth="xl">
         <Box sx={{ mb: 4 }}>
-          <Typography variant="h4">MCP Console</Typography>
+          <Typography variant="h4">MCP para agentes</Typography>
           <Typography variant="body2" color="text.secondary">
-            Discover tools from configured MCP servers and invoke them with real payloads.
+            Conecta servidores MCP y habilita sus herramientas para agentes y workflows.
           </Typography>
         </Box>
 
@@ -148,12 +148,12 @@ export default function McpPage() {
             action={
               !settings.enabled ? (
                 <Button color="inherit" size="small" onClick={enableMcp} disabled={loading}>
-                  Enable MCP (MAF)
+                  Habilitar MCP
                 </Button>
               ) : undefined
             }
           >
-            MCP: <b>{settings.enabled ? 'Enabled' : 'Disabled'}</b> · Runtime: <b>{settings.runtime}</b> · Timeout: {settings.timeoutSeconds}s · Retries: {settings.retryCount}
+            MCP: <b>{settings.enabled ? 'Activo' : 'Inactivo'}</b> · Runtime: <b>{settings.runtime}</b> · Timeout: {settings.timeoutSeconds}s · Reintentos: {settings.retryCount}
           </Alert>
         )}
 
@@ -170,7 +170,7 @@ export default function McpPage() {
                 <Stack spacing={2}>
                   <TextField
                     select
-                    label="MCP Server"
+                    label="Servidor MCP"
                     value={selectedServer}
                     onChange={(e) => setSelectedServer(e.target.value)}
                     fullWidth
@@ -182,16 +182,16 @@ export default function McpPage() {
 
                   <Stack direction="row" spacing={1}>
                     <Button variant="outlined" onClick={loadServers} disabled={loading}>
-                      Refresh Servers
+                      Actualizar servidores
                     </Button>
                     <Button variant="outlined" onClick={loadTools} disabled={loading || !selectedServer || !settings?.enabled}>
-                      Discover Tools
+                      Descubrir herramientas
                     </Button>
                   </Stack>
 
                   <TextField
                     select
-                    label="Tool"
+                    label="Herramienta"
                     value={selectedTool}
                     onChange={(e) => setSelectedTool(e.target.value)}
                     fullWidth
@@ -202,7 +202,7 @@ export default function McpPage() {
                   </TextField>
 
                   <TextField
-                    label="Input JSON"
+                    label="Entrada JSON"
                     value={inputJson}
                     onChange={(e) => setInputJson(e.target.value)}
                     fullWidth
@@ -211,7 +211,7 @@ export default function McpPage() {
                   />
 
                   <Button variant="contained" onClick={invoke} disabled={loading || !selectedTool || !settings?.enabled}>
-                    Invoke Tool
+                    Probar herramienta
                   </Button>
                 </Stack>
               </CardContent>
@@ -221,7 +221,7 @@ export default function McpPage() {
           <Grid item xs={12} md={7}>
             <Card>
               <CardContent>
-                <Typography variant="subtitle1" sx={{ mb: 1 }}>Result</Typography>
+                <Typography variant="subtitle1" sx={{ mb: 1 }}>Resultado</Typography>
                 <TextField value={output} fullWidth multiline minRows={22} InputProps={{ readOnly: true }} />
               </CardContent>
             </Card>

@@ -20,41 +20,41 @@ export function validateWorkflow(
   requiredConfigByType: Record<string, string[]>
 ): string[] {
   const errors: string[] = [];
-  if (!triggerEventName.trim()) errors.push('Trigger event is required.');
-  if (activities.length === 0) errors.push('At least one activity is required.');
-  if (activities.length > 100) errors.push('Workflow exceeds max activities (100).');
+  if (!triggerEventName.trim()) errors.push('El evento disparador es requerido.');
+  if (activities.length === 0) errors.push('Agrega al menos un nodo.');
+  if (activities.length > 100) errors.push('El workflow excede el maximo de 100 nodos.');
 
   const ids = new Set<string>();
   activities.forEach((activity, idx) => {
     const step = idx + 1;
-    if (!activity.id?.trim()) errors.push(`Step ${step}: id is required.`);
-    if (activity.id && ids.has(activity.id)) errors.push(`Step ${step}: duplicate id '${activity.id}'.`);
+    if (!activity.id?.trim()) errors.push(`Nodo ${step}: el ID interno es requerido.`);
+    if (activity.id && ids.has(activity.id)) errors.push(`Nodo ${step}: el ID '${activity.id}' esta duplicado.`);
     if (activity.id) ids.add(activity.id);
 
     if (!allowedTypes.includes(activity.type)) {
-      errors.push(`Step ${step}: activity type '${activity.type}' is not allowed.`);
+      errors.push(`Nodo ${step}: el tipo '${activity.type}' no esta permitido.`);
     }
 
     const timeoutMs = activity.timeoutMs ?? 30000;
     const retryCount = activity.retryCount ?? 0;
     const retryDelayMs = activity.retryDelayMs ?? 0;
 
-    if (timeoutMs < 1 || timeoutMs > 120000) errors.push(`Step ${step}: timeout must be 1..120000.`);
-    if (retryCount < 0 || retryCount > 5) errors.push(`Step ${step}: retry must be 0..5.`);
-    if (retryDelayMs < 0 || retryDelayMs > 30000) errors.push(`Step ${step}: delay must be 0..30000.`);
+    if (timeoutMs < 1 || timeoutMs > 120000) errors.push(`Nodo ${step}: timeout debe estar entre 1 y 120000.`);
+    if (retryCount < 0 || retryCount > 5) errors.push(`Nodo ${step}: reintentos debe estar entre 0 y 5.`);
+    if (retryDelayMs < 0 || retryDelayMs > 30000) errors.push(`Nodo ${step}: delay debe estar entre 0 y 30000.`);
 
     const cfg = activity.config ?? {};
     if (activity.type === 'ai.agent') {
       const ai = activity.aiAgent ?? DEFAULT_AI_AGENT_CONFIG;
-      if (!ai.model.trim()) errors.push(`Step ${step}: AI model is required.`);
-      if (!ai.instructions.trim()) errors.push(`Step ${step}: AI instructions are required.`);
-      if (ai.maxTokens < 64 || ai.maxTokens > 8000) errors.push(`Step ${step}: maxTokens must be 64..8000.`);
-      if (ai.temperature < 0 || ai.temperature > 1) errors.push(`Step ${step}: temperature must be 0..1.`);
+      if (!ai.model.trim()) errors.push(`Nodo ${step}: selecciona un modelo de IA.`);
+      if (!ai.instructions.trim()) errors.push(`Nodo ${step}: agrega instrucciones para el agente.`);
+      if (ai.maxTokens < 64 || ai.maxTokens > 8000) errors.push(`Nodo ${step}: tokens maximos debe estar entre 64 y 8000.`);
+      if (ai.temperature < 0 || ai.temperature > 1) errors.push(`Nodo ${step}: temperatura debe estar entre 0 y 1.`);
     }
 
     const requiredConfig = requiredConfigByType[activity.type] ?? [];
     requiredConfig.forEach((key) => {
-      if (!cfg[key]?.trim()) errors.push(`Step ${step}: ${key} is required.`);
+      if (!cfg[key]?.trim()) errors.push(`Nodo ${step}: completa el campo ${key}.`);
     });
   });
 
