@@ -1,7 +1,7 @@
 import type { GridColDef } from '@mui/x-data-grid';
 
 import { Helmet } from 'react-helmet-async';
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useCallback } from 'react';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -91,14 +91,14 @@ export default function ManagerOrchestrationPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const refreshRoutingData = async () => {
+  const refreshRoutingData = useCallback(async () => {
     const [rulesRes, routingAgentsRes] = await Promise.all([
       axios.get(endpoints.agentflow.intentRouting.rules(tenantId)),
       axios.get(endpoints.agentflow.intentRouting.agents(tenantId)),
     ]);
     setRules((rulesRes.data ?? []) as IntentRule[]);
     setRoutingAgents((routingAgentsRes.data ?? []) as RoutingAgent[]);
-  };
+  }, [tenantId]);
 
   useEffect(() => {
     const load = async () => {
@@ -125,7 +125,7 @@ export default function ManagerOrchestrationPage() {
       }
     };
     void load();
-  }, [tenantId]);
+  }, [managerA, managerB, refreshRoutingData, sourceAgentId, tenantId]);
 
   const availableTargets = useMemo(() => agents.filter((a) => a.id !== sourceAgentId), [agents, sourceAgentId]);
   const sharedTargets = useMemo(() => managerATargets.filter((t) => managerBTargets.includes(t)), [managerATargets, managerBTargets]);

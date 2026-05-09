@@ -1,5 +1,5 @@
 import { Helmet } from 'react-helmet-async';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 import Card from '@mui/material/Card';
 import Stack from '@mui/material/Stack';
@@ -36,7 +36,7 @@ export default function PoliciesPage() {
   const [editing, setEditing] = useState<any | null>(null);
   const [rulesJson, setRulesJson] = useState('[]');
 
-  const fetchPolicies = async () => {
+  const fetchPolicies = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -47,11 +47,11 @@ export default function PoliciesPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [tenantId]);
 
   useEffect(() => {
     fetchPolicies();
-  }, [tenantId]);
+  }, [fetchPolicies]);
 
   const createPolicySet = async () => {
     await axios.post(`/api/v1/tenants/${tenantId}/policies`, { name, description });

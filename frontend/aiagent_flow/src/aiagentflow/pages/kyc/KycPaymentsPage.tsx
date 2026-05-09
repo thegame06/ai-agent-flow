@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
 import { Helmet } from 'react-helmet-async';
+import { useState, useEffect, useCallback } from 'react';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -71,7 +71,7 @@ export default function KycPaymentsPage() {
     reference: '',
   });
 
-  const loadHistory = async () => {
+  const loadHistory = useCallback(async () => {
     try {
       const [casesRes, paymentsRes] = await Promise.all([
         axios.get(`${endpoints.agentflow.kyc.listCases(tenantId)}?page=${casePage}&pageSize=10${caseStatusFilter ? `&status=${encodeURIComponent(caseStatusFilter)}` : ''}`),
@@ -82,11 +82,11 @@ export default function KycPaymentsPage() {
     } catch {
       // keep current state
     }
-  };
+  }, [casePage, caseStatusFilter, paymentPage, paymentStatusFilter, tenantId]);
 
   useEffect(() => {
     loadHistory();
-  }, [casePage, paymentPage, caseStatusFilter, paymentStatusFilter]);
+  }, [loadHistory]);
 
   const runDocumentCheck = async () => {
     try {

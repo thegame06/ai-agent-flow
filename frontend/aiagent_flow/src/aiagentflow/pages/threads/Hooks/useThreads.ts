@@ -4,22 +4,23 @@ import { useAppDispatch, useAppSelector } from 'src/aiagentflow/store/hooks';
 
 import {
   clearError,
-  updateThreadInbox,
-  fetchThreadMetrics,
   sendMessage,
   fetchThreads,
   deleteThread,
   archiveThread,
+  updateThreadInbox,
   fetchThreadDetail,
+  fetchThreadMetrics,
   fetchThreadHistory,
   clearCurrentThread
 } from '../Redux/Slice';
 
 import type {
   Thread,
-  ThreadMessage,
   InboxMetrics,
-  UpdateThreadInboxPayload} from '../Redux/Slice';
+  ThreadMessage,
+  UpdateThreadInboxPayload,
+} from '../Redux/Slice';
 
 // ----------------------------------------------------------------------
 

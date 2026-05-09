@@ -41,9 +41,7 @@ export default function SegmentRoutingPage() {
       const res = await axios.get(endpoints.agentflow.agents.list(tenantId));
       const list = (res.data ?? []).filter((a: any) => a?.id);
       setAgents(list);
-      if (!agentId && list.length > 0) {
-        setAgentId(list[0].id);
-      }
+      setAgentId((prev) => prev || list[0]?.id || '');
     };
     void loadAgents();
   }, [tenantId]);

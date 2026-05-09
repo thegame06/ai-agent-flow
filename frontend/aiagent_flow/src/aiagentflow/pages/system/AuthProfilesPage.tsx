@@ -1,5 +1,5 @@
 import { Helmet } from 'react-helmet-async';
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useCallback } from 'react';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -73,7 +73,7 @@ export default function AuthProfilesPage() {
 
   const providerOptions = useMemo(() => ['OpenAI', 'Anthropic', 'Gemini', 'OpenRouter', 'Groq'], []);
 
-  const fetchAll = async () => {
+  const fetchAll = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -89,11 +89,11 @@ export default function AuthProfilesPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [TENANT_ID]);
 
   useEffect(() => {
     fetchAll();
-  }, []);
+  }, [fetchAll]);
 
   const handleCreate = async () => {
     if (!form.profileId.trim()) return;
