@@ -15,6 +15,9 @@ import Typography from '@mui/material/Typography';
 import ToggleButton from '@mui/material/ToggleButton';
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 
+import { paths } from 'src/routes/paths';
+import { RouterLink } from 'src/routes/components';
+
 import { CONFIG } from 'src/global-config';
 import axios, { endpoints } from 'src/lib/axios';
 import { DashboardContent } from 'src/layouts/dashboard';
@@ -649,6 +652,15 @@ export default function WorkflowsPage() {
                 startIcon={<Iconify icon="mdi:source-branch-sync" />}
               >
                 {syncingIntents ? 'Sincronizando...' : 'Sincronizar intenciones'}
+              </Button>
+              <Button
+                size="small"
+                variant="outlined"
+                component={RouterLink}
+                href={paths.dashboard.intentMap}
+                startIcon={<Iconify icon="mdi:map-search-outline" />}
+              >
+                Ver mapa
               </Button>
               <ToggleButtonGroup
                 value={editorMode}

@@ -1,6 +1,6 @@
 import type { RootState, AppDispatch } from 'src/aiagentflow/store';
 
-import { useEffect, useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { useDispatch, useSelector } from 'react-redux';
 
@@ -8,6 +8,7 @@ import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import Chip from '@mui/material/Chip';
 import Grid from '@mui/material/Grid';
+import Alert from '@mui/material/Alert';
 import Stack from '@mui/material/Stack';
 import Paper from '@mui/material/Paper';
 import Table from '@mui/material/Table';
@@ -171,6 +172,8 @@ export default function OverviewPage() {
   const dispatch = useDispatch<AppDispatch>();
   const tenantId = useTenantId();
   const theme = useTheme();
+  const [jaiPrompt, setJaiPrompt] = useState('');
+  const [orchestratorStatus, setOrchestratorStatus] = useState<SystemOrchestratorStatus | null>(null);
   const { metrics, recentExecutions, agentPerformance, loading } = useSelector(
     (state: RootState) => state.overview
   );
@@ -179,6 +182,28 @@ export default function OverviewPage() {
     dispatch(fetchOverview(tenantId));
   }, [dispatch, tenantId]);
 
+  useEffect(() => {
+    let active = true;
+    axios
+      .get(endpoints.agentflow.systemOrchestrator.status(tenantId))
+      .then((res) => {
+        if (active) setOrchestratorStatus(res.data as SystemOrchestratorStatus);
+      })
+      .catch(() => {
+        if (active) setOrchestratorStatus(null);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [tenantId]);
+
+  const jaiGuidance =
+    orchestratorStatus?.gaps?.[0] ??
+    'Puedo ayudarte a crear un workflow, conectar WhatsApp/Twilio, configurar Storage o MCP, publicar agentes y revisar por que una intencion no dispara.';
+
+  const readyConnections = orchestratorStatus?.connections?.filter((connection) => connection.ready).length ?? 0;
+
   return (
     <>
       <Helmet>
@@ -186,7 +211,6 @@ export default function OverviewPage() {
       </Helmet>
 
       <DashboardContent maxWidth="xl">
-        {/* ── Header ── */}
         <Paper
           variant="outlined"
           sx={{
@@ -194,61 +218,141 @@ export default function OverviewPage() {
             p: { xs: 3, md: 5 },
             borderRadius: 3,
             background:
-              'radial-gradient(circle at top left, rgba(38,103,255,0.12), transparent 34%), linear-gradient(135deg, #fbfcff 0%, #f4f7fb 100%)',
+              'radial-gradient(circle at 12% 18%, rgba(14,124,90,0.18), transparent 30%), radial-gradient(circle at 88% 8%, rgba(0,167,181,0.16), transparent 28%), linear-gradient(135deg, #fbfdf9 0%, #f4f8f3 100%)',
           }}
         >
-          <Stack spacing={3} alignItems="center" textAlign="center">
-            <Box>
-              <Typography variant="overline" color="text.secondary">
-                Inicio
-              </Typography>
-              <Typography variant="h3" sx={{ fontWeight: 800 }}>
-                Annonai
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Construye flujos, conecta canales y revisa la operacion desde un solo lugar.
-              </Typography>
-            </Box>
-            <Paper sx={{ p: 1.5, width: 1, maxWidth: 760, borderRadius: 2, boxShadow: 6 }}>
-              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-                <TextField fullWidth placeholder="Que quieres construir o revisar?" size="small" />
-                <Button
-                  component={RouterLink}
-                  href={paths.dashboard.workflows}
-                  variant="contained"
-                  startIcon={<Iconify icon="mdi:hammer-wrench" />}
-                >
-                  Construir
-                </Button>
-              </Stack>
-            </Paper>
-            <Stack direction="row" spacing={1} flexWrap="wrap" justifyContent="center">
-              {[
-                ['Preguntando', paths.dashboard.threads],
-                ['Planificando', paths.dashboard.overview],
-                ['Construyendo', paths.dashboard.workflows],
-                ['Insights', paths.dashboard.executions],
-              ].map(([label, href]) => (
-                <Button key={label} component={RouterLink} href={href} variant="soft" size="small">
-                  {label}
-                </Button>
-              ))}
-            </Stack>
-            <Stack direction="row" spacing={1} flexWrap="wrap" justifyContent="center">
-              {[
-                ['Workflow Studio', paths.dashboard.workflows],
-                ['Marketplace', paths.dashboard.marketplace],
-                ['Bandeja', paths.dashboard.threads],
-                ['Canales', paths.dashboard.system.channels],
-              ].map(([label, href]) => (
-                <Button key={label} component={RouterLink} href={href} variant="outlined" size="small">
-                  {label}
-                </Button>
-              ))}
-            </Stack>
-          </Stack>
-        </Paper>
+          <Grid container spacing={3} alignItems="center">
+            <Grid item xs={12} md={7}>
+              <Stack spacing={2.2}>
+                <Stack direction="row" spacing={1.5} alignItems="center">
+                  <Avatar
+                    sx={{
+                      width: 58,
+                      height: 58,
+                      bgcolor: 'primary.main',
+                      color: 'common.white',
+                      fontWeight: 900,
+                      boxShadow: `0 16px 36px ${alpha(theme.palette.primary.main, 0.22)}`,
+                    }}
+                  >
+                    jai
+                  </Avatar>
+                  <Box>
+                    <Typography variant="overline" color="text.secondary">
+                      Asistente de sistema
+                    </Typography>
+                    <Typography variant="h3" sx={{ fontWeight: 900 }}>
+                      Jai de Annonai
+                    </Typography>
+                  </Box>
+                </Stack>
 
+                <Typography variant="body1" color="text.secondary" sx={{ maxWidth: 760 }}>
+                  Soy el agente de sistema que entiende que puedes hacer en la plataforma: workflows,
+                  agentes, canales, integraciones, MCP, Storage, KYC, pagos, inbox y reglas de intencion.
+                  Te guio sin pedirte que conozcas nombres internos como connect.message.received.
+                </Typography>
+
+                <Paper sx={{ p: 1.5, width: 1, maxWidth: 820, borderRadius: 2.5, boxShadow: 8 }}>
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                    <TextField
+                      fullWidth
+                      placeholder="Preguntale a Jai: quiero automatizar WhatsApp, conectar Twilio, usar Drive o crear un flujo..."
+                      value={jaiPrompt}
+                      onChange={(event) => setJaiPrompt(event.target.value)}
+                      size="small"
+                    />
+                    <Button
+                      component={RouterLink}
+                      href={paths.dashboard.workflows}
+                      variant="contained"
+                      startIcon={<Iconify icon="mdi:creation-outline" />}
+                    >
+                      Guiarme
+                    </Button>
+                  </Stack>
+                </Paper>
+
+                <Alert severity="info" sx={{ borderRadius: 2 }}>
+                  {jaiGuidance}
+                </Alert>
+
+                <Stack direction="row" spacing={1} flexWrap="wrap">
+                  {[
+                    ['Crear workflow', paths.dashboard.workflows, 'mdi:source-branch'],
+                    ['Configurar canal', paths.dashboard.system.channels, 'mdi:chat-processing-outline'],
+                    ['Conectar integracion', paths.dashboard.marketplace, 'mdi:connection'],
+                    ['Crear agente', paths.dashboard.agentDesigner, 'mdi:robot-outline'],
+                    ['Revisar inbox', paths.dashboard.threads, 'mdi:inbox-outline'],
+                  ].map(([label, href, icon]) => (
+                    <Button
+                      key={label}
+                      component={RouterLink}
+                      href={href}
+                      variant="soft"
+                      size="small"
+                      startIcon={<Iconify icon={String(icon)} />}
+                    >
+                      {label}
+                    </Button>
+                  ))}
+                </Stack>
+              </Stack>
+            </Grid>
+
+            <Grid item xs={12} md={5}>
+              <Card
+                variant="outlined"
+                sx={{
+                  p: 2.5,
+                  borderRadius: 3,
+                  bgcolor: 'rgba(255,255,255,0.78)',
+                  backdropFilter: 'blur(8px)',
+                }}
+              >
+                <Stack spacing={2}>
+                  <Stack direction="row" justifyContent="space-between" alignItems="center">
+                    <Box>
+                      <Typography variant="h6">Contexto que Jai conoce</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Diagnostico del System Orchestrator
+                      </Typography>
+                    </Box>
+                    <Chip size="small" color="success" label="Bloqueado" />
+                  </Stack>
+
+                  <Grid container spacing={1.2}>
+                    {[
+                      ['Workflows', orchestratorStatus?.workflows?.length ?? 0, 'mdi:source-branch'],
+                      ['Canales', orchestratorStatus?.channels?.length ?? 0, 'mdi:access-point'],
+                      ['Integraciones listas', readyConnections, 'mdi:check-decagram-outline'],
+                      ['Eventos de sistema', orchestratorStatus?.events?.length ?? 0, 'mdi:flash-outline'],
+                    ].map(([label, value, icon]) => (
+                      <Grid item xs={6} key={String(label)}>
+                        <Paper variant="outlined" sx={{ p: 1.4, borderRadius: 2, bgcolor: 'background.paper' }}>
+                          <Stack direction="row" spacing={1} alignItems="center">
+                            <Iconify icon={String(icon)} width={22} sx={{ color: 'primary.main' }} />
+                            <Box>
+                              <Typography variant="subtitle1">{String(value)}</Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                {label}
+                              </Typography>
+                            </Box>
+                          </Stack>
+                        </Paper>
+                      </Grid>
+                    ))}
+                  </Grid>
+
+                  <Typography variant="body2" color="text.secondary">
+                    Este agente no reemplaza tus agentes de negocio. Los guia, valida configuraciones y explica que
+                    falta para que canal, intencion, agente e integracion trabajen juntos.
+                  </Typography>
+                </Stack>
+              </Card>
+            </Grid>
+          </Grid>
+        </Paper>
         {/* ── Metrics Grid ── */}
         <Grid container spacing={3} sx={{ mb: 4 }}>
           <Grid item xs={12} sm={6} md={3}>

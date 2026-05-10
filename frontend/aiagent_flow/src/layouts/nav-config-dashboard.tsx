@@ -60,7 +60,7 @@ export const navData: NavSectionProps['data'] = [
     subheader: 'Construccion',
     items: [
       {
-        title: 'Workflow Studio',
+        title: 'Workflow',
         path: paths.dashboard.workflows,
         icon: ICONS.kanban,
         info: <Label color="info">Studio</Label>,
@@ -69,11 +69,17 @@ export const navData: NavSectionProps['data'] = [
         title: 'Agentes',
         path: paths.dashboard.agents,
         icon: ICONS.user,
+        info: <Label color="success">Studio</Label>,
       },
       {
         title: 'Ejecuciones',
         path: paths.dashboard.executions,
         icon: ICONS.analytics,
+      },
+      {
+        title: 'Mapa de intenciones',
+        path: paths.dashboard.intentMap,
+        icon: ICONS.folder,
       },
       {
         title: 'Revision humana',
@@ -133,7 +139,6 @@ export const navData: NavSectionProps['data'] = [
           { title: 'Politicas', path: paths.dashboard.governance.policies },
           { title: 'Auditoria', path: paths.dashboard.governance.audit },
           { title: 'Evaluaciones', path: paths.dashboard.evaluations },
-          { title: 'Orquestacion', path: paths.dashboard.orchestration },
         ],
       },
     ],

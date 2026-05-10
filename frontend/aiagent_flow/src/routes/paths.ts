@@ -53,6 +53,7 @@ export const paths = {
     tools: `${ROOTS.DASHBOARD}/tools`,
     marketplace: `${ROOTS.DASHBOARD}/marketplace`,
     orchestration: `${ROOTS.DASHBOARD}/orchestration`,
+    intentMap: `${ROOTS.DASHBOARD}/orchestration`,
     threads: `${ROOTS.DASHBOARD}/threads`,
     evaluations: `${ROOTS.DASHBOARD}/evaluations`,
     kycPayments: `${ROOTS.DASHBOARD}/kyc-payments`,

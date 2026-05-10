@@ -40,6 +40,14 @@ type IntentRule = {
   updatedAt: string;
 };
 
+type IntentRuleView = IntentRule & {
+  workflowId?: string;
+  workflowName?: string;
+  eventName?: string;
+  examples?: string[];
+  confidenceThreshold?: number;
+};
+
 type RoutingAgent = {
   id: string;
   tenantId: string;
@@ -53,6 +61,20 @@ type RoutingAgent = {
 };
 
 const DEFAULT_INTENTS = ['sales', 'support', 'billing', 'collections', 'reservations'];
+
+const readRuleContext = (json?: string) => {
+  try {
+    return JSON.parse(json || '{}') as {
+      workflowId?: string;
+      workflowName?: string;
+      eventName?: string;
+      examples?: string[];
+      confidenceThreshold?: number;
+    };
+  } catch {
+    return {};
+  }
+};
 
 export default function ManagerOrchestrationPage() {
   const tenantId = useTenantId();
@@ -82,7 +104,7 @@ export default function ManagerOrchestrationPage() {
   const [rules, setRules] = useState<IntentRule[]>([]);
   const [routingAgents, setRoutingAgents] = useState<RoutingAgent[]>([]);
   const [ruleIntentKey, setRuleIntentKey] = useState('general_support');
-  const [rulePriority, setRulePriority] = useState(100);
+  const [rulePrioridad, setRulePrioridad] = useState(100);
   const [ruleChannel, setRuleChannel] = useState('');
   const [ruleConditionsJson, setRuleConditionsJson] = useState('{}');
   const [ruleHandoffPolicyJson, setRuleHandoffPolicyJson] = useState('{}');
@@ -129,6 +151,23 @@ export default function ManagerOrchestrationPage() {
 
   const availableTargets = useMemo(() => agents.filter((a) => a.id !== sourceAgentId), [agents, sourceAgentId]);
   const sharedTargets = useMemo(() => managerATargets.filter((t) => managerBTargets.includes(t)), [managerATargets, managerBTargets]);
+  const intentMapRows = useMemo<IntentRuleView[]>(
+    () =>
+      rules.map((rule) => {
+        const context = readRuleContext(rule.conditionsJson);
+        return {
+          ...rule,
+          workflowId: context.workflowId,
+          workflowName: context.workflowName,
+          eventName: context.eventName,
+          examples: context.examples,
+          confidenceThreshold: context.confidenceThreshold,
+        };
+      }),
+    [rules]
+  );
+  const activeRules = intentMapRows.filter((rule) => rule.enabled).length;
+  const syncedWorkflows = new Set(intentMapRows.map((rule) => rule.workflowId).filter(Boolean)).size;
 
   const loadAllowedTargets = async (managerId = sourceAgentId) => {
     if (!managerId) return [] as string[];
@@ -217,7 +256,7 @@ export default function ManagerOrchestrationPage() {
         intentKey: ruleIntentKey,
         sourceAgentId,
         targetAgentId,
-        priority: Number(rulePriority),
+        priority: Number(rulePrioridad),
         enabled: true,
         channel: ruleChannel || null,
         conditionsJson: ruleConditionsJson,
@@ -312,26 +351,40 @@ export default function ManagerOrchestrationPage() {
 
   const routingColumns: GridColDef[] = [
     { field: 'intent', headerName: 'Intent', width: 140 },
-    { field: 'targetAgentId', headerName: 'Target Sub-agent', flex: 1, minWidth: 180 },
+    { field: 'targetAgentId', headerName: 'Agente destino', flex: 1, minWidth: 180 },
     { field: 'allowed', headerName: 'Allowed', width: 100, renderCell: (p) => <Chip size="small" label={p.value ? 'YES' : 'NO'} color={p.value ? 'success' : 'error'} /> },
     { field: 'reason', headerName: 'Reason', width: 180 },
     { field: 'hasExplicitPolicy', headerName: 'Policy', width: 140, renderCell: (p) => <Chip size="small" label={p.value ? 'Explicit' : 'Default'} color={p.value ? 'primary' : 'default'} /> },
   ];
 
   const rulesColumns: GridColDef[] = [
-    { field: 'intentKey', headerName: 'Intent', width: 160 },
-    { field: 'sourceAgentId', headerName: 'Manager', width: 160 },
-    { field: 'targetAgentId', headerName: 'Subagent', width: 160 },
-    { field: 'priority', headerName: 'Priority', width: 100, type: 'number' },
-    { field: 'channel', headerName: 'Channel', width: 120 },
-    { field: 'version', headerName: 'Version', width: 90, type: 'number' },
+    { field: 'intentKey', headerName: 'Intencion', width: 180 },
+    { field: 'eventName', headerName: 'Evento', width: 210 },
+    { field: 'channel', headerName: 'Canal', width: 120 },
+    { field: 'workflowName', headerName: 'Workflow', width: 190 },
+    { field: 'sourceAgentId', headerName: 'Agente escucha', width: 170 },
+    { field: 'targetAgentId', headerName: 'Agente destino', width: 170 },
+    { field: 'priority', headerName: 'Prioridad', width: 100, type: 'number' },
+    {
+      field: 'confidenceThreshold',
+      headerName: 'Confianza',
+      width: 110,
+      renderCell: (p) => (p.value ? `${Math.round(Number(p.value) * 100)}%` : 'Default'),
+    },
+    {
+      field: 'examples',
+      headerName: 'Ejemplos',
+      flex: 1,
+      minWidth: 220,
+      renderCell: (p) => ((p.value as string[] | undefined)?.join(', ') || 'Sin ejemplos'),
+    },
     {
       field: 'enabled',
-      headerName: 'Enabled',
+      headerName: 'Estado',
       width: 130,
       renderCell: (p) => (
         <Button size="small" variant={p.value ? 'contained' : 'outlined'} onClick={() => void toggleRule((p.row as IntentRule).id, !p.value)}>
-          {p.value ? 'ON' : 'OFF'}
+          {p.value ? 'Activo' : 'Inactivo'}
         </Button>
       ),
     },
@@ -359,42 +412,61 @@ export default function ManagerOrchestrationPage() {
 
   return (
     <>
-      <Helmet><title>Manager Orchestration | {CONFIG.appName}</title></Helmet>
+      <Helmet><title>Mapa de intenciones | {CONFIG.appName}</title></Helmet>
       <DashboardContent maxWidth="xl">
-        <Box sx={{ mb: 4 }}>
-          <Typography variant="h4">Manager Orchestration</Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-            Multi-subagent control center: allowlists, persisted intent rules, routing matrix, and handoff simulation.
-          </Typography>
-        </Box>
+        <Card
+          variant="outlined"
+          sx={{
+            mb: 3,
+            p: 3,
+            borderRadius: 3,
+            backgroundImage: 'linear-gradient(135deg, rgba(14,124,90,0.10), rgba(0,167,181,0.08))',
+          }}
+        >
+          <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={2}>
+            <Box>
+              <Typography variant="h4">Mapa de intenciones</Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 1, maxWidth: 760 }}>
+                Aqui confirmas que el sistema esta enrutando bien: ves que evento dispara el canal,
+                que intencion fue sincronizada desde Workflow Studio, que agente escucha y a que agente/flujo se envia.
+                Usa la simulacion para probar frases antes de publicar cambios.
+              </Typography>
+            </Box>
+            <Stack direction="row" spacing={1} flexWrap="wrap" alignItems="flex-start">
+              <Chip color="success" label={`${activeRules} reglas activas`} />
+              <Chip color="info" label={`${syncedWorkflows} workflows sincronizados`} />
+              <Chip label={`${routingAgents.length} agentes registrados`} />
+            </Stack>
+          </Stack>
+        </Card>
         {message && <Alert severity="info" sx={{ mb: 2 }}>{message}</Alert>}
 
         <Grid container spacing={3}>
-          <Grid item xs={12} lg={6}><Card><CardContent><Typography variant="h6" sx={{ mb: 2 }}>Handoff Simulator</Typography><Stack spacing={2}>
-            <TextField select label="Manager Agent" value={sourceAgentId} onChange={(e) => setSourceAgentId(e.target.value)}>{agents.map((a) => <MenuItem key={a.id} value={a.id}>{a.name} ({a.id})</MenuItem>)}</TextField>
-            <TextField select label="Target Sub-agent" value={targetAgentId} onChange={(e) => setTargetAgentId(e.target.value)}>{availableTargets.map((a) => <MenuItem key={a.id} value={a.id}>{a.name} ({a.id})</MenuItem>)}</TextField>
+          <Grid item xs={12} lg={6}><Card><CardContent><Typography variant="h6" sx={{ mb: 2 }}>Simulador de traspaso</Typography><Stack spacing={2}>
+            <TextField select label="Agente que escucha" value={sourceAgentId} onChange={(e) => setSourceAgentId(e.target.value)}>{agents.map((a) => <MenuItem key={a.id} value={a.id}>{a.name} ({a.id})</MenuItem>)}</TextField>
+            <TextField select label="Agente destino" value={targetAgentId} onChange={(e) => setTargetAgentId(e.target.value)}>{availableTargets.map((a) => <MenuItem key={a.id} value={a.id}>{a.name} ({a.id})</MenuItem>)}</TextField>
             <TextField label="Intent" value={intent} onChange={(e) => setIntent(e.target.value)} />
             <TextField label="Session ID" value={sessionId} onChange={(e) => setSessionId(e.target.value)} />
             <TextField label="Payload JSON" value={payloadJson} onChange={(e) => setPayloadJson(e.target.value)} multiline minRows={3} />
-            <Stack direction="row" spacing={1}><Button variant="outlined" onClick={refreshAllowedTargets} disabled={loading}>Allowed Targets</Button><Button variant="outlined" onClick={evaluateDecision} disabled={!targetAgentId}>Evaluate Decision</Button><Button variant="contained" onClick={executeHandoff} disabled={!targetAgentId}>Execute Handoff</Button></Stack>
+            <Stack direction="row" spacing={1}><Button variant="outlined" onClick={refreshAllowedTargets} disabled={loading}>Destinos permitidos</Button><Button variant="outlined" onClick={evaluateDecision} disabled={!targetAgentId}>Evaluar decision</Button><Button variant="contained" onClick={executeHandoff} disabled={!targetAgentId}>Ejecutar traspaso</Button></Stack>
             {allowedTargets.length > 0 && <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>{allowedTargets.map((t) => <Chip key={t} label={t} size="small" color="primary" variant="outlined" />)}</Stack>}
             {policyDecision && <Alert severity={policyDecision?.allowed ? 'success' : 'warning'}>Decision: <strong>{policyDecision?.allowed ? 'ALLOW' : 'DENY'}</strong> · {policyDecision?.reason}</Alert>}
             {handoffResult && <Alert severity={handoffResult?.ok ? 'success' : 'error'}>Handoff result: {handoffResult?.ok ? 'OK' : 'FAILED'}</Alert>}
           </Stack></CardContent></Card></Grid>
 
-          <Grid item xs={12} lg={6}><Card><CardContent><Typography variant="h6" sx={{ mb: 2 }}>Persisted Intent Rules</Typography><Stack spacing={2}>
-            <TextField label="Intent Key" value={ruleIntentKey} onChange={(e) => setRuleIntentKey(e.target.value)} />
-            <TextField type="number" label="Priority" value={rulePriority} onChange={(e) => setRulePriority(Number(e.target.value))} />
-            <TextField label="Channel (optional)" value={ruleChannel} onChange={(e) => setRuleChannel(e.target.value)} />
+          <Grid item xs={12} lg={6}><Card><CardContent><Typography variant="h6" sx={{ mb: 2 }}>Crear o probar regla</Typography><Stack spacing={2}>
+            <TextField label="Intencion" value={ruleIntentKey} onChange={(e) => setRuleIntentKey(e.target.value)} />
+            <TextField type="number" label="Prioridad" value={rulePrioridad} onChange={(e) => setRulePrioridad(Number(e.target.value))} />
+            <TextField label="Canal opcional" value={ruleChannel} onChange={(e) => setRuleChannel(e.target.value)} />
             <TextField label="Conditions JSON" value={ruleConditionsJson} onChange={(e) => setRuleConditionsJson(e.target.value)} multiline minRows={2} />
             <TextField label="Handoff Policy JSON" value={ruleHandoffPolicyJson} onChange={(e) => setRuleHandoffPolicyJson(e.target.value)} multiline minRows={2} />
-            <Stack direction="row" spacing={1}><Button variant="contained" onClick={createRule} disabled={!sourceAgentId || !targetAgentId}>Save Rule</Button><Button variant="outlined" onClick={simulateRule}>Simulate</Button></Stack>
+            <Stack direction="row" spacing={1}><Button variant="contained" onClick={createRule} disabled={!sourceAgentId || !targetAgentId}>Guardar regla</Button><Button variant="outlined" onClick={simulateRule}>Simular ruteo</Button></Stack>
             {simulateResult && <Alert severity={simulateResult?.fallbackUsed ? 'warning' : 'success'}>Simulation: {simulateResult?.decisionReason} · selected <strong>{simulateResult?.selectedAgentId}</strong></Alert>}
           </Stack></CardContent></Card></Grid>
 
-          <Grid item xs={12}><Card><CardContent><Typography variant="h6" sx={{ mb: 1 }}>Intent Rules Registry</Typography><Box sx={{ height: 300 }}><DataGrid rows={rules} columns={rulesColumns} getRowId={(r) => (r as IntentRule).id} pageSizeOptions={[10, 25, 50]} /></Box></CardContent></Card></Grid>
+          <Grid item xs={12}><Card><CardContent><Typography variant="h6" sx={{ mb: 1 }}>Reglas e intenciones sincronizadas</Typography><Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>Esta es la lista que Jai/System Orchestrator usa para decidir a donde enviar lo que el usuario escribe o habla.</Typography><Box sx={{ height: 380 }}><DataGrid rows={intentMapRows} columns={rulesColumns} getRowId={(r) => (r as IntentRule).id} pageSizeOptions={[10, 25, 50]} /></Box></CardContent></Card></Grid>
 
-          <Grid item xs={12}><Card><CardContent><Typography variant="h6" sx={{ mb: 1 }}>Routing Agent Registry</Typography><Box sx={{ height: 260 }}><DataGrid rows={routingAgents} columns={routingAgentsColumns} getRowId={(r) => (r as RoutingAgent).agentId} pageSizeOptions={[10, 25, 50]} /></Box></CardContent></Card></Grid>
+          <Grid item xs={12}><Card><CardContent><Typography variant="h6" sx={{ mb: 1 }}>Registro de agentes ruteables</Typography><Box sx={{ height: 260 }}><DataGrid rows={routingAgents} columns={routingAgentsColumns} getRowId={(r) => (r as RoutingAgent).agentId} pageSizeOptions={[10, 25, 50]} /></Box></CardContent></Card></Grid>
 
           <Grid item xs={12} lg={6}><Card><CardContent><Typography variant="h6" sx={{ mb: 2 }}>Shared Sub-agents Across Managers</Typography><Stack spacing={2}>
             <TextField select label="Manager A" value={managerA} onChange={(e) => setManagerA(e.target.value)}>{agents.map((a) => <MenuItem key={a.id} value={a.id}>{a.name} ({a.id})</MenuItem>)}</TextField>
@@ -404,7 +476,7 @@ export default function ManagerOrchestrationPage() {
             <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>{sharedTargets.length === 0 ? <Chip label="None" size="small" /> : sharedTargets.map((t) => <Chip key={t} label={t} size="small" color="success" />)}</Stack>
           </Stack></CardContent></Card></Grid>
 
-          <Grid item xs={12} lg={6}><Card><CardContent><Typography variant="h6" sx={{ mb: 1 }}>Intent Routing Matrix (Explainer)</Typography><Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>This matrix makes explicit how a manager should select sub-agents by intent.</Typography><Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 2 }}><TextField fullWidth label="Intents (comma separated)" value={routingIntentsText} onChange={(e) => setRoutingIntentsText(e.target.value)} /><Button variant="contained" onClick={buildRoutingMatrix}>Evaluate Matrix</Button></Stack><Box sx={{ height: 300 }}><DataGrid rows={routingMatrix} columns={routingColumns} getRowId={(r) => (r as DecisionRow).id} pageSizeOptions={[10, 25, 50]} /></Box></CardContent></Card></Grid>
+          <Grid item xs={12} lg={6}><Card><CardContent><Typography variant="h6" sx={{ mb: 1 }}>Matriz de ruteo por intencion</Typography><Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>Esta matriz te permite confirmar como se decidiria el destino por intencion antes de publicar o activar una regla.</Typography><Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 2 }}><TextField fullWidth label="Intenciones separadas por coma" value={routingIntentsText} onChange={(e) => setRoutingIntentsText(e.target.value)} /><Button variant="contained" onClick={buildRoutingMatrix}>Evaluar matriz</Button></Stack><Box sx={{ height: 300 }}><DataGrid rows={routingMatrix} columns={routingColumns} getRowId={(r) => (r as DecisionRow).id} pageSizeOptions={[10, 25, 50]} /></Box></CardContent></Card></Grid>
 
           <Grid item xs={12} lg={6}><Card><CardContent><Typography variant="h6" sx={{ mb: 2 }}>Live Session Ownership</Typography><Box sx={{ height: 320 }}><DataGrid rows={sessions} columns={sessionColumns} loading={loading} getRowId={(r) => (r as SessionRow).id} onRowClick={(p) => { void inspectSession(p.row as SessionRow); }} pageSizeOptions={[10, 20, 50]} initialState={{ pagination: { paginationModel: { pageSize: 10 } } }} /></Box></CardContent></Card></Grid>
           <Grid item xs={12} lg={6}><Card><CardContent><Typography variant="h6" sx={{ mb: 1 }}>Session Execution Timeline {selectedSession ? `· ${selectedSession.id}` : ''}</Typography><Box sx={{ height: 320 }}><DataGrid rows={sessionExecutions} columns={execColumns} getRowId={(r) => (r as ExecutionRow).id} pageSizeOptions={[10, 20, 50]} initialState={{ pagination: { paginationModel: { pageSize: 10 } } }} /></Box></CardContent></Card></Grid>

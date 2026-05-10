@@ -20,19 +20,27 @@ type RuntimePayload = {
 export const fetchWorkflowRuntimeData = createAsyncThunk(
   'workflowRuntime/fetchRuntimeData',
   async (tenantId: string): Promise<RuntimePayload> => {
-    const [wfRes, exRes, metRes, auditRes, catalogRes, modelsRes, toolsRes, agentsRes, channelsRes, integrationsRes, templatesRes] =
+    const safe = async <T>(request: Promise<{ data: T }>, fallback: T) => {
+      try {
+        return await request;
+      } catch {
+        return { data: fallback };
+      }
+    };
+
+    const wfRes = await workflowStudioApi.getDefinitions(tenantId);
+    const [exRes, metRes, auditRes, catalogRes, modelsRes, toolsRes, agentsRes, channelsRes, integrationsRes, templatesRes] =
       await Promise.all([
-        workflowStudioApi.getDefinitions(tenantId),
-        workflowStudioApi.getExecutions(tenantId),
-        workflowStudioApi.getMetrics(tenantId),
-        workflowStudioApi.getAuditEvents(tenantId),
-        workflowStudioApi.getCatalogActivities(tenantId),
-        workflowStudioApi.getModels(),
-        workflowStudioApi.getTools(),
-        workflowStudioApi.getAgents(tenantId),
-        workflowStudioApi.getChannels(tenantId),
-        workflowStudioApi.getIntegrationStatus(tenantId),
-        workflowStudioApi.getConnectTemplates(tenantId),
+        safe(workflowStudioApi.getExecutions(tenantId), []),
+        safe(workflowStudioApi.getMetrics(tenantId), null),
+        safe(workflowStudioApi.getAuditEvents(tenantId), []),
+        safe(workflowStudioApi.getCatalogActivities(tenantId), []),
+        safe(workflowStudioApi.getModels(), []),
+        safe(workflowStudioApi.getTools(), []),
+        safe(workflowStudioApi.getAgents(tenantId), []),
+        safe(workflowStudioApi.getChannels(tenantId), []),
+        safe(workflowStudioApi.getIntegrationStatus(tenantId), []),
+        safe(workflowStudioApi.getConnectTemplates(tenantId), []),
       ]);
     const integrations = Array.isArray(integrationsRes.data) ? integrationsRes.data : [];
 
