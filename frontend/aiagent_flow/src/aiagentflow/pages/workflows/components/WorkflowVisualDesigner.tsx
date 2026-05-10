@@ -1221,7 +1221,165 @@ export function WorkflowVisualDesigner({
               </AccordionDetails>
             </Accordion>
             )}
-            {(selected.type.startsWith('connect.') || selected.type.startsWith('human.')) && (
+            {selected.type !== 'ai.agent' && (
+              <Card variant="outlined" sx={{ p: 1.2, bgcolor: '#fbfdff' }}>
+                <Stack spacing={1.1}>
+                  <Box>
+                    <Typography variant="subtitle2">Que hara este nodo</Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Configuracion guiada para usuarios no tecnicos. La configuracion interna queda en Avanzado.
+                    </Typography>
+                  </Box>
+                  {selected.type.startsWith('connect.') && (
+                    <Stack spacing={1}>
+                      <TextField
+                        label="Canal"
+                        select
+                        size="small"
+                        value={selected.config?.channel ?? selectedWorkflowChannel?.type?.toLowerCase() ?? ''}
+                        helperText="Usa el canal actual o elige otro cuando aplique."
+                        onChange={(e) => onUpdateActivityConfig(selectedIndex, 'channel', e.target.value)}
+                      >
+                        <MenuItem value="">Usar canal detectado</MenuItem>
+                        {availableChannels.map((channel) => (
+                          <MenuItem key={channel.id} value={channel.type.toLowerCase()}>
+                            {channel.name} ({channel.type})
+                          </MenuItem>
+                        ))}
+                      </TextField>
+                      <TextField
+                        label="Cliente o destinatario"
+                        size="small"
+                        value={selected.config?.recipient ?? ''}
+                        helperText="Puede ser una variable como {{payload.recipient}}."
+                        onChange={(e) => onUpdateActivityConfig(selectedIndex, 'recipient', e.target.value)}
+                      />
+                      {selected.type === 'connect.send_whatsapp_template' && (
+                        <TextField
+                          label="Plantilla aprobada"
+                          select
+                          size="small"
+                          value={selected.config?.templateId ?? ''}
+                          helperText={connectTemplates.length === 0 ? 'No hay plantillas cargadas.' : 'Selecciona la plantilla a enviar.'}
+                          onChange={(e) => {
+                            const template = connectTemplates.find((x) => x.id === e.target.value);
+                            onUpdateActivity(selectedIndex, {
+                              config: {
+                                ...(selected.config ?? {}),
+                                templateId: e.target.value,
+                                channel: template?.channel || selected.config?.channel || 'whatsapp',
+                                content: template?.body || selected.config?.content || '',
+                              },
+                            });
+                          }}
+                        >
+                          <MenuItem value="">Sin plantilla</MenuItem>
+                          {connectTemplates.map((template) => (
+                            <MenuItem key={template.id} value={template.id}>
+                              {template.name}
+                            </MenuItem>
+                          ))}
+                        </TextField>
+                      )}
+                      <TextField
+                        label="Mensaje"
+                        multiline
+                        minRows={3}
+                        size="small"
+                        value={selected.config?.content ?? ''}
+                        helperText="Puedes usar variables del cliente o del agente."
+                        onChange={(e) => onUpdateActivityConfig(selectedIndex, 'content', e.target.value)}
+                      />
+                    </Stack>
+                  )}
+                  {selected.type.startsWith('human.') && (
+                    <Stack spacing={1}>
+                      <TextField
+                        label="Equipo o cola"
+                        size="small"
+                        value={selected.config?.queue ?? selected.config?.team ?? ''}
+                        helperText="Ejemplo: soporte, ventas, revision KYC."
+                        onChange={(e) => {
+                          onUpdateActivityConfig(selectedIndex, 'queue', e.target.value);
+                          onUpdateActivityConfig(selectedIndex, 'team', e.target.value);
+                        }}
+                      />
+                      <TextField
+                        label="Motivo para escalar"
+                        size="small"
+                        value={selected.config?.reason ?? ''}
+                        onChange={(e) => onUpdateActivityConfig(selectedIndex, 'reason', e.target.value)}
+                      />
+                      <TextField
+                        label="Prioridad"
+                        select
+                        size="small"
+                        value={selected.config?.priority ?? 'normal'}
+                        onChange={(e) => onUpdateActivityConfig(selectedIndex, 'priority', e.target.value)}
+                      >
+                        <MenuItem value="low">Baja</MenuItem>
+                        <MenuItem value="normal">Normal</MenuItem>
+                        <MenuItem value="high">Alta</MenuItem>
+                      </TextField>
+                    </Stack>
+                  )}
+                  {selected.type.startsWith('kyc.') && (
+                    <Stack spacing={1}>
+                      <TextField
+                        label="Cliente"
+                        size="small"
+                        value={selected.config?.customerId ?? ''}
+                        helperText="Variable sugerida: {{payload.customerId}}."
+                        onChange={(e) => onUpdateActivityConfig(selectedIndex, 'customerId', e.target.value)}
+                      />
+                      <TextField
+                        label={selected.type === 'kyc.review_case' ? 'Caso KYC' : 'Documento'}
+                        size="small"
+                        value={selected.type === 'kyc.review_case' ? selected.config?.caseId ?? '' : selected.config?.documentNumber ?? ''}
+                        onChange={(e) =>
+                          onUpdateActivityConfig(
+                            selectedIndex,
+                            selected.type === 'kyc.review_case' ? 'caseId' : 'documentNumber',
+                            e.target.value
+                          )
+                        }
+                      />
+                    </Stack>
+                  )}
+                  {selected.type.startsWith('payments.') && (
+                    <Stack spacing={1}>
+                      <TextField
+                        label="Cliente"
+                        size="small"
+                        value={selected.config?.customerId ?? ''}
+                        onChange={(e) => onUpdateActivityConfig(selectedIndex, 'customerId', e.target.value)}
+                      />
+                      <TextField
+                        label="Monto"
+                        size="small"
+                        value={selected.config?.amount ?? ''}
+                        onChange={(e) => onUpdateActivityConfig(selectedIndex, 'amount', e.target.value)}
+                      />
+                      <TextField
+                        label="Moneda"
+                        size="small"
+                        value={selected.config?.currency ?? 'USD'}
+                        onChange={(e) => onUpdateActivityConfig(selectedIndex, 'currency', e.target.value)}
+                      />
+                    </Stack>
+                  )}
+                  {!selected.type.startsWith('connect.') &&
+                    !selected.type.startsWith('human.') &&
+                    !selected.type.startsWith('kyc.') &&
+                    !selected.type.startsWith('payments.') && (
+                      <Alert severity="info">
+                        Este tipo de nodo aun no tiene formulario guiado. Usa Avanzado para configurar sus campos.
+                      </Alert>
+                    )}
+                </Stack>
+              </Card>
+            )}
+            {(selected.type.startsWith('connect.') || selected.type.startsWith('human.')) && showAdvanced && (
               <Accordion expanded={inspectorSection === 'integraciones'} onChange={(_, e) => setInspectorSection(e ? 'integraciones' : '')}>
                 <AccordionSummary expandIcon={<Iconify icon="mdi:chevron-down" />}>
                   <Typography variant="subtitle2">Integraciones</Typography>
@@ -1498,7 +1656,12 @@ export function WorkflowVisualDesigner({
                 )}
               </Card>
             )}
-            {(selected.type !== 'ai.agent' || showAdvanced) && (
+            {selected.type !== 'ai.agent' && !showAdvanced && (
+              <Button variant="text" onClick={() => setShowAdvanced(true)}>
+                Mostrar configuracion tecnica
+              </Button>
+            )}
+            {showAdvanced && (
             <Accordion expanded={inspectorSection === 'runtime'} onChange={(_, e) => setInspectorSection(e ? 'runtime' : '')}>
               <AccordionSummary expandIcon={<Iconify icon="mdi:chevron-down" />}>
                 <Typography variant="subtitle2">Runtime</Typography>
@@ -1567,7 +1730,7 @@ export function WorkflowVisualDesigner({
             </Accordion>
             )}
 
-            {(selected.type !== 'ai.agent' || showAdvanced) && (
+            {showAdvanced && (
             <Accordion expanded={inspectorSection === 'debug'} onChange={(_, e) => setInspectorSection(e ? 'debug' : '')}>
               <AccordionSummary expandIcon={<Iconify icon="mdi:chevron-down" />}>
                 <Typography variant="subtitle2">Debug</Typography>
