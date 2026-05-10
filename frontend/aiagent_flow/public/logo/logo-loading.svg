@@ -1,0 +1,19 @@
+﻿<svg width="160" height="160" viewBox="0 0 160 160" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    .ring { transform-origin: 80px 80px; animation: spin 1.4s linear infinite; }
+    .pulse { transform-origin: 80px 80px; animation: pulse 1.4s ease-in-out infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes pulse { 0%,100% { transform: scale(.94); opacity:.78; } 50% { transform: scale(1.04); opacity:1; } }
+  </style>
+  <circle class="ring" cx="80" cy="80" r="66" stroke="#D8F7E8" stroke-width="10" stroke-linecap="round" stroke-dasharray="90 320"/>
+  <rect class="pulse" x="38" y="38" width="84" height="84" rx="24" fill="#0B2B24"/>
+  <path class="pulse" d="M55 101L72 66C75.5 59 84.5 59 88 66L105 101" stroke="url(#g1)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M67 92H93" stroke="#E9FFF5" stroke-width="7" stroke-linecap="round"/>
+  <circle cx="80" cy="55" r="5" fill="#00B7C7"/>
+  <defs>
+    <linearGradient id="g1" x1="55" y1="103" x2="106" y2="60" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#69D99D"/>
+      <stop offset="1" stop-color="#00B7C7"/>
+    </linearGradient>
+  </defs>
+</svg>

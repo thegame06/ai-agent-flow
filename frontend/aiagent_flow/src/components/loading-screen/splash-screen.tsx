@@ -1,13 +1,11 @@
-import type { Theme, SxProps } from '@mui/material/styles';
+﻿import type { Theme, SxProps } from '@mui/material/styles';
 
 import { Fragment } from 'react';
 
+import Box from '@mui/material/Box';
 import Portal from '@mui/material/Portal';
 import { styled } from '@mui/material/styles';
-
-import { AnimateLogoZoom } from 'src/components/animate';
-
-// ----------------------------------------------------------------------
+import Typography from '@mui/material/Typography';
 
 export type SplashScreenProps = React.ComponentProps<'div'> & {
   portal?: boolean;
@@ -24,14 +22,15 @@ export function SplashScreen({ portal = true, slotProps, sx, ...other }: SplashS
     <PortalWrapper>
       <LoadingWrapper {...slotProps?.wrapper}>
         <LoadingContent sx={sx} {...other}>
-          <AnimateLogoZoom />
+          <Box component="img" src="/logo/logo-loading.svg" alt="Cargando Annonai" sx={{ width: 132, height: 132 }} />
+          <Typography variant="caption" sx={{ mt: 1.5, color: 'text.secondary', fontWeight: 700 }}>
+            Preparando Annonai
+          </Typography>
         </LoadingContent>
       </LoadingWrapper>
     </PortalWrapper>
   );
 }
-
-// ----------------------------------------------------------------------
 
 const LoadingWrapper = styled('div')({
   flexGrow: 1,
@@ -49,6 +48,7 @@ const LoadingContent = styled('div')(({ theme }) => ({
   display: 'flex',
   position: 'fixed',
   alignItems: 'center',
+  flexDirection: 'column',
   justifyContent: 'center',
-  backgroundColor: theme.vars.palette.background.default,
+  background: `radial-gradient(circle at 50% 38%, ${theme.vars.palette.primary.lighter}, transparent 32%), ${theme.vars.palette.background.default}`,
 }));
