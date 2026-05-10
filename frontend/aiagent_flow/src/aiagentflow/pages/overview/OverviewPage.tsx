@@ -103,6 +103,14 @@ function StatCard({ title, value, subtitle, icon, gradient, trend }: StatCardPro
 
 // ─── Status Chip ─────────────────────────────────────────────────────────
 function StatusChip({ status }: { status: string }) {
+  const labels: Record<string, string> = {
+    Completed: 'Completada',
+    Running: 'En ejecucion',
+    Failed: 'Fallida',
+    HumanReviewPending: 'Revision humana',
+    Published: 'Publicado',
+    Draft: 'Borrador',
+  };
   const colors: Record<string, 'success' | 'warning' | 'error' | 'info' | 'default'> = {
     Completed: 'success',
     Running: 'info',
@@ -111,7 +119,7 @@ function StatusChip({ status }: { status: string }) {
     Published: 'success',
     Draft: 'default',
   };
-  return <Chip label={status} size="small" color={colors[status] || 'default'} variant="soft" />;
+  return <Chip label={labels[status] ?? status} size="small" color={colors[status] || 'default'} variant="soft" />;
 }
 
 // ─── Quality Bar ─────────────────────────────────────────────────────────
@@ -201,6 +209,18 @@ export default function OverviewPage() {
             </Paper>
             <Stack direction="row" spacing={1} flexWrap="wrap" justifyContent="center">
               {[
+                ['Preguntando', paths.dashboard.threads],
+                ['Planificando', paths.dashboard.overview],
+                ['Construyendo', paths.dashboard.workflows],
+                ['Insights', paths.dashboard.executions],
+              ].map(([label, href]) => (
+                <Button key={label} component={RouterLink} href={href} variant="soft" size="small">
+                  {label}
+                </Button>
+              ))}
+            </Stack>
+            <Stack direction="row" spacing={1} flexWrap="wrap" justifyContent="center">
+              {[
                 ['Brain Studio', paths.dashboard.workflows],
                 ['Marketplace', paths.dashboard.marketplace],
                 ['Bandeja', paths.dashboard.threads],
@@ -218,55 +238,55 @@ export default function OverviewPage() {
         <Grid container spacing={3} sx={{ mb: 4 }}>
           <Grid item xs={12} sm={6} md={3}>
             <StatCard
-              title="Total Agents"
+              title="Agentes"
               value={metrics.totalAgents}
-              subtitle={`${metrics.publishedAgents} published · ${metrics.draftAgents} drafts`}
+              subtitle={`${metrics.publishedAgents} publicados � ${metrics.draftAgents} borradores`}
               icon="mdi:robot-outline"
               gradient={`linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.primary.dark} 100%)`}
-              trend={{ value: 12, label: 'vs last week' }}
+              trend={{ value: 12, label: 'vs semana anterior' }}
             />
           </Grid>
           <Grid item xs={12} sm={6} md={3}>
             <StatCard
-              title="Executions Today"
+              title="Ejecuciones de hoy"
               value={metrics.completedToday}
-              subtitle={`${metrics.runningExecutions} running · ${metrics.failedToday} failed`}
+              subtitle={`${metrics.runningExecutions} en ejecucion � ${metrics.failedToday} fallidas`}
               icon="mdi:play-circle-outline"
               gradient={`linear-gradient(135deg, ${theme.palette.info.main} 0%, ${theme.palette.info.dark} 100%)`}
-              trend={{ value: 23, label: 'vs yesterday' }}
+              trend={{ value: 23, label: 'vs ayer' }}
             />
           </Grid>
           <Grid item xs={12} sm={6} md={3}>
             <StatCard
-              title="Pending Reviews"
+              title="Revision pendiente"
               value={metrics.pendingCheckpoints}
-              subtitle="Human-in-the-loop approval queue"
+              subtitle="Cola de aprobacion humana"
               icon="mdi:account-check-outline"
               gradient={`linear-gradient(135deg, ${theme.palette.warning.main} 0%, ${theme.palette.warning.dark} 100%)`}
             />
           </Grid>
           <Grid item xs={12} sm={6} md={3}>
             <StatCard
-              title="Quality Score"
+              title="Calidad"
               value={`${Math.round(metrics.avgQualityScore * 100)}%`}
-              subtitle={`Avg latency: ${metrics.avgLatencyMs}ms`}
+              subtitle={`Latencia promedio: ${metrics.avgLatencyMs}ms`}
               icon="mdi:chart-line"
               gradient={`linear-gradient(135deg, ${theme.palette.success.main} 0%, ${theme.palette.success.dark} 100%)`}
-              trend={{ value: 5, label: 'improvement' }}
+              trend={{ value: 5, label: 'mejora' }}
             />
           </Grid>
         </Grid>
 
         {/* ── Two-Column Section ── */}
         <Grid container spacing={3}>
-          {/* Recent Executions */}
+          {/* Ejecuciones recientes */}
           <Grid item xs={12} lg={7}>
             <Card sx={{ height: '100%' }}>
               <CardContent>
                 <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 3 }}>
                   <Box>
-                    <Typography variant="h6" fontWeight={700}>Recent Executions</Typography>
-                    <Typography variant="caption" color="text.secondary">Last 10 agent runs</Typography>
+                    <Typography variant="h6" fontWeight={700}>Ejecuciones recientes</Typography>
+                    <Typography variant="caption" color="text.secondary">Ultimas 10 corridas de agentes</Typography>
                   </Box>
                   <Button
                     component={RouterLink}
@@ -274,24 +294,24 @@ export default function OverviewPage() {
                     size="small"
                     endIcon={<Iconify icon="mdi:arrow-right" />}
                   >
-                    View All
+                    Ver todo
                   </Button>
                 </Stack>
 
                 <Table size="small">
                   <TableHead>
                     <TableRow>
-                      <TableCell>Agent</TableCell>
-                      <TableCell>Status</TableCell>
-                      <TableCell align="right">Steps</TableCell>
-                      <TableCell align="right">Duration</TableCell>
+                      <TableCell>Agente</TableCell>
+                      <TableCell>Estado</TableCell>
+                      <TableCell align="right">Pasos</TableCell>
+                      <TableCell align="right">Duracion</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
                     {loading && (
                       <TableRow>
                         <TableCell colSpan={4} sx={{ textAlign: 'center', py: 4 }}>
-                          <Typography variant="body2" color="text.secondary">Loading...</Typography>
+                          <Typography variant="body2" color="text.secondary">Cargando...</Typography>
                         </TableCell>
                       </TableRow>
                     )}
@@ -301,7 +321,7 @@ export default function OverviewPage() {
                           <Stack alignItems="center" spacing={1}>
                             <Iconify icon="mdi:robot-off-outline" width={40} sx={{ color: 'text.disabled' }} />
                             <Typography variant="body2" color="text.secondary">
-                              No executions yet. Run your first agent!
+                              Aun no hay ejecuciones. Ejecuta tu primer agente.
                             </Typography>
                           </Stack>
                         </TableCell>
@@ -354,14 +374,14 @@ export default function OverviewPage() {
             </Card>
           </Grid>
 
-          {/* Agent Performance */}
+          {/* Rendimiento de agentes */}
           <Grid item xs={12} lg={5}>
             <Card sx={{ height: '100%' }}>
               <CardContent>
                 <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 3 }}>
                   <Box>
-                    <Typography variant="h6" fontWeight={700}>Agent Performance</Typography>
-                    <Typography variant="caption" color="text.secondary">Quality & reliability metrics</Typography>
+                    <Typography variant="h6" fontWeight={700}>Rendimiento de agentes</Typography>
+                    <Typography variant="caption" color="text.secondary">Metricas de calidad y confiabilidad</Typography>
                   </Box>
                   <Button
                     component={RouterLink}
@@ -369,7 +389,7 @@ export default function OverviewPage() {
                     size="small"
                     endIcon={<Iconify icon="mdi:arrow-right" />}
                   >
-                    Manage
+                    Gestionar
                   </Button>
                 </Stack>
 
@@ -378,7 +398,7 @@ export default function OverviewPage() {
                     <Paper variant="outlined" sx={{ p: 3, textAlign: 'center' }}>
                       <Iconify icon="mdi:chart-box-outline" width={40} sx={{ color: 'text.disabled', mb: 1 }} />
                       <Typography variant="body2" color="text.secondary">
-                        No agent data available yet.
+                        Aun no hay datos de agentes.
                       </Typography>
                     </Paper>
                   )}
@@ -399,7 +419,7 @@ export default function OverviewPage() {
                             <StatusChip status={agent.status} />
                           </Stack>
                           <Typography variant="caption" color="text.secondary">
-                            {agent.executionCount} runs · {Math.round(agent.avgDurationMs)}ms avg · {(agent.failureRate * 100).toFixed(1)}% fail
+                            {agent.executionCount} ejecuciones � {Math.round(agent.avgDurationMs)}ms promedio � {(agent.failureRate * 100).toFixed(1)}% fallas
                           </Typography>
                         </Box>
                         <Box sx={{ minWidth: 130 }}>
@@ -414,7 +434,7 @@ export default function OverviewPage() {
           </Grid>
         </Grid>
 
-        {/* ── Quick Actions ── */}
+        {/* ── Acciones rapidas ── */}
         <Paper
           variant="outlined"
           sx={{
@@ -426,9 +446,9 @@ export default function OverviewPage() {
         >
           <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems="center" spacing={2}>
             <Box>
-              <Typography variant="h6" fontWeight={700}>Quick Actions</Typography>
+              <Typography variant="h6" fontWeight={700}>Acciones rapidas</Typography>
               <Typography variant="body2" color="text.secondary">
-                Get started with common tasks
+                Atajos para construir, revisar y auditar la operacion
               </Typography>
             </Box>
             <Stack direction="row" spacing={1.5} flexWrap="wrap">
@@ -438,7 +458,7 @@ export default function OverviewPage() {
                 variant="contained"
                 startIcon={<Iconify icon="mdi:plus" />}
               >
-                New Agent
+                Nuevo agente
               </Button>
               <Button
                 component={RouterLink}
@@ -446,7 +466,7 @@ export default function OverviewPage() {
                 variant="outlined"
                 startIcon={<Iconify icon="mdi:account-check" />}
               >
-                Review Queue
+                Revision humana
               </Button>
               <Button
                 component={RouterLink}
@@ -454,7 +474,7 @@ export default function OverviewPage() {
                 variant="outlined"
                 startIcon={<Iconify icon="mdi:shield-check" />}
               >
-                Audit Log
+                Auditoria
               </Button>
             </Stack>
           </Stack>
@@ -463,3 +483,9 @@ export default function OverviewPage() {
     </>
   );
 }
+
+
+
+
+
+

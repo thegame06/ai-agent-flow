@@ -17,6 +17,7 @@ import type {
   WorkflowExecution,
   WorkflowAuditEvent,
   WorkflowDefinition,
+  ConnectTemplateOption,
   WorkflowRuntimeMetrics,
   WorkflowActivityCatalogEntry,
 } from '../types';
@@ -36,6 +37,7 @@ const initialState: WorkflowRuntimeState = {
   availableModels: [],
   availableTools: [],
   integrations: [],
+  connectTemplates: [],
 };
 
 const workflowRuntimeSlice = createSlice({
@@ -71,6 +73,15 @@ const workflowRuntimeSlice = createSlice({
           displayName: t.displayName,
         }));
         state.integrations = (action.payload.integrations as any[]) ?? [];
+        state.connectTemplates = ((action.payload.connectTemplates as any[]) ?? []).map(
+          (template) =>
+            ({
+              id: template.id,
+              name: template.name,
+              channel: template.channel,
+              body: template.body,
+            }) as ConnectTemplateOption
+        );
       })
       .addCase(fetchWorkflowRuntimeData.rejected, (state, action) => {
         state.loading = false;

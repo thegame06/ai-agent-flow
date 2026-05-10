@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Helmet } from 'react-helmet-async';
 
 import Box from '@mui/material/Box';
@@ -435,7 +435,7 @@ export default function AgentDetailPage() {
 
                 {policyDecision && (
                   <Alert severity={policyDecision.allowed ? 'success' : 'error'} sx={{ mt: 2 }}>
-                    Decision: <strong>{policyDecision.allowed ? 'ALLOW' : 'DENY'}</strong> Â· reason: <strong>{policyDecision.reason}</strong>{' '}
+                    Decision: <strong>{policyDecision.allowed ? 'ALLOW' : 'DENY'}</strong> � reason: <strong>{policyDecision.reason}</strong>{' '}
                     ({policyDecision.hasExplicitPolicy ? 'explicit policy' : 'fallback/default'})
                   </Alert>
                 )}
@@ -514,4 +514,5 @@ export default function AgentDetailPage() {
     </>
   );
 }
+
 

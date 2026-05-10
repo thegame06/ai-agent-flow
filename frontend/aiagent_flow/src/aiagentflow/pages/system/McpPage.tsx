@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
+import Chip from '@mui/material/Chip';
 import Grid from '@mui/material/Grid';
 import Stack from '@mui/material/Stack';
 import Alert from '@mui/material/Alert';
@@ -143,6 +144,26 @@ export default function McpPage() {
           </Typography>
         </Box>
 
+        <Grid container spacing={2} sx={{ mb: 3 }}>
+          {[
+            ['Servidores', servers.length, 'Configurados'],
+            ['Herramientas', tools.length, 'Descubiertas'],
+            ['Estado', settings?.enabled ? 'Activo' : 'Inactivo', 'Tenant'],
+          ].map(([label, value, helper]) => (
+            <Grid item xs={12} md={4} key={label}>
+              <Card variant="outlined" sx={{ p: 2 }}>
+                <Stack direction="row" justifyContent="space-between" alignItems="center">
+                  <Box>
+                    <Typography variant="h5">{String(value)}</Typography>
+                    <Typography variant="caption" color="text.secondary">{label}</Typography>
+                  </Box>
+                  <Chip size="small" label={helper} variant="soft" />
+                </Stack>
+              </Card>
+            </Grid>
+          ))}
+        </Grid>
+
         {settings && (
           <Alert severity={settings.enabled ? 'success' : 'warning'} sx={{ mb: 2 }}
             action={
@@ -153,7 +174,7 @@ export default function McpPage() {
               ) : undefined
             }
           >
-            MCP: <b>{settings.enabled ? 'Activo' : 'Inactivo'}</b> Â· Runtime: <b>{settings.runtime}</b> Â· Timeout: {settings.timeoutSeconds}s Â· Reintentos: {settings.retryCount}
+            MCP: <b>{settings.enabled ? 'Activo' : 'Inactivo'}</b> · Runtime: <b>{settings.runtime}</b> · Timeout: {settings.timeoutSeconds}s · Reintentos: {settings.retryCount}
           </Alert>
         )}
 
@@ -231,3 +252,4 @@ export default function McpPage() {
     </>
   );
 }
+

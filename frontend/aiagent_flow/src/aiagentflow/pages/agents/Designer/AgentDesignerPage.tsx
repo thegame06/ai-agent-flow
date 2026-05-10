@@ -1,4 +1,4 @@
-﻿import type { RootState, AppDispatch } from 'src/aiagentflow/store';
+import type { RootState, AppDispatch } from 'src/aiagentflow/store';
 
 import { useParams } from 'react-router';
 import { useState, useEffect } from 'react';
@@ -54,7 +54,7 @@ import {
 import type { AgentStep } from './types';
 
 
-// â”€â”€ Helpers â”€â”€
+// ── Helpers ──
 const STEP_TYPES = [
   { value: 'think', label: 'Razonar', icon: 'mdi:head-lightbulb', color: '#7C4DFF' },
   { value: 'plan', label: 'Planificar', icon: 'mdi:map-outline', color: '#00BCD4' },
@@ -104,9 +104,9 @@ interface ToolOption {
   description: string;
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ══════════════════════════════════════════
 // TAB PANELS
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ══════════════════════════════════════════
 
 function TabGeneral({ draft, dispatch }: { draft: any; dispatch: any }) {
   return (
@@ -271,7 +271,7 @@ function TabSteps({ draft, dispatch, theme }: { draft: any; dispatch: any; theme
                   sx={{ minWidth: 220 }}
                 />
                 <Typography variant="caption" color="text.secondary">
-                  Paso {idx + 1} Â· {step.type.replace('_', ' ').toUpperCase()}
+                  Paso {idx + 1} � {step.type.replace('_', ' ').toUpperCase()}
                 </Typography>
                 <TextField
                   size="small"
@@ -689,9 +689,9 @@ function TabModel({
   );
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ══════════════════════════════════════════
 // MAIN PAGE
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ══════════════════════════════════════════
 
 const TAB_LABELS = ['General', 'Flujo', 'Lienzo', 'Modo runtime', 'Memoria', 'Integraciones', 'Modelo IA'];
 const TAB_ICONS = [
@@ -817,14 +817,14 @@ export default function AgentDesignerPage() {
   return (
     <>
       <Helmet>
-        <title>{draft.name || 'New Agent'} â€” Designer | {CONFIG.appName}</title>
+        <title>{draft.name || 'New Agent'} — Designer | {CONFIG.appName}</title>
       </Helmet>
 
       <DashboardContent maxWidth="lg">
         {/* Error Banner */}
         {Object.keys(errors).length > 0 && (
           <Alert severity="error" sx={{ mb: 3 }}>
-            {Object.values(errors).join(' Â· ')}
+            {Object.values(errors).join(' � ')}
           </Alert>
         )}
 
@@ -833,7 +833,7 @@ export default function AgentDesignerPage() {
           <Box>
             <Typography variant="h4">Studio de Agente IA</Typography>
             <Typography variant="body2" color="text.secondary">
-              {draft.name || 'Agente sin nombre'} Â· v{draft.version}
+              {draft.name || 'Agente sin nombre'} � v{draft.version}
               {isDirty && (
                 <Chip
                   label="Cambios sin guardar"
@@ -906,5 +906,6 @@ export default function AgentDesignerPage() {
     </>
   );
 }
+
 
 

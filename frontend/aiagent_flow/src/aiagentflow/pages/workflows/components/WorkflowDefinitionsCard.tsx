@@ -21,14 +21,14 @@ export function WorkflowDefinitionsCard({ loading, workflows, selectedId, onSele
   return (
     <Card sx={{ p: 2 }}>
       <Typography variant="h6" sx={{ mb: 2 }}>
-        Definiciones
+        Mis flujos
       </Typography>
       {loading ? (
         <Box sx={{ py: 4, textAlign: 'center' }}>
           <CircularProgress />
         </Box>
       ) : workflows.length === 0 ? (
-        <Alert severity="info">No se encontraron workflows. Crea tu primera definicion.</Alert>
+        <Alert severity="info">Aun no hay flujos guardados. Crea uno desde una plantilla o inicia uno nuevo.</Alert>
       ) : (
         <Stack spacing={1}>
           {workflows.map((wf) => (
@@ -46,7 +46,7 @@ export function WorkflowDefinitionsCard({ loading, workflows, selectedId, onSele
             >
               <Typography variant="subtitle2">{wf.name}</Typography>
               <Typography variant="caption" color="text.secondary" display="block">
-                {wf.triggerEventName}
+                Evento: {wf.triggerEventName}
               </Typography>
               <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
                 <Chip

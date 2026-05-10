@@ -17,17 +17,17 @@ export function RuntimeMetricsCard({ metrics, auditEvents }: Props) {
   return (
     <Card sx={{ p: 2 }}>
       <Typography variant="h6" sx={{ mb: 2 }}>
-        Métricas de ejecución
+        Metricas de ejecucion
       </Typography>
       {!metrics ? (
-        <Alert severity="info">Métricas no disponibles.</Alert>
+        <Alert severity="info">Metricas no disponibles.</Alert>
       ) : (
         <Stack spacing={1.2}>
           <Typography variant="body2">
             Total: <strong>{metrics.total ?? 0}</strong>
           </Typography>
           <Typography variant="body2">
-            Tasa de éxito: <strong>{Math.round((metrics.successRate ?? 0) * 100)}%</strong>
+            Tasa de exito: <strong>{Math.round((metrics.successRate ?? 0) * 100)}%</strong>
           </Typography>
           <Typography variant="body2">
             Tasa de fallo: <strong>{Math.round((metrics.failureRate ?? 0) * 100)}%</strong>
@@ -45,13 +45,13 @@ export function RuntimeMetricsCard({ metrics, auditEvents }: Props) {
                   {activityTypeLabel(a.activityType)}
                 </Typography>
                 <Typography variant="caption" display="block" color="text.secondary">
-                  {a.succeeded}/{a.total} éxito - {a.avgLatencyMs} ms promedio
+                  {a.succeeded}/{a.total} exito - {a.avgLatencyMs} ms promedio
                 </Typography>
               </Box>
             ))}
           </Stack>
           <Typography variant="subtitle2" sx={{ mt: 1 }}>
-            Auditoría reciente
+            Auditoria reciente
           </Typography>
           <Stack spacing={0.8}>
             {auditEvents.slice(0, 5).map((event) => (
@@ -66,7 +66,7 @@ export function RuntimeMetricsCard({ metrics, auditEvents }: Props) {
             ))}
             {auditEvents.length === 0 && (
               <Typography variant="caption" color="text.secondary">
-                Aún no hay eventos de auditoría.
+                Aun no hay eventos de auditoria.
               </Typography>
             )}
           </Stack>
@@ -75,3 +75,4 @@ export function RuntimeMetricsCard({ metrics, auditEvents }: Props) {
     </Card>
   );
 }
+

@@ -342,6 +342,15 @@ export default function ChannelsPage() {
     }
   };
 
+  const activeChannels = channels.filter((channel) => channel.status === 'Active').length;
+  const whatsappChannels = channels.filter((channel) => channel.type === 'WhatsApp').length;
+  const channelCapabilities = (channel: Channel) => {
+    if (channel.type === 'WhatsApp') return ['templates', 'inbox', 'qr/auth'];
+    if (channel.type === 'WebChat') return ['inbox', 'web widget'];
+    if (channel.type === 'Api') return ['webhook', 'inbox'];
+    return ['inbox'];
+  };
+
   const latencyMs = sessionMessages.length >= 2
     ? Math.max(0, new Date(sessionMessages[sessionMessages.length - 1].createdAt).getTime() - new Date(sessionMessages[0].createdAt).getTime())
     : 0;
@@ -353,15 +362,15 @@ export default function ChannelsPage() {
   return (
     <>
       <Helmet>
-        <title>Channels | {CONFIG.appName}</title>
+        <title>Conectores de canal | {CONFIG.appName}</title>
       </Helmet>
 
       <DashboardContent maxWidth="xl">
         <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Box>
-            <Typography variant="h4">Connect - Canales de comunicacion</Typography>
+            <Typography variant="h4">Conectores de canal</Typography>
             <Typography variant="body2" sx={{ color: 'text.secondary', mt: 1 }}>
-              Administra conexiones, salud del canal y evidencia operacional.
+              Conecta WhatsApp, web chat y APIs para usarlos en Inbox, campañas y workflows.
             </Typography>
           </Box>
           <Button variant="contained" startIcon={<Iconify icon="mingcute:add-line" />} onClick={() => setOpenCreate(true)}>
@@ -372,9 +381,49 @@ export default function ChannelsPage() {
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
         <Grid container spacing={3}>
+          <Grid item xs={12}>
+            <Grid container spacing={2}>
+              {[
+                ['Canales', channels.length, 'Configurados', 'mdi:message-processing-outline'],
+                ['Activos', activeChannels, 'Listos para operar', 'mdi:check-decagram-outline'],
+                ['WhatsApp', whatsappChannels, 'Templates y QR', 'mdi:whatsapp'],
+                ['Sesiones', sessions.length, 'Conversaciones recientes', 'mdi:inbox-outline'],
+              ].map(([label, value, helper, icon]) => (
+                <Grid item xs={12} sm={6} md={3} key={label}>
+                  <Card variant="outlined" sx={{ p: 2, height: '100%' }}>
+                    <Stack direction="row" spacing={1.5} alignItems="center">
+                      <Box
+                        sx={{
+                          width: 40,
+                          height: 40,
+                          borderRadius: 1.5,
+                          display: 'grid',
+                          placeItems: 'center',
+                          bgcolor: 'primary.lighter',
+                          color: 'primary.main',
+                        }}
+                      >
+                        <Iconify icon={String(icon)} width={23} />
+                      </Box>
+                      <Box>
+                        <Typography variant="h5">{String(value)}</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {label} · {helper}
+                        </Typography>
+                      </Box>
+                    </Stack>
+                  </Card>
+                </Grid>
+              ))}
+            </Grid>
+          </Grid>
+
           <Grid item xs={12} md={7}>
-            <Card sx={{ p: 2 }}>
-              <Typography variant="h6" sx={{ mb: 2 }}>Canales conectados</Typography>
+            <Card variant="outlined" sx={{ p: 2 }}>
+              <Typography variant="h6" sx={{ mb: 0.5 }}>Canales conectados</Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Estos conectores alimentan Inbox y aparecen como integraciones disponibles en Brain Studio.
+              </Typography>
               {loading ? (
                 <Box sx={{ py: 4, textAlign: 'center' }}><CircularProgress /></Box>
               ) : channels.length === 0 ? (
@@ -383,9 +432,10 @@ export default function ChannelsPage() {
                 <Table size="small">
                   <TableHead>
                     <TableRow>
-                      <TableCell>Nombre</TableCell>
-                      <TableCell>Tipo</TableCell>
-                      <TableCell>Estado</TableCell>
+                        <TableCell>Nombre</TableCell>
+                        <TableCell>Tipo</TableCell>
+                        <TableCell>Capacidades</TableCell>
+                        <TableCell>Estado</TableCell>
                       <TableCell>Actividad</TableCell>
                       <TableCell align="right">Acciones</TableCell>
                     </TableRow>
@@ -396,6 +446,13 @@ export default function ChannelsPage() {
                         <TableCell>{c.name}</TableCell>
                         <TableCell>
                           <Chip label={c.type} size="small" variant="outlined" />
+                        </TableCell>
+                        <TableCell>
+                          <Stack direction="row" spacing={0.5} flexWrap="wrap">
+                            {channelCapabilities(c).map((capability) => (
+                              <Chip key={capability} label={capability} size="small" />
+                            ))}
+                          </Stack>
                         </TableCell>
                         <TableCell>
                           <Chip label={c.status} size="small" color={getStatusColor(c.status) as any} />
@@ -434,7 +491,7 @@ export default function ChannelsPage() {
           </Grid>
 
           <Grid item xs={12} md={5}>
-            <Card sx={{ p: 2 }}>
+            <Card variant="outlined" sx={{ p: 2 }}>
               <Typography variant="h6" sx={{ mb: 2 }}>Sesiones activas</Typography>
               {sessions.length === 0 ? (
                 <Alert severity="info">No hay sesiones activas.</Alert>
@@ -448,7 +505,7 @@ export default function ChannelsPage() {
                       </Box>
                       <Typography variant="body2" fontWeight={700}>{s.identifier}</Typography>
                       <Typography variant="caption" color="text.secondary">
-                        Agente: {s.agentId ?? '-'} â€¢ Hilo: {s.threadId?.slice(0, 8) ?? '-'}
+                        Agente: {s.agentId ?? '-'} · Hilo: {s.threadId?.slice(0, 8) ?? '-'}
                       </Typography>
                       <Typography variant="caption" display="block" sx={{ mt: 0.5 }}>
                         Ultima: {new Date(s.lastActivityAt).toLocaleString()}

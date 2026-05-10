@@ -112,6 +112,13 @@ export type WorkflowIntegrationStatus = {
   detail?: string;
 };
 
+export type ConnectTemplateOption = {
+  id: string;
+  name: string;
+  channel: string;
+  body: string;
+};
+
 export type SchemaFieldRule = {
   key: string;
   required: boolean;

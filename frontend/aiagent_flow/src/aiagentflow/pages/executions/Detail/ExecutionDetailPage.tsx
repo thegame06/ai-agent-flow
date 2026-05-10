@@ -1,4 +1,4 @@
-﻿import type { RootState, AppDispatch } from 'src/aiagentflow/store';
+import type { RootState, AppDispatch } from 'src/aiagentflow/store';
 
 import { useEffect } from 'react';
 import { useParams } from 'react-router';
@@ -41,7 +41,7 @@ import { clearDetail, fetchExecutionDetail } from './executionDetailSlice';
 
 import type { ExecutionStep } from './executionDetailSlice';
 
-// â”€â”€ Step type metadata â”€â”€
+// ── Step type metadata ──
 
 const STEP_META: Record<string, { icon: string; color: string; label: string }> = {
   think: { icon: 'mdi:head-lightbulb', color: '#7C4DFF', label: 'Think' },
@@ -57,7 +57,7 @@ function getStepMeta(type: string) {
   return STEP_META[type] || { icon: 'mdi:help-circle', color: '#9E9E9E', label: type };
 }
 
-// â”€â”€ Status Chip â”€â”€
+// ── Status Chip ──
 
 function StatusChip({ status }: { status: string }) {
   const colors: Record<string, 'success' | 'warning' | 'error' | 'info' | 'default'> = {
@@ -69,7 +69,7 @@ function StatusChip({ status }: { status: string }) {
   return <Chip label={status} size="small" color={colors[status] || 'default'} variant="soft" />;
 }
 
-// â”€â”€ JSON viewer â”€â”€
+// ── JSON viewer ──
 
 function JsonViewer({ data, label }: { data?: string; label: string }) {
   const theme = useTheme();
@@ -109,7 +109,7 @@ function JsonViewer({ data, label }: { data?: string; label: string }) {
   );
 }
 
-// â”€â”€ Decision Trace Step â”€â”€
+// ── Decision Trace Step ──
 
 function DecisionTraceStep({ step, isLast }: { step: ExecutionStep; isLast: boolean }) {
   const theme = useTheme();
@@ -201,9 +201,9 @@ function DecisionTraceStep({ step, isLast }: { step: ExecutionStep; isLast: bool
   );
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ══════════════════════════════════════════════════════════════════════════
 // EXECUTION DETAIL PAGE
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ══════════════════════════════════════════════════════════════════════════
 
 export default function ExecutionDetailPage() {
   const dispatch = useDispatch<AppDispatch>();
@@ -247,7 +247,7 @@ export default function ExecutionDetailPage() {
   return (
     <>
       <Helmet>
-        <title>Execution {executionId?.slice(0, 8)}â€¦ | {CONFIG.appName}</title>
+        <title>Execution {executionId?.slice(0, 8)}... | {CONFIG.appName}</title>
       </Helmet>
 
       <DashboardContent maxWidth="lg">
@@ -441,4 +441,5 @@ export default function ExecutionDetailPage() {
     </>
   );
 }
+
 

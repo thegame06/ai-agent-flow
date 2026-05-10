@@ -48,7 +48,13 @@ import {
   ACTIVITY_TYPE_CATEGORY_ES,
 } from '../constants';
 
-import type { ToolOption, ModelOption, WorkflowActivityNode, WorkflowIntegrationStatus } from '../types';
+import type {
+  ToolOption,
+  ModelOption,
+  WorkflowActivityNode,
+  ConnectTemplateOption,
+  WorkflowIntegrationStatus,
+} from '../types';
 
 type Props = {
   activities: WorkflowActivityNode[];
@@ -58,6 +64,7 @@ type Props = {
   availableModels: ModelOption[];
   availableTools: ToolOption[];
   integrations: WorkflowIntegrationStatus[];
+  connectTemplates: ConnectTemplateOption[];
   onAddActivity: (activityType?: string, patch?: Partial<WorkflowActivityNode>) => void;
   onUpdateActivity: (index: number, patch: Partial<WorkflowActivityNode>) => void;
   onRemoveActivity: (index: number) => void;
@@ -88,6 +95,11 @@ const activityDescription = (type: string) => {
   if (type.startsWith('payments.')) return 'Crea o gestiona pagos';
   return 'Accion del flujo';
 };
+
+const extractTemplateVariables = (body: string) =>
+  Array.from(body.matchAll(/\{\{\s*([^}]+?)\s*\}\}/g))
+    .map((match) => match[1]?.trim())
+    .filter(Boolean);
 
 const nodeColorByType = (type: string) => {
   if (type === 'ai.agent') return '#2667ff';
@@ -400,6 +412,7 @@ export function WorkflowVisualDesigner({
   availableModels,
   availableTools,
   integrations,
+  connectTemplates,
   onAddActivity,
   onUpdateActivity,
   onRemoveActivity,
@@ -476,6 +489,17 @@ export function WorkflowVisualDesigner({
     }
     return integrations.find((x) => x.category === 'channel') ?? null;
   }, [integrations, selected]);
+  const selectedTemplate = useMemo(
+    () =>
+      selected?.config?.templateId
+        ? connectTemplates.find((template) => template.id === selected.config?.templateId) ?? null
+        : null,
+    [connectTemplates, selected]
+  );
+  const selectedTemplateVariables = useMemo(
+    () => extractTemplateVariables(selectedTemplate?.body ?? selected?.config?.content ?? ''),
+    [selected, selectedTemplate]
+  );
 
   const categorizedTypes = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -709,11 +733,63 @@ export function WorkflowVisualDesigner({
                           </Typography>
                         </Box>
                         <TextField
-                          label="Recipient"
+                          label="Destinatario"
                           size="small"
                           value={selected.config?.recipient ?? ''}
                           onChange={(e) => onUpdateActivityConfig(selectedIndex, 'recipient', e.target.value)}
                         />
+                        {selected.type === 'connect.send_whatsapp_template' && (
+                          <>
+                            <TextField
+                              label="Plantilla de WhatsApp"
+                              select
+                              size="small"
+                              value={selected.config?.templateId ?? ''}
+                              helperText={
+                                connectTemplates.length === 0
+                                  ? 'No hay plantillas cargadas en Connect.'
+                                  : 'Selecciona una plantilla aprobada.'
+                              }
+                              onChange={(e) => {
+                                const template = connectTemplates.find((x) => x.id === e.target.value);
+                                onUpdateActivity(selectedIndex, {
+                                  config: {
+                                    ...(selected.config ?? {}),
+                                    templateId: e.target.value,
+                                    channel: template?.channel || selected.config?.channel || 'whatsapp',
+                                    content: template?.body || selected.config?.content || '',
+                                  },
+                                });
+                              }}
+                            >
+                              <MenuItem value="">Sin plantilla</MenuItem>
+                              {connectTemplates.map((template) => (
+                                <MenuItem key={template.id} value={template.id}>
+                                  {template.name}
+                                </MenuItem>
+                              ))}
+                            </TextField>
+                            {selectedTemplate && (
+                              <Box sx={{ p: 1, borderRadius: 1, bgcolor: '#f8fafc', border: '1px solid #e2e8f0' }}>
+                                <Typography variant="caption" fontWeight={700}>
+                                  Vista previa
+                                </Typography>
+                                <Typography variant="caption" display="block" color="text.secondary">
+                                  {selectedTemplate.body}
+                                </Typography>
+                                <Stack direction="row" spacing={0.5} flexWrap="wrap" sx={{ mt: 0.8 }}>
+                                  {selectedTemplateVariables.length === 0 ? (
+                                    <Chip size="small" label="Sin variables" />
+                                  ) : (
+                                    selectedTemplateVariables.map((variable) => (
+                                      <Chip key={variable} size="small" label={`{{${variable}}}`} />
+                                    ))
+                                  )}
+                                </Stack>
+                              </Box>
+                            )}
+                          </>
+                        )}
                         <TextField
                           label="Mensaje / Contenido"
                           size="small"
@@ -1039,4 +1115,5 @@ export function WorkflowVisualDesigner({
     </Card>
   );
 }
+
 

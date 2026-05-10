@@ -1,5 +1,5 @@
-import Chip from '@mui/material/Chip';
 import Card from '@mui/material/Card';
+import Chip from '@mui/material/Chip';
 import Alert from '@mui/material/Alert';
 import Stack from '@mui/material/Stack';
 import Table from '@mui/material/Table';
@@ -32,7 +32,7 @@ export function WorkflowExecutionsCard({ executions, onOpenSteps, onRetryExecuti
       <Table size="small">
         <TableHead>
           <TableRow>
-            <TableCell>ID</TableCell>
+            <TableCell>Ejecucion</TableCell>
             <TableCell>Workflow</TableCell>
             <TableCell>Estado</TableCell>
             <TableCell>Creado</TableCell>
@@ -43,7 +43,7 @@ export function WorkflowExecutionsCard({ executions, onOpenSteps, onRetryExecuti
           {executions.slice(0, 12).map((ex) => (
             <TableRow key={ex.id}>
               <TableCell>{ex.id.slice(0, 8)}...</TableCell>
-              <TableCell>{ex.workflowDefinitionId.slice(0, 8)}...</TableCell>
+              <TableCell>{ex.workflowDefinitionId.slice(0, 12)}...</TableCell>
               <TableCell>
                 <Chip
                   size="small"
@@ -54,7 +54,7 @@ export function WorkflowExecutionsCard({ executions, onOpenSteps, onRetryExecuti
               <TableCell>{new Date(ex.createdAt).toLocaleString()}</TableCell>
               <TableCell align="right">
                 <Stack direction="row" spacing={1} justifyContent="flex-end">
-                  <IconButton size="small" onClick={() => onOpenSteps(ex.id)}>
+                  <IconButton size="small" title="Ver pasos" onClick={() => onOpenSteps(ex.id)}>
                     <Iconify icon="mdi:format-list-bulleted" />
                   </IconButton>
                   {ex.status === 'Failed' && (

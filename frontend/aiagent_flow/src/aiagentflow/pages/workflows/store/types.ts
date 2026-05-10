@@ -6,6 +6,7 @@ import type {
   WorkflowAuditEvent,
   WorkflowDefinition,
   WorkflowActivityNode,
+  ConnectTemplateOption,
   WorkflowRuntimeMetrics,
   WorkflowIntegrationStatus,
   WorkflowActivityCatalogEntry,
@@ -40,4 +41,5 @@ export type WorkflowRuntimeState = {
   availableModels: ModelOption[];
   availableTools: ToolOption[];
   integrations: WorkflowIntegrationStatus[];
+  connectTemplates: ConnectTemplateOption[];
 };

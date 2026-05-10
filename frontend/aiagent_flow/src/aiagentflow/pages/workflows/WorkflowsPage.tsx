@@ -3,6 +3,7 @@ import { Helmet } from 'react-helmet-async';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
+import Chip from '@mui/material/Chip';
 import Grid from '@mui/material/Grid';
 import Alert from '@mui/material/Alert';
 import Stack from '@mui/material/Stack';
@@ -49,6 +50,7 @@ export default function WorkflowsPage() {
     availableModels,
     availableTools,
     integrations,
+    connectTemplates,
     setError,
     setStepsOpen,
     loadAll,
@@ -102,6 +104,9 @@ export default function WorkflowsPage() {
           .map((a) => `El nodo ${a.id || a.type} no esta permitido en modo Tool tecnica.`)
       : []),
   ];
+  const publishedCount = workflows.filter((wf) => wf.status === 'Published').length;
+  const failedExecutions = executions.filter((execution) => execution.status === 'Failed').length;
+  const readyToPublish = hasSelection && designValidationErrors.length === 0;
 
   const handleSelectWorkflow = (wf: WorkflowDefinition) => {
     selectWorkflow(wf);
@@ -144,12 +149,66 @@ export default function WorkflowsPage() {
 
         <Grid container spacing={3}>
           <Grid item xs={12}>
-            <Card sx={{ p: 2 }}>
-              <Typography variant="h6" sx={{ mb: 1 }}>Punto de partida</Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Selecciona una plantilla y ajusta el flujo en el canvas.
-              </Typography>
-              <Stack direction="row" spacing={1} flexWrap="wrap">
+            <Grid container spacing={2}>
+              {[
+                ['Workflows', workflows.length, `${publishedCount} publicados`, 'mdi:source-branch'],
+                ['Nodos del flujo', activities.length, readyToPublish ? 'Listo para publicar' : `${designValidationErrors.length} pendientes`, 'mdi:vector-polyline'],
+                ['Ejecuciones', executions.length, failedExecutions ? `${failedExecutions} fallidas` : 'Sin fallas recientes', 'mdi:play-circle-outline'],
+              ].map(([label, value, helper, icon]) => (
+                <Grid item xs={12} md={4} key={label}>
+                  <Card variant="outlined" sx={{ p: 2, height: '100%' }}>
+                    <Stack direction="row" spacing={1.5} alignItems="center">
+                      <Box
+                        sx={{
+                          width: 42,
+                          height: 42,
+                          borderRadius: 1.5,
+                          display: 'grid',
+                          placeItems: 'center',
+                          bgcolor: 'primary.lighter',
+                          color: 'primary.main',
+                        }}
+                      >
+                        <Iconify icon={String(icon)} width={24} />
+                      </Box>
+                      <Box>
+                        <Typography variant="h5">{String(value)}</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {label} · {helper}
+                        </Typography>
+                      </Box>
+                    </Stack>
+                  </Card>
+                </Grid>
+              ))}
+            </Grid>
+          </Grid>
+
+          <Grid item xs={12}>
+            <Card
+              variant="outlined"
+              sx={{
+                p: 2,
+                borderRadius: 2,
+                background:
+                  'linear-gradient(135deg, rgba(38,103,255,0.06), rgba(14,165,163,0.06))',
+              }}
+            >
+              <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={2}>
+                <Box>
+                  <Typography variant="h6" sx={{ mb: 0.5 }}>Punto de partida</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Selecciona una plantilla y ajusta el flujo en el canvas.
+                  </Typography>
+                </Box>
+                <Chip
+                  size="small"
+                  color={readyToPublish ? 'success' : 'warning'}
+                  label={readyToPublish ? 'Sin pendientes' : `${designValidationErrors.length} validaciones`}
+                  sx={{ alignSelf: { xs: 'flex-start', md: 'center' } }}
+                />
+              </Stack>
+              <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mt: 2 }}>
                 {quickstarts.map((tpl) => (
                   <Button
                     key={tpl.id}
@@ -180,31 +239,38 @@ export default function WorkflowsPage() {
 
           <Grid item xs={12} md={8}>
             <Card sx={{ p: 2 }}>
-              <Typography variant="h6" sx={{ mb: 2 }}>
-                Constructor
-              </Typography>
-              <ToggleButtonGroup
-                value={editorMode}
-                exclusive
-                size="small"
-                onChange={(_, v) => {
-                  if (v) setEditorMode(v);
-                }}
-              >
-                <ToggleButton value="builder">Builder</ToggleButton>
-                <ToggleButton value="advanced">Avanzado</ToggleButton>
-              </ToggleButtonGroup>
-              <ToggleButtonGroup
-                value={designType}
-                exclusive
-                size="small"
-                onChange={(_, v) => {
-                  if (v) setDesignType(v);
-                }}
-              >
-                <ToggleButton value="workflow">Workflow conversacional</ToggleButton>
-                <ToggleButton value="tool">Tool tecnica</ToggleButton>
-              </ToggleButtonGroup>
+              <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={1.5} sx={{ mb: 2 }}>
+                <Box>
+                  <Typography variant="h6">Constructor</Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Builder para usuarios; avanzado solo para JSON y soporte tecnico.
+                  </Typography>
+                </Box>
+                <Stack direction="row" spacing={1} flexWrap="wrap">
+                  <ToggleButtonGroup
+                    value={editorMode}
+                    exclusive
+                    size="small"
+                    onChange={(_, v) => {
+                      if (v) setEditorMode(v);
+                    }}
+                  >
+                    <ToggleButton value="builder">Builder</ToggleButton>
+                    <ToggleButton value="advanced">Avanzado</ToggleButton>
+                  </ToggleButtonGroup>
+                  <ToggleButtonGroup
+                    value={designType}
+                    exclusive
+                    size="small"
+                    onChange={(_, v) => {
+                      if (v) setDesignType(v);
+                    }}
+                  >
+                    <ToggleButton value="workflow">Workflow</ToggleButton>
+                    <ToggleButton value="tool">Tool</ToggleButton>
+                  </ToggleButtonGroup>
+                </Stack>
+              </Stack>
               <Stack spacing={2}>
                 <TextField
                   label="ID del workflow"
@@ -244,6 +310,7 @@ export default function WorkflowsPage() {
                   availableModels={availableModels}
                   availableTools={availableTools}
                   integrations={integrations}
+                  connectTemplates={connectTemplates}
                   onAddActivity={addActivity}
                   onUpdateActivity={updateActivity}
                   onRemoveActivity={removeActivity}

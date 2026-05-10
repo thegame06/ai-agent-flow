@@ -63,7 +63,14 @@ export default function MarketplacePage() {
   }, [load]);
 
   const visibleEntries = useMemo(
-    () => entries.filter((e) => !query || `${e.name} ${e.extensionId}`.toLowerCase().includes(query.toLowerCase())),
+    () =>
+      entries.filter(
+        (e) =>
+          !query ||
+          `${e.name} ${e.extensionId} ${e.metadata.vendor} ${(e.metadata.permissions || []).join(' ')}`
+            .toLowerCase()
+            .includes(query.toLowerCase())
+      ),
     [entries, query]
   );
 
@@ -202,7 +209,9 @@ export default function MarketplacePage() {
                       {entry.metadata.isQuarantined && <Chip label="Cuarentena" color="error" size="small" />}
                     </Stack>
                     <Typography variant="caption">Compatibilidad: {entry.metadata.compatibility}</Typography>
-                    <Typography variant="caption">Permisos: {(entry.metadata.permissions || []).join(', ') || 'ninguno'}</Typography>
+                    <Typography variant="caption">
+                      Capacidades: {(entry.metadata.permissions || []).join(', ') || 'sin permisos requeridos'}
+                    </Typography>
                     <Stack direction="row" spacing={1}>
                       <Button variant="contained" disabled={isInstalled || entry.metadata.isQuarantined} onClick={() => install(entry.extensionId)}>
                         {isInstalled ? 'Instalado' : 'Instalar'}
