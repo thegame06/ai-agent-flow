@@ -111,15 +111,26 @@ export const ACTIVITY_TYPE_PRESETS: Record<string, Record<string, string>> = {
     currency: '{{payload.currency}}',
     reference: '{{payload.reference}}',
   },
-  'ai.agent': {},
+  'ai.agent': {
+    agentId: '',
+    agentName: '',
+    agentVersion: '',
+    input: '{{payload.content}}',
+    context: '{{payload.channel}}',
+  },
 };
 
 export const DEFAULT_AI_AGENT_CONFIG: AiAgentNodeConfig = {
+  agentId: '',
+  agentName: '',
+  agentVersion: '',
   model: 'gpt-4o',
   instructions: 'Responde al cliente de forma clara, breve y segura usando el contexto disponible.',
   tools: [],
   context: '',
   knowledge: [],
+  input: '{{payload.content}}',
+  outputVariable: 'agentResult',
   fallbackModel: 'gpt-4o-mini',
   maxLatencyMs: 3000,
   maxCostUsd: 0.05,

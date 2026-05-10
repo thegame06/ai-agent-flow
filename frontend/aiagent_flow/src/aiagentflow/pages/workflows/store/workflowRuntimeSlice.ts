@@ -13,6 +13,7 @@ import {
 
 import type { WorkflowRuntimeState } from './types';
 import type {
+  AgentOption,
   WorkflowStep,
   WorkflowExecution,
   WorkflowAuditEvent,
@@ -36,6 +37,7 @@ const initialState: WorkflowRuntimeState = {
   activityCatalog: [],
   availableModels: [],
   availableTools: [],
+  availableAgents: [],
   integrations: [],
   connectTemplates: [],
 };
@@ -72,6 +74,18 @@ const workflowRuntimeSlice = createSlice({
           key: t.key,
           displayName: t.displayName,
         }));
+        state.availableAgents = ((action.payload.availableAgents as any[]) ?? []).map(
+          (agent) =>
+            ({
+              id: agent.id,
+              name: agent.name,
+              description: agent.description,
+              status: agent.status,
+              version: agent.version,
+              tags: agent.tags ?? [],
+              updatedAt: agent.updatedAt,
+            }) as AgentOption
+        );
         state.integrations = (action.payload.integrations as any[]) ?? [];
         state.connectTemplates = ((action.payload.connectTemplates as any[]) ?? []).map(
           (template) =>

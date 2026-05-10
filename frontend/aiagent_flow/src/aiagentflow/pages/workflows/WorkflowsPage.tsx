@@ -81,6 +81,7 @@ export default function WorkflowsPage() {
     activityCatalog,
     availableModels,
     availableTools,
+    availableAgents,
     integrations,
     connectTemplates,
     setError,
@@ -396,6 +397,7 @@ export default function WorkflowsPage() {
           startIntents={startIntents}
           availableModels={availableModels}
           availableTools={availableTools}
+          availableAgents={availableAgents}
           integrations={integrations}
           connectTemplates={connectTemplates}
           onAddActivity={addActivity}

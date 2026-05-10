@@ -46,8 +46,8 @@ export function validateWorkflow(
     const cfg = activity.config ?? {};
     if (activity.type === 'ai.agent') {
       const ai = activity.aiAgent ?? DEFAULT_AI_AGENT_CONFIG;
-      if (!ai.model.trim()) errors.push(`Nodo ${step}: selecciona un modelo de IA.`);
-      if (!ai.instructions.trim()) errors.push(`Nodo ${step}: agrega instrucciones para el agente.`);
+      if (!cfg.agentId?.trim() && !ai.agentId?.trim()) errors.push(`Nodo ${step}: selecciona un agente publicado.`);
+      if (!cfg.input?.trim() && !ai.input?.trim()) errors.push(`Nodo ${step}: define el mensaje o contexto de entrada para el agente.`);
       if (ai.maxTokens < 64 || ai.maxTokens > 8000) errors.push(`Nodo ${step}: tokens maximos debe estar entre 64 y 8000.`);
       if (ai.temperature < 0 || ai.temperature > 1) errors.push(`Nodo ${step}: temperatura debe estar entre 0 y 1.`);
     }

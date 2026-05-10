@@ -57,11 +57,16 @@ export type WorkflowRuntimeMetrics = {
 };
 
 export type AiAgentNodeConfig = {
+  agentId?: string;
+  agentName?: string;
+  agentVersion?: string | number;
   model: string;
   instructions: string;
   tools: string[];
   context: string;
   knowledge: string[];
+  input?: string;
+  outputVariable?: string;
   fallbackModel?: string;
   maxLatencyMs?: number;
   maxCostUsd?: number;
@@ -125,6 +130,16 @@ export type ConnectTemplateOption = {
   name: string;
   channel: string;
   body: string;
+};
+
+export type AgentOption = {
+  id: string;
+  name: string;
+  description?: string;
+  status: string;
+  version?: string | number;
+  tags?: string[];
+  updatedAt?: string;
 };
 
 export type SchemaFieldRule = {

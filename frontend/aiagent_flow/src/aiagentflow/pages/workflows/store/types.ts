@@ -1,5 +1,6 @@
 import type {
   ToolOption,
+  AgentOption,
   ModelOption,
   WorkflowStep,
   WorkflowExecution,
@@ -40,6 +41,7 @@ export type WorkflowRuntimeState = {
   activityCatalog: WorkflowActivityCatalogEntry[];
   availableModels: ModelOption[];
   availableTools: ToolOption[];
+  availableAgents: AgentOption[];
   integrations: WorkflowIntegrationStatus[];
   connectTemplates: ConnectTemplateOption[];
 };

@@ -1,4 +1,4 @@
-import type { RootState, AppDispatch } from 'src/aiagentflow/store';
+﻿import type { RootState, AppDispatch } from 'src/aiagentflow/store';
 
 import { useParams } from 'react-router';
 import { useState, useEffect } from 'react';
@@ -18,7 +18,6 @@ import Switch from '@mui/material/Switch';
 import Slider from '@mui/material/Slider';
 import Select from '@mui/material/Select';
 import Divider from '@mui/material/Divider';
-import Tooltip from '@mui/material/Tooltip';
 import MenuItem from '@mui/material/MenuItem';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
@@ -32,18 +31,14 @@ import axios from 'src/lib/axios';
 import { CONFIG } from 'src/global-config';
 import { DashboardContent } from 'src/layouts/dashboard';
 
-import { Label } from 'src/components/label';
 import { Iconify } from 'src/components/iconify';
 
 import AgentFlowCanvas from './AgentFlowCanvas';
 import { saveAgent, publishAgent, fetchAgentDetail } from './designerThunks';
 import {
-  addStep,
   addTool,
-  removeStep,
   removeTool,
   resetDraft,
-  updateStep,
   updateField,
   updateModel,
   setActiveTab,
@@ -51,44 +46,7 @@ import {
   updateGuardrails,
 } from './designerSlice';
 
-import type { AgentStep } from './types';
-
-
-// ── Helpers ──
-const STEP_TYPES = [
-  { value: 'think', label: 'Razonar', icon: 'mdi:head-lightbulb', color: '#7C4DFF' },
-  { value: 'plan', label: 'Planificar', icon: 'mdi:map-outline', color: '#00BCD4' },
-  { value: 'act', label: 'Actuar', icon: 'mdi:lightning-bolt', color: '#FF9800' },
-  { value: 'observe', label: 'Observar', icon: 'mdi:eye-outline', color: '#4CAF50' },
-  { value: 'decide', label: 'Decision', icon: 'mdi:source-branch', color: '#E91E63' },
-  { value: 'aggregate', label: 'Agregador', icon: 'mdi:graph-outline', color: '#3F51B5' },
-  { value: 'tool_call', label: 'Tool', icon: 'mdi:wrench-outline', color: '#607D8B' },
-  { value: 'human_review', label: 'Revision humana', icon: 'mdi:account-check', color: '#795548' },
-] as const;
-
 const FALLBACK_MODELS = ['gpt-4o', 'gpt-4o-mini', 'claude-3.5-sonnet', 'gemini-2.0-flash'];
-
-let stepCounter = 0;
-const genId = () => `step-${++stepCounter}-${Date.now()}`;
-
-function defaultConfigForStepType(type: AgentStep['type']): Record<string, unknown> {
-  switch (type) {
-    case 'think':
-    case 'plan':
-      return { prompt: '', outputKey: 'latest' };
-    case 'act':
-    case 'tool_call':
-      return { toolName: '', inputTemplate: '{{input}}' };
-    case 'decide':
-      return { mode: 'contains', matchValue: 'approved' };
-    case 'aggregate':
-      return { strategy: 'concat', separator: '\n---\n' };
-    case 'human_review':
-      return { reason: 'Manual verification required' };
-    default:
-      return {};
-  }
-}
 
 interface ModelOption {
   modelId: string;
@@ -104,9 +62,9 @@ interface ToolOption {
   description: string;
 }
 
-// ══════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // TAB PANELS
-// ══════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 function TabGeneral({ draft, dispatch }: { draft: any; dispatch: any }) {
   return (
@@ -183,138 +141,6 @@ function TabGeneral({ draft, dispatch }: { draft: any; dispatch: any }) {
           />
         </Stack>
       </Box>
-    </Stack>
-  );
-}
-
-function TabSteps({ draft, dispatch, theme }: { draft: any; dispatch: any; theme: any }) {
-  return (
-    <Stack spacing={3}>
-      <Alert severity="info" variant="outlined">
-        Usa el planificador <strong>Sequential</strong> para ejecutar cadenas de prompts, decisiones y agregacion de tools en paralelo.
-      </Alert>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Typography variant="subtitle1" fontWeight={700}>
-          Pasos del flujo del agente ({draft.steps.length})
-        </Typography>
-      </Box>
-
-      {/* Add step buttons */}
-      <Paper
-        variant="outlined"
-        sx={{ p: 2, display: 'flex', flexWrap: 'wrap', gap: 1 }}
-      >
-        {STEP_TYPES.map((st) => (
-          <Button
-            key={st.value}
-            variant="outlined"
-            size="small"
-            startIcon={<Iconify icon={st.icon} />}
-            sx={{
-              borderColor: alpha(st.color, 0.5),
-              color: st.color,
-              '&:hover': { borderColor: st.color, bgcolor: alpha(st.color, 0.08) },
-            }}
-            onClick={() => {
-              const newStep: AgentStep = {
-                id: genId(),
-                type: st.value,
-                label: `${st.label} Step`,
-                description: '',
-                config: defaultConfigForStepType(st.value),
-                position: { x: 0, y: draft.steps.length * 80 },
-                connections: [],
-              };
-              dispatch(addStep(newStep));
-            }}
-          >
-            {st.label}
-          </Button>
-        ))}
-      </Paper>
-
-      {/* Paso List */}
-      {draft.steps.length === 0 && (
-        <Alert severity="info" variant="outlined">
-          Aun no hay pasos. Agrega pasos para definir el flujo del agente.
-        </Alert>
-      )}
-
-      <Stack spacing={1.5}>
-        {draft.steps.map((step: AgentStep, idx: number) => {
-          const stepType = STEP_TYPES.find(s => s.value === step.type);
-          return (
-            <Paper
-              key={step.id}
-              variant="outlined"
-              sx={{
-                p: 2,
-                borderLeft: `4px solid ${stepType?.color || '#999'}`,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 2,
-                transition: 'all 0.2s',
-                '&:hover': { boxShadow: theme.shadows[4] },
-              }}
-            >
-              <Iconify
-                icon={stepType?.icon || 'mdi:help'}
-                width={28}
-                sx={{ color: stepType?.color }}
-              />
-              <Box sx={{ flex: 1 }}>
-                <TextField
-                  size="small"
-                  label="Nombre del paso"
-                  value={step.label}
-                  onChange={(e) => dispatch(updateStep({ id: step.id, changes: { label: e.target.value } }))}
-                  sx={{ minWidth: 220 }}
-                />
-                <Typography variant="caption" color="text.secondary">
-                  Paso {idx + 1} � {step.type.replace('_', ' ').toUpperCase()}
-                </Typography>
-                <TextField
-                  size="small"
-                  fullWidth
-                  multiline
-                  minRows={2}
-                  label="Descripcion"
-                  value={step.description}
-                  onChange={(e) => dispatch(updateStep({ id: step.id, changes: { description: e.target.value } }))}
-                  sx={{ mt: 1 }}
-                />
-                <TextField
-                  size="small"
-                  fullWidth
-                  multiline
-                  minRows={4}
-                  label="Configuracion (JSON)"
-                  value={JSON.stringify(step.config ?? {}, null, 2)}
-                  onChange={(e) => {
-                    try {
-                      const next = JSON.parse(e.target.value || '{}');
-                      dispatch(updateStep({ id: step.id, changes: { config: next } }));
-                    } catch {
-                      // Ignore partial invalid JSON while the user edits
-                    }
-                  }}
-                  sx={{ mt: 1 }}
-                />
-              </Box>
-        <Label color="default" variant="soft">{stepType?.label ?? step.type}</Label>
-              <Tooltip title="Eliminar paso">
-                <IconButton
-                  size="small"
-                  color="error"
-                  onClick={() => dispatch(removeStep(step.id))}
-                >
-                  <Iconify icon="mdi:delete-outline" width={18} />
-                </IconButton>
-              </Tooltip>
-            </Paper>
-          );
-        })}
-      </Stack>
     </Stack>
   );
 }
@@ -689,14 +515,13 @@ function TabModel({
   );
 }
 
-// ══════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // MAIN PAGE
-// ══════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
-const TAB_LABELS = ['General', 'Flujo', 'Lienzo', 'Modo runtime', 'Memoria', 'Integraciones', 'Modelo IA'];
+const TAB_LABELS = ['General', 'Subflujo', 'Modo runtime', 'Memoria', 'Integraciones', 'Modelo IA'];
 const TAB_ICONS = [
   'mdi:information-outline',
-  'mdi:repeat',
   'mdi:sitemap',
   'mdi:shield-outline',
   'mdi:brain',
@@ -777,21 +602,19 @@ export default function AgentDesignerPage() {
       case 0:
         return <TabGeneral draft={draft} dispatch={dispatch} />;
       case 1:
-        return <TabSteps draft={draft} dispatch={dispatch} theme={theme} />;
-      case 2:
         return (
           <Stack spacing={2}>
             <Alert severity="info" variant="outlined">
-              Canvas is a visual editor of step relationships. Modo runtime behavior is still enforced by engine policies and loop mode.
+              Este es el subflujo interno del agente. En Brain Studio principal se usa como un nodo reutilizable por canal, intencion o proceso.
             </Alert>
-            <AgentFlowCanvas steps={draft.steps} />
+            <AgentFlowCanvas steps={draft.steps} agentName={draft.name} />
           </Stack>
         );
-      case 3:
+      case 2:
         return <TabGuardrails draft={draft} dispatch={dispatch} />;
-      case 4:
+      case 3:
         return <TabMemory draft={draft} dispatch={dispatch} />;
-      case 5:
+      case 4:
         return (
           <TabTools
             draft={draft}
@@ -800,7 +623,7 @@ export default function AgentDesignerPage() {
             loading={catalogLoading}
           />
         );
-      case 6:
+      case 5:
         return (
           <TabModel
             draft={draft}
@@ -817,14 +640,14 @@ export default function AgentDesignerPage() {
   return (
     <>
       <Helmet>
-        <title>{draft.name || 'New Agent'} — Designer | {CONFIG.appName}</title>
+        <title>{draft.name || 'New Agent'} â€” Designer | {CONFIG.appName}</title>
       </Helmet>
 
       <DashboardContent maxWidth="lg">
         {/* Error Banner */}
         {Object.keys(errors).length > 0 && (
           <Alert severity="error" sx={{ mb: 3 }}>
-            {Object.values(errors).join(' � ')}
+            {Object.values(errors).join(' · ')}
           </Alert>
         )}
 
@@ -833,7 +656,7 @@ export default function AgentDesignerPage() {
           <Box>
             <Typography variant="h4">Studio de Agente IA</Typography>
             <Typography variant="body2" color="text.secondary">
-              {draft.name || 'Agente sin nombre'} � v{draft.version}
+              {draft.name || 'Agente sin nombre'} · v{draft.version}
               {isDirty && (
                 <Chip
                   label="Cambios sin guardar"
@@ -906,6 +729,8 @@ export default function AgentDesignerPage() {
     </>
   );
 }
+
+
 
 
 

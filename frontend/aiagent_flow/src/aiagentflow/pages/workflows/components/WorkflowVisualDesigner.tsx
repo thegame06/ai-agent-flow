@@ -31,7 +31,6 @@ import MenuItem from '@mui/material/MenuItem';
 import Checkbox from '@mui/material/Checkbox';
 import Collapse from '@mui/material/Collapse';
 import TextField from '@mui/material/TextField';
-import FormGroup from '@mui/material/FormGroup';
 import Accordion from '@mui/material/Accordion';
 import IconButton from '@mui/material/IconButton';
 import Typography from '@mui/material/Typography';
@@ -50,6 +49,7 @@ import {
 
 import type {
   ToolOption,
+  AgentOption,
   ModelOption,
   WorkflowStartIntent,
   WorkflowActivityNode,
@@ -66,6 +66,7 @@ type Props = {
   startIntents: WorkflowStartIntent[];
   availableModels: ModelOption[];
   availableTools: ToolOption[];
+  availableAgents: AgentOption[];
   integrations: WorkflowIntegrationStatus[];
   connectTemplates: ConnectTemplateOption[];
   onAddActivity: (activityType?: string, patch?: Partial<WorkflowActivityNode>) => void;
@@ -378,7 +379,7 @@ const toNodes = (
       activityType: activity.type,
       description: activityDescription(activity.type),
       badge: activity.type === 'ai.agent'
-        ? activity.aiAgent?.model
+        ? activity.aiAgent?.agentName || activity.config?.agentName || activity.config?.agentId
         : activity.config?.channel || activity.config?.status,
       index: idx,
       onDuplicate: () => onDuplicate(idx),
@@ -505,6 +506,7 @@ export function WorkflowVisualDesigner({
   startIntents,
   availableModels,
   availableTools,
+  availableAgents,
   integrations,
   connectTemplates,
   onAddActivity,
@@ -596,6 +598,35 @@ export function WorkflowVisualDesigner({
     () => extractTemplateVariables(selectedTemplate?.body ?? selected?.config?.content ?? ''),
     [selected, selectedTemplate]
   );
+  const publishedAgents = useMemo(
+    () => availableAgents.filter((agent) => agent.status === 'Published'),
+    [availableAgents]
+  );
+  const selectedAgent = useMemo(() => {
+    const agentId = selected?.config?.agentId ?? selected?.aiAgent?.agentId;
+    return agentId ? availableAgents.find((agent) => agent.id === agentId) ?? null : null;
+  }, [availableAgents, selected]);
+  const selectPublishedAgent = (agentId: string) => {
+    if (selectedIndex === null || !selected) return;
+    const agent = availableAgents.find((item) => item.id === agentId);
+    onUpdateActivity(selectedIndex, {
+      name: agent?.name || selected.name || activityTypeLabel('ai.agent'),
+      aiAgent: {
+        ...(selected.aiAgent ?? DEFAULT_AI_AGENT_CONFIG),
+        agentId,
+        agentName: agent?.name ?? '',
+        agentVersion: agent?.version ?? '',
+      },
+      config: {
+        ...(selected.config ?? {}),
+        agentId,
+        agentName: agent?.name ?? '',
+        agentVersion: agent?.version ? String(agent.version) : '',
+        input: selected.config?.input ?? selected.aiAgent?.input ?? DEFAULT_AI_AGENT_CONFIG.input ?? '{{payload.content}}',
+        context: selected.config?.context ?? selected.aiAgent?.context ?? '{{payload.channel}}',
+      },
+    });
+  };
 
   const availableDockItems = useMemo(
     () =>
@@ -865,7 +896,7 @@ export function WorkflowVisualDesigner({
                 <Typography variant="subtitle1">{selected.name || activityTypeLabel(selected.type)}</Typography>
                 <Typography variant="caption" color="text.secondary">
                   {selected.type === 'ai.agent'
-                    ? 'Define modelo, instrucciones, herramientas y contexto.'
+                    ? 'Selecciona un agente publicado y define que datos del flujo recibe.'
                     : 'Configura solo lo esencial. Lo tecnico esta en Runtime y Debug.'}
                 </Typography>
               </Box>
@@ -876,24 +907,48 @@ export function WorkflowVisualDesigner({
               <Card variant="outlined" sx={{ p: 1.2, bgcolor: '#fbfdff' }}>
                 <Stack spacing={1}>
                   <TextField
-                    label="Nombre del agente"
-                    value={selected.name ?? ''}
-                    onChange={(e) => onUpdateActivity(selectedIndex, { name: e.target.value || undefined })}
-                    size="small"
-                  />
-                  <TextField
-                    label="Tipo de nodo"
+                    label="Agente publicado"
                     select
-                    value={selected.type}
-                    onChange={(e) => handleSelectedTypeChange(e.target.value)}
+                    value={selected.config?.agentId ?? selected.aiAgent?.agentId ?? ''}
+                    helperText="El modelo, tools, memoria y guardrails viven en Agent Studio."
+                    onChange={(e) => selectPublishedAgent(e.target.value)}
                     size="small"
                   >
-                    {allowedTypes.map((type) => (
-                      <MenuItem key={type} value={type}>
-                        {activityTypeLabel(type)}
+                    <MenuItem value="">Seleccionar agente</MenuItem>
+                    {publishedAgents.map((agent) => (
+                      <MenuItem key={agent.id} value={agent.id}>
+                        {agent.name}
                       </MenuItem>
                     ))}
                   </TextField>
+                  {publishedAgents.length === 0 && (
+                    <Alert severity="warning">
+                      No hay agentes publicados para usar en el flujo. Publica uno desde Agent Studio.
+                    </Alert>
+                  )}
+                  {selectedAgent && (
+                    <Box sx={{ p: 1, borderRadius: 1, border: '1px solid #bae6fd', bgcolor: '#f0f9ff' }}>
+                      <Stack direction="row" spacing={0.6} alignItems="center" flexWrap="wrap">
+                        <Typography variant="caption" fontWeight={700}>
+                          {selectedAgent.name}
+                        </Typography>
+                        <Chip size="small" label={selectedAgent.status === 'Published' ? 'Publicado' : selectedAgent.status} />
+                        {selectedAgent.version && <Chip size="small" label={`v${selectedAgent.version}`} />}
+                      </Stack>
+                      {selectedAgent.description && (
+                        <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5 }}>
+                          {selectedAgent.description}
+                        </Typography>
+                      )}
+                      {selectedAgent.tags && selectedAgent.tags.length > 0 && (
+                        <Stack direction="row" spacing={0.5} flexWrap="wrap" sx={{ mt: 0.8 }}>
+                          {selectedAgent.tags.map((tag) => (
+                            <Chip key={tag} size="small" variant="outlined" label={tag} />
+                          ))}
+                        </Stack>
+                      )}
+                    </Box>
+                  )}
                 </Stack>
               </Card>
             )}
@@ -1061,99 +1116,90 @@ export function WorkflowVisualDesigner({
                 {aiTab === 0 && (
                   <Stack spacing={1} sx={{ mt: 1.2 }}>
                     <TextField
-                      label="Modelo"
+                      label="Agente publicado"
                       select
-                      value={selected.aiAgent?.model ?? DEFAULT_AI_AGENT_CONFIG.model}
-                      onChange={(e) => onUpdateAiAgentConfig(selectedIndex, { model: e.target.value })}
+                      value={selected.config?.agentId ?? selected.aiAgent?.agentId ?? ''}
+                      onChange={(e) => selectPublishedAgent(e.target.value)}
                       size="small"
                     >
-                      {(availableModels.length > 0
-                        ? availableModels.map((m) => m.modelId)
-                        : ['gpt-4o', 'gpt-4o-mini']
-                      ).map((m) => (
-                        <MenuItem key={m} value={m}>
-                          {m}
+                      <MenuItem value="">Seleccionar agente</MenuItem>
+                      {publishedAgents.map((agent) => (
+                        <MenuItem key={agent.id} value={agent.id}>
+                          {agent.name}
                         </MenuItem>
                       ))}
                     </TextField>
                     <TextField
-                      label="Instruccion"
+                      label="Entrada al agente"
                       multiline
-                      minRows={4}
-                      value={selected.aiAgent?.instructions ?? ''}
-                      onChange={(e) => onUpdateAiAgentConfig(selectedIndex, { instructions: e.target.value })}
+                      minRows={3}
+                      value={selected.config?.input ?? selected.aiAgent?.input ?? DEFAULT_AI_AGENT_CONFIG.input}
+                      helperText="Usa variables del evento o pasos previos, por ejemplo {{payload.content}}."
+                      onChange={(e) => {
+                        onUpdateActivityConfig(selectedIndex, 'input', e.target.value);
+                        onUpdateAiAgentConfig(selectedIndex, { input: e.target.value });
+                      }}
                       size="small"
                     />
+                    <TextField
+                      label="Contexto del flujo"
+                      multiline
+                      minRows={2}
+                      value={selected.config?.context ?? selected.aiAgent?.context ?? ''}
+                      helperText="Contexto adicional del canal, cliente o intencion detectada."
+                      onChange={(e) => {
+                        onUpdateActivityConfig(selectedIndex, 'context', e.target.value);
+                        onUpdateAiAgentConfig(selectedIndex, { context: e.target.value });
+                      }}
+                      size="small"
+                    />
+                    <Alert severity="info">
+                      Este nodo no redefine el agente. Ejecuta el agente seleccionado con el contexto del workflow.
+                    </Alert>
                   </Stack>
                 )}
                 {aiTab === 1 && (
                   <Stack spacing={1} sx={{ mt: 1.2 }}>
-                    <Typography variant="caption" color="text.secondary">
-                      Selecciona las herramientas que este agente puede usar durante el flujo.
-                    </Typography>
-                    <FormGroup>
-                      {(availableTools.length > 0
-                      ? availableTools
-                      : [{ key: 'http.request', displayName: 'HTTP Request' }]
-                      ).map((tool) => {
-                        const selectedToolsSet = new Set(selected.aiAgent?.tools ?? []);
-                        const checked = selectedToolsSet.has(tool.key);
-                        return (
-                          <FormControlLabel
-                            key={tool.key}
-                            control={
-                              <Checkbox
-                                checked={checked}
-                                onChange={(e) => {
-                                  const next = new Set(selected.aiAgent?.tools ?? []);
-                                  if (e.target.checked) next.add(tool.key);
-                                  else next.delete(tool.key);
-                                  onUpdateAiAgentConfig(selectedIndex, { tools: Array.from(next) });
-                                }}
-                              />
-                            }
-                            label={tool.displayName || tool.key}
-                          />
-                        );
-                      })}
-                    </FormGroup>
+                    <Alert severity="info">
+                      Las herramientas autorizadas se administran en Agent Studio para evitar duplicar seguridad y permisos.
+                    </Alert>
+                    <Box sx={{ p: 1, borderRadius: 1, border: '1px solid #e2e8f0', bgcolor: '#f8fafc' }}>
+                      <Typography variant="caption" fontWeight={700}>
+                        Inventario disponible
+                      </Typography>
+                      <Typography variant="caption" display="block" color="text.secondary">
+                        Tools registradas en plataforma: {availableTools.length}
+                      </Typography>
+                      <Typography variant="caption" display="block" color="text.secondary">
+                        Modelos registrados en plataforma: {availableModels.length}
+                      </Typography>
+                    </Box>
+                    <Button variant="outlined" href="/dashboard/agents">
+                      Abrir Agent Studio
+                    </Button>
                   </Stack>
                 )}
                 {aiTab === 2 && (
                   <Stack spacing={1} sx={{ mt: 1.2 }}>
                     <TextField
-                      label="Fuentes de conocimiento"
+                      label="Variables esperadas"
                       multiline
                       minRows={3}
-                      value={(selected.aiAgent?.knowledge ?? []).join(',')}
-                      onChange={(e) =>
-                        onUpdateAiAgentConfig(selectedIndex, {
-                          knowledge: e.target.value
-                            .split(',')
-                            .map((x) => x.trim())
-                            .filter(Boolean),
-                        })
-                      }
+                      value={selected.config?.input ?? selected.aiAgent?.input ?? DEFAULT_AI_AGENT_CONFIG.input}
+                      helperText="Define que texto o JSON recibira el agente desde este workflow."
+                      onChange={(e) => {
+                        onUpdateActivityConfig(selectedIndex, 'input', e.target.value);
+                        onUpdateAiAgentConfig(selectedIndex, { input: e.target.value });
+                      }}
                       size="small"
                     />
-                    <TextField
-                      label="Contexto"
-                      multiline
-                      minRows={3}
-                      value={selected.aiAgent?.context ?? ''}
-                      onChange={(e) => onUpdateAiAgentConfig(selectedIndex, { context: e.target.value })}
-                      size="small"
-                    />
+                    <Typography variant="caption" color="text.secondary">
+                      El conocimiento documental y la memoria pertenecen al agente publicado. Aqui solo pasamos contexto runtime.
+                    </Typography>
                   </Stack>
                 )}
                 {aiTab === 3 && (
                   <Stack spacing={1} sx={{ mt: 1.2 }}>
-                    <TextField
-                      label="Modelo de respaldo"
-                      value={selected.aiAgent?.fallbackModel ?? DEFAULT_AI_AGENT_CONFIG.fallbackModel}
-                      onChange={(e) => onUpdateAiAgentConfig(selectedIndex, { fallbackModel: e.target.value })}
-                      size="small"
-                    />
                     <TextField
                       label="Latencia maxima (ms)"
                       type="number"
@@ -1186,7 +1232,7 @@ export function WorkflowVisualDesigner({
                       label="Habilitar DLP"
                     />
                     <Button variant="outlined" onClick={() => onOpenAiConfig(selectedIndex)}>
-                      Abrir editor completo
+                      Abrir configuracion tecnica heredada
                     </Button>
                     <Button variant="text" onClick={() => setShowAdvanced((value) => !value)}>
                       {showAdvanced ? 'Ocultar configuracion tecnica' : 'Mostrar configuracion tecnica'}

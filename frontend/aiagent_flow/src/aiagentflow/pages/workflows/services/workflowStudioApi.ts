@@ -11,6 +11,8 @@ export const workflowStudioApi = {
   getTools: () => axios.get('/api/v1/extensions/tools').catch(() => ({ data: [] })),
   getConnectTemplates: (tenantId: string) =>
     axios.get(`/api/v1/tenants/${tenantId}/connect/templates`).catch(() => ({ data: [] })),
+  getAgents: (tenantId: string) =>
+    axios.get(endpoints.agentflow.agents.list(tenantId)).catch(() => ({ data: [] })),
   getIntegrationStatus: (tenantId: string) =>
     axios.get(`${endpoints.agentflow.workflows.list(tenantId)}/integrations/status`).catch(() => ({ data: [] })),
   upsertDefinition: (tenantId: string, workflowId: string, body: unknown) =>

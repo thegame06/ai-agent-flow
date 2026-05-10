@@ -11,6 +11,7 @@ type RuntimePayload = {
   activityCatalog: any[];
   availableModels: any[];
   availableTools: any[];
+  availableAgents: any[];
   integrations: any[];
   connectTemplates: any[];
 };
@@ -18,7 +19,7 @@ type RuntimePayload = {
 export const fetchWorkflowRuntimeData = createAsyncThunk(
   'workflowRuntime/fetchRuntimeData',
   async (tenantId: string): Promise<RuntimePayload> => {
-    const [wfRes, exRes, metRes, auditRes, catalogRes, modelsRes, toolsRes, integrationsRes, templatesRes] =
+    const [wfRes, exRes, metRes, auditRes, catalogRes, modelsRes, toolsRes, agentsRes, integrationsRes, templatesRes] =
       await Promise.all([
         workflowStudioApi.getDefinitions(tenantId),
         workflowStudioApi.getExecutions(tenantId),
@@ -27,6 +28,7 @@ export const fetchWorkflowRuntimeData = createAsyncThunk(
         workflowStudioApi.getCatalogActivities(tenantId),
         workflowStudioApi.getModels(),
         workflowStudioApi.getTools(),
+        workflowStudioApi.getAgents(tenantId),
         workflowStudioApi.getIntegrationStatus(tenantId),
         workflowStudioApi.getConnectTemplates(tenantId),
       ]);
@@ -40,6 +42,7 @@ export const fetchWorkflowRuntimeData = createAsyncThunk(
       activityCatalog: catalogRes.data ?? [],
       availableModels: Array.isArray(modelsRes.data) ? modelsRes.data : [],
       availableTools: Array.isArray(toolsRes.data) ? toolsRes.data : [],
+      availableAgents: Array.isArray(agentsRes.data) ? agentsRes.data : [],
       integrations,
       connectTemplates: Array.isArray(templatesRes.data) ? templatesRes.data : [],
     };
