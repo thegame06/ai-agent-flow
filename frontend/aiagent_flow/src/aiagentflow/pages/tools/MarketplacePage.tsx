@@ -52,6 +52,20 @@ type TenantConnection = {
   secretExpiresAt?: string;
 };
 
+const CAPABILITY_LABELS: Record<string, string> = {
+  'voice.call': 'Llamadas de voz',
+  'callcenter.outbound_call': 'Call center saliente',
+  sms: 'SMS',
+  'status callbacks': 'Estados de entrega',
+  'http.request': 'Consultar API',
+  'webhook.call': 'Llamar webhook',
+  'files.read': 'Leer archivos',
+  'drive.lookup': 'Buscar en Drive',
+  'storage.write': 'Guardar documentos',
+  'mcp.tool_call': 'Usar herramientas MCP',
+  'tool discovery': 'Descubrir tools',
+};
+
 const QUICK_CONNECTIONS = [
   {
     id: 'twilio',
@@ -106,6 +120,7 @@ export default function MarketplacePage() {
   const [installed, setInstalled] = useState<Record<string, boolean>>({});
   const [connections, setConnections] = useState<TenantConnection[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [healthMessage, setHealthMessage] = useState<string | null>(null);
   const [openConnection, setOpenConnection] = useState(false);
   const [connectionForm, setConnectionForm] = useState<{
     id: string;
@@ -158,6 +173,9 @@ export default function MarketplacePage() {
 
   const installedCount = Object.values(installed).filter(Boolean).length;
   const configuredConnectionIds = new Set(connections.map((connection) => connection.connectorId));
+
+  const configuredByConnectorId = (connectorId: string) =>
+    connections.find((connection) => connection.connectorId === connectorId);
 
   const openQuickConnection = (preset: (typeof QUICK_CONNECTIONS)[number]) => {
     setConnectionForm({
@@ -379,7 +397,22 @@ export default function MarketplacePage() {
     }
 
     setOpenConnection(false);
+    setHealthMessage('Integracion guardada. Ya puede usarse desde Canales, Agentes y Workflow Studio.');
     await load();
+  };
+
+  const checkConnectionHealth = async (connectionId: string) => {
+    try {
+      const res = await axios.get(endpoints.agentflow.connections.health(tenantId, connectionId));
+      const checks = (res.data?.checks ?? [])
+        .map((check: any) => `${check.check}: ${check.status}`)
+        .join(', ');
+      setHealthMessage(`Estado ${res.data?.status ?? 'desconocido'} - ${checks || 'sin checks'}`);
+      setError(null);
+    } catch (err: any) {
+      setHealthMessage(null);
+      setError(err?.message || 'No se pudo validar la integracion.');
+    }
   };
 
   const install = async (extensionId: string) => {
@@ -460,6 +493,11 @@ export default function MarketplacePage() {
         </Stack>
 
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+        {healthMessage && (
+          <Alert severity="info" sx={{ mb: 2 }} onClose={() => setHealthMessage(null)}>
+            {healthMessage}
+          </Alert>
+        )}
 
         <Card variant="outlined" sx={{ p: 2, mb: 3 }}>
           <Stack spacing={1.5}>
@@ -472,6 +510,7 @@ export default function MarketplacePage() {
             <Grid container spacing={2}>
               {QUICK_CONNECTIONS.map((preset) => {
                 const configured = configuredConnectionIds.has(preset.connectorId);
+                const configuredConnection = configuredByConnectorId(preset.connectorId);
                 return (
                   <Grid item xs={12} md={3} key={preset.id}>
                     <Card variant="outlined" sx={{ height: '100%' }}>
@@ -493,12 +532,19 @@ export default function MarketplacePage() {
                           </Typography>
                           <Stack direction="row" spacing={0.5} flexWrap="wrap">
                             {preset.capabilities.map((capability) => (
-                              <Chip key={capability} size="small" label={capability} />
+                              <Chip key={capability} size="small" label={CAPABILITY_LABELS[capability] ?? capability} />
                             ))}
                           </Stack>
-                          <Button size="small" variant={configured ? 'outlined' : 'contained'} onClick={() => openQuickConnection(preset)}>
-                            {configured ? 'Editar' : 'Configurar'}
-                          </Button>
+                          <Stack direction="row" spacing={0.8}>
+                            <Button size="small" variant={configured ? 'outlined' : 'contained'} onClick={() => openQuickConnection(preset)}>
+                              {configured ? 'Editar' : 'Configurar'}
+                            </Button>
+                            {configuredConnection && (
+                              <Button size="small" variant="text" onClick={() => checkConnectionHealth(configuredConnection.id)}>
+                                Probar
+                              </Button>
+                            )}
+                          </Stack>
                         </Stack>
                       </CardContent>
                     </Card>
@@ -512,7 +558,8 @@ export default function MarketplacePage() {
                   <Chip
                     key={connection.id}
                     color={connection.secretVersion ? 'success' : 'default'}
-                    label={`${connection.name}: ${connection.type}/${connection.connectorId}`}
+                    label={`${connection.name}: ${connection.secretVersion ? 'secreto listo' : 'sin secreto'} / ${connection.connectorId}`}
+                    onClick={() => checkConnectionHealth(connection.id)}
                   />
                 ))}
               </Stack>

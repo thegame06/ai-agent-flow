@@ -36,8 +36,9 @@ wait_for_port() {
   local label="$2"
   local pid_file="$3"
   local log_file="$4"
+  local attempts="${5:-60}"
 
-  for _ in {1..30}; do
+  for ((i = 1; i <= attempts; i++)); do
     if ss -ltn "( sport = :$port )" | grep -q LISTEN; then
       return 0
     fi
@@ -84,7 +85,7 @@ API_PROJECT="$(host_path "$ROOT_DIR/src/AgentFlow.Api/AgentFlow.Api.csproj")"
   ConnectionStrings__Redis=${ConnectionStrings__Redis:-localhost:6380} \
   WhatsApp__QrBridgeApiKey=${BRIDGE_API_KEY:-dev-bridge-key} \
   "$DOTNET_BIN" run --no-build --no-launch-profile --project "$API_PROJECT" >"$API_LOG" 2>&1 & echo $! > "$API_PID_FILE")
-wait_for_port "${API_PORT:-5000}" "API" "$API_PID_FILE" "$API_LOG"
+wait_for_port "${API_PORT:-5000}" "API" "$API_PID_FILE" "$API_LOG" 120
 
 echo "[full-up] Starting Frontend..."
 (cd "$ROOT_DIR/frontend/aiagent_flow" && nohup npm run dev -- --strictPort --port ${FRONTEND_PORT:-3039} --host >"$FRONT_LOG" 2>&1 & echo $! > "$FRONT_PID_FILE")

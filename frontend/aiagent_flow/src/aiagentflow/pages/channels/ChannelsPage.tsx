@@ -23,6 +23,9 @@ import DialogActions from '@mui/material/DialogActions';
 import DialogContent from '@mui/material/DialogContent';
 import CircularProgress from '@mui/material/CircularProgress';
 
+import { paths } from 'src/routes/paths';
+import { RouterLink } from 'src/routes/components';
+
 import { CONFIG } from 'src/global-config';
 import axios, { endpoints } from 'src/lib/axios';
 import { DashboardContent } from 'src/layouts/dashboard';
@@ -364,6 +367,12 @@ export default function ChannelsPage() {
 
   const activeChannels = channels.filter((channel) => channel.status === 'Active').length;
   const whatsappChannels = channels.filter((channel) => channel.type === 'WhatsApp').length;
+  const twilioConnections = connections.filter(
+    (connection) =>
+      connection.connectorId === 'twilio' ||
+      connection.config?.provider === 'twilio' ||
+      connection.type === 'Messaging'
+  );
   const channelCapabilities = (channel: Channel) => {
     if (channel.type === 'WhatsApp') return ['templates', 'inbox', 'qr/auth'];
     if (channel.type === 'Voice') return ['voice', 'twilio', 'outbound'];
@@ -396,9 +405,19 @@ export default function ChannelsPage() {
               Conecta WhatsApp, web chat y APIs para usarlos en Inbox, campañas y workflows.
             </Typography>
           </Box>
-          <Button variant="contained" startIcon={<Iconify icon="mingcute:add-line" />} onClick={() => setOpenCreate(true)}>
-            Agregar canal
-          </Button>
+          <Stack direction="row" spacing={1}>
+            <Button
+              variant="outlined"
+              component={RouterLink}
+              href={paths.dashboard.marketplace}
+              startIcon={<Iconify icon="mdi:connection" />}
+            >
+              Integraciones
+            </Button>
+            <Button variant="contained" startIcon={<Iconify icon="mingcute:add-line" />} onClick={() => setOpenCreate(true)}>
+              Agregar canal
+            </Button>
+          </Stack>
         </Box>
 
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
@@ -439,6 +458,34 @@ export default function ChannelsPage() {
                 </Grid>
               ))}
             </Grid>
+          </Grid>
+
+          <Grid item xs={12}>
+            <Card variant="outlined" sx={{ p: 2, borderRadius: 2.5 }}>
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between">
+                <Box>
+                  <Typography variant="h6">Twilio omnicanal</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Una sola conexion Twilio se reutiliza para Voz, Call Center, SMS y futuros canales WhatsApp por Twilio.
+                    Los canales no guardan secretos: solo referencian la conexion del tenant.
+                  </Typography>
+                </Box>
+                <Stack direction="row" spacing={0.8} flexWrap="wrap" alignItems="center">
+                  <Chip
+                    color={twilioConnections.length > 0 ? 'success' : 'warning'}
+                    label={twilioConnections.length > 0 ? `${twilioConnections.length} conexion(es) Twilio` : 'Twilio pendiente'}
+                  />
+                  <Button
+                    variant="outlined"
+                    component={RouterLink}
+                    href={paths.dashboard.marketplace}
+                    startIcon={<Iconify icon="mdi:phone-settings-outline" />}
+                  >
+                    Configurar Twilio
+                  </Button>
+                </Stack>
+              </Stack>
+            </Card>
           </Grid>
 
           <Grid item xs={12} md={7}>
@@ -609,7 +656,7 @@ export default function ChannelsPage() {
 
             {(form.type === 'Voice' || form.type === 'CallCenter') && (
               <>
-                <Alert severity="info">
+                <Alert severity={twilioConnections.length > 0 ? 'success' : 'warning'}>
                   Este canal usa una conexion Twilio reusable. Configurala una vez en Marketplace/Integraciones y
                   reutilizala para voz, call center, campanas y nodos de Workflow Studio.
                 </Alert>

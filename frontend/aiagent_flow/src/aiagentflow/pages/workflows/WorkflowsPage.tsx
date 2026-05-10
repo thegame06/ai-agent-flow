@@ -119,7 +119,11 @@ export default function WorkflowsPage() {
   const [editorMode, setEditorMode] = useState<'builder' | 'advanced'>('builder');
   const [designType, setDesignType] = useState<WorkflowDesignType>('workflow');
   const [activePanel, setActivePanel] = useState<ActivePanel>('none');
+  const [workflowSearch, setWorkflowSearch] = useState('');
+  const [intentProbe, setIntentProbe] = useState('Quiero agendar una cita por WhatsApp');
+  const [intentProbeResult, setIntentProbeResult] = useState<any>(null);
   const [syncingIntents, setSyncingIntents] = useState(false);
+  const [probingIntent, setProbingIntent] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [orchestratorStatus, setOrchestratorStatus] = useState<SystemOrchestratorStatus | null>(null);
   const tenantId = useTenantId();
@@ -209,6 +213,15 @@ export default function WorkflowsPage() {
     () => workflows.find((wf) => wf.id === selectedWorkflowId) ?? null,
     [selectedWorkflowId, workflows]
   );
+  const filteredWorkflows = useMemo(
+    () =>
+      workflows.filter((workflow) =>
+        `${workflow.name} ${workflow.id} ${workflow.triggerEventName}`
+          .toLowerCase()
+          .includes(workflowSearch.toLowerCase())
+      ),
+    [workflowSearch, workflows]
+  );
   const startIntents = useMemo(
     () => readStartIntents(editor.definitionJson, editor.triggerEventName),
     [editor.definitionJson, editor.triggerEventName]
@@ -244,6 +257,30 @@ export default function WorkflowsPage() {
   ].filter(Boolean).length;
   const setupPercent = Math.round((completedSetupSteps / 6) * 100);
   const showWorkflowLibrary = !editor.id && !selectedWorkflowId && !isDirty;
+
+  const workflowReadiness = (workflow: WorkflowDefinition) => {
+    const intents = readStartIntents(workflow.definitionJson, workflow.triggerEventName);
+    let activitiesInWorkflow: Array<{ type?: string; aiAgent?: { agentId?: string }; config?: Record<string, string> }> = [];
+    try {
+      const parsed = JSON.parse(workflow.definitionJson) as {
+        activities?: Array<{ type?: string; aiAgent?: { agentId?: string }; config?: Record<string, string> }>;
+      };
+      activitiesInWorkflow = parsed.activities ?? [];
+    } catch {
+      activitiesInWorkflow = [];
+    }
+
+    const hasAgent = activitiesInWorkflow.some((activity) => activity.type === 'ai.agent');
+    const score = [workflow.name, workflow.triggerEventName, intents.length > 0, activitiesInWorkflow.length > 0, hasAgent]
+      .filter(Boolean).length;
+
+    return {
+      intents,
+      activitiesInWorkflow,
+      hasAgent,
+      percent: Math.round((score / 5) * 100),
+    };
+  };
 
   useEffect(() => {
     let active = true;
@@ -345,6 +382,31 @@ export default function WorkflowsPage() {
     }
   };
 
+  const simulateCurrentIntent = async () => {
+    const sourceAgentId = workflowChannel?.defaultAgentId || workflowChannel?.routingAgents?.[0] || '';
+
+    if (!sourceAgentId) {
+      setError('No se puede probar la intencion: selecciona un canal con agente por defecto o agente de enrutamiento.');
+      return;
+    }
+
+    try {
+      setProbingIntent(true);
+      const res = await axios.post(endpoints.agentflow.intentRouting.simulate(tenantId), {
+        sourceAgentId,
+        intent: intentProbe,
+        channel: workflowChannel?.type?.toLowerCase(),
+      });
+      setIntentProbeResult(res.data);
+      setError(null);
+    } catch (err: any) {
+      setIntentProbeResult(null);
+      setError(err?.message || 'No se pudo simular el enrutamiento de intencion.');
+    } finally {
+      setProbingIntent(false);
+    }
+  };
+
   return (
     <>
       <Helmet>
@@ -373,10 +435,10 @@ export default function WorkflowsPage() {
               <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={2}>
                 <Box>
                   <Typography variant="h3">Workflow Studio</Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 720 }}>
-                    Elige un workflow existente o crea uno nuevo. Los eventos son definidos por el sistema;
-                    las intenciones que configures en el nodo Inicio se sincronizan con el enrutamiento de canal
-                    para decidir que agente o flujo debe atender cada mensaje.
+                  <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 760 }}>
+                    Elige un workflow existente o crea uno nuevo. Los eventos los dispara el sistema desde canales,
+                    campanas, KYC o pagos. Las intenciones del nodo Inicio son frases de negocio que Annonai usa
+                    para decidir que workflow y que agente atienden cada mensaje, llamada o webhook.
                   </Typography>
                 </Box>
                 <Stack direction="row" spacing={1} flexWrap="wrap" alignItems="flex-start">
@@ -392,6 +454,41 @@ export default function WorkflowsPage() {
                 </Stack>
               </Stack>
             </Card>
+
+            <Grid container spacing={2}>
+              {[
+                {
+                  title: '1. Evento de sistema',
+                  helper: 'El canal dispara eventos como Mensaje recibido o Llamada recibida.',
+                  icon: 'mdi:flash-outline',
+                },
+                {
+                  title: '2. Intenciones',
+                  helper: 'El usuario define frases de negocio en Inicio: comprar, pagar, agendar, soporte.',
+                  icon: 'mdi:target-account',
+                },
+                {
+                  title: '3. Agente y acciones',
+                  helper: 'El nodo Agente usa agentes publicados y luego ejecuta WhatsApp, API, MCP, KYC, pagos o humano.',
+                  icon: 'mdi:robot-outline',
+                },
+                {
+                  title: '4. Confirmacion',
+                  helper: 'El Mapa de intenciones permite ver y probar que el routing quedo sincronizado.',
+                  icon: 'mdi:map-check-outline',
+                },
+              ].map((item) => (
+                <Grid item xs={12} md={3} key={item.title}>
+                  <Card variant="outlined" sx={{ p: 2, height: '100%' }}>
+                    <Stack spacing={1}>
+                      <Iconify icon={item.icon} width={28} sx={{ color: 'primary.main' }} />
+                      <Typography variant="subtitle2">{item.title}</Typography>
+                      <Typography variant="caption" color="text.secondary">{item.helper}</Typography>
+                    </Stack>
+                  </Card>
+                </Grid>
+              ))}
+            </Grid>
 
             <Card variant="outlined" sx={{ p: 2.2, borderRadius: 2.5 }}>
               <Stack spacing={1.5}>
@@ -454,11 +551,52 @@ export default function WorkflowsPage() {
                     'El orquestador valida que existan eventos, canal activo, agente publicado, integraciones listas e intenciones sincronizadas.',
                   ])[0]}
                 </Alert>
+
+                <Stack direction={{ xs: 'column', md: 'row' }} spacing={1}>
+                  <Button
+                    variant="outlined"
+                    component={RouterLink}
+                    href={paths.dashboard.intentMap}
+                    startIcon={<Iconify icon="mdi:map-search-outline" />}
+                  >
+                    Ver mapa de intenciones
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    component={RouterLink}
+                    href={paths.dashboard.marketplace}
+                    startIcon={<Iconify icon="mdi:storefront-outline" />}
+                  >
+                    Configurar integraciones
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    component={RouterLink}
+                    href={paths.dashboard.system.channels}
+                    startIcon={<Iconify icon="mdi:message-processing-outline" />}
+                  >
+                    Configurar canales
+                  </Button>
+                </Stack>
               </Stack>
             </Card>
 
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.2} alignItems={{ md: 'center' }}>
+              <TextField
+                value={workflowSearch}
+                onChange={(e) => setWorkflowSearch(e.target.value)}
+                placeholder="Buscar workflow por nombre, evento o ID"
+                size="small"
+                sx={{ maxWidth: 440 }}
+                fullWidth
+              />
+              <Chip size="small" label={`${filteredWorkflows.length} de ${workflows.length} workflows`} />
+            </Stack>
+
             <Grid container spacing={2}>
-              {workflows.map((workflow) => (
+              {filteredWorkflows.map((workflow) => {
+                const readiness = workflowReadiness(workflow);
+                return (
                 <Grid item xs={12} md={4} key={workflow.id}>
                   <Card
                     variant="outlined"
@@ -484,9 +622,14 @@ export default function WorkflowsPage() {
                       <Box>
                         <Typography variant="h6">{workflow.name}</Typography>
                         <Typography variant="caption" color="text.secondary">
-                          Evento: {workflow.triggerEventName || 'sin evento'}
+                          Evento: {SYSTEM_EVENT_OPTIONS.find((event) => event.value === workflow.triggerEventName)?.label ?? (workflow.triggerEventName || 'sin evento')}
                         </Typography>
                       </Box>
+                      <Stack direction="row" spacing={0.5} flexWrap="wrap">
+                        <Chip size="small" color={readiness.percent >= 80 ? 'success' : 'warning'} label={`${readiness.percent}% listo`} />
+                        <Chip size="small" label={`${readiness.intents.length} intenciones`} />
+                        <Chip size="small" color={readiness.hasAgent ? 'primary' : 'default'} label={readiness.hasAgent ? 'con agente' : 'sin agente'} />
+                      </Stack>
                       <Typography variant="body2" color="text.secondary">
                         Actualizado: {workflow.updatedAt ? new Date(workflow.updatedAt).toLocaleString() : 'sin fecha'}
                       </Typography>
@@ -496,15 +639,17 @@ export default function WorkflowsPage() {
                     </Stack>
                   </Card>
                 </Grid>
-              ))}
+              );})}
 
-              {workflows.length === 0 && (
+              {filteredWorkflows.length === 0 && (
                 <Grid item xs={12}>
                   <Card variant="outlined" sx={{ p: 4, textAlign: 'center', borderRadius: 3 }}>
                     <Iconify icon="mdi:graph-outline" width={42} sx={{ color: 'primary.main', mb: 1 }} />
-                    <Typography variant="h6">No hay workflows creados</Typography>
+                    <Typography variant="h6">{workflows.length === 0 ? 'No hay workflows creados' : 'No encontramos workflows'}</Typography>
                     <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                      Crea tu primer flujo con un nodo Inicio, un agente y acciones de negocio.
+                      {workflows.length === 0
+                        ? 'Crea tu primer flujo con un nodo Inicio, un agente y acciones de negocio.'
+                        : 'Cambia la busqueda o usa Actualizar para recargar desde backend.'}
                     </Typography>
                     <Button variant="contained" onClick={handleCreateBlank}>
                       Crear workflow
@@ -610,6 +755,39 @@ export default function WorkflowsPage() {
                 {syncMessage}
               </Alert>
             )}
+
+            <Card variant="outlined" sx={{ p: 1.5, bgcolor: 'background.neutral' }}>
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.2} alignItems={{ md: 'center' }}>
+                <Box sx={{ flex: 1 }}>
+                  <Typography variant="subtitle2">Mapa operativo de este flujo</Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Evento: {SYSTEM_EVENT_OPTIONS.find((event) => event.value === editor.triggerEventName)?.label ?? editor.triggerEventName}
+                    {' '}| Canal: {workflowChannel?.name ?? 'sin canal'} | Agente: {firstAgentNode?.aiAgent?.agentName || firstAgentNode?.config?.agentName || firstAgentNode?.aiAgent?.agentId || firstAgentNode?.config?.agentId || 'sin agente'}
+                  </Typography>
+                </Box>
+                <TextField
+                  label="Probar texto o intencion"
+                  value={intentProbe}
+                  onChange={(e) => setIntentProbe(e.target.value)}
+                  size="small"
+                  sx={{ minWidth: { md: 320 } }}
+                />
+                <Button
+                  variant="outlined"
+                  onClick={simulateCurrentIntent}
+                  disabled={probingIntent}
+                  startIcon={<Iconify icon="mdi:radar" />}
+                >
+                  {probingIntent ? 'Probando...' : 'Probar routing'}
+                </Button>
+              </Stack>
+              {intentProbeResult && (
+                <Alert severity={intentProbeResult?.matchedRuleId ? 'success' : 'warning'} sx={{ mt: 1 }}>
+                  Regla: {intentProbeResult?.matchedRuleId ?? 'sin match'} | Agente destino:{' '}
+                  {intentProbeResult?.selectedAgentId ?? 'N/A'} | Motivo: {intentProbeResult?.decisionReason ?? 'N/A'}
+                </Alert>
+              )}
+            </Card>
 
             <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.2} alignItems={{ md: 'center' }}>
               <TextField
