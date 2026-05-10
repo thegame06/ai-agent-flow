@@ -85,6 +85,14 @@ export type WorkflowActivityNode = {
   aiAgent?: AiAgentNodeConfig;
 };
 
+export type WorkflowStartIntent = {
+  id: string;
+  label: string;
+  description?: string;
+  examples?: string[];
+  eventName: string;
+};
+
 export type WorkflowActivityCatalogEntry = {
   typeName: string;
   displayName: string;

@@ -29,9 +29,38 @@ import { WorkflowVisualDesigner } from './components/WorkflowVisualDesigner';
 import { WorkflowDefinitionsCard } from './components/WorkflowDefinitionsCard';
 import { TOOL_ACTIVITY_TYPES, WORKFLOW_QUICKSTARTS, type WorkflowDesignType } from './constants';
 
-import type { WorkflowDefinition } from './types';
+import type { WorkflowDefinition, WorkflowStartIntent } from './types';
 
 type ActivePanel = 'none' | 'flows' | 'templates' | 'metrics' | 'executions';
+
+const defaultStartIntents = (eventName: string): WorkflowStartIntent[] => [
+  {
+    id: 'intent-main',
+    label: 'Intencion principal',
+    description: 'Frases o eventos que deben iniciar este flujo.',
+    examples: ['Quiero informacion', 'Necesito ayuda'],
+    eventName,
+  },
+];
+
+const readStartIntents = (definitionJson: string, eventName: string): WorkflowStartIntent[] => {
+  try {
+    const parsed = JSON.parse(definitionJson) as { start?: { intents?: WorkflowStartIntent[] } };
+    return parsed.start?.intents?.length ? parsed.start.intents : defaultStartIntents(eventName);
+  } catch {
+    return defaultStartIntents(eventName);
+  }
+};
+
+const writeStartIntents = (definitionJson: string, intents: WorkflowStartIntent[]) => {
+  try {
+    const parsed = JSON.parse(definitionJson) as Record<string, any>;
+    parsed.start = { ...(parsed.start ?? {}), intents };
+    return JSON.stringify(parsed, null, 2);
+  } catch {
+    return JSON.stringify({ start: { intents }, activities: [] }, null, 2);
+  }
+};
 
 export default function WorkflowsPage() {
   const [editorMode, setEditorMode] = useState<'builder' | 'advanced'>('builder');
@@ -122,6 +151,10 @@ export default function WorkflowsPage() {
     () => workflows.find((wf) => wf.id === selectedWorkflowId) ?? null,
     [selectedWorkflowId, workflows]
   );
+  const startIntents = useMemo(
+    () => readStartIntents(editor.definitionJson, editor.triggerEventName),
+    [editor.definitionJson, editor.triggerEventName]
+  );
 
   useEffect(() => {
     if (!latestWorkflow || selectedWorkflowId || editor.id || isDirty) return;
@@ -155,6 +188,15 @@ export default function WorkflowsPage() {
     setEditorField('triggerEventName', tpl.triggerEventName);
     setDefinitionJson(tpl.definitionJson);
     setActivePanel('none');
+  };
+
+  const updateStartIntents = (intents: WorkflowStartIntent[]) => {
+    setDefinitionJson(
+      writeStartIntents(
+        editor.definitionJson,
+        intents.map((intent) => ({ ...intent, eventName: editor.triggerEventName }))
+      )
+    );
   };
 
   return (
@@ -350,11 +392,15 @@ export default function WorkflowsPage() {
           allowedTypes={uiAllowedTypes}
           requiredConfigByType={requiredConfigByType}
           validationErrors={designValidationErrors}
+          triggerEventName={editor.triggerEventName}
+          startIntents={startIntents}
           availableModels={availableModels}
           availableTools={availableTools}
           integrations={integrations}
           connectTemplates={connectTemplates}
           onAddActivity={addActivity}
+          onChangeTriggerEvent={(value) => setEditorField('triggerEventName', value)}
+          onUpdateStartIntents={updateStartIntents}
           onUpdateActivity={updateActivity}
           onRemoveActivity={removeActivity}
           onOpenAiConfig={openAiConfig}

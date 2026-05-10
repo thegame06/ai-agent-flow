@@ -51,6 +51,7 @@ import {
 import type {
   ToolOption,
   ModelOption,
+  WorkflowStartIntent,
   WorkflowActivityNode,
   ConnectTemplateOption,
   WorkflowIntegrationStatus,
@@ -61,11 +62,15 @@ type Props = {
   allowedTypes: string[];
   requiredConfigByType: Record<string, string[]>;
   validationErrors: string[];
+  triggerEventName: string;
+  startIntents: WorkflowStartIntent[];
   availableModels: ModelOption[];
   availableTools: ToolOption[];
   integrations: WorkflowIntegrationStatus[];
   connectTemplates: ConnectTemplateOption[];
   onAddActivity: (activityType?: string, patch?: Partial<WorkflowActivityNode>) => void;
+  onChangeTriggerEvent: (value: string) => void;
+  onUpdateStartIntents: (intents: WorkflowStartIntent[]) => void;
   onUpdateActivity: (index: number, patch: Partial<WorkflowActivityNode>) => void;
   onRemoveActivity: (index: number) => void;
   onOpenAiConfig: (index: number) => void;
@@ -84,6 +89,14 @@ type WorkflowNodeData = {
   onDuplicate?: () => void;
   onDelete?: () => void;
 };
+
+type WorkflowStartNodeData = {
+  triggerEventName: string;
+  intents: WorkflowStartIntent[];
+};
+
+type DesignerNodeData = WorkflowNodeData | WorkflowStartNodeData;
+type DesignerNode = Node<DesignerNodeData>;
 
 const activityDescription = (type: string) => {
   if (type === 'ai.agent') return 'Decide, responde o usa herramientas';
@@ -167,6 +180,46 @@ function WorkflowNodeCard({ data, selected }: NodeProps<Node<WorkflowNodeData>>)
       <Handle type="source" position={Position.Right} id="next" style={{ top: '35%' }} />
       <Handle type="source" position={Position.Right} id="success" style={{ top: '55%', background: '#16a34a' }} />
       <Handle type="source" position={Position.Right} id="failure" style={{ top: '75%', background: '#dc2626' }} />
+    </Box>
+  );
+}
+
+function StartWorkflowNode({ data, selected }: NodeProps<Node<WorkflowStartNodeData>>) {
+  return (
+    <Box
+      sx={{
+        border: `1px solid ${selected ? '#00acc1' : '#00b8d9'}`,
+        borderRadius: 2,
+        background: '#f0fdff',
+        boxShadow: selected ? '0 0 0 2px #67e8f966' : '0 1px 2px rgba(16,24,40,0.08)',
+        p: 1,
+        minWidth: 230,
+      }}
+    >
+      <Stack spacing={0.7}>
+        <Stack direction="row" alignItems="center" spacing={0.7}>
+          <Iconify icon="mdi:flag-outline" width={17} color="#00a6bd" />
+          <Typography variant="body2" sx={{ fontWeight: 800, color: '#03768a' }}>
+            Inicio
+          </Typography>
+        </Stack>
+        <Typography variant="caption" color="text.secondary">
+          Trigger: {data.triggerEventName}
+        </Typography>
+        <Stack spacing={0.5}>
+          {data.intents.slice(0, 3).map((intent) => (
+            <Box key={intent.id} sx={{ px: 0.8, py: 0.5, borderRadius: 1, bgcolor: '#fff' }}>
+              <Typography variant="caption" sx={{ fontWeight: 700 }}>
+                {intent.label}
+              </Typography>
+            </Box>
+          ))}
+        </Stack>
+        <Button size="small" variant="contained" sx={{ borderRadius: 3, bgcolor: '#00acc1' }}>
+          + Agregar Intencion
+        </Button>
+      </Stack>
+      <Handle type="source" position={Position.Right} id="next" style={{ background: '#00acc1' }} />
     </Box>
   );
 }
@@ -303,12 +356,23 @@ function HumanWorkflowNode({ data, selected }: NodeProps<Node<WorkflowNodeData>>
 
 const toNodes = (
   activities: WorkflowActivityNode[],
+  triggerEventName: string,
+  startIntents: WorkflowStartIntent[],
   onDuplicate: (index: number) => void,
   onDelete: (index: number) => void
-): Node<WorkflowNodeData>[] =>
-  activities.map((activity, idx) => ({
+): DesignerNode[] => [
+  {
+    id: '__start__',
+    position: { x: 60, y: 130 },
+    data: {
+      triggerEventName,
+      intents: startIntents,
+    },
+    type: 'startNode',
+  },
+  ...activities.map((activity, idx) => ({
     id: activity.id || `step-${idx + 1}`,
-    position: activity.position ?? { x: 120 + (idx % 3) * 280, y: 100 + Math.floor(idx / 3) * 180 },
+    position: activity.position ?? { x: 360 + (idx % 3) * 300, y: 120 + Math.floor(idx / 3) * 190 },
     data: {
       label: activity.name || activity.id || activityTypeLabel(activity.type),
       activityType: activity.type,
@@ -327,7 +391,8 @@ const toNodes = (
         : activity.type.startsWith('human.')
           ? 'humanNode'
           : 'workflowNode',
-  }));
+  })),
+];
 
 const toEdges = (activities: WorkflowActivityNode[]): Edge[] => {
   const byId = new Map(activities.map((a) => [a.id, a]));
@@ -352,6 +417,19 @@ const toEdges = (activities: WorkflowActivityNode[]): Edge[] => {
       });
     });
   });
+
+  const first = activities[0];
+  if (first) {
+    edges.unshift({
+      id: `__start__-${first.id || 'step-1'}`,
+      source: '__start__',
+      target: first.id || 'step-1',
+      label: 'inicio',
+      sourceHandle: 'next',
+      markerEnd: { type: 'arrowclosed' },
+      style: { stroke: '#cbd5e1', strokeWidth: 2 },
+    });
+  }
 
   return edges;
 };
@@ -423,11 +501,15 @@ export function WorkflowVisualDesigner({
   allowedTypes,
   requiredConfigByType,
   validationErrors,
+  triggerEventName,
+  startIntents,
   availableModels,
   availableTools,
   integrations,
   connectTemplates,
   onAddActivity,
+  onChangeTriggerEvent,
+  onUpdateStartIntents,
   onUpdateActivity,
   onRemoveActivity,
   onOpenAiConfig,
@@ -441,7 +523,7 @@ export function WorkflowVisualDesigner({
   const [showValidation, setShowValidation] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [inspectorSection, setInspectorSection] = useState<string>('general');
-  const [nodes, setNodes, onNodesChange] = useNodesState<Node<WorkflowNodeData>>([]);
+  const [nodes, setNodes, onNodesChange] = useNodesState<DesignerNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
 
   const duplicateNodeAt = useCallback((index: number) => {
@@ -474,14 +556,15 @@ export function WorkflowVisualDesigner({
   }, [activities, onRemoveActivity, onUpdateActivity]);
 
   useEffect(() => {
-    setNodes(toNodes(activities, duplicateNodeAt, deleteNodeAt));
+    setNodes(toNodes(activities, triggerEventName, startIntents, duplicateNodeAt, deleteNodeAt));
     setEdges(toEdges(activities));
-  }, [activities, deleteNodeAt, duplicateNodeAt, setEdges, setNodes]);
+  }, [activities, deleteNodeAt, duplicateNodeAt, setEdges, setNodes, startIntents, triggerEventName]);
 
   const selected = useMemo(
     () => (selectedIndex !== null && selectedIndex >= 0 ? activities[selectedIndex] : null),
     [activities, selectedIndex]
   );
+  const selectedStart = selectedIndex === -1;
   const requiredKeys = selected ? requiredConfigByType[selected.type] ?? [] : [];
   const handleSelectedTypeChange = (type: string) => {
     if (selectedIndex === null) return;
@@ -518,7 +601,7 @@ export function WorkflowVisualDesigner({
     () =>
       dockItems
         .map((item) => ({ ...item, type: item.types.find((type) => allowedTypes.includes(type)) }))
-        .filter((item): item is typeof item & { type: string } => Boolean(item.type)),
+        .filter((item) => item.types.length > 0),
     [allowedTypes]
   );
 
@@ -590,6 +673,7 @@ export function WorkflowVisualDesigner({
           nodes={nodes}
           edges={edges}
           nodeTypes={{
+            startNode: StartWorkflowNode,
             workflowNode: WorkflowNodeCard,
             aiNode: AiWorkflowNode,
             connectNode: ConnectWorkflowNode,
@@ -599,11 +683,21 @@ export function WorkflowVisualDesigner({
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
           onNodeDragStop={(_, node) => {
-            const index = Number(node.data.index);
+            if (node.id === '__start__') return;
+            const index = Number('index' in node.data ? node.data.index : -1);
             if (Number.isNaN(index) || index < 0) return;
             onUpdateActivity(index, { position: node.position });
           }}
-          onNodeClick={(_, node) => setSelectedIndex(Number(node.data.index))}
+          onNodeClick={(_, node) => {
+            if (node.id === '__start__') {
+              setSelectedIndex(-1);
+              return;
+            }
+            const index = Number('index' in node.data ? node.data.index : -1);
+            setSelectedIndex(index);
+            const activity = activities[index];
+            setInspectorSection(activity?.type === 'ai.agent' ? 'ia' : 'general');
+          }}
           fitView
         >
           <MiniMap />
@@ -629,48 +723,181 @@ export function WorkflowVisualDesigner({
             border: '1px solid #e5e7eb',
           }}
         >
-          {availableDockItems.map((item) => (
-            <Button
-              key={item.label}
-              onClick={() => addByType(item.type)}
-              sx={{
-                minWidth: 78,
-                height: 62,
-                px: 1,
-                color: '#0f172a',
-                borderRadius: 1.5,
-                textTransform: 'none',
-              }}
-            >
-              <Stack alignItems="center" spacing={0.4}>
-                <Iconify icon={item.icon} width={20} />
-                <Typography variant="caption" sx={{ lineHeight: 1.1, fontWeight: 600 }}>
-                  {item.label}
-                </Typography>
-              </Stack>
-            </Button>
-          ))}
+          {availableDockItems.map((item) => {
+            const disabled = !item.type;
+            return (
+              <Tooltip key={item.label} title={item.type ? activityTypeLabel(item.type) : 'Proximo modulo'}>
+                <span>
+                  <Button
+                    disabled={disabled}
+                    onClick={() => {
+                      if (item.type) addByType(item.type);
+                    }}
+                    sx={{
+                      minWidth: 78,
+                      height: 62,
+                      px: 1,
+                      color: '#0f172a',
+                      borderRadius: 1.5,
+                      opacity: disabled ? 0.55 : 1,
+                      textTransform: 'none',
+                    }}
+                  >
+                    <Stack alignItems="center" spacing={0.4}>
+                      <Iconify icon={item.icon} width={20} />
+                      <Typography variant="caption" sx={{ lineHeight: 1.1, fontWeight: 600 }}>
+                        {item.label}
+                      </Typography>
+                    </Stack>
+                  </Button>
+                </span>
+              </Tooltip>
+            );
+          })}
         </Stack>
       </Box>
 
       <Drawer
         anchor="right"
-        open={selected !== null}
+        open={selected !== null || selectedStart}
         onClose={() => setSelectedIndex(null)}
         PaperProps={{ sx: { width: 420, p: 2 } }}
       >
+        {selectedStart && (
+          <Stack spacing={1.4}>
+            <Stack direction="row" justifyContent="space-between" alignItems="center">
+              <Box>
+                <Typography variant="subtitle1">Inicio del workflow</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Las intenciones son formas entendibles de arrancar el flujo; internamente disparan un evento.
+                </Typography>
+              </Box>
+              <Chip size="small" label="Trigger" />
+            </Stack>
+            <Divider />
+            <TextField
+              label="Evento interno"
+              value={triggerEventName}
+              onChange={(e) => onChangeTriggerEvent(e.target.value)}
+              size="small"
+              helperText="Ejemplo: connect.message.received. El backend ejecuta workflows publicados con este evento."
+            />
+            <Alert severity="info">
+              Un usuario sin conocimiento tecnico solo define intenciones con nombre y ejemplos. El sistema las usa para
+              mapear mensajes, botones o webhooks al evento interno.
+            </Alert>
+            <Stack spacing={1}>
+              {startIntents.map((intent, index) => (
+                <Card key={intent.id} variant="outlined" sx={{ p: 1 }}>
+                  <Stack spacing={1}>
+                    <TextField
+                      label="Nombre de la intencion"
+                      value={intent.label}
+                      size="small"
+                      onChange={(e) => {
+                        const next = [...startIntents];
+                        next[index] = { ...intent, label: e.target.value };
+                        onUpdateStartIntents(next);
+                      }}
+                    />
+                    <TextField
+                      label="Descripcion"
+                      value={intent.description ?? ''}
+                      size="small"
+                      onChange={(e) => {
+                        const next = [...startIntents];
+                        next[index] = { ...intent, description: e.target.value };
+                        onUpdateStartIntents(next);
+                      }}
+                    />
+                    <TextField
+                      label="Ejemplos que diria el usuario"
+                      value={(intent.examples ?? []).join(', ')}
+                      size="small"
+                      helperText="Separados por coma"
+                      onChange={(e) => {
+                        const next = [...startIntents];
+                        next[index] = {
+                          ...intent,
+                          examples: e.target.value
+                            .split(',')
+                            .map((value) => value.trim())
+                            .filter(Boolean),
+                        };
+                        onUpdateStartIntents(next);
+                      }}
+                    />
+                    <Button
+                      color="error"
+                      size="small"
+                      disabled={startIntents.length === 1}
+                      onClick={() => onUpdateStartIntents(startIntents.filter((x) => x.id !== intent.id))}
+                    >
+                      Eliminar intencion
+                    </Button>
+                  </Stack>
+                </Card>
+              ))}
+            </Stack>
+            <Button
+              variant="contained"
+              onClick={() =>
+                onUpdateStartIntents([
+                  ...startIntents,
+                  {
+                    id: `intent-${Date.now()}`,
+                    label: 'Nueva intencion',
+                    description: 'Describe cuando debe iniciar este flujo.',
+                    examples: [],
+                    eventName: triggerEventName,
+                  },
+                ])
+              }
+            >
+              Agregar intencion
+            </Button>
+          </Stack>
+        )}
         {selected && selectedIndex !== null && (
           <Stack spacing={1}>
             <Stack direction="row" justifyContent="space-between" alignItems="center">
               <Box>
                 <Typography variant="subtitle1">{selected.name || activityTypeLabel(selected.type)}</Typography>
                 <Typography variant="caption" color="text.secondary">
-                  Configura solo lo esencial. Lo tecnico esta en Runtime y Debug.
+                  {selected.type === 'ai.agent'
+                    ? 'Define modelo, instrucciones, herramientas y contexto.'
+                    : 'Configura solo lo esencial. Lo tecnico esta en Runtime y Debug.'}
                 </Typography>
               </Box>
               <Chip size="small" label={activityTypeLabel(selected.type)} />
             </Stack>
             <Divider />
+            {selected.type === 'ai.agent' && (
+              <Card variant="outlined" sx={{ p: 1.2, bgcolor: '#fbfdff' }}>
+                <Stack spacing={1}>
+                  <TextField
+                    label="Nombre del agente"
+                    value={selected.name ?? ''}
+                    onChange={(e) => onUpdateActivity(selectedIndex, { name: e.target.value || undefined })}
+                    size="small"
+                  />
+                  <TextField
+                    label="Tipo de nodo"
+                    select
+                    value={selected.type}
+                    onChange={(e) => handleSelectedTypeChange(e.target.value)}
+                    size="small"
+                  >
+                    {allowedTypes.map((type) => (
+                      <MenuItem key={type} value={type}>
+                        {activityTypeLabel(type)}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                </Stack>
+              </Card>
+            )}
+            {selected.type !== 'ai.agent' && (
             <Accordion expanded={inspectorSection === 'general'} onChange={(_, e) => setInspectorSection(e ? 'general' : '')}>
               <AccordionSummary expandIcon={<Iconify icon="mdi:chevron-down" />}>
                 <Typography variant="subtitle2">General</Typography>
@@ -699,6 +926,7 @@ export function WorkflowVisualDesigner({
                 </Stack>
               </AccordionDetails>
             </Accordion>
+            )}
             {(selected.type.startsWith('connect.') || selected.type.startsWith('human.')) && (
               <Accordion expanded={inspectorSection === 'integraciones'} onChange={(_, e) => setInspectorSection(e ? 'integraciones' : '')}>
                 <AccordionSummary expandIcon={<Iconify icon="mdi:chevron-down" />}>
@@ -823,21 +1051,15 @@ export function WorkflowVisualDesigner({
               </Accordion>
             )}
             {selected.type === 'ai.agent' && (
-              <Accordion expanded={inspectorSection === 'ia'} onChange={(_, e) => setInspectorSection(e ? 'ia' : '')}>
-                <AccordionSummary expandIcon={<Iconify icon="mdi:chevron-down" />}>
-                  <Typography variant="subtitle2">Agente de IA</Typography>
-                </AccordionSummary>
-                <AccordionDetails>
-
-              <>
-                <Tabs value={aiTab} onChange={(_, v) => setAiTab(v)}>
+              <Card variant="outlined" sx={{ p: 1.2 }}>
+                <Tabs value={aiTab} onChange={(_, v) => setAiTab(v)} variant="scrollable">
                   <Tab label="General" />
                   <Tab label="Herramientas" />
                   <Tab label="Contexto" />
                   <Tab label="Avanzado" />
                 </Tabs>
                 {aiTab === 0 && (
-                  <Stack spacing={1}>
+                  <Stack spacing={1} sx={{ mt: 1.2 }}>
                     <TextField
                       label="Modelo"
                       select
@@ -865,7 +1087,7 @@ export function WorkflowVisualDesigner({
                   </Stack>
                 )}
                 {aiTab === 1 && (
-                  <Stack spacing={1}>
+                  <Stack spacing={1} sx={{ mt: 1.2 }}>
                     <Typography variant="caption" color="text.secondary">
                       Selecciona las herramientas que este agente puede usar durante el flujo.
                     </Typography>
@@ -898,7 +1120,7 @@ export function WorkflowVisualDesigner({
                   </Stack>
                 )}
                 {aiTab === 2 && (
-                  <Stack spacing={1}>
+                  <Stack spacing={1} sx={{ mt: 1.2 }}>
                     <TextField
                       label="Fuentes de conocimiento"
                       multiline
@@ -925,7 +1147,7 @@ export function WorkflowVisualDesigner({
                   </Stack>
                 )}
                 {aiTab === 3 && (
-                  <Stack spacing={1}>
+                  <Stack spacing={1} sx={{ mt: 1.2 }}>
                     <TextField
                       label="Modelo de respaldo"
                       value={selected.aiAgent?.fallbackModel ?? DEFAULT_AI_AGENT_CONFIG.fallbackModel}
@@ -964,14 +1186,16 @@ export function WorkflowVisualDesigner({
                       label="Habilitar DLP"
                     />
                     <Button variant="outlined" onClick={() => onOpenAiConfig(selectedIndex)}>
-                      Configuracion avanzada
+                      Abrir editor completo
+                    </Button>
+                    <Button variant="text" onClick={() => setShowAdvanced((value) => !value)}>
+                      {showAdvanced ? 'Ocultar configuracion tecnica' : 'Mostrar configuracion tecnica'}
                     </Button>
                   </Stack>
                 )}
-              </>
-                </AccordionDetails>
-              </Accordion>
+              </Card>
             )}
+            {(selected.type !== 'ai.agent' || showAdvanced) && (
             <Accordion expanded={inspectorSection === 'runtime'} onChange={(_, e) => setInspectorSection(e ? 'runtime' : '')}>
               <AccordionSummary expandIcon={<Iconify icon="mdi:chevron-down" />}>
                 <Typography variant="subtitle2">Runtime</Typography>
@@ -1038,7 +1262,9 @@ export function WorkflowVisualDesigner({
                 </Collapse>
               </AccordionDetails>
             </Accordion>
+            )}
 
+            {(selected.type !== 'ai.agent' || showAdvanced) && (
             <Accordion expanded={inspectorSection === 'debug'} onChange={(_, e) => setInspectorSection(e ? 'debug' : '')}>
               <AccordionSummary expandIcon={<Iconify icon="mdi:chevron-down" />}>
                 <Typography variant="subtitle2">Debug</Typography>
@@ -1092,8 +1318,9 @@ export function WorkflowVisualDesigner({
                 ))}
               </AccordionDetails>
             </Accordion>
+            )}
             <Button color="error" variant="outlined" onClick={() => onRemoveActivity(selectedIndex)}>
-              Remove Node
+              Eliminar nodo
             </Button>
           </Stack>
         )}
