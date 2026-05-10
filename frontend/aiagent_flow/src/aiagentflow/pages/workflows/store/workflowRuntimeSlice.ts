@@ -84,6 +84,10 @@ const workflowRuntimeSlice = createSlice({
               version: agent.version,
               tags: agent.tags ?? [],
               updatedAt: agent.updatedAt,
+              stepsCount: agent.stepsCount ?? agent.StepsCount ?? 0,
+              toolsCount: agent.toolsCount ?? agent.ToolsCount ?? 0,
+              primaryModel: agent.primaryModel ?? agent.PrimaryModel ?? '',
+              provider: agent.provider ?? agent.Provider ?? '',
             }) as AgentOption
         );
         state.integrations = (action.payload.integrations as any[]) ?? [];

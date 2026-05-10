@@ -128,6 +128,10 @@ public sealed record AgentListItemDto
     public required DateTimeOffset CreatedAt { get; init; }
     public required DateTimeOffset UpdatedAt { get; init; }
     public IReadOnlyList<string> Tags { get; init; } = [];
+    public int StepsCount { get; init; }
+    public int ToolsCount { get; init; }
+    public string PrimaryModel { get; init; } = string.Empty;
+    public string Provider { get; init; } = string.Empty;
 }
 
 /// <summary>

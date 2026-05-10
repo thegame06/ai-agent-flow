@@ -57,6 +57,10 @@ public sealed class AgentsController : ControllerBase
             CreatedAt = a.CreatedAt,
             UpdatedAt = a.UpdatedAt,
             Tags = a.Tags,
+            StepsCount = a.WorkflowSteps.Count,
+            ToolsCount = a.AuthorizedTools.Count,
+            PrimaryModel = a.Brain.ModelId,
+            Provider = a.Brain.Provider,
         });
 
         return Ok(result);

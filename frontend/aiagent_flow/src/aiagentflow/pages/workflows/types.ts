@@ -140,6 +140,10 @@ export type AgentOption = {
   version?: string | number;
   tags?: string[];
   updatedAt?: string;
+  stepsCount?: number;
+  toolsCount?: number;
+  primaryModel?: string;
+  provider?: string;
 };
 
 export type SchemaFieldRule = {

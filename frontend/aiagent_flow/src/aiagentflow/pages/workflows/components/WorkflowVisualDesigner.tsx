@@ -38,6 +38,8 @@ import AccordionSummary from '@mui/material/AccordionSummary';
 import AccordionDetails from '@mui/material/AccordionDetails';
 import FormControlLabel from '@mui/material/FormControlLabel';
 
+import { paths } from 'src/routes/paths';
+
 import { Iconify } from 'src/components/iconify';
 
 import {
@@ -602,6 +604,39 @@ export function WorkflowVisualDesigner({
     () => availableAgents.filter((agent) => agent.status === 'Published'),
     [availableAgents]
   );
+  const workflowContextKeywords = useMemo(
+    () =>
+      [
+        triggerEventName,
+        ...startIntents.flatMap((intent) => [intent.label, intent.description, intent.eventName, ...(intent.examples ?? [])]),
+      ]
+        .join(' ')
+        .toLowerCase(),
+    [startIntents, triggerEventName]
+  );
+  const recommendedAgentIds = useMemo(
+    () =>
+      new Set(
+        publishedAgents
+          .filter((agent) =>
+            (agent.tags ?? []).some((tag) => {
+              const normalized = tag.toLowerCase();
+              return normalized.length > 2 && workflowContextKeywords.includes(normalized);
+            })
+          )
+          .map((agent) => agent.id)
+      ),
+    [publishedAgents, workflowContextKeywords]
+  );
+  const visibleAgents = useMemo(
+    () =>
+      [...publishedAgents].sort((left, right) => {
+        const leftRecommended = recommendedAgentIds.has(left.id) ? 0 : 1;
+        const rightRecommended = recommendedAgentIds.has(right.id) ? 0 : 1;
+        return leftRecommended - rightRecommended || left.name.localeCompare(right.name);
+      }),
+    [publishedAgents, recommendedAgentIds]
+  );
   const selectedAgent = useMemo(() => {
     const agentId = selected?.config?.agentId ?? selected?.aiAgent?.agentId;
     return agentId ? availableAgents.find((agent) => agent.id === agentId) ?? null : null;
@@ -915,9 +950,10 @@ export function WorkflowVisualDesigner({
                     size="small"
                   >
                     <MenuItem value="">Seleccionar agente</MenuItem>
-                    {publishedAgents.map((agent) => (
+                    {visibleAgents.map((agent) => (
                       <MenuItem key={agent.id} value={agent.id}>
                         {agent.name}
+                        {recommendedAgentIds.has(agent.id) ? ' (recomendado)' : ''}
                       </MenuItem>
                     ))}
                   </TextField>
@@ -947,6 +983,19 @@ export function WorkflowVisualDesigner({
                           ))}
                         </Stack>
                       )}
+                      <Stack direction="row" spacing={0.7} flexWrap="wrap" sx={{ mt: 0.8 }}>
+                        <Chip size="small" label={`${selectedAgent.stepsCount ?? 0} pasos`} />
+                        <Chip size="small" label={`${selectedAgent.toolsCount ?? 0} tools`} />
+                        {selectedAgent.primaryModel && <Chip size="small" label={selectedAgent.primaryModel} />}
+                      </Stack>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        href={paths.dashboard.agentEdit(selectedAgent.id)}
+                        sx={{ mt: 1 }}
+                      >
+                        Editar subflujo del agente
+                      </Button>
                     </Box>
                   )}
                 </Stack>
@@ -1123,9 +1172,10 @@ export function WorkflowVisualDesigner({
                       size="small"
                     >
                       <MenuItem value="">Seleccionar agente</MenuItem>
-                      {publishedAgents.map((agent) => (
+                      {visibleAgents.map((agent) => (
                         <MenuItem key={agent.id} value={agent.id}>
                           {agent.name}
+                          {recommendedAgentIds.has(agent.id) ? ' (recomendado)' : ''}
                         </MenuItem>
                       ))}
                     </TextField>
@@ -1156,6 +1206,22 @@ export function WorkflowVisualDesigner({
                     <Alert severity="info">
                       Este nodo no redefine el agente. Ejecuta el agente seleccionado con el contexto del workflow.
                     </Alert>
+                    {selectedAgent && (
+                      <Box sx={{ p: 1, borderRadius: 1, border: '1px dashed #93c5fd', bgcolor: '#f8fbff' }}>
+                        <Typography variant="caption" fontWeight={800}>
+                          Preview del subflujo
+                        </Typography>
+                        <Stack direction="row" spacing={0.8} flexWrap="wrap" sx={{ mt: 0.8 }}>
+                          <Chip size="small" label={`${selectedAgent.stepsCount ?? 0} pasos internos`} />
+                          <Chip size="small" label={`${selectedAgent.toolsCount ?? 0} tools autorizadas`} />
+                          {selectedAgent.provider && <Chip size="small" label={selectedAgent.provider} />}
+                          {selectedAgent.primaryModel && <Chip size="small" label={selectedAgent.primaryModel} />}
+                        </Stack>
+                        <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.8 }}>
+                          El detalle del subflujo se edita en Agent Studio y se ejecuta como una unidad dentro de este workflow.
+                        </Typography>
+                      </Box>
+                    )}
                   </Stack>
                 )}
                 {aiTab === 1 && (
@@ -1174,7 +1240,7 @@ export function WorkflowVisualDesigner({
                         Modelos registrados en plataforma: {availableModels.length}
                       </Typography>
                     </Box>
-                    <Button variant="outlined" href="/dashboard/agents">
+                    <Button variant="outlined" href={selectedAgent ? paths.dashboard.agentEdit(selectedAgent.id) : paths.dashboard.agents}>
                       Abrir Agent Studio
                     </Button>
                   </Stack>
