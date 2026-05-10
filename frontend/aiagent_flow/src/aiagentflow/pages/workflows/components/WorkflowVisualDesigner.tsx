@@ -128,17 +128,83 @@ const nodeColorByType = (type: string) => {
 };
 
 const dockItems = [
-  { label: 'AI Agent', icon: 'mdi:brain', types: ['ai.agent'] },
-  { label: 'WhatsApp', icon: 'mdi:whatsapp', types: ['connect.send_whatsapp_template'] },
-  { label: 'Mensaje', icon: 'mdi:message-text-outline', types: ['connect.enqueue_campaign_message', 'connect.update_inbox_status'] },
-  { label: 'API', icon: 'mdi:api', types: ['webhook.call', 'http.request'] },
-  { label: 'Code', icon: 'mdi:code-tags', types: ['code.execute'] },
-  { label: 'Logica', icon: 'mdi:source-branch', types: ['condition', 'logic.condition'] },
-  { label: 'Bases de datos', icon: 'mdi:database-outline', types: ['database.query'] },
-  { label: 'Notas', icon: 'mdi:note-outline', types: ['note.create'] },
-  { label: 'Pagos', icon: 'mdi:cash', types: ['payments.create_intent'] },
-  { label: 'Atencion Humana', icon: 'mdi:account-headset', types: ['human.assign', 'human.handoff'] },
-  { label: 'KYC', icon: 'mdi:card-account-details-outline', types: ['kyc.document_check', 'kyc.review_case'] },
+  {
+    label: 'Agente',
+    group: 'Conversar',
+    icon: 'mdi:brain',
+    helper: 'Usa un bot publicado para entender intenciones y ejecutar tareas.',
+    types: ['ai.agent'],
+  },
+  {
+    label: 'WhatsApp',
+    group: 'Conversar',
+    icon: 'mdi:whatsapp',
+    helper: 'Envia una plantilla aprobada por WhatsApp.',
+    types: ['connect.send_whatsapp_template'],
+  },
+  {
+    label: 'Mensaje',
+    group: 'Conversar',
+    icon: 'mdi:message-text-outline',
+    helper: 'Agenda o actualiza mensajes en la bandeja/campana.',
+    types: ['connect.enqueue_campaign_message', 'connect.update_inbox_status'],
+  },
+  {
+    label: 'Voz / llamada',
+    group: 'Conversar',
+    icon: 'mdi:phone-in-talk-outline',
+    helper: 'Reservado para canales como Twilio voice o call center.',
+    types: ['voice.call', 'callcenter.outbound_call'],
+  },
+  {
+    label: 'API',
+    group: 'Datos',
+    icon: 'mdi:api',
+    helper: 'Conecta sistemas externos por HTTP/API.',
+    types: ['webhook.call', 'http.request'],
+  },
+  {
+    label: 'Archivos',
+    group: 'Datos',
+    icon: 'mdi:file-table-outline',
+    helper: 'Lee Excel, Drive o documentos mediante integraciones/tools.',
+    types: ['files.read', 'drive.lookup', 'storage.write'],
+  },
+  {
+    label: 'MCP',
+    group: 'Datos',
+    icon: 'mdi:connection',
+    helper: 'Usa conectores MCP disponibles en la plataforma.',
+    types: ['mcp.tool_call'],
+  },
+  {
+    label: 'Logica',
+    group: 'Operar',
+    icon: 'mdi:source-branch',
+    helper: 'Divide el flujo segun condiciones de negocio.',
+    types: ['condition', 'logic.condition'],
+  },
+  {
+    label: 'Humano',
+    group: 'Operar',
+    icon: 'mdi:account-headset',
+    helper: 'Asigna o escala a un equipo humano.',
+    types: ['human.assign', 'human.handoff'],
+  },
+  {
+    label: 'Pagos',
+    group: 'Negocio',
+    icon: 'mdi:cash',
+    helper: 'Crea o gestiona intenciones de pago.',
+    types: ['payments.create_intent'],
+  },
+  {
+    label: 'KYC',
+    group: 'Negocio',
+    icon: 'mdi:card-account-details-outline',
+    helper: 'Valida identidad o envia a revision manual.',
+    types: ['kyc.document_check', 'kyc.review_case'],
+  },
 ];
 
 function WorkflowNodeCard({ data, selected }: NodeProps<Node<WorkflowNodeData>>) {
@@ -529,6 +595,7 @@ export function WorkflowVisualDesigner({
   const [aiTab, setAiTab] = useState(0);
   const [showValidation, setShowValidation] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [workflowChannelId, setWorkflowChannelId] = useState('');
   const [inspectorSection, setInspectorSection] = useState<string>('general');
   const [nodes, setNodes, onNodesChange] = useNodesState<DesignerNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -607,7 +674,7 @@ export function WorkflowVisualDesigner({
     () => availableAgents.filter((agent) => agent.status === 'Published'),
     [availableAgents]
   );
-  const selectedWorkflowChannel = useMemo(() => {
+  const detectedWorkflowChannel = useMemo(() => {
     const context = [
       triggerEventName,
       ...startIntents.flatMap((intent) => [intent.label, intent.description, intent.eventName, ...(intent.examples ?? [])]),
@@ -623,6 +690,13 @@ export function WorkflowVisualDesigner({
       null
     );
   }, [availableChannels, startIntents, triggerEventName]);
+  const selectedWorkflowChannel = useMemo(
+    () =>
+      (workflowChannelId
+        ? availableChannels.find((channel) => channel.id === workflowChannelId)
+        : detectedWorkflowChannel) ?? null,
+    [availableChannels, detectedWorkflowChannel, workflowChannelId]
+  );
   const channelAgentIds = useMemo(() => {
     if (!selectedWorkflowChannel) return new Set<string>();
     return new Set(
@@ -665,6 +739,43 @@ export function WorkflowVisualDesigner({
       }),
     [publishedAgents, recommendedAgentIds]
   );
+  const dockAvailability = useMemo(() => {
+    const channelType = selectedWorkflowChannel?.type?.toLowerCase() ?? '';
+    const hasChannel = Boolean(selectedWorkflowChannel);
+    const hasWhatsApp = channelType === 'whatsapp' || availableChannels.some((channel) => channel.type === 'WhatsApp');
+    const hasVoiceChannel = ['twilio', 'voice', 'callcenter', 'call center'].some((type) => channelType.includes(type));
+    const hasChannelAgents = channelAgentIds.size > 0;
+
+    return {
+      Agente: {
+        label: hasChannelAgents ? 'Listo' : publishedAgents.length > 0 ? 'Disponible' : 'Configurar',
+        helper: hasChannelAgents
+          ? 'Usa bots ya asignados al canal.'
+          : 'Selecciona un bot publicado desde Agent Studio.',
+      },
+      WhatsApp: {
+        label: hasWhatsApp && connectTemplates.length > 0 ? 'Listo' : hasWhatsApp ? 'Faltan plantillas' : 'Otro canal',
+        helper: hasWhatsApp
+          ? 'Usa plantillas aprobadas ya cargadas.'
+          : 'Disponible cuando el flujo use un canal WhatsApp.',
+      },
+      Mensaje: {
+        label: hasChannel ? 'Listo' : 'Configurar canal',
+        helper: hasChannel ? 'Usa el canal seleccionado para mensajes/campanas.' : 'Primero configura un canal.',
+      },
+      'Voz / llamada': {
+        label: hasVoiceChannel ? 'Listo' : 'Proximo',
+        helper: 'Preparado para Twilio voice, troncal o call center cuando exista el canal/integracion.',
+      },
+      API: { label: 'Integracion', helper: 'Se habilita por tools HTTP o conectores externos.' },
+      Archivos: { label: 'Integracion', helper: 'Usa tools de Excel, Drive, documentos o storage ya registradas.' },
+      MCP: { label: 'Integracion', helper: 'Usa conectores MCP disponibles en plataforma.' },
+      Logica: { label: 'Base', helper: 'Reglas simples para usuarios no tecnicos.' },
+      Humano: { label: 'Listo', helper: 'Escala a una cola o equipo humano.' },
+      Pagos: { label: 'Listo', helper: 'Usa el modulo transaccional existente.' },
+      KYC: { label: 'Listo', helper: 'Usa el modulo de identidad existente.' },
+    } as Record<string, { label: string; helper: string }>;
+  }, [availableChannels, channelAgentIds.size, connectTemplates.length, publishedAgents.length, selectedWorkflowChannel]);
   const selectedAgent = useMemo(() => {
     const agentId = selected?.config?.agentId ?? selected?.aiAgent?.agentId;
     return agentId ? availableAgents.find((agent) => agent.id === agentId) ?? null : null;
@@ -697,6 +808,15 @@ export function WorkflowVisualDesigner({
         .map((item) => ({ ...item, type: item.types.find((type) => allowedTypes.includes(type)) }))
         .filter((item) => item.types.length > 0),
     [allowedTypes]
+  );
+  const dockGroups = useMemo(
+    () =>
+      availableDockItems.reduce<Record<string, typeof availableDockItems>>((acc, item) => {
+        const group = item.group;
+        acc[group] = [...(acc[group] ?? []), item];
+        return acc;
+      }, {}),
+    [availableDockItems]
   );
 
   const onConnect = (params: Connection) => {
@@ -741,6 +861,21 @@ export function WorkflowVisualDesigner({
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
         <Typography variant="subtitle1">Brain Studio</Typography>
         <Stack direction="row" spacing={1}>
+          <TextField
+            select
+            size="small"
+            label="Canal"
+            value={selectedWorkflowChannel?.id ?? ''}
+            onChange={(event) => setWorkflowChannelId(event.target.value)}
+            sx={{ minWidth: 210 }}
+          >
+            <MenuItem value="">Detectar automaticamente</MenuItem>
+            {availableChannels.map((channel) => (
+              <MenuItem key={channel.id} value={channel.id}>
+                {channel.name} ({channel.type})
+              </MenuItem>
+            ))}
+          </TextField>
           <Button size="small" variant="outlined" onClick={() => setShowValidation(true)}>Validaciones</Button>
           <Tooltip title="Auto layout por grafo">
             <IconButton size="small" onClick={applyAutoLayoutGraph}><Iconify icon="mdi:graph-outline" /></IconButton>
@@ -801,7 +936,7 @@ export function WorkflowVisualDesigner({
 
         <Stack
           direction="row"
-          spacing={0.8}
+          spacing={1}
           sx={{
             position: 'absolute',
             left: '50%',
@@ -817,37 +952,54 @@ export function WorkflowVisualDesigner({
             border: '1px solid #e5e7eb',
           }}
         >
-          {availableDockItems.map((item) => {
-            const disabled = !item.type;
-            return (
-              <Tooltip key={item.label} title={item.type ? activityTypeLabel(item.type) : 'Proximo modulo'}>
-                <span>
-                  <Button
-                    disabled={disabled}
-                    onClick={() => {
-                      if (item.type) addByType(item.type);
-                    }}
-                    sx={{
-                      minWidth: 78,
-                      height: 62,
-                      px: 1,
-                      color: '#0f172a',
-                      borderRadius: 1.5,
-                      opacity: disabled ? 0.55 : 1,
-                      textTransform: 'none',
-                    }}
-                  >
-                    <Stack alignItems="center" spacing={0.4}>
-                      <Iconify icon={item.icon} width={20} />
-                      <Typography variant="caption" sx={{ lineHeight: 1.1, fontWeight: 600 }}>
-                        {item.label}
-                      </Typography>
-                    </Stack>
-                  </Button>
-                </span>
-              </Tooltip>
-            );
-          })}
+          {Object.entries(dockGroups).map(([group, items]) => (
+            <Stack key={group} spacing={0.6} sx={{ minWidth: 120 }}>
+              <Typography variant="caption" color="text.secondary" sx={{ px: 0.6, fontWeight: 800 }}>
+                {group}
+              </Typography>
+              <Stack direction="row" spacing={0.6}>
+                {items.map((item) => {
+                  const disabled = !item.type;
+                  const availability = dockAvailability[item.label] ?? { label: 'Disponible', helper: item.helper };
+                  return (
+                    <Tooltip key={item.label} title={`${availability.helper} ${item.type ? activityTypeLabel(item.type) : 'Modulo aun no activo.'}`}>
+                      <span>
+                        <Button
+                          disabled={disabled}
+                          onClick={() => {
+                            if (item.type) addByType(item.type);
+                          }}
+                          sx={{
+                            minWidth: 86,
+                            height: 74,
+                            px: 1,
+                            color: '#0f172a',
+                            borderRadius: 1.5,
+                            opacity: disabled ? 0.55 : 1,
+                            textTransform: 'none',
+                            border: disabled ? '1px dashed #cbd5e1' : '1px solid transparent',
+                          }}
+                        >
+                          <Stack alignItems="center" spacing={0.35}>
+                            <Iconify icon={item.icon} width={20} />
+                            <Typography variant="caption" sx={{ lineHeight: 1.1, fontWeight: 700 }}>
+                              {item.label}
+                            </Typography>
+                            <Chip
+                              size="small"
+                              label={availability.label}
+                              color={availability.label === 'Listo' ? 'success' : 'default'}
+                              sx={{ height: 18, '& .MuiChip-label': { px: 0.7, fontSize: 10 } }}
+                            />
+                          </Stack>
+                        </Button>
+                      </span>
+                    </Tooltip>
+                  );
+                })}
+              </Stack>
+            </Stack>
+          ))}
         </Stack>
       </Box>
 
