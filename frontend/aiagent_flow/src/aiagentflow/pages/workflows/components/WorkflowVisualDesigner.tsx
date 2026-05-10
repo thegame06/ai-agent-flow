@@ -53,6 +53,7 @@ import type {
   ToolOption,
   AgentOption,
   ModelOption,
+  ChannelOption,
   WorkflowStartIntent,
   WorkflowActivityNode,
   ConnectTemplateOption,
@@ -69,6 +70,7 @@ type Props = {
   availableModels: ModelOption[];
   availableTools: ToolOption[];
   availableAgents: AgentOption[];
+  availableChannels: ChannelOption[];
   integrations: WorkflowIntegrationStatus[];
   connectTemplates: ConnectTemplateOption[];
   onAddActivity: (activityType?: string, patch?: Partial<WorkflowActivityNode>) => void;
@@ -509,6 +511,7 @@ export function WorkflowVisualDesigner({
   availableModels,
   availableTools,
   availableAgents,
+  availableChannels,
   integrations,
   connectTemplates,
   onAddActivity,
@@ -604,6 +607,30 @@ export function WorkflowVisualDesigner({
     () => availableAgents.filter((agent) => agent.status === 'Published'),
     [availableAgents]
   );
+  const selectedWorkflowChannel = useMemo(() => {
+    const context = [
+      triggerEventName,
+      ...startIntents.flatMap((intent) => [intent.label, intent.description, intent.eventName, ...(intent.examples ?? [])]),
+    ]
+      .join(' ')
+      .toLowerCase();
+    const activeChannels = availableChannels.filter((channel) => channel.status === 'Active');
+    return (
+      activeChannels.find((channel) => context.includes(channel.type.toLowerCase())) ??
+      activeChannels.find((channel) => context.includes(channel.name.toLowerCase())) ??
+      activeChannels[0] ??
+      availableChannels[0] ??
+      null
+    );
+  }, [availableChannels, startIntents, triggerEventName]);
+  const channelAgentIds = useMemo(() => {
+    if (!selectedWorkflowChannel) return new Set<string>();
+    return new Set(
+      [selectedWorkflowChannel.defaultAgentId, ...(selectedWorkflowChannel.routingAgents ?? [])]
+        .filter(Boolean)
+        .map((agentId) => String(agentId))
+    );
+  }, [selectedWorkflowChannel]);
   const workflowContextKeywords = useMemo(
     () =>
       [
@@ -619,6 +646,7 @@ export function WorkflowVisualDesigner({
       new Set(
         publishedAgents
           .filter((agent) =>
+            channelAgentIds.has(agent.id) ||
             (agent.tags ?? []).some((tag) => {
               const normalized = tag.toLowerCase();
               return normalized.length > 2 && workflowContextKeywords.includes(normalized);
@@ -626,7 +654,7 @@ export function WorkflowVisualDesigner({
           )
           .map((agent) => agent.id)
       ),
-    [publishedAgents, workflowContextKeywords]
+    [channelAgentIds, publishedAgents, workflowContextKeywords]
   );
   const visibleAgents = useMemo(
     () =>
@@ -852,6 +880,15 @@ export function WorkflowVisualDesigner({
               Un usuario sin conocimiento tecnico solo define intenciones con nombre y ejemplos. El sistema las usa para
               mapear mensajes, botones o webhooks al evento interno.
             </Alert>
+            {selectedWorkflowChannel && (
+              <Alert severity="success">
+                Canal detectado: {selectedWorkflowChannel.name} ({selectedWorkflowChannel.type}). Agentes ya asignados:
+                {' '}
+                {[selectedWorkflowChannel.defaultAgentId, ...(selectedWorkflowChannel.routingAgents ?? [])]
+                  .filter(Boolean)
+                  .join(', ') || 'sin asignacion'}
+              </Alert>
+            )}
             <Stack spacing={1}>
               {startIntents.map((intent, index) => (
                 <Card key={intent.id} variant="outlined" sx={{ p: 1 }}>
@@ -987,6 +1024,7 @@ export function WorkflowVisualDesigner({
                         <Chip size="small" label={`${selectedAgent.stepsCount ?? 0} pasos`} />
                         <Chip size="small" label={`${selectedAgent.toolsCount ?? 0} tools`} />
                         {selectedAgent.primaryModel && <Chip size="small" label={selectedAgent.primaryModel} />}
+                        {channelAgentIds.has(selectedAgent.id) && <Chip size="small" color="success" label="Asignado al canal" />}
                       </Stack>
                       <Button
                         size="small"
@@ -1214,6 +1252,7 @@ export function WorkflowVisualDesigner({
                         <Stack direction="row" spacing={0.8} flexWrap="wrap" sx={{ mt: 0.8 }}>
                           <Chip size="small" label={`${selectedAgent.stepsCount ?? 0} pasos internos`} />
                           <Chip size="small" label={`${selectedAgent.toolsCount ?? 0} tools autorizadas`} />
+                          {channelAgentIds.has(selectedAgent.id) && <Chip size="small" color="success" label="Disponible en canal" />}
                           {selectedAgent.provider && <Chip size="small" label={selectedAgent.provider} />}
                           {selectedAgent.primaryModel && <Chip size="small" label={selectedAgent.primaryModel} />}
                         </Stack>

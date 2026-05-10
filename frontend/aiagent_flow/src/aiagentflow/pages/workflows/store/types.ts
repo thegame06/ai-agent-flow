@@ -3,6 +3,7 @@ import type {
   AgentOption,
   ModelOption,
   WorkflowStep,
+  ChannelOption,
   WorkflowExecution,
   WorkflowAuditEvent,
   WorkflowDefinition,
@@ -42,6 +43,7 @@ export type WorkflowRuntimeState = {
   availableModels: ModelOption[];
   availableTools: ToolOption[];
   availableAgents: AgentOption[];
+  availableChannels: ChannelOption[];
   integrations: WorkflowIntegrationStatus[];
   connectTemplates: ConnectTemplateOption[];
 };

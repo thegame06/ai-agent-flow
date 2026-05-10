@@ -146,6 +146,16 @@ export type AgentOption = {
   provider?: string;
 };
 
+export type ChannelOption = {
+  id: string;
+  name: string;
+  type: string;
+  status: string;
+  config: Record<string, string>;
+  defaultAgentId?: string;
+  routingAgents?: string[];
+};
+
 export type SchemaFieldRule = {
   key: string;
   required: boolean;

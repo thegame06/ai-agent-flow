@@ -15,6 +15,7 @@ import type { WorkflowRuntimeState } from './types';
 import type {
   AgentOption,
   WorkflowStep,
+  ChannelOption,
   WorkflowExecution,
   WorkflowAuditEvent,
   WorkflowDefinition,
@@ -38,6 +39,7 @@ const initialState: WorkflowRuntimeState = {
   availableModels: [],
   availableTools: [],
   availableAgents: [],
+  availableChannels: [],
   integrations: [],
   connectTemplates: [],
 };
@@ -89,6 +91,24 @@ const workflowRuntimeSlice = createSlice({
               primaryModel: agent.primaryModel ?? agent.PrimaryModel ?? '',
               provider: agent.provider ?? agent.Provider ?? '',
             }) as AgentOption
+        );
+        state.availableChannels = ((action.payload.availableChannels as any[]) ?? []).map(
+          (channel) => {
+            const config = channel.config ?? channel.Config ?? {};
+            const routingAgents = String(config.RoutingAgents ?? config.routingAgents ?? '')
+              .split(',')
+              .map((value) => value.trim())
+              .filter(Boolean);
+            return {
+              id: channel.id,
+              name: channel.name,
+              type: channel.type,
+              status: channel.status,
+              config,
+              defaultAgentId: config.DefaultAgentId ?? config.defaultAgentId ?? '',
+              routingAgents,
+            } as ChannelOption;
+          }
         );
         state.integrations = (action.payload.integrations as any[]) ?? [];
         state.connectTemplates = ((action.payload.connectTemplates as any[]) ?? []).map(

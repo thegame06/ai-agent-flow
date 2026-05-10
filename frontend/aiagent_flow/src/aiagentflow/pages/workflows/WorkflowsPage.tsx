@@ -82,6 +82,7 @@ export default function WorkflowsPage() {
     availableModels,
     availableTools,
     availableAgents,
+    availableChannels,
     integrations,
     connectTemplates,
     setError,
@@ -398,6 +399,7 @@ export default function WorkflowsPage() {
           availableModels={availableModels}
           availableTools={availableTools}
           availableAgents={availableAgents}
+          availableChannels={availableChannels}
           integrations={integrations}
           connectTemplates={connectTemplates}
           onAddActivity={addActivity}

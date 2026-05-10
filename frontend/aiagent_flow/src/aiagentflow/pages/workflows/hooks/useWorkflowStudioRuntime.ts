@@ -29,6 +29,7 @@ export function useWorkflowStudioRuntime(tenantId: string) {
   const availableModels = useAppSelector((state) => state.workflowRuntime.availableModels);
   const availableTools = useAppSelector((state) => state.workflowRuntime.availableTools);
   const availableAgents = useAppSelector((state) => state.workflowRuntime.availableAgents);
+  const availableChannels = useAppSelector((state) => state.workflowRuntime.availableChannels);
   const integrations = useAppSelector((state) => state.workflowRuntime.integrations);
   const connectTemplates = useAppSelector((state) => state.workflowRuntime.connectTemplates);
 
@@ -106,6 +107,7 @@ export function useWorkflowStudioRuntime(tenantId: string) {
     availableModels,
     availableTools,
     availableAgents,
+    availableChannels,
     integrations,
     connectTemplates,
     setError: (value: string | null) => dispatch(setWorkflowRuntimeError(value)),
