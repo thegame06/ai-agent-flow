@@ -109,6 +109,20 @@ const nodeColorByType = (type: string) => {
   return '#64748b';
 };
 
+const dockItems = [
+  { label: 'AI Agent', icon: 'mdi:brain', types: ['ai.agent'] },
+  { label: 'WhatsApp', icon: 'mdi:whatsapp', types: ['connect.send_whatsapp_template'] },
+  { label: 'Mensaje', icon: 'mdi:message-text-outline', types: ['connect.enqueue_campaign_message', 'connect.update_inbox_status'] },
+  { label: 'API', icon: 'mdi:api', types: ['webhook.call', 'http.request'] },
+  { label: 'Code', icon: 'mdi:code-tags', types: ['code.execute'] },
+  { label: 'Logica', icon: 'mdi:source-branch', types: ['condition', 'logic.condition'] },
+  { label: 'Bases de datos', icon: 'mdi:database-outline', types: ['database.query'] },
+  { label: 'Notas', icon: 'mdi:note-outline', types: ['note.create'] },
+  { label: 'Pagos', icon: 'mdi:cash', types: ['payments.create_intent'] },
+  { label: 'Atencion Humana', icon: 'mdi:account-headset', types: ['human.assign', 'human.handoff'] },
+  { label: 'KYC', icon: 'mdi:card-account-details-outline', types: ['kyc.document_check', 'kyc.review_case'] },
+];
+
 function WorkflowNodeCard({ data, selected }: NodeProps<Node<WorkflowNodeData>>) {
   const activityType = String(data.activityType ?? '');
   const label = String(data.label ?? activityType);
@@ -423,7 +437,6 @@ export function WorkflowVisualDesigner({
   onRemoveActivityConfig,
 }: Props) {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
-  const [search, setSearch] = useState('');
   const [aiTab, setAiTab] = useState(0);
   const [showValidation, setShowValidation] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -501,23 +514,13 @@ export function WorkflowVisualDesigner({
     [selected, selectedTemplate]
   );
 
-  const categorizedTypes = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    const filtered = allowedTypes.filter((t) => t.toLowerCase().includes(q));
-    return {
-      ai: filtered.filter((t) => t.startsWith('ai.')),
-      connect: filtered.filter((t) => t.startsWith('connect.')),
-      kyc: filtered.filter((t) => t.startsWith('kyc.')),
-      payments: filtered.filter((t) => t.startsWith('payments.')),
-      other: filtered.filter(
-        (t) =>
-          !t.startsWith('ai.') &&
-          !t.startsWith('connect.') &&
-          !t.startsWith('kyc.') &&
-          !t.startsWith('payments.')
-      ),
-    };
-  }, [allowedTypes, search]);
+  const availableDockItems = useMemo(
+    () =>
+      dockItems
+        .map((item) => ({ ...item, type: item.types.find((type) => allowedTypes.includes(type)) }))
+        .filter((item): item is typeof item & { type: string } => Boolean(item.type)),
+    [allowedTypes]
+  );
 
   const onConnect = (params: Connection) => {
     const sourceIndex = activities.findIndex((a) => a.id === params.source);
@@ -557,7 +560,7 @@ export function WorkflowVisualDesigner({
   };
 
   return (
-    <Card variant="outlined" sx={{ p: 1.5, borderRadius: 2 }}>
+    <Card variant="outlined" sx={{ p: 1.5, borderRadius: 2, boxShadow: '0 2px 10px rgba(15,23,42,0.06)' }}>
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
         <Typography variant="subtitle1">Brain Studio</Typography>
         <Stack direction="row" spacing={1}>
@@ -572,82 +575,83 @@ export function WorkflowVisualDesigner({
         </Stack>
       </Stack>
 
-      <Grid container spacing={1.5}>
-        <Grid item xs={12} md={3}>
-          <Card variant="outlined" sx={{ p: 1.2, height: 560, overflow: 'auto' }}>
-            <Typography variant="subtitle2" sx={{ mb: 1 }}>
-              Biblioteca de nodos
-            </Typography>
-            <TextField
-              size="small"
-              label="Buscar"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              fullWidth
-              sx={{ mb: 1 }}
-            />
-            <Stack spacing={1}>
-              {Object.entries(categorizedTypes).map(([category, types]) =>
-                types.length > 0 ? (
-                  <Box key={category} sx={{ mb: 0.5 }}>
-                    <Stack direction="row" alignItems="center" spacing={0.8} sx={{ mb: 0.6 }}>
-                      <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase' }}>
-                        {ACTIVITY_TYPE_CATEGORY_ES[category] ?? category}
-                      </Typography>
-                      <Chip size="small" label={types.length} />
-                    </Stack>
-                    <Stack spacing={0.6}>
-                      {types.map((type) => (
-                        <Button
-                          key={type}
-                          variant="outlined"
-                          onClick={() => addByType(type)}
-                          sx={{ justifyContent: 'flex-start', textTransform: 'none', py: 1 }}
-                        >
-                          <Stack alignItems="flex-start" spacing={0.2}>
-                            <Typography variant="body2">{activityTypeLabel(type)}</Typography>
-                            <Typography variant="caption" color="text.secondary">
-                              {activityDescription(type)}
-                            </Typography>
-                          </Stack>
-                        </Button>
-                      ))}
-                    </Stack>
-                  </Box>
-                ) : null
-              )}
-            </Stack>
-          </Card>
-        </Grid>
-        <Grid item xs={12} md={9}>
-          <Box sx={{ height: 560, border: '1px solid', borderColor: 'divider', borderRadius: 1, overflow: 'hidden' }}>
-            <ReactFlow
-              nodes={nodes}
-              edges={edges}
-              nodeTypes={{
-                workflowNode: WorkflowNodeCard,
-                aiNode: AiWorkflowNode,
-                connectNode: ConnectWorkflowNode,
-                humanNode: HumanWorkflowNode,
+      <Box
+        sx={{
+          position: 'relative',
+          height: 650,
+          border: '1px solid',
+          borderColor: 'divider',
+          borderRadius: 1.5,
+          overflow: 'hidden',
+          bgcolor: '#fff',
+        }}
+      >
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          nodeTypes={{
+            workflowNode: WorkflowNodeCard,
+            aiNode: AiWorkflowNode,
+            connectNode: ConnectWorkflowNode,
+            humanNode: HumanWorkflowNode,
+          }}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onConnect={onConnect}
+          onNodeDragStop={(_, node) => {
+            const index = Number(node.data.index);
+            if (Number.isNaN(index) || index < 0) return;
+            onUpdateActivity(index, { position: node.position });
+          }}
+          onNodeClick={(_, node) => setSelectedIndex(Number(node.data.index))}
+          fitView
+        >
+          <MiniMap />
+          <Controls />
+          <Background gap={18} size={1} color="#d9dee8" />
+        </ReactFlow>
+
+        <Stack
+          direction="row"
+          spacing={0.8}
+          sx={{
+            position: 'absolute',
+            left: '50%',
+            bottom: 18,
+            zIndex: 5,
+            maxWidth: 'calc(100% - 48px)',
+            overflowX: 'auto',
+            transform: 'translateX(-50%)',
+            p: 0.8,
+            borderRadius: 2,
+            bgcolor: 'rgba(255,255,255,0.96)',
+            boxShadow: '0 12px 32px rgba(15,23,42,0.14)',
+            border: '1px solid #e5e7eb',
+          }}
+        >
+          {availableDockItems.map((item) => (
+            <Button
+              key={item.label}
+              onClick={() => addByType(item.type)}
+              sx={{
+                minWidth: 78,
+                height: 62,
+                px: 1,
+                color: '#0f172a',
+                borderRadius: 1.5,
+                textTransform: 'none',
               }}
-              onNodesChange={onNodesChange}
-              onEdgesChange={onEdgesChange}
-              onConnect={onConnect}
-              onNodeDragStop={(_, node) => {
-                const index = Number(node.data.index);
-                if (Number.isNaN(index) || index < 0) return;
-                onUpdateActivity(index, { position: node.position });
-              }}
-              onNodeClick={(_, node) => setSelectedIndex(Number(node.data.index))}
-              fitView
             >
-              <MiniMap />
-              <Controls />
-              <Background />
-            </ReactFlow>
-          </Box>
-        </Grid>
-      </Grid>
+              <Stack alignItems="center" spacing={0.4}>
+                <Iconify icon={item.icon} width={20} />
+                <Typography variant="caption" sx={{ lineHeight: 1.1, fontWeight: 600 }}>
+                  {item.label}
+                </Typography>
+              </Stack>
+            </Button>
+          ))}
+        </Stack>
+      </Box>
 
       <Drawer
         anchor="right"
