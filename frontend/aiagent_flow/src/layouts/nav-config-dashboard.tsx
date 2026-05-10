@@ -60,7 +60,7 @@ export const navData: NavSectionProps['data'] = [
     subheader: 'Construccion',
     items: [
       {
-        title: 'Brain Studio',
+        title: 'Workflow Studio',
         path: paths.dashboard.workflows,
         icon: ICONS.kanban,
         info: <Label color="info">Studio</Label>,
@@ -107,7 +107,7 @@ export const navData: NavSectionProps['data'] = [
         icon: ICONS.product,
       },
       {
-        title: 'Conectores',
+        title: 'Integraciones',
         path: paths.dashboard.tools,
         icon: ICONS.parameter,
         children: [

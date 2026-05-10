@@ -239,7 +239,7 @@ export default function McpPage() {
                     label="Servidores permitidos para este tenant"
                     value={allowedServersCsv}
                     onChange={(e) => setAllowedServersCsv(e.target.value)}
-                    helperText="Separados por coma. Brain Studio solo podra usar servidores permitidos."
+                    helperText="Separados por coma. Workflow Studio solo podra usar servidores permitidos."
                     fullWidth
                   />
 

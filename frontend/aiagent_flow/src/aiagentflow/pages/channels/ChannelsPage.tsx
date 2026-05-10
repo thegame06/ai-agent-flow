@@ -1,4 +1,4 @@
-﻿import { Helmet } from 'react-helmet-async';
+import { Helmet } from 'react-helmet-async';
 import { useState, useEffect, useCallback } from 'react';
 
 import Box from '@mui/material/Box';
@@ -445,7 +445,7 @@ export default function ChannelsPage() {
             <Card variant="outlined" sx={{ p: 2 }}>
               <Typography variant="h6" sx={{ mb: 0.5 }}>Canales conectados</Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Estos conectores alimentan Inbox y aparecen como integraciones disponibles en Brain Studio.
+                Estos conectores alimentan Inbox y aparecen como integraciones disponibles en Workflow Studio.
               </Typography>
               {loading ? (
                 <Box sx={{ py: 4, textAlign: 'center' }}><CircularProgress /></Box>
@@ -611,7 +611,7 @@ export default function ChannelsPage() {
               <>
                 <Alert severity="info">
                   Este canal usa una conexion Twilio reusable. Configurala una vez en Marketplace/Integraciones y
-                  reutilizala para voz, call center, campanas y nodos de Brain Studio.
+                  reutilizala para voz, call center, campanas y nodos de Workflow Studio.
                 </Alert>
                 <TextField
                   select
@@ -809,4 +809,3 @@ export default function ChannelsPage() {
     </>
   );
 }
-

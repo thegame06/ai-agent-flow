@@ -92,7 +92,7 @@ const QUICK_CONNECTIONS = [
     type: 'Mcp',
     connectorId: 'mcp',
     icon: 'mdi:connection',
-    description: 'Publica servidores MCP para agentes y Brain Studio.',
+    description: 'Publica servidores MCP para agentes y Workflow Studio.',
     config: { server: 'local-test', runtime: 'MicrosoftAgentFramework' },
     secretHint: '{"token":"..."}',
     capabilities: ['mcp.tool_call', 'tool discovery'],
@@ -169,6 +169,187 @@ export default function MarketplacePage() {
       secret: preset.secretHint,
     });
     setOpenConnection(true);
+  };
+
+  const readConfigValue = (key: string) => {
+    try {
+      const parsed = JSON.parse(connectionForm.configJson || '{}') as Record<string, string>;
+      return parsed[key] ?? '';
+    } catch {
+      return '';
+    }
+  };
+
+  const readSecretValue = (key: string) => {
+    try {
+      const parsed = JSON.parse(connectionForm.secret || '{}') as Record<string, string>;
+      return parsed[key] ?? '';
+    } catch {
+      return connectionForm.secret;
+    }
+  };
+
+  const updateConfigValue = (key: string, value: string) => {
+    let parsed: Record<string, string> = {};
+    try {
+      parsed = JSON.parse(connectionForm.configJson || '{}') as Record<string, string>;
+    } catch {
+      parsed = {};
+    }
+    parsed[key] = value;
+    setConnectionForm((prev) => ({ ...prev, configJson: JSON.stringify(parsed, null, 2) }));
+  };
+
+  const renderGuidedConnectionFields = () => {
+    if (connectionForm.connectorId === 'twilio') {
+      return (
+        <Card variant="outlined" sx={{ p: 2, bgcolor: 'background.neutral' }}>
+          <Stack spacing={1.5}>
+            <Box>
+              <Typography variant="subtitle2">Twilio omnicanal</Typography>
+              <Typography variant="caption" color="text.secondary">
+                Esta conexion vive en backend por tenant. Luego canales de voz, call center, SMS o WhatsApp por Twilio solo referencian este ID.
+              </Typography>
+            </Box>
+            <TextField
+              label="Account SID"
+              value={readConfigValue('accountSid')}
+              onChange={(e) => updateConfigValue('accountSid', e.target.value)}
+              fullWidth
+            />
+            <TextField
+              label="Numero origen"
+              placeholder="+15551234567"
+              value={readConfigValue('fromPhoneNumber')}
+              onChange={(e) => updateConfigValue('fromPhoneNumber', e.target.value)}
+              fullWidth
+            />
+            <TextField
+              label="Status callback URL"
+              value={readConfigValue('statusCallbackUrl')}
+              onChange={(e) => updateConfigValue('statusCallbackUrl', e.target.value)}
+              fullWidth
+            />
+            <TextField
+              label="Auth token"
+              value={readSecretValue('authToken')}
+              onChange={(e) =>
+                setConnectionForm((prev) => ({ ...prev, secret: JSON.stringify({ authToken: e.target.value }, null, 2) }))
+              }
+              fullWidth
+              type="password"
+              helperText="Se guarda cifrado/protegido en backend; no queda en el canal ni en el nodo."
+            />
+          </Stack>
+        </Card>
+      );
+    }
+
+    if (connectionForm.connectorId === 'storage') {
+      return (
+        <Card variant="outlined" sx={{ p: 2, bgcolor: 'background.neutral' }}>
+          <Stack spacing={1.5}>
+            <Typography variant="subtitle2">Storage / Drive / archivos</Typography>
+            <TextField
+              select
+              label="Proveedor"
+              value={readConfigValue('provider') || 'internal'}
+              onChange={(e) => updateConfigValue('provider', e.target.value)}
+              fullWidth
+            >
+              {['internal', 'google-drive', 's3', 'azure-blob'].map((provider) => (
+                <MenuItem key={provider} value={provider}>
+                  {provider}
+                </MenuItem>
+              ))}
+            </TextField>
+            <TextField
+              label="Bucket, carpeta o workspace"
+              value={readConfigValue('bucket')}
+              onChange={(e) => updateConfigValue('bucket', e.target.value)}
+              fullWidth
+            />
+            <TextField
+              label="Ruta base"
+              value={readConfigValue('basePath')}
+              onChange={(e) => updateConfigValue('basePath', e.target.value)}
+              fullWidth
+            />
+          </Stack>
+        </Card>
+      );
+    }
+
+    if (connectionForm.connectorId === 'mcp') {
+      return (
+        <Card variant="outlined" sx={{ p: 2, bgcolor: 'background.neutral' }}>
+          <Stack spacing={1.5}>
+            <Typography variant="subtitle2">Servidor MCP</Typography>
+            <TextField
+              label="Servidor"
+              value={readConfigValue('server')}
+              onChange={(e) => updateConfigValue('server', e.target.value)}
+              fullWidth
+            />
+            <TextField
+              label="Runtime"
+              value={readConfigValue('runtime')}
+              onChange={(e) => updateConfigValue('runtime', e.target.value)}
+              fullWidth
+            />
+            <TextField
+              label="Token o secret"
+              value={readSecretValue('token')}
+              onChange={(e) =>
+                setConnectionForm((prev) => ({ ...prev, secret: e.target.value ? JSON.stringify({ token: e.target.value }, null, 2) : '' }))
+              }
+              fullWidth
+              type="password"
+            />
+          </Stack>
+        </Card>
+      );
+    }
+
+    if (connectionForm.connectorId === 'rest-api') {
+      return (
+        <Card variant="outlined" sx={{ p: 2, bgcolor: 'background.neutral' }}>
+          <Stack spacing={1.5}>
+            <Typography variant="subtitle2">API / Webhook reusable</Typography>
+            <TextField
+              label="Base URL"
+              value={readConfigValue('baseUrl')}
+              onChange={(e) => updateConfigValue('baseUrl', e.target.value)}
+              fullWidth
+            />
+            <TextField
+              select
+              label="Autenticacion"
+              value={readConfigValue('authType') || 'bearer'}
+              onChange={(e) => updateConfigValue('authType', e.target.value)}
+              fullWidth
+            >
+              {['none', 'bearer', 'api-key', 'basic'].map((authType) => (
+                <MenuItem key={authType} value={authType}>
+                  {authType}
+                </MenuItem>
+              ))}
+            </TextField>
+            <TextField
+              label="Token/API key"
+              value={readSecretValue('bearerToken')}
+              onChange={(e) =>
+                setConnectionForm((prev) => ({ ...prev, secret: e.target.value ? JSON.stringify({ bearerToken: e.target.value }, null, 2) : '' }))
+              }
+              fullWidth
+              type="password"
+            />
+          </Stack>
+        </Card>
+      );
+    }
+
+    return null;
   };
 
   const saveConnection = async () => {
@@ -283,7 +464,7 @@ export default function MarketplacePage() {
         <Card variant="outlined" sx={{ p: 2, mb: 3 }}>
           <Stack spacing={1.5}>
             <Box>
-              <Typography variant="h6">Integraciones listas para Brain Studio</Typography>
+              <Typography variant="h6">Integraciones listas para Workflow Studio</Typography>
               <Typography variant="body2" color="text.secondary">
                 Configura una vez y reutiliza en canales, nodos, agentes y workflows.
               </Typography>
@@ -446,16 +627,18 @@ export default function MarketplacePage() {
               onChange={(e) => setConnectionForm((prev) => ({ ...prev, connectorId: e.target.value }))}
               fullWidth
             />
+            {renderGuidedConnectionFields()}
             <TextField
-              label="Configuracion JSON"
+              label="Configuracion avanzada JSON"
               value={connectionForm.configJson}
               onChange={(e) => setConnectionForm((prev) => ({ ...prev, configJson: e.target.value }))}
               fullWidth
               multiline
               minRows={7}
+              helperText="Opcional avanzado. Los campos guiados de arriba actualizan este JSON automaticamente."
             />
             <TextField
-              label="Secret JSON o token"
+              label="Secret avanzado JSON o token"
               value={connectionForm.secret}
               onChange={(e) => setConnectionForm((prev) => ({ ...prev, secret: e.target.value }))}
               fullWidth

@@ -7,9 +7,9 @@ import type { AccountDrawerProps } from './components/account-drawer';
 // ----------------------------------------------------------------------
 
 export const _account: AccountDrawerProps['data'] = [
-  { label: 'Home', href: '/', icon: <Iconify icon="solar:home-angle-bold-duotone" /> },
+  { label: 'Inicio', href: '/', icon: <Iconify icon="solar:home-angle-bold-duotone" /> },
   {
-    label: 'Profile',
+    label: 'Perfil',
     href: '#',
     icon: (
       <SvgIcon>
@@ -26,13 +26,13 @@ export const _account: AccountDrawerProps['data'] = [
     ),
   },
   {
-    label: 'Projects',
+    label: 'Workflows',
     href: '#',
     icon: <Iconify icon="solar:notes-bold-duotone" />,
     info: '3',
   },
   {
-    label: 'Subscription',
+    label: 'Workspace',
     href: '#',
     icon: (
       <SvgIcon>
@@ -54,6 +54,6 @@ export const _account: AccountDrawerProps['data'] = [
       </SvgIcon>
     ),
   },
-  { label: 'Security', href: '#', icon: <Iconify icon="solar:shield-keyhole-bold-duotone" /> },
-  { label: 'Account settings', href: '#', icon: <Iconify icon="solar:settings-bold-duotone" /> },
+  { label: 'Seguridad', href: '#', icon: <Iconify icon="solar:shield-keyhole-bold-duotone" /> },
+  { label: 'Configuracion', href: '#', icon: <Iconify icon="solar:settings-bold-duotone" /> },
 ];

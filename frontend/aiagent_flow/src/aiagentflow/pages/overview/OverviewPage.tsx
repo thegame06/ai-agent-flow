@@ -221,7 +221,7 @@ export default function OverviewPage() {
             </Stack>
             <Stack direction="row" spacing={1} flexWrap="wrap" justifyContent="center">
               {[
-                ['Brain Studio', paths.dashboard.workflows],
+                ['Workflow Studio', paths.dashboard.workflows],
                 ['Marketplace', paths.dashboard.marketplace],
                 ['Bandeja', paths.dashboard.threads],
                 ['Canales', paths.dashboard.system.channels],
@@ -240,7 +240,7 @@ export default function OverviewPage() {
             <StatCard
               title="Agentes"
               value={metrics.totalAgents}
-              subtitle={`${metrics.publishedAgents} publicados · ${metrics.draftAgents} borradores`}
+              subtitle={`${metrics.publishedAgents} publicados ï¿½ ${metrics.draftAgents} borradores`}
               icon="mdi:robot-outline"
               gradient={`linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.primary.dark} 100%)`}
               trend={{ value: 12, label: 'vs semana anterior' }}
@@ -250,7 +250,7 @@ export default function OverviewPage() {
             <StatCard
               title="Ejecuciones de hoy"
               value={metrics.completedToday}
-              subtitle={`${metrics.runningExecutions} en ejecucion · ${metrics.failedToday} fallidas`}
+              subtitle={`${metrics.runningExecutions} en ejecucion ï¿½ ${metrics.failedToday} fallidas`}
               icon="mdi:play-circle-outline"
               gradient={`linear-gradient(135deg, ${theme.palette.info.main} 0%, ${theme.palette.info.dark} 100%)`}
               trend={{ value: 23, label: 'vs ayer' }}
@@ -419,7 +419,7 @@ export default function OverviewPage() {
                             <StatusChip status={agent.status} />
                           </Stack>
                           <Typography variant="caption" color="text.secondary">
-                            {agent.executionCount} ejecuciones · {Math.round(agent.avgDurationMs)}ms promedio · {(agent.failureRate * 100).toFixed(1)}% fallas
+                            {agent.executionCount} ejecuciones ï¿½ {Math.round(agent.avgDurationMs)}ms promedio ï¿½ {(agent.failureRate * 100).toFixed(1)}% fallas
                           </Typography>
                         </Box>
                         <Box sx={{ minWidth: 130 }}>
@@ -483,9 +483,3 @@ export default function OverviewPage() {
     </>
   );
 }
-
-
-
-
-
-

@@ -1,4 +1,4 @@
-﻿import type { RootState, AppDispatch } from 'src/aiagentflow/store';
+import type { RootState, AppDispatch } from 'src/aiagentflow/store';
 
 import { useParams } from 'react-router';
 import { useState, useEffect } from 'react';
@@ -605,7 +605,7 @@ export default function AgentDesignerPage() {
         return (
           <Stack spacing={2}>
             <Alert severity="info" variant="outlined">
-              Este es el subflujo interno del agente. En Brain Studio principal se usa como un nodo reutilizable por canal, intencion o proceso.
+              Este es el subflujo interno del agente. En Workflow Studio principal se usa como un nodo reutilizable por canal, intencion o proceso.
             </Alert>
             <AgentFlowCanvas steps={draft.steps} agentName={draft.name} />
           </Stack>
@@ -729,8 +729,3 @@ export default function AgentDesignerPage() {
     </>
   );
 }
-
-
-
-
-

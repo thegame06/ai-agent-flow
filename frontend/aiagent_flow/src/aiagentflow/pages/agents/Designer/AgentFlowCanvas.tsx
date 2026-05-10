@@ -345,7 +345,7 @@ export default function AgentFlowCanvas({ steps, agentName }: AgentFlowCanvasPro
         <Box>
           <Typography variant="subtitle1">Subflujo del agente</Typography>
           <Typography variant="caption" color="text.secondary">
-            {agentName || 'Agente'} se ejecuta como subflujo cuando un nodo del Brain Studio lo invoca.
+            {agentName || 'Agente'} se ejecuta como subflujo cuando un nodo del Workflow Studio lo invoca.
           </Typography>
         </Box>
         <Stack direction="row" spacing={0.8} sx={{ ml: 'auto', mr: 1 }} flexWrap="wrap">
@@ -408,7 +408,7 @@ export default function AgentFlowCanvas({ steps, agentName }: AgentFlowCanvasPro
               <Box>
                 <Typography variant="subtitle1">Define como trabaja el agente</Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Este subflujo describe como piensa, usa tools y valida resultados cuando Brain Studio lo llama.
+                  Este subflujo describe como piensa, usa tools y valida resultados cuando Workflow Studio lo llama.
                 </Typography>
               </Box>
               <Stack direction="row" spacing={1}>
@@ -673,7 +673,7 @@ export default function AgentFlowCanvas({ steps, agentName }: AgentFlowCanvasPro
               />
             )}
             <Alert severity="info">
-              Este subflujo define como piensa y actua el agente. El Brain Studio principal solo lo llama como nodo.
+              Este subflujo define como piensa y actua el agente. El Workflow Studio principal solo lo llama como nodo.
             </Alert>
             <Button
               color="error"

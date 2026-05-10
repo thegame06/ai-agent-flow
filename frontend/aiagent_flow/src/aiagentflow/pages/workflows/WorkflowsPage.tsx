@@ -1,5 +1,5 @@
-﻿import { Helmet } from 'react-helmet-async';
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState } from 'react';
+import { Helmet } from 'react-helmet-async';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -9,6 +9,7 @@ import Alert from '@mui/material/Alert';
 import Stack from '@mui/material/Stack';
 import Button from '@mui/material/Button';
 import Divider from '@mui/material/Divider';
+import MenuItem from '@mui/material/MenuItem';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import ToggleButton from '@mui/material/ToggleButton';
@@ -34,6 +35,34 @@ import { TOOL_ACTIVITY_TYPES, WORKFLOW_QUICKSTARTS, type WorkflowDesignType } fr
 import type { WorkflowDefinition, WorkflowStartIntent } from './types';
 
 type ActivePanel = 'none' | 'flows' | 'templates' | 'metrics' | 'executions';
+
+const SYSTEM_EVENT_OPTIONS = [
+  {
+    value: 'connect.message.received',
+    label: 'Mensaje recibido',
+    helper: 'Lo dispara un canal cuando llega un mensaje del cliente.',
+  },
+  {
+    value: 'connect.call.received',
+    label: 'Llamada recibida',
+    helper: 'Lo dispara un canal de voz o call center cuando entra una llamada.',
+  },
+  {
+    value: 'connect.campaign.triggered',
+    label: 'Campana iniciada',
+    helper: 'Lo dispara una campana saliente o una regla programada.',
+  },
+  {
+    value: 'kyc.case.updated',
+    label: 'Caso KYC actualizado',
+    helper: 'Lo dispara el modulo KYC cuando cambia la decision o requiere revision.',
+  },
+  {
+    value: 'payment.status.changed',
+    label: 'Pago actualizado',
+    helper: 'Lo dispara pagos cuando cambia el estado de una intencion de pago.',
+  },
+];
 
 const defaultStartIntents = (eventName: string): WorkflowStartIntent[] => [
   {
@@ -193,11 +222,7 @@ export default function WorkflowsPage() {
     designValidationErrors.length === 0,
   ].filter(Boolean).length;
   const setupPercent = Math.round((completedSetupSteps / 6) * 100);
-
-  useEffect(() => {
-    if (!latestWorkflow || selectedWorkflowId || editor.id || isDirty) return;
-    selectWorkflow(latestWorkflow);
-  }, [editor.id, isDirty, latestWorkflow, selectWorkflow, selectedWorkflowId]);
+  const showWorkflowLibrary = !editor.id && !selectedWorkflowId && !isDirty;
 
   const handleSelectWorkflow = (wf: WorkflowDefinition) => {
     selectWorkflow(wf);
@@ -286,7 +311,7 @@ export default function WorkflowsPage() {
   return (
     <>
       <Helmet>
-        <title>Brain Studio | {CONFIG.appName}</title>
+        <title>Workflow Studio | {CONFIG.appName}</title>
       </Helmet>
 
       <DashboardContent maxWidth="xl">
@@ -296,11 +321,105 @@ export default function WorkflowsPage() {
           </Alert>
         )}
 
+        {showWorkflowLibrary ? (
+          <Stack spacing={2.5}>
+            <Card
+              variant="outlined"
+              sx={{
+                p: 3,
+                borderRadius: 3,
+                bgcolor: 'background.paper',
+                backgroundImage:
+                  'linear-gradient(135deg, rgba(14,124,90,0.10), rgba(0,167,181,0.08))',
+              }}
+            >
+              <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={2}>
+                <Box>
+                  <Typography variant="h3">Workflow Studio</Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 720 }}>
+                    Elige un workflow existente o crea uno nuevo. Los eventos son definidos por el sistema;
+                    las intenciones que configures en el nodo Inicio se sincronizan con el enrutamiento de canal
+                    para decidir que agente o flujo debe atender cada mensaje.
+                  </Typography>
+                </Box>
+                <Stack direction="row" spacing={1} flexWrap="wrap" alignItems="flex-start">
+                  <Button variant="contained" startIcon={<Iconify icon="mingcute:add-line" />} onClick={handleCreateBlank}>
+                    Crear desde cero
+                  </Button>
+                  <Button variant="outlined" onClick={handleCreateDefault}>
+                    Base WhatsApp
+                  </Button>
+                  <Button variant="outlined" startIcon={<Iconify icon="mdi:refresh" />} onClick={loadAll}>
+                    Actualizar
+                  </Button>
+                </Stack>
+              </Stack>
+            </Card>
+
+            <Grid container spacing={2}>
+              {workflows.map((workflow) => (
+                <Grid item xs={12} md={4} key={workflow.id}>
+                  <Card
+                    variant="outlined"
+                    onClick={() => handleSelectWorkflow(workflow)}
+                    sx={{
+                      p: 2.2,
+                      height: '100%',
+                      cursor: 'pointer',
+                      borderRadius: 2.5,
+                      transition: '160ms ease',
+                      '&:hover': { borderColor: 'primary.main', boxShadow: '0 16px 42px rgba(16,35,29,0.10)' },
+                    }}
+                  >
+                    <Stack spacing={1.2}>
+                      <Stack direction="row" justifyContent="space-between" spacing={1}>
+                        <Iconify icon="mdi:source-branch" width={28} sx={{ color: 'primary.main' }} />
+                        <Chip
+                          size="small"
+                          color={workflow.status === 'Published' ? 'success' : 'default'}
+                          label={workflow.status === 'Published' ? 'Publicado' : 'Borrador'}
+                        />
+                      </Stack>
+                      <Box>
+                        <Typography variant="h6">{workflow.name}</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          Evento: {workflow.triggerEventName || 'sin evento'}
+                        </Typography>
+                      </Box>
+                      <Typography variant="body2" color="text.secondary">
+                        Actualizado: {workflow.updatedAt ? new Date(workflow.updatedAt).toLocaleString() : 'sin fecha'}
+                      </Typography>
+                      <Button size="small" variant="outlined">
+                        Abrir Studio
+                      </Button>
+                    </Stack>
+                  </Card>
+                </Grid>
+              ))}
+
+              {workflows.length === 0 && (
+                <Grid item xs={12}>
+                  <Card variant="outlined" sx={{ p: 4, textAlign: 'center', borderRadius: 3 }}>
+                    <Iconify icon="mdi:graph-outline" width={42} sx={{ color: 'primary.main', mb: 1 }} />
+                    <Typography variant="h6">No hay workflows creados</Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                      Crea tu primer flujo con un nodo Inicio, un agente y acciones de negocio.
+                    </Typography>
+                    <Button variant="contained" onClick={handleCreateBlank}>
+                      Crear workflow
+                    </Button>
+                  </Card>
+                </Grid>
+              )}
+            </Grid>
+          </Stack>
+        ) : (
+          <>
         <Card variant="outlined" sx={{ p: 2, mb: 2, borderRadius: 2 }}>
           <Stack spacing={2}>
             <Stack direction={{ xs: 'column', lg: 'row' }} justifyContent="space-between" spacing={2}>
               <Box>
-                <Typography variant="h4">Brain Studio</Typography>
+                <Typography variant="h4">Workflow Studio</Typography>
                 <Typography variant="body2" color="text.secondary">
                   {editor.name || selectedWorkflow?.name || latestWorkflow?.name || 'Selecciona o crea un flujo'}
                 </Typography>
@@ -400,12 +519,23 @@ export default function WorkflowsPage() {
                 sx={{ flex: 1 }}
               />
               <TextField
-                label="Evento"
+                select
+                label="Evento de sistema"
                 value={editor.triggerEventName}
                 onChange={(e) => setEditorField('triggerEventName', e.target.value)}
                 size="small"
                 sx={{ flex: 1 }}
-              />
+                helperText={
+                  SYSTEM_EVENT_OPTIONS.find((event) => event.value === editor.triggerEventName)?.helper ??
+                  'Evento avanzado. Usalo solo si ya existe en backend o en una integracion.'
+                }
+              >
+                {SYSTEM_EVENT_OPTIONS.map((event) => (
+                  <MenuItem key={event.value} value={event.value}>
+                    {event.label} - {event.value}
+                  </MenuItem>
+                ))}
+              </TextField>
               <Chip size="small" label={`${activities.length} nodos`} />
               <Chip
                 size="small"
@@ -479,7 +609,7 @@ export default function WorkflowsPage() {
                   <Card variant="outlined" sx={{ p: 2 }}>
                     <Typography variant="h5">{workflows.length}</Typography>
                     <Typography variant="caption" color="text.secondary">
-                      Flujos · {publishedCount} publicados
+                      Flujos � {publishedCount} publicados
                     </Typography>
                   </Card>
                 </Grid>
@@ -487,7 +617,7 @@ export default function WorkflowsPage() {
                   <Card variant="outlined" sx={{ p: 2 }}>
                     <Typography variant="h5">{activities.length}</Typography>
                     <Typography variant="caption" color="text.secondary">
-                      Nodos · {readyToPublish ? 'listo para publicar' : `${designValidationErrors.length} pendientes`}
+                      Nodos � {readyToPublish ? 'listo para publicar' : `${designValidationErrors.length} pendientes`}
                     </Typography>
                   </Card>
                 </Grid>
@@ -495,7 +625,7 @@ export default function WorkflowsPage() {
                   <Card variant="outlined" sx={{ p: 2 }}>
                     <Typography variant="h5">{executions.length}</Typography>
                     <Typography variant="caption" color="text.secondary">
-                      Ejecuciones · {failedExecutions ? `${failedExecutions} fallidas` : 'sin fallas recientes'}
+                      Ejecuciones � {failedExecutions ? `${failedExecutions} fallidas` : 'sin fallas recientes'}
                     </Typography>
                   </Card>
                 </Grid>
@@ -556,7 +686,8 @@ export default function WorkflowsPage() {
           onUpdateActivityConfig={updateActivityConfig}
           onRemoveActivityConfig={removeActivityConfig}
         />
-
+          </>
+        )}
       </DashboardContent>
 
       <AiAgentConfigDialog
@@ -574,5 +705,3 @@ export default function WorkflowsPage() {
     </>
   );
 }
-
-

@@ -896,7 +896,7 @@ export function WorkflowVisualDesigner({
   return (
     <Card variant="outlined" sx={{ p: 1.5, borderRadius: 2, boxShadow: '0 2px 10px rgba(15,23,42,0.06)' }}>
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
-        <Typography variant="subtitle1">Brain Studio</Typography>
+        <Typography variant="subtitle1">Workflow Studio</Typography>
         <Stack direction="row" spacing={1}>
           <TextField
             select
@@ -979,7 +979,7 @@ export function WorkflowVisualDesigner({
               left: '50%',
               top: '50%',
               zIndex: 4,
-              width: 360,
+              width: { xs: 'calc(100% - 32px)', sm: 440 },
               p: 2,
               transform: 'translate(-50%, -50%)',
               textAlign: 'center',
@@ -996,9 +996,19 @@ export function WorkflowVisualDesigner({
                   API, MCP, KYC o atencion humana.
                 </Typography>
               </Box>
-              <Stack direction="row" spacing={1}>
+              <Stack
+                direction={{ xs: 'column', sm: 'row' }}
+                spacing={1}
+                sx={{ width: 1 }}
+              >
                 {['ai.agent', 'connect.send_whatsapp_template', 'human.handoff'].map((type) => (
-                  <Button key={type} size="small" variant={type === 'ai.agent' ? 'contained' : 'outlined'} onClick={() => addByType(type)}>
+                  <Button
+                    key={type}
+                    size="small"
+                    variant={type === 'ai.agent' ? 'contained' : 'outlined'}
+                    onClick={() => addByType(type)}
+                    sx={{ flex: 1, minHeight: 40, whiteSpace: 'normal', lineHeight: 1.15 }}
+                  >
                     {activityTypeLabel(type)}
                   </Button>
                 ))}

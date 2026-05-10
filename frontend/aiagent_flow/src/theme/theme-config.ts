@@ -31,32 +31,32 @@ export const themeConfig: ThemeConfig = {
   direction: 'ltr',
   defaultMode: 'light',
   modeStorageKey: 'theme-mode',
-  classesPrefix: 'minimal',
+  classesPrefix: 'annonai',
   /** **************************************
    * Typography
    *************************************** */
   fontFamily: {
-    primary: 'Public Sans Variable',
-    secondary: 'Barlow',
+    primary: 'Aptos, Public Sans Variable, sans-serif',
+    secondary: 'Barlow, Aptos, sans-serif',
   },
   /** **************************************
    * Palette
    *************************************** */
   palette: {
     primary: {
-      lighter: '#C8FAD6',
-      light: '#5BE49B',
-      main: '#00A76F',
-      dark: '#007867',
-      darker: '#004B50',
+      lighter: '#DDF7EA',
+      light: '#7EDCB1',
+      main: '#0E7C5A',
+      dark: '#0A5D46',
+      darker: '#073D31',
       contrastText: '#FFFFFF',
     },
     secondary: {
-      lighter: '#EFD6FF',
-      light: '#C684FF',
-      main: '#8E33FF',
-      dark: '#5119B7',
-      darker: '#27097A',
+      lighter: '#D9FBFF',
+      light: '#7DEAF2',
+      main: '#00A7B5',
+      dark: '#007987',
+      darker: '#004E59',
       contrastText: '#FFFFFF',
     },
     info: {
@@ -92,16 +92,16 @@ export const themeConfig: ThemeConfig = {
       contrastText: '#FFFFFF',
     },
     grey: {
-      '50': '#FCFDFD',
-      '100': '#F9FAFB',
-      '200': '#F4F6F8',
-      '300': '#DFE3E8',
-      '400': '#C4CDD5',
-      '500': '#919EAB',
-      '600': '#637381',
-      '700': '#454F5B',
-      '800': '#1C252E',
-      '900': '#141A21',
+      '50': '#FBFDF9',
+      '100': '#F4F8F3',
+      '200': '#E7EEE6',
+      '300': '#D4DED1',
+      '400': '#A8B7A4',
+      '500': '#768675',
+      '600': '#566456',
+      '700': '#3D4B40',
+      '800': '#20332D',
+      '900': '#10231D',
     },
     common: { black: '#000000', white: '#FFFFFF' },
   },
