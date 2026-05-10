@@ -256,6 +256,7 @@ function WorkflowNodeCard({ data, selected }: NodeProps<Node<WorkflowNodeData>>)
 }
 
 function StartWorkflowNode({ data, selected }: NodeProps<Node<WorkflowStartNodeData>>) {
+  const sources = Array.from(new Set(data.intents.map((intent) => intent.triggerSource ?? 'message')));
   return (
     <Box
       sx={{
@@ -264,31 +265,44 @@ function StartWorkflowNode({ data, selected }: NodeProps<Node<WorkflowStartNodeD
         background: '#f0fdff',
         boxShadow: selected ? '0 0 0 2px #67e8f966' : '0 1px 2px rgba(16,24,40,0.08)',
         p: 1,
-        minWidth: 230,
+        minWidth: 250,
       }}
     >
       <Stack spacing={0.7}>
-        <Stack direction="row" alignItems="center" spacing={0.7}>
-          <Iconify icon="mdi:flag-outline" width={17} color="#00a6bd" />
-          <Typography variant="body2" sx={{ fontWeight: 800, color: '#03768a' }}>
-            Inicio
-          </Typography>
+        <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={0.7}>
+          <Stack direction="row" alignItems="center" spacing={0.7}>
+            <Iconify icon="mdi:flag-outline" width={17} color="#00a6bd" />
+            <Typography variant="body2" sx={{ fontWeight: 800, color: '#03768a' }}>
+              Inicio
+            </Typography>
+          </Stack>
+          <Chip size="small" label={`${data.intents.length} intenciones`} sx={{ height: 20 }} />
         </Stack>
         <Typography variant="caption" color="text.secondary">
           Trigger: {data.triggerEventName}
         </Typography>
+        <Stack direction="row" spacing={0.5} flexWrap="wrap">
+          {sources.map((source) => (
+            <Chip key={source} size="small" variant="outlined" label={source} sx={{ height: 20 }} />
+          ))}
+        </Stack>
         <Stack spacing={0.5}>
           {data.intents.slice(0, 3).map((intent) => (
             <Box key={intent.id} sx={{ px: 0.8, py: 0.5, borderRadius: 1, bgcolor: '#fff' }}>
               <Typography variant="caption" sx={{ fontWeight: 700 }}>
                 {intent.label}
               </Typography>
+              {(intent.examples ?? []).length > 0 && (
+                <Typography variant="caption" display="block" color="text.secondary" noWrap>
+                  Ejemplo: {intent.examples?.[0]}
+                </Typography>
+              )}
             </Box>
           ))}
         </Stack>
-        <Button size="small" variant="contained" sx={{ borderRadius: 3, bgcolor: '#00acc1' }}>
-          + Agregar Intencion
-        </Button>
+        <Typography variant="caption" color="text.secondary">
+          Click para configurar intenciones y canal.
+        </Typography>
       </Stack>
       <Handle type="source" position={Position.Right} id="next" style={{ background: '#00acc1' }} />
     </Box>
@@ -297,7 +311,7 @@ function StartWorkflowNode({ data, selected }: NodeProps<Node<WorkflowStartNodeD
 
 function AiWorkflowNode({ data, selected }: NodeProps<Node<WorkflowNodeData>>) {
   const label = String(data.label ?? 'AI Agent');
-  const model = String(data.badge ?? 'modelo pendiente');
+  const agent = String(data.badge ?? 'sin agente');
   return (
     <Box
       sx={{
@@ -328,9 +342,15 @@ function AiWorkflowNode({ data, selected }: NodeProps<Node<WorkflowNodeData>>) {
           {label}
         </Typography>
         <Typography variant="caption" color="text.secondary">
-          Agente configurado para decidir y ejecutar tools
+          Referencia un agente publicado de Agent Studio
         </Typography>
-        <Chip size="small" color="primary" variant="soft" label={model} sx={{ alignSelf: 'flex-start' }} />
+        <Chip
+          size="small"
+          color={agent === 'sin agente' ? 'warning' : 'primary'}
+          variant="soft"
+          label={agent}
+          sx={{ alignSelf: 'flex-start' }}
+        />
       </Stack>
       <Handle type="source" position={Position.Right} id="next" style={{ top: '35%' }} />
       <Handle type="source" position={Position.Right} id="success" style={{ top: '55%', background: '#16a34a' }} />
@@ -934,6 +954,53 @@ export function WorkflowVisualDesigner({
           <Background gap={18} size={1} color="#d9dee8" />
         </ReactFlow>
 
+        {activities.length === 0 && (
+          <Card
+            variant="outlined"
+            sx={{
+              position: 'absolute',
+              left: '50%',
+              top: '50%',
+              zIndex: 4,
+              width: 360,
+              p: 2,
+              transform: 'translate(-50%, -50%)',
+              textAlign: 'center',
+              bgcolor: 'rgba(255,255,255,0.96)',
+              boxShadow: '0 16px 42px rgba(15,23,42,0.12)',
+            }}
+          >
+            <Stack spacing={1.2} alignItems="center">
+              <Iconify icon="mdi:graph-outline" width={32} color="#00acc1" />
+              <Box>
+                <Typography variant="subtitle1">Construye tu flujo</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Empieza con un Agente de IA para entender la intencion y luego agrega acciones como WhatsApp,
+                  API, MCP, KYC o atencion humana.
+                </Typography>
+              </Box>
+              <Stack direction="row" spacing={1}>
+                {['ai.agent', 'connect.send_whatsapp_template', 'human.handoff'].map((type) => (
+                  <Button key={type} size="small" variant={type === 'ai.agent' ? 'contained' : 'outlined'} onClick={() => addByType(type)}>
+                    {activityTypeLabel(type)}
+                  </Button>
+                ))}
+              </Stack>
+            </Stack>
+          </Card>
+        )}
+
+        {validationErrors.length > 0 && (
+          <Chip
+            size="small"
+            color="warning"
+            icon={<Iconify icon="mdi:alert-outline" />}
+            label={`${validationErrors.length} validacion(es) pendientes`}
+            onClick={() => setShowValidation(true)}
+            sx={{ position: 'absolute', right: 18, top: 18, zIndex: 4, bgcolor: 'warning.lighter' }}
+          />
+        )}
+
         <Stack
           direction="row"
           spacing={1}
@@ -1032,6 +1099,54 @@ export function WorkflowVisualDesigner({
               Un usuario sin conocimiento tecnico solo define intenciones con nombre y ejemplos. El sistema las usa para
               mapear mensajes, botones o webhooks al evento interno.
             </Alert>
+            <Card variant="outlined" sx={{ p: 1, bgcolor: 'background.neutral' }}>
+              <Stack spacing={0.8}>
+                <Typography variant="caption" fontWeight={800}>
+                  Plantillas rapidas de intencion
+                </Typography>
+                <Stack direction="row" spacing={0.8} flexWrap="wrap">
+                  {[
+                    {
+                      label: 'Agendar cita',
+                      description: 'Cuando el cliente quiere reservar o mover una cita.',
+                      examples: ['Quiero agendar una cita', 'Necesito cambiar mi horario'],
+                    },
+                    {
+                      label: 'Consultar estado',
+                      description: 'Cuando el cliente pregunta por una solicitud, pago o tramite.',
+                      examples: ['Como va mi solicitud', 'Quiero saber el estado de mi caso'],
+                    },
+                    {
+                      label: 'Hablar con asesor',
+                      description: 'Cuando el cliente pide ayuda humana o tiene una excepcion.',
+                      examples: ['Quiero hablar con alguien', 'Necesito un asesor'],
+                    },
+                  ].map((preset) => (
+                    <Button
+                      key={preset.label}
+                      size="small"
+                      variant="outlined"
+                      onClick={() =>
+                        onUpdateStartIntents([
+                          ...startIntents,
+                          {
+                            id: `intent-${Date.now()}-${preset.label.replace(/\s+/g, '-').toLowerCase()}`,
+                            label: preset.label,
+                            description: preset.description,
+                            examples: preset.examples,
+                            eventName: triggerEventName,
+                            triggerSource: 'message',
+                            confidenceThreshold: 0.7,
+                          },
+                        ])
+                      }
+                    >
+                      {preset.label}
+                    </Button>
+                  ))}
+                </Stack>
+              </Stack>
+            </Card>
             {selectedWorkflowChannel && (
               <Alert severity="success">
                 Canal detectado: {selectedWorkflowChannel.name} ({selectedWorkflowChannel.type}). Agentes ya asignados:
@@ -1082,6 +1197,43 @@ export function WorkflowVisualDesigner({
                         onUpdateStartIntents(next);
                       }}
                     />
+                    <Grid container spacing={1}>
+                      <Grid item xs={12} sm={7}>
+                        <TextField
+                          fullWidth
+                          select
+                          label="Como se dispara"
+                          value={intent.triggerSource ?? 'message'}
+                          size="small"
+                          helperText="Esto ayuda al routing sin mostrar nombres tecnicos."
+                          onChange={(e) => {
+                            const next = [...startIntents];
+                            next[index] = { ...intent, triggerSource: e.target.value as WorkflowStartIntent['triggerSource'] };
+                            onUpdateStartIntents(next);
+                          }}
+                        >
+                          <MenuItem value="message">Mensaje del cliente</MenuItem>
+                          <MenuItem value="button">Boton o menu</MenuItem>
+                          <MenuItem value="webhook">Webhook/API</MenuItem>
+                          <MenuItem value="campaign">Campana saliente</MenuItem>
+                          <MenuItem value="voice">Llamada de voz</MenuItem>
+                        </TextField>
+                      </Grid>
+                      <Grid item xs={12} sm={5}>
+                        <TextField
+                          fullWidth
+                          label="Confianza"
+                          value={intent.confidenceThreshold ?? 0.7}
+                          size="small"
+                          helperText="0.70 recomendado"
+                          onChange={(e) => {
+                            const next = [...startIntents];
+                            next[index] = { ...intent, confidenceThreshold: Number(e.target.value) || 0.7 };
+                            onUpdateStartIntents(next);
+                          }}
+                        />
+                      </Grid>
+                    </Grid>
                     <Button
                       color="error"
                       size="small"
@@ -1105,6 +1257,8 @@ export function WorkflowVisualDesigner({
                     description: 'Describe cuando debe iniciar este flujo.',
                     examples: [],
                     eventName: triggerEventName,
+                    triggerSource: 'message',
+                    confidenceThreshold: 0.7,
                   },
                 ])
               }
@@ -1151,6 +1305,26 @@ export function WorkflowVisualDesigner({
                       No hay agentes publicados para usar en el flujo. Publica uno desde Agent Studio.
                     </Alert>
                   )}
+                  {!selectedAgent && publishedAgents.length > 0 && (
+                    <Alert severity="warning">
+                      Selecciona el agente que entendera las intenciones y ejecutara tareas. Los recomendados ya estan
+                      asignados al canal o comparten etiquetas con este flujo.
+                    </Alert>
+                  )}
+                  {!selectedAgent && visibleAgents.length > 0 && (
+                    <Stack direction="row" spacing={0.8} flexWrap="wrap">
+                      {visibleAgents.slice(0, 3).map((agent) => (
+                        <Button
+                          key={agent.id}
+                          size="small"
+                          variant={recommendedAgentIds.has(agent.id) ? 'contained' : 'outlined'}
+                          onClick={() => selectPublishedAgent(agent.id)}
+                        >
+                          Usar {agent.name}
+                        </Button>
+                      ))}
+                    </Stack>
+                  )}
                   {selectedAgent && (
                     <Box sx={{ p: 1, borderRadius: 1, border: '1px solid #bae6fd', bgcolor: '#f0f9ff' }}>
                       <Stack direction="row" spacing={0.6} alignItems="center" flexWrap="wrap">
@@ -1176,18 +1350,50 @@ export function WorkflowVisualDesigner({
                         <Chip size="small" label={`${selectedAgent.stepsCount ?? 0} pasos`} />
                         <Chip size="small" label={`${selectedAgent.toolsCount ?? 0} tools`} />
                         {selectedAgent.primaryModel && <Chip size="small" label={selectedAgent.primaryModel} />}
+                        {selectedAgent.provider && <Chip size="small" label={selectedAgent.provider} />}
                         {channelAgentIds.has(selectedAgent.id) && <Chip size="small" color="success" label="Asignado al canal" />}
                       </Stack>
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        href={paths.dashboard.agentEdit(selectedAgent.id)}
-                        sx={{ mt: 1 }}
-                      >
-                        Editar subflujo del agente
-                      </Button>
+                      <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
+                        <Button size="small" variant="outlined" href={paths.dashboard.agentEdit(selectedAgent.id)}>
+                          Editar subflujo
+                        </Button>
+                        <Button size="small" variant="outlined" onClick={() => onOpenAiConfig(selectedIndex)}>
+                          Config avanzada
+                        </Button>
+                      </Stack>
                     </Box>
                   )}
+                  <Divider />
+                  <TextField
+                    label="Que mensaje recibe el agente"
+                    size="small"
+                    value={selected.config?.input ?? selected.aiAgent?.input ?? '{{payload.content}}'}
+                    helperText="Normalmente el mensaje entrante del canal. Puedes usar variables del workflow."
+                    onChange={(e) => {
+                      onUpdateActivityConfig(selectedIndex, 'input', e.target.value);
+                      onUpdateAiAgentConfig(selectedIndex, { input: e.target.value });
+                    }}
+                  />
+                  <TextField
+                    label="Contexto adicional"
+                    size="small"
+                    value={selected.config?.context ?? selected.aiAgent?.context ?? '{{payload.channel}}'}
+                    helperText="Ejemplo: canal, cliente, producto o campana."
+                    onChange={(e) => {
+                      onUpdateActivityConfig(selectedIndex, 'context', e.target.value);
+                      onUpdateAiAgentConfig(selectedIndex, { context: e.target.value });
+                    }}
+                  />
+                  <TextField
+                    label="Guardar respuesta como"
+                    size="small"
+                    value={selected.config?.outputVariable ?? selected.aiAgent?.outputVariable ?? 'agentResult'}
+                    helperText="Nombre simple para reutilizar la respuesta en nodos posteriores."
+                    onChange={(e) => {
+                      onUpdateActivityConfig(selectedIndex, 'outputVariable', e.target.value);
+                      onUpdateAiAgentConfig(selectedIndex, { outputVariable: e.target.value });
+                    }}
+                  />
                 </Stack>
               </Card>
             )}

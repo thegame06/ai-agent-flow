@@ -50,6 +50,12 @@ export function useWorkflowEditorState(activityCatalog: WorkflowActivityCatalogE
         'connect.send_whatsapp_template': ['recipient', 'content'],
         'connect.update_inbox_status': ['messageId', 'status'],
         'connect.enqueue_campaign_message': ['recipient', 'content'],
+        'http.request': ['url'],
+        'webhook.call': ['url'],
+        'storage.write': ['path'],
+        'mcp.tool_call': ['server', 'tool'],
+        'voice.call': ['phoneNumber', 'script'],
+        'callcenter.outbound_call': ['phoneNumber', 'script'],
       } as Record<string, string[]>;
     }
 

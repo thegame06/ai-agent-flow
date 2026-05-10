@@ -226,6 +226,7 @@ export default function AgentFlowCanvas({ steps, agentName }: AgentFlowCanvasPro
   const theme = useTheme();
   const dispatch = useDispatch<AppDispatch>();
   const [selectedId, setSelectedId] = useState<string | null>(steps[0]?.id ?? null);
+  const [showTechnicalConfig, setShowTechnicalConfig] = useState(false);
   const [nodes, setNodes, onNodesChange] = useNodesState<AgentDesignerNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
 
@@ -326,6 +327,18 @@ export default function AgentFlowCanvas({ steps, agentName }: AgentFlowCanvasPro
     });
   };
 
+  const updateSelectedConfig = (key: string, value: unknown) => {
+    if (!selectedStep) return;
+    dispatch(
+      updateStep({
+        id: selectedStep.id,
+        changes: { config: { ...(selectedStep.config ?? {}), [key]: value } },
+      })
+    );
+  };
+
+  const selectedConfig = selectedStep?.config ?? {};
+
   return (
     <Card variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden' }}>
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 2, py: 1.3 }}>
@@ -335,6 +348,11 @@ export default function AgentFlowCanvas({ steps, agentName }: AgentFlowCanvasPro
             {agentName || 'Agente'} se ejecuta como subflujo cuando un nodo del Brain Studio lo invoca.
           </Typography>
         </Box>
+        <Stack direction="row" spacing={0.8} sx={{ ml: 'auto', mr: 1 }} flexWrap="wrap">
+          <Chip size="small" label={`${steps.length} pasos`} />
+          <Chip size="small" color={steps.length > 0 ? 'success' : 'warning'} label={steps.length > 0 ? 'Listo' : 'Sin pasos'} />
+          <Chip size="small" label="Subflujo reutilizable" />
+        </Stack>
         <Stack direction="row" spacing={1}>
           <Button size="small" variant="outlined" onClick={applyAutoLayout}>
             Organizar
@@ -369,6 +387,44 @@ export default function AgentFlowCanvas({ steps, agentName }: AgentFlowCanvasPro
             maskColor="rgba(255,255,255,0.72)"
           />
         </ReactFlow>
+
+        {steps.length === 0 && (
+          <Card
+            variant="outlined"
+            sx={{
+              position: 'absolute',
+              left: '50%',
+              top: '50%',
+              width: 360,
+              p: 2,
+              textAlign: 'center',
+              transform: 'translate(-50%, -50%)',
+              bgcolor: 'rgba(255,255,255,0.96)',
+              boxShadow: '0 16px 42px rgba(15,23,42,0.12)',
+            }}
+          >
+            <Stack spacing={1.2} alignItems="center">
+              <Iconify icon="mdi:brain" width={32} color={theme.palette.primary.main} />
+              <Box>
+                <Typography variant="subtitle1">Define como trabaja el agente</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Este subflujo describe como piensa, usa tools y valida resultados cuando Brain Studio lo llama.
+                </Typography>
+              </Box>
+              <Stack direction="row" spacing={1}>
+                <Button size="small" variant="contained" onClick={() => createStep('think')}>
+                  Razonar
+                </Button>
+                <Button size="small" variant="outlined" onClick={() => createStep('tool_call')}>
+                  Usar tool
+                </Button>
+                <Button size="small" variant="outlined" onClick={() => createStep('observe')}>
+                  Observar
+                </Button>
+              </Stack>
+            </Stack>
+          </Card>
+        )}
 
         <Card
           variant="outlined"
@@ -492,20 +548,130 @@ export default function AgentFlowCanvas({ steps, agentName }: AgentFlowCanvasPro
                 dispatch(updateStep({ id: selectedStep.id, changes: { description: event.target.value } }))
               }
             />
-            <TextField
-              label="Configuracion tecnica JSON"
-              multiline
-              minRows={7}
-              size="small"
-              value={JSON.stringify(selectedStep.config ?? {}, null, 2)}
-              onChange={(event) => {
-                try {
-                  dispatch(updateStep({ id: selectedStep.id, changes: { config: JSON.parse(event.target.value || '{}') } }));
-                } catch {
-                  // The drawer allows partial JSON while the user edits.
-                }
-              }}
-            />
+            <Card variant="outlined" sx={{ p: 1.2, bgcolor: 'background.neutral' }}>
+              <Stack spacing={1}>
+                <Typography variant="subtitle2">Configuracion guiada</Typography>
+                {(selectedStep.type === 'think' || selectedStep.type === 'plan') && (
+                  <>
+                    <TextField
+                      label="Instruccion para el agente"
+                      multiline
+                      minRows={3}
+                      size="small"
+                      value={String(selectedConfig.prompt ?? '')}
+                      helperText="Explica en lenguaje natural que debe analizar o planificar."
+                      onChange={(event) => updateSelectedConfig('prompt', event.target.value)}
+                    />
+                    <TextField
+                      label="Guardar resultado como"
+                      size="small"
+                      value={String(selectedConfig.outputKey ?? 'latest')}
+                      onChange={(event) => updateSelectedConfig('outputKey', event.target.value)}
+                    />
+                  </>
+                )}
+                {(selectedStep.type === 'act' || selectedStep.type === 'tool_call') && (
+                  <>
+                    <TextField
+                      label="Tool o integracion"
+                      size="small"
+                      value={String(selectedConfig.toolName ?? '')}
+                      helperText="Debe existir como tool autorizada del agente."
+                      onChange={(event) => updateSelectedConfig('toolName', event.target.value)}
+                    />
+                    <TextField
+                      label="Datos que recibe"
+                      multiline
+                      minRows={3}
+                      size="small"
+                      value={String(selectedConfig.inputTemplate ?? '{{input}}')}
+                      onChange={(event) => updateSelectedConfig('inputTemplate', event.target.value)}
+                    />
+                  </>
+                )}
+                {selectedStep.type === 'observe' && (
+                  <TextField
+                    label="Que debe validar"
+                    multiline
+                    minRows={3}
+                    size="small"
+                    value={String(selectedConfig.successCriteria ?? 'La respuesta cumple el objetivo del usuario.')}
+                    onChange={(event) => updateSelectedConfig('successCriteria', event.target.value)}
+                  />
+                )}
+                {selectedStep.type === 'decide' && (
+                  <>
+                    <TextField
+                      label="Modo de decision"
+                      select
+                      size="small"
+                      value={String(selectedConfig.mode ?? 'contains')}
+                      onChange={(event) => updateSelectedConfig('mode', event.target.value)}
+                    >
+                      <MenuItem value="contains">Contiene texto</MenuItem>
+                      <MenuItem value="equals">Es igual a</MenuItem>
+                      <MenuItem value="exists">Existe dato</MenuItem>
+                    </TextField>
+                    <TextField
+                      label="Valor esperado"
+                      size="small"
+                      value={String(selectedConfig.matchValue ?? '')}
+                      onChange={(event) => updateSelectedConfig('matchValue', event.target.value)}
+                    />
+                  </>
+                )}
+                {selectedStep.type === 'aggregate' && (
+                  <>
+                    <TextField
+                      label="Estrategia"
+                      select
+                      size="small"
+                      value={String(selectedConfig.strategy ?? 'concat')}
+                      onChange={(event) => updateSelectedConfig('strategy', event.target.value)}
+                    >
+                      <MenuItem value="concat">Unir respuestas</MenuItem>
+                      <MenuItem value="summary">Resumir</MenuItem>
+                      <MenuItem value="json">Construir JSON</MenuItem>
+                    </TextField>
+                    <TextField
+                      label="Separador"
+                      size="small"
+                      value={String(selectedConfig.separator ?? '\n---\n')}
+                      onChange={(event) => updateSelectedConfig('separator', event.target.value)}
+                    />
+                  </>
+                )}
+                {selectedStep.type === 'human_review' && (
+                  <TextField
+                    label="Motivo de revision"
+                    multiline
+                    minRows={2}
+                    size="small"
+                    value={String(selectedConfig.reason ?? '')}
+                    onChange={(event) => updateSelectedConfig('reason', event.target.value)}
+                  />
+                )}
+              </Stack>
+            </Card>
+            <Button size="small" variant="text" onClick={() => setShowTechnicalConfig((value) => !value)}>
+              {showTechnicalConfig ? 'Ocultar JSON tecnico' : 'Ver JSON tecnico'}
+            </Button>
+            {showTechnicalConfig && (
+              <TextField
+                label="Configuracion tecnica JSON"
+                multiline
+                minRows={7}
+                size="small"
+                value={JSON.stringify(selectedStep.config ?? {}, null, 2)}
+                onChange={(event) => {
+                  try {
+                    dispatch(updateStep({ id: selectedStep.id, changes: { config: JSON.parse(event.target.value || '{}') } }));
+                  } catch {
+                    // The drawer allows partial JSON while the user edits.
+                  }
+                }}
+              />
+            )}
             <Alert severity="info">
               Este subflujo define como piensa y actua el agente. El Brain Studio principal solo lo llama como nodo.
             </Alert>

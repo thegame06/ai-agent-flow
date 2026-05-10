@@ -96,6 +96,9 @@ export type WorkflowStartIntent = {
   description?: string;
   examples?: string[];
   eventName: string;
+  triggerSource?: 'message' | 'button' | 'webhook' | 'campaign' | 'voice';
+  channelType?: string;
+  confidenceThreshold?: number;
 };
 
 export type WorkflowActivityCatalogEntry = {

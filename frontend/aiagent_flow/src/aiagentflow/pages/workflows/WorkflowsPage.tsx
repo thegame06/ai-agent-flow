@@ -8,6 +8,7 @@ import Grid from '@mui/material/Grid';
 import Alert from '@mui/material/Alert';
 import Stack from '@mui/material/Stack';
 import Button from '@mui/material/Button';
+import Divider from '@mui/material/Divider';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import ToggleButton from '@mui/material/ToggleButton';
@@ -41,6 +42,8 @@ const defaultStartIntents = (eventName: string): WorkflowStartIntent[] => [
     description: 'Frases o eventos que deben iniciar este flujo.',
     examples: ['Quiero informacion', 'Necesito ayuda'],
     eventName,
+    triggerSource: 'message',
+    confidenceThreshold: 0.7,
   },
 ];
 
@@ -68,6 +71,7 @@ export default function WorkflowsPage() {
   const [designType, setDesignType] = useState<WorkflowDesignType>('workflow');
   const [activePanel, setActivePanel] = useState<ActivePanel>('none');
   const [syncingIntents, setSyncingIntents] = useState(false);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const tenantId = useTenantId();
   const {
     loading,
@@ -179,6 +183,16 @@ export default function WorkflowsPage() {
     () => activities.find((activity) => activity.type === 'ai.agent' && (activity.config?.agentId || activity.aiAgent?.agentId)),
     [activities]
   );
+  const hasAiAgentNode = activities.some((activity) => activity.type === 'ai.agent');
+  const completedSetupSteps = [
+    Boolean(editor.name?.trim()),
+    Boolean(editor.triggerEventName?.trim()),
+    startIntents.length > 0,
+    activities.length > 0,
+    hasAiAgentNode,
+    designValidationErrors.length === 0,
+  ].filter(Boolean).length;
+  const setupPercent = Math.round((completedSetupSteps / 6) * 100);
 
   useEffect(() => {
     if (!latestWorkflow || selectedWorkflowId || editor.id || isDirty) return;
@@ -229,6 +243,7 @@ export default function WorkflowsPage() {
     const channel = workflowChannel?.type?.toLowerCase();
 
     if (!sourceAgentId || !targetAgentId) {
+      setSyncMessage(null);
       setError('No se pudieron sincronizar intenciones: configura un canal con agente asignado y un nodo Agente de IA.');
       return;
     }
@@ -251,13 +266,17 @@ export default function WorkflowsPage() {
               eventName: editor.triggerEventName,
               examples: intent.examples ?? [],
               description: intent.description ?? '',
+              triggerSource: intent.triggerSource ?? 'message',
+              confidenceThreshold: intent.confidenceThreshold ?? 0.7,
             }),
             handoffPolicyJson: JSON.stringify({ source: 'brain-studio' }),
           })
         )
       );
       setError(null);
+      setSyncMessage(`${startIntents.length} intencion(es) sincronizadas con el enrutamiento del canal.`);
     } catch (err: any) {
+      setSyncMessage(null);
       setError(err?.message || 'No se pudieron sincronizar las intenciones con intent-routing.');
     } finally {
       setSyncingIntents(false);
@@ -320,6 +339,57 @@ export default function WorkflowsPage() {
                 </Button>
               </Stack>
             </Stack>
+
+            <Stack
+              direction={{ xs: 'column', md: 'row' }}
+              spacing={1}
+              alignItems={{ md: 'center' }}
+              divider={<Divider flexItem orientation="vertical" />}
+            >
+              <Stack direction="row" spacing={0.8} flexWrap="wrap">
+                <Chip size="small" color={selectedWorkflow?.status === 'Published' ? 'success' : 'default'} label={selectedWorkflow?.status === 'Published' ? 'Publicado' : 'Borrador'} />
+                <Chip size="small" color={readyToPublish ? 'success' : 'warning'} label={`${setupPercent}% configurado`} />
+                <Chip size="small" label={`${startIntents.length} intenciones`} />
+                <Chip size="small" label={workflowChannel ? `Canal: ${workflowChannel.name}` : 'Sin canal'} />
+                <Chip size="small" color={hasAiAgentNode ? 'primary' : 'default'} label={hasAiAgentNode ? 'Agente asignado' : 'Falta agente'} />
+              </Stack>
+              <Stack direction="row" spacing={1} flexWrap="wrap">
+                <Button
+                  size="small"
+                  variant="contained"
+                  onClick={() => saveWorkflow({ ...editor, designType }, designValidationErrors)}
+                  disabled={saving || !editor.id}
+                  startIcon={<Iconify icon="mdi:content-save-outline" />}
+                >
+                  {saving ? 'Guardando...' : 'Guardar'}
+                </Button>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={() => publishWorkflow(editor.id, hasSelection, designValidationErrors)}
+                  disabled={!hasSelection || designValidationErrors.length > 0}
+                  startIcon={<Iconify icon="mdi:cloud-upload-outline" />}
+                >
+                  Publicar
+                </Button>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  color="success"
+                  onClick={() => runEvent(editor.triggerEventName)}
+                  disabled={running}
+                  startIcon={<Iconify icon="mdi:play-outline" />}
+                >
+                  {running ? 'Probando...' : 'Probar'}
+                </Button>
+              </Stack>
+            </Stack>
+
+            {syncMessage && (
+              <Alert severity="success" onClose={() => setSyncMessage(null)}>
+                {syncMessage}
+              </Alert>
+            )}
 
             <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.2} alignItems={{ md: 'center' }}>
               <TextField
@@ -487,25 +557,6 @@ export default function WorkflowsPage() {
           onRemoveActivityConfig={removeActivityConfig}
         />
 
-        <Stack direction="row" spacing={1} sx={{ mt: 2 }} flexWrap="wrap">
-          <Button
-            variant="contained"
-            onClick={() => saveWorkflow({ ...editor, designType }, designValidationErrors)}
-            disabled={saving || !editor.id}
-          >
-            {saving ? 'Guardando...' : 'Guardar borrador'}
-          </Button>
-          <Button
-            variant="outlined"
-            onClick={() => publishWorkflow(editor.id, hasSelection, designValidationErrors)}
-            disabled={!hasSelection || designValidationErrors.length > 0}
-          >
-            Publicar
-          </Button>
-          <Button variant="outlined" color="success" onClick={() => runEvent(editor.triggerEventName)} disabled={running}>
-            {running ? 'Ejecutando...' : 'Ejecutar evento'}
-          </Button>
-        </Stack>
       </DashboardContent>
 
       <AiAgentConfigDialog
