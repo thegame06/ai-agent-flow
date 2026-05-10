@@ -235,14 +235,14 @@ export default function OverviewPage() {
                       boxShadow: `0 16px 36px ${alpha(theme.palette.primary.main, 0.22)}`,
                     }}
                   >
-                    jai
+                    ai
                   </Avatar>
                   <Box>
                     <Typography variant="overline" color="text.secondary">
-                      Asistente de sistema
+                      Asistente inteligente
                     </Typography>
                     <Typography variant="h3" sx={{ fontWeight: 900 }}>
-                      Jai de Annonai
+                      hola, soy annonai, tu amigo inteligente.
                     </Typography>
                   </Box>
                 </Stack>
