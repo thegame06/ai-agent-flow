@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RUN_DIR="$ROOT_DIR/.agent/run"
+COMPOSE_PROJECT="${COMPOSE_PROJECT_NAME:-aiagents}"
 
 PORTS=("${FRONTEND_PORT:-3039}" "${API_PORT:-5000}" "${QR_PORT:-3401}" "${MCP_TEST_PORT:-3501}")
 
@@ -64,13 +65,17 @@ kill_port_listeners
 if command -v docker >/dev/null 2>&1; then
   if [[ "${WIPE_DATA:-0}" == "1" ]]; then
     echo "[clean] docker compose down with volume wipe"
-    MCP_TEST_PORT=${MCP_TEST_PORT:-3501} docker compose -f "$ROOT_DIR/docker-compose.local.yml" down -v --remove-orphans || true
+    MCP_TEST_PORT=${MCP_TEST_PORT:-3501} docker compose -p "$COMPOSE_PROJECT" -f "$ROOT_DIR/docker-compose.local.yml" down -v --remove-orphans || true
     # Optional explicit local volume cleanup
-    docker volume rm -f ai-agent-flow_mongo_local_data ai-agent-flow_redis_local_data >/dev/null 2>&1 || true
+    docker volume rm -f "${COMPOSE_PROJECT}_mongo_local_data" "${COMPOSE_PROJECT}_redis_local_data" ai-agent-flow_mongo_local_data ai-agent-flow_redis_local_data >/dev/null 2>&1 || true
   else
     echo "[clean] docker compose down (keeping volumes/data)"
-    MCP_TEST_PORT=${MCP_TEST_PORT:-3501} docker compose -f "$ROOT_DIR/docker-compose.local.yml" down --remove-orphans || true
+    MCP_TEST_PORT=${MCP_TEST_PORT:-3501} docker compose -p "$COMPOSE_PROJECT" -f "$ROOT_DIR/docker-compose.local.yml" down --remove-orphans || true
   fi
+
+  # Compose can leave named containers around in mixed Windows/WSL/Git Bash setups.
+  # Remove only the managed local containers; volumes are kept unless WIPE_DATA=1.
+  docker rm -f agentflow-mcp-test agentflow-mongo-local agentflow-redis-local >/dev/null 2>&1 || true
 fi
 
 echo "[clean] final port check"

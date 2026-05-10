@@ -2,6 +2,7 @@ import { useEffect, useCallback } from 'react';
 
 import { useAppDispatch, useAppSelector } from 'src/aiagentflow/store/hooks';
 
+import { markSaved } from '../store/workflowEditorSlice';
 import { setWorkflowStepsOpen, setWorkflowRuntimeError } from '../store/workflowRuntimeSlice';
 import {
   runWorkflowEvent,
@@ -54,6 +55,7 @@ export function useWorkflowStudioRuntime(tenantId: string) {
     if (!workflow.id || !workflow.name.trim()) return;
     const result = await dispatch(saveWorkflowDraft({ tenantId, workflow }));
     if (saveWorkflowDraft.fulfilled.match(result)) {
+      dispatch(markSaved());
       await dispatch(fetchWorkflowRuntimeData(tenantId));
     }
   };

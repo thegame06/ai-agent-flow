@@ -123,7 +123,9 @@ const workflowRuntimeSlice = createSlice({
       })
       .addCase(fetchWorkflowRuntimeData.rejected, (state, action) => {
         state.loading = false;
-        state.error = action.error.message ?? 'Failed to load workflows';
+        state.error =
+          (typeof action.payload === 'string' ? action.payload : action.error.message) ??
+          'Failed to load workflows';
       })
       .addCase(saveWorkflowDraft.pending, (state) => {
         state.saving = true;
@@ -133,7 +135,9 @@ const workflowRuntimeSlice = createSlice({
       })
       .addCase(saveWorkflowDraft.rejected, (state, action) => {
         state.saving = false;
-        state.error = action.error.message ?? 'Failed to save workflow';
+        state.error =
+          (typeof action.payload === 'string' ? action.payload : action.error.message) ??
+          'Failed to save workflow';
       })
       .addCase(runWorkflowEvent.pending, (state) => {
         state.running = true;

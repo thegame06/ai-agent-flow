@@ -2,6 +2,7 @@ SHELL := /usr/bin/env bash
 
 ROOT := $(shell pwd)
 TEST_SCRIPT := $(ROOT)/scripts/test/ephemeral.sh
+DOTNET := $(shell bash $(ROOT)/scripts/resolve-dotnet.sh)
 
 .PHONY: help test-env-up test-env-down test-ephemeral test-unit test-integration test-backend test-frontend test-all quality-no-mock contract-check qa-one-shot up-local-full down-local-full clean-local-full restart-local-full refresh-local-full check-qr
 
@@ -72,7 +73,7 @@ clean-local-full:
 	@WIPE_DATA=0 bash scripts/local-full-clean.sh
 
 restart-local-full:
-	@dotnet build src/AgentFlow.Api/AgentFlow.Api.csproj -v minimal
+	@"$(DOTNET)" build src/AgentFlow.Api/AgentFlow.Api.csproj -v minimal
 	@WIPE_DATA=0 bash scripts/local-full-clean.sh
 	@bash scripts/local-full-up.sh
 

@@ -17,9 +17,28 @@ type RuntimePayload = {
   connectTemplates: any[];
 };
 
+const asArray = (value: any): any[] => {
+  if (Array.isArray(value)) return value;
+  if (Array.isArray(value?.items)) return value.items;
+  if (Array.isArray(value?.data)) return value.data;
+  if (Array.isArray(value?.workflows)) return value.workflows;
+  if (Array.isArray(value?.results)) return value.results;
+  return [];
+};
+
+const apiErrorMessage = (error: any, fallback: string) => {
+  if (typeof error === 'string') return error;
+  if (typeof error?.message === 'string') return error.message;
+  if (typeof error?.error === 'string') return error.error;
+  if (typeof error?.title === 'string') return error.title;
+  if (typeof error?.response?.data?.message === 'string') return error.response.data.message;
+  if (typeof error?.response?.data?.error === 'string') return error.response.data.error;
+  return fallback;
+};
+
 export const fetchWorkflowRuntimeData = createAsyncThunk(
   'workflowRuntime/fetchRuntimeData',
-  async (tenantId: string): Promise<RuntimePayload> => {
+  async (tenantId: string, { rejectWithValue }): Promise<RuntimePayload> => {
     const safe = async <T>(request: Promise<{ data: T }>, fallback: T) => {
       try {
         return await request;
@@ -28,7 +47,12 @@ export const fetchWorkflowRuntimeData = createAsyncThunk(
       }
     };
 
-    const wfRes = await workflowStudioApi.getDefinitions(tenantId);
+    let wfRes: { data: any };
+    try {
+      wfRes = await workflowStudioApi.getDefinitions(tenantId);
+    } catch (error: any) {
+      return rejectWithValue(apiErrorMessage(error, 'No se pudieron cargar los workflows.')) as never;
+    }
     const [exRes, metRes, auditRes, catalogRes, modelsRes, toolsRes, agentsRes, channelsRes, integrationsRes, templatesRes] =
       await Promise.all([
         safe(workflowStudioApi.getExecutions(tenantId), []),
@@ -42,20 +66,20 @@ export const fetchWorkflowRuntimeData = createAsyncThunk(
         safe(workflowStudioApi.getIntegrationStatus(tenantId), []),
         safe(workflowStudioApi.getConnectTemplates(tenantId), []),
       ]);
-    const integrations = Array.isArray(integrationsRes.data) ? integrationsRes.data : [];
+    const integrations = asArray(integrationsRes.data);
 
     return {
-      workflows: wfRes.data ?? [],
-      executions: exRes.data ?? [],
+      workflows: asArray(wfRes.data),
+      executions: asArray(exRes.data),
       metrics: metRes.data ?? null,
-      auditEvents: auditRes.data ?? [],
-      activityCatalog: catalogRes.data ?? [],
-      availableModels: Array.isArray(modelsRes.data) ? modelsRes.data : [],
-      availableTools: Array.isArray(toolsRes.data) ? toolsRes.data : [],
-      availableAgents: Array.isArray(agentsRes.data) ? agentsRes.data : [],
-      availableChannels: Array.isArray(channelsRes.data) ? channelsRes.data : [],
+      auditEvents: asArray(auditRes.data),
+      activityCatalog: asArray(catalogRes.data),
+      availableModels: asArray(modelsRes.data),
+      availableTools: asArray(toolsRes.data),
+      availableAgents: asArray(agentsRes.data),
+      availableChannels: asArray(channelsRes.data),
       integrations,
-      connectTemplates: Array.isArray(templatesRes.data) ? templatesRes.data : [],
+      connectTemplates: asArray(templatesRes.data),
     };
   }
 );
@@ -73,17 +97,26 @@ export const saveWorkflowDraft = createAsyncThunk(
       triggerEventName: string;
       definitionJson: string;
     };
-  }) => {
-    JSON.parse(workflow.definitionJson);
-    await workflowStudioApi.upsertDefinition(tenantId, workflow.id, {
-      name: workflow.name.trim(),
-      triggerEventName: workflow.triggerEventName.trim(),
-      definitionJson: workflow.definitionJson,
-      metadata: {
-        designType: (workflow as any).designType ?? 'workflow',
-      },
-    });
-    return workflow;
+  }, { rejectWithValue }) => {
+    try {
+      JSON.parse(workflow.definitionJson);
+    } catch {
+      return rejectWithValue('El JSON del workflow no es valido.');
+    }
+
+    try {
+      const response = await workflowStudioApi.upsertDefinition(tenantId, workflow.id, {
+        name: workflow.name.trim(),
+        triggerEventName: workflow.triggerEventName.trim(),
+        definitionJson: workflow.definitionJson,
+        metadata: {
+          designType: (workflow as any).designType ?? 'workflow',
+        },
+      });
+      return response.data ?? workflow;
+    } catch (error: any) {
+      return rejectWithValue(apiErrorMessage(error, 'No se pudo guardar el workflow.'));
+    }
   }
 );
 

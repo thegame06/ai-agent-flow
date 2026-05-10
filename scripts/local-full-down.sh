@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RUN_DIR="$ROOT_DIR/.agent/run"
+COMPOSE_PROJECT="${COMPOSE_PROJECT_NAME:-aiagents}"
 
 stop_pid_file() {
   local file="$1"
@@ -23,7 +24,7 @@ stop_pid_file "$RUN_DIR/qr.pid"
 
 if command -v docker >/dev/null 2>&1; then
   echo "[full-down] Stopping infra containers (keeping volumes/data)"
-  docker compose -f "$ROOT_DIR/docker-compose.local.yml" down --remove-orphans || true
+  docker compose -p "$COMPOSE_PROJECT" -f "$ROOT_DIR/docker-compose.local.yml" down --remove-orphans || true
 fi
 
 echo "[full-down] Done."
