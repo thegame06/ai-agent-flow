@@ -1,4 +1,5 @@
 using AgentFlow.Abstractions.Workflow;
+using AgentFlow.Api.Connect;
 using AgentFlow.Api.Workflow;
 using AgentFlow.Domain.Repositories;
 using AgentFlow.Extensions;
@@ -18,6 +19,7 @@ public sealed class WorkflowStudioController : ControllerBase
     private readonly IWorkflowAuditService _audit;
     private readonly IWorkflowSecurityPolicyService _policy;
     private readonly IChannelDefinitionRepository _channelRepo;
+    private readonly ITenantConnectionStore _connectionStore;
     private readonly IExtensionRegistry _extensionRegistry;
     private readonly ITenantContextAccessor _tenantContext;
 
@@ -27,6 +29,7 @@ public sealed class WorkflowStudioController : ControllerBase
         IWorkflowAuditService audit,
         IWorkflowSecurityPolicyService policy,
         IChannelDefinitionRepository channelRepo,
+        ITenantConnectionStore connectionStore,
         IExtensionRegistry extensionRegistry,
         ITenantContextAccessor tenantContext)
     {
@@ -35,6 +38,7 @@ public sealed class WorkflowStudioController : ControllerBase
         _audit = audit;
         _policy = policy;
         _channelRepo = channelRepo;
+        _connectionStore = connectionStore;
         _extensionRegistry = extensionRegistry;
         _tenantContext = tenantContext;
     }
@@ -52,6 +56,7 @@ public sealed class WorkflowStudioController : ControllerBase
         if (!CanAccessTenant(tenantId)) return Forbid();
 
         var channels = await _channelRepo.GetAllAsync(tenantId, ct);
+        var connections = await _connectionStore.GetConnectionsAsync(tenantId, ct);
         var extensionStates = await _extensionRegistry.GetTenantExtensionStatesAsync(tenantId, ct);
 
         var items = new List<object>();
@@ -88,6 +93,32 @@ public sealed class WorkflowStudioController : ControllerBase
                 secretsConfigured = true,
                 capabilities = new[] { "tool-call" },
                 detail = state.Value ? "Enabled" : "Disabled"
+            });
+        }
+
+        foreach (var connection in connections)
+        {
+            var secret = await _connectionStore.GetSecretAsync(tenantId, connection.Id, ct);
+            var capabilities = connection.Type switch
+            {
+                TenantConnectionType.Messaging => new[] { "send", "voice", "whatsapp", "sms" },
+                TenantConnectionType.Storage => new[] { "read", "write", "lookup" },
+                TenantConnectionType.Mcp => new[] { "tool-call", "discovery" },
+                TenantConnectionType.Rest => new[] { "http", "webhook" },
+                TenantConnectionType.Sheets => new[] { "read", "write", "lookup" },
+                _ => new[] { "connect" }
+            };
+
+            items.Add(new
+            {
+                key = $"connection:{connection.Id}",
+                displayName = connection.Name,
+                category = "connection",
+                enabled = true,
+                connected = secret is not null || connection.Type == TenantConnectionType.Storage,
+                secretsConfigured = secret is not null || connection.Type == TenantConnectionType.Storage,
+                capabilities,
+                detail = $"{connection.Type}:{connection.ConnectorId}"
             });
         }
 

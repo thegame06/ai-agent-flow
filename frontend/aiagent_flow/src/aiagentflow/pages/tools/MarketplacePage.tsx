@@ -8,12 +8,17 @@ import Grid from '@mui/material/Grid';
 import Stack from '@mui/material/Stack';
 import Alert from '@mui/material/Alert';
 import Button from '@mui/material/Button';
+import Dialog from '@mui/material/Dialog';
+import MenuItem from '@mui/material/MenuItem';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
+import DialogTitle from '@mui/material/DialogTitle';
 import CardContent from '@mui/material/CardContent';
+import DialogActions from '@mui/material/DialogActions';
+import DialogContent from '@mui/material/DialogContent';
 
-import axios from 'src/lib/axios';
 import { CONFIG } from 'src/global-config';
+import axios, { endpoints } from 'src/lib/axios';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
 
@@ -36,23 +41,100 @@ type Entry = {
   };
 };
 
+type TenantConnection = {
+  id: string;
+  name: string;
+  type: 'Rest' | 'Messaging' | 'Storage' | 'Mcp' | 'Sheets' | string;
+  connectorId: string;
+  config: Record<string, string>;
+  secretVersion?: number;
+  secretRotatedAt?: string;
+  secretExpiresAt?: string;
+};
+
+const QUICK_CONNECTIONS = [
+  {
+    id: 'twilio',
+    title: 'Twilio omnicanal',
+    type: 'Messaging',
+    connectorId: 'twilio',
+    icon: 'mdi:phone-in-talk-outline',
+    description: 'Una sola configuracion para voz, call center, SMS y futuros canales WhatsApp por Twilio.',
+    config: { provider: 'twilio', accountSid: '', fromPhoneNumber: '', statusCallbackUrl: '' },
+    secretHint: '{"authToken":"..."}',
+    capabilities: ['voice.call', 'callcenter.outbound_call', 'sms', 'status callbacks'],
+  },
+  {
+    id: 'rest-api',
+    title: 'API / Webhook',
+    type: 'Rest',
+    connectorId: 'rest-api',
+    icon: 'mdi:api',
+    description: 'Conexion reusable para nodos Consultar API y Llamar webhook.',
+    config: { baseUrl: '', authType: 'bearer' },
+    secretHint: '{"bearerToken":"..."}',
+    capabilities: ['http.request', 'webhook.call'],
+  },
+  {
+    id: 'storage',
+    title: 'Storage / Archivos',
+    type: 'Storage',
+    connectorId: 'storage',
+    icon: 'mdi:folder-file-outline',
+    description: 'Repositorio para archivos, Drive sincronizado, Excel y resultados de workflow.',
+    config: { provider: 'internal', bucket: 'default' },
+    secretHint: '',
+    capabilities: ['files.read', 'drive.lookup', 'storage.write'],
+  },
+  {
+    id: 'mcp',
+    title: 'MCP Tools',
+    type: 'Mcp',
+    connectorId: 'mcp',
+    icon: 'mdi:connection',
+    description: 'Publica servidores MCP para agentes y Brain Studio.',
+    config: { server: 'local-test', runtime: 'MicrosoftAgentFramework' },
+    secretHint: '{"token":"..."}',
+    capabilities: ['mcp.tool_call', 'tool discovery'],
+  },
+] as const;
+
 export default function MarketplacePage() {
   const tenantId = useTenantId();
   const [query, setQuery] = useState('');
   const [entries, setEntries] = useState<Entry[]>([]);
   const [installed, setInstalled] = useState<Record<string, boolean>>({});
+  const [connections, setConnections] = useState<TenantConnection[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [openConnection, setOpenConnection] = useState(false);
+  const [connectionForm, setConnectionForm] = useState<{
+    id: string;
+    name: string;
+    type: string;
+    connectorId: string;
+    configJson: string;
+    secret: string;
+  }>({
+    id: 'twilio-main',
+    name: 'Twilio principal',
+    type: 'Messaging',
+    connectorId: 'twilio',
+    configJson: JSON.stringify(QUICK_CONNECTIONS[0].config, null, 2),
+    secret: QUICK_CONNECTIONS[0].secretHint,
+  });
 
   const load = useCallback(async () => {
     setError(null);
     try {
-      const [catalogRes, statesRes] = await Promise.all([
+      const [catalogRes, statesRes, connectionsRes] = await Promise.all([
         axios.get('/api/v1/extensions/catalog', { params: query ? { q: query } : {} }),
         axios.get(`/api/v1/extensions/tenants/${tenantId}/states`),
+        axios.get(endpoints.agentflow.connections.list(tenantId)).catch(() => ({ data: [] })),
       ]);
 
       setEntries(catalogRes.data ?? []);
       setInstalled(statesRes.data ?? {});
+      setConnections(connectionsRes.data ?? []);
     } catch (err: any) {
       setError(err?.message || 'Error cargando marketplace');
     }
@@ -75,6 +157,49 @@ export default function MarketplacePage() {
   );
 
   const installedCount = Object.values(installed).filter(Boolean).length;
+  const configuredConnectionIds = new Set(connections.map((connection) => connection.connectorId));
+
+  const openQuickConnection = (preset: (typeof QUICK_CONNECTIONS)[number]) => {
+    setConnectionForm({
+      id: preset.id === 'twilio' ? 'twilio-main' : `${preset.id}-main`,
+      name: preset.title,
+      type: preset.type,
+      connectorId: preset.connectorId,
+      configJson: JSON.stringify(preset.config, null, 2),
+      secret: preset.secretHint,
+    });
+    setOpenConnection(true);
+  };
+
+  const saveConnection = async () => {
+    let config: Record<string, string>;
+    try {
+      config = JSON.parse(connectionForm.configJson || '{}');
+    } catch {
+      setError('La configuracion debe ser JSON valido.');
+      return;
+    }
+
+    await axios.put(endpoints.agentflow.connections.upsert(tenantId, connectionForm.id), {
+      name: connectionForm.name,
+      type: connectionForm.type,
+      connectorId: connectionForm.connectorId,
+      config,
+      allowedAgentIds: [],
+      allowedNodeIds: [],
+      allowedConnectorIds: [],
+    });
+
+    if (connectionForm.secret.trim()) {
+      await axios.post(endpoints.agentflow.connections.secret(tenantId, connectionForm.id), {
+        secret: connectionForm.secret,
+        expiresAt: null,
+      });
+    }
+
+    setOpenConnection(false);
+    await load();
+  };
 
   const install = async (extensionId: string) => {
     await axios.post(`/api/v1/extensions/tenants/${tenantId}/install`, { extensionId, enableAfterInstall: true });
@@ -123,9 +248,10 @@ export default function MarketplacePage() {
             {[
               ['Disponibles', visibleEntries.length, 'mdi:storefront-outline'],
               ['Instalados', installedCount, 'mdi:check-decagram-outline'],
+              ['Conexiones', connections.length, 'mdi:connection'],
               ['En revision', entries.filter((e) => e.metadata.isQuarantined).length, 'mdi:shield-alert-outline'],
             ].map(([label, value, icon]) => (
-              <Grid item xs={12} md={4} key={label}>
+              <Grid item xs={12} md={3} key={label}>
                 <Card variant="outlined" sx={{ p: 2 }}>
                   <Stack direction="row" spacing={1.5} alignItems="center">
                     <Iconify icon={String(icon)} width={30} sx={{ color: 'primary.main' }} />
@@ -153,6 +279,65 @@ export default function MarketplacePage() {
         </Stack>
 
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+
+        <Card variant="outlined" sx={{ p: 2, mb: 3 }}>
+          <Stack spacing={1.5}>
+            <Box>
+              <Typography variant="h6">Integraciones listas para Brain Studio</Typography>
+              <Typography variant="body2" color="text.secondary">
+                Configura una vez y reutiliza en canales, nodos, agentes y workflows.
+              </Typography>
+            </Box>
+            <Grid container spacing={2}>
+              {QUICK_CONNECTIONS.map((preset) => {
+                const configured = configuredConnectionIds.has(preset.connectorId);
+                return (
+                  <Grid item xs={12} md={3} key={preset.id}>
+                    <Card variant="outlined" sx={{ height: '100%' }}>
+                      <CardContent>
+                        <Stack spacing={1.2}>
+                          <Stack direction="row" spacing={1} alignItems="center">
+                            <Iconify icon={preset.icon} width={26} sx={{ color: 'primary.main' }} />
+                            <Box>
+                              <Typography variant="subtitle2">{preset.title}</Typography>
+                              <Chip
+                                size="small"
+                                color={configured ? 'success' : 'warning'}
+                                label={configured ? 'Configurado' : 'Pendiente'}
+                              />
+                            </Box>
+                          </Stack>
+                          <Typography variant="caption" color="text.secondary">
+                            {preset.description}
+                          </Typography>
+                          <Stack direction="row" spacing={0.5} flexWrap="wrap">
+                            {preset.capabilities.map((capability) => (
+                              <Chip key={capability} size="small" label={capability} />
+                            ))}
+                          </Stack>
+                          <Button size="small" variant={configured ? 'outlined' : 'contained'} onClick={() => openQuickConnection(preset)}>
+                            {configured ? 'Editar' : 'Configurar'}
+                          </Button>
+                        </Stack>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                );
+              })}
+            </Grid>
+            {connections.length > 0 && (
+              <Stack direction="row" spacing={0.8} flexWrap="wrap">
+                {connections.map((connection) => (
+                  <Chip
+                    key={connection.id}
+                    color={connection.secretVersion ? 'success' : 'default'}
+                    label={`${connection.name}: ${connection.type}/${connection.connectorId}`}
+                  />
+                ))}
+              </Stack>
+            )}
+          </Stack>
+        </Card>
 
         <Grid container spacing={2}>
           {visibleEntries.length === 0 && (
@@ -225,6 +410,68 @@ export default function MarketplacePage() {
           );})}
         </Grid>
       </DashboardContent>
+
+      <Dialog open={openConnection} onClose={() => setOpenConnection(false)} fullWidth maxWidth="sm">
+        <DialogTitle>Configurar integracion</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ pt: 1 }}>
+            <TextField
+              label="ID interno"
+              value={connectionForm.id}
+              onChange={(e) => setConnectionForm((prev) => ({ ...prev, id: e.target.value }))}
+              fullWidth
+            />
+            <TextField
+              label="Nombre visible"
+              value={connectionForm.name}
+              onChange={(e) => setConnectionForm((prev) => ({ ...prev, name: e.target.value }))}
+              fullWidth
+            />
+            <TextField
+              select
+              label="Tipo"
+              value={connectionForm.type}
+              onChange={(e) => setConnectionForm((prev) => ({ ...prev, type: e.target.value }))}
+              fullWidth
+            >
+              {['Messaging', 'Rest', 'Storage', 'Mcp', 'Sheets'].map((type) => (
+                <MenuItem key={type} value={type}>
+                  {type}
+                </MenuItem>
+              ))}
+            </TextField>
+            <TextField
+              label="Connector ID"
+              value={connectionForm.connectorId}
+              onChange={(e) => setConnectionForm((prev) => ({ ...prev, connectorId: e.target.value }))}
+              fullWidth
+            />
+            <TextField
+              label="Configuracion JSON"
+              value={connectionForm.configJson}
+              onChange={(e) => setConnectionForm((prev) => ({ ...prev, configJson: e.target.value }))}
+              fullWidth
+              multiline
+              minRows={7}
+            />
+            <TextField
+              label="Secret JSON o token"
+              value={connectionForm.secret}
+              onChange={(e) => setConnectionForm((prev) => ({ ...prev, secret: e.target.value }))}
+              fullWidth
+              multiline
+              minRows={3}
+              helperText='Se guarda protegido en backend. Para Twilio usa {"authToken":"..."}.'
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenConnection(false)}>Cancelar</Button>
+          <Button variant="contained" onClick={saveConnection}>
+            Guardar integracion
+          </Button>
+        </DialogActions>
+      </Dialog>
     </>
   );
 }

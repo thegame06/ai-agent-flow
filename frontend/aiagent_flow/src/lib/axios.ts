@@ -49,6 +49,13 @@ export const endpoints = {
       routingUpdate: (tenantId: string, channelId: string) => `/api/v1/tenants/${tenantId}/channels/${channelId}/routing`,
       routingPreview: (tenantId: string, channelId: string) => `/api/v1/tenants/${tenantId}/channels/${channelId}/routing/preview`,
     },
+    connections: {
+      list: (tenantId: string) => `/api/v1/tenants/${tenantId}/connections`,
+      upsert: (tenantId: string, connectionId: string) => `/api/v1/tenants/${tenantId}/connections/${connectionId}`,
+      secret: (tenantId: string, connectionId: string) => `/api/v1/tenants/${tenantId}/connections/${connectionId}/secret`,
+      health: (tenantId: string, connectionId: string) => `/api/v1/tenants/${tenantId}/connections/${connectionId}/health`,
+      resources: (tenantId: string) => `/api/v1/tenants/${tenantId}/connections/resources`,
+    },
     // Agents
     agents: {
       list: (tenantId: string) => `/api/v1/tenants/${tenantId}/agents`,

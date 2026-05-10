@@ -42,6 +42,15 @@ interface Channel {
   lastActivityAt?: string;
 }
 
+interface TenantConnection {
+  id: string;
+  name: string;
+  type: string;
+  connectorId: string;
+  config: Record<string, string>;
+  secretVersion?: number;
+}
+
 interface ChannelSession {
   id: string;
   channelId: string;
@@ -83,6 +92,7 @@ export default function ChannelsPage() {
   const [sessionMessages, setSessionMessages] = useState<SessionMessageEvidence[]>([]);
   const [sessionLoading, setSessionLoading] = useState(false);
   const [candidateAgents, setCandidateAgents] = useState<{ id: string; name: string }[]>([]);
+  const [connections, setConnections] = useState<TenantConnection[]>([]);
   const [openRouting, setOpenRouting] = useState(false);
   const [routingChannel, setRoutingChannel] = useState<Channel | null>(null);
   const [routingForm, setRoutingForm] = useState({ defaultAgentId: '', routingAgentsCsv: '', routingCapacitiesCsv: '' });
@@ -97,12 +107,17 @@ export default function ChannelsPage() {
     defaultAgentId: '',
     routingAgentsCsv: '',
     routingCapacitiesCsv: '',
+    connectionId: '',
+    provider: 'twilio',
   });
 
   const channelTypes = [
     { value: 'WhatsApp', label: 'WhatsApp', icon: 'mdi:whatsapp' },
     { value: 'WebChat', label: 'Web Chat', icon: 'mdi:web' },
     { value: 'Api', label: 'API Direct', icon: 'mdi:api' },
+    { value: 'Voice', label: 'Voz / Twilio', icon: 'mdi:phone-in-talk-outline' },
+    { value: 'CallCenter', label: 'Call Center', icon: 'mdi:account-voice' },
+    { value: 'Email', label: 'Email', icon: 'mdi:email-outline' },
     { value: 'Telegram', label: 'Telegram', icon: 'mdi:telegram' },
     { value: 'Slack', label: 'Slack', icon: 'mdi:slack' },
   ];
@@ -111,10 +126,11 @@ export default function ChannelsPage() {
     try {
       setLoading(true);
       setError(null);
-      const [channelsRes, sessionsRes, agentsRes] = await Promise.all([
+      const [channelsRes, sessionsRes, agentsRes, connectionsRes] = await Promise.all([
         axios.get(endpoints.agentflow.channels.list(TENANT_ID)),
         axios.get(`/api/v1/tenants/${TENANT_ID}/channel-sessions?limit=50`),
         axios.get(`/api/v1/tenants/${TENANT_ID}/agents`),
+        axios.get(endpoints.agentflow.connections.list(TENANT_ID)).catch(() => ({ data: [] })),
       ]);
 
       setChannels((channelsRes.data ?? []) as Channel[]);
@@ -123,6 +139,7 @@ export default function ChannelsPage() {
         .filter((a: any) => a?.id && a.status !== 'Archived')
         .map((a: any) => ({ id: a.id, name: a.name }));
       setCandidateAgents(agents);
+      setConnections((connectionsRes.data ?? []) as TenantConnection[]);
     } catch (err: any) {
       setError(err?.message || 'Error cargando canales');
     } finally {
@@ -145,6 +162,9 @@ export default function ChannelsPage() {
         RoutingAgents: form.routingAgentsCsv || '',
       };
 
+      if (form.connectionId) config.ConnectionId = form.connectionId;
+      if (form.provider) config.Provider = form.provider;
+
       if (form.authMode === 'business') {
         config.ApiToken = form.apiToken;
         config.PhoneNumberId = form.phoneNumberId;
@@ -157,7 +177,7 @@ export default function ChannelsPage() {
       });
 
       setOpenCreate(false);
-      setForm({ name: '', type: 'WhatsApp', authMode: 'qr', apiToken: '', phoneNumberId: '', defaultAgentId: '', routingAgentsCsv: '', routingCapacitiesCsv: '' });
+      setForm({ name: '', type: 'WhatsApp', authMode: 'qr', apiToken: '', phoneNumberId: '', defaultAgentId: '', routingAgentsCsv: '', routingCapacitiesCsv: '', connectionId: '', provider: 'twilio' });
       await fetchAll();
     } catch (err: any) {
       alert(err?.message || 'Error creando canal');
@@ -346,6 +366,9 @@ export default function ChannelsPage() {
   const whatsappChannels = channels.filter((channel) => channel.type === 'WhatsApp').length;
   const channelCapabilities = (channel: Channel) => {
     if (channel.type === 'WhatsApp') return ['templates', 'inbox', 'qr/auth'];
+    if (channel.type === 'Voice') return ['voice', 'twilio', 'outbound'];
+    if (channel.type === 'CallCenter') return ['campaigns', 'voice', 'handoff'];
+    if (channel.type === 'Email') return ['inbox', 'outbound'];
     if (channel.type === 'WebChat') return ['inbox', 'web widget'];
     if (channel.type === 'Api') return ['webhook', 'inbox'];
     return ['inbox'];
@@ -581,6 +604,32 @@ export default function ChannelsPage() {
                     />
                   </>
                 )}
+              </>
+            )}
+
+            {(form.type === 'Voice' || form.type === 'CallCenter') && (
+              <>
+                <Alert severity="info">
+                  Este canal usa una conexion Twilio reusable. Configurala una vez en Marketplace/Integraciones y
+                  reutilizala para voz, call center, campanas y nodos de Brain Studio.
+                </Alert>
+                <TextField
+                  select
+                  label="Conexion Twilio"
+                  value={form.connectionId}
+                  onChange={(e) => setForm((p) => ({ ...p, connectionId: e.target.value, provider: 'twilio' }))}
+                  fullWidth
+                  helperText={connections.length === 0 ? 'No hay conexiones creadas. Ve a Marketplace para crear Twilio.' : 'Se reutiliza para todos los canales de voz.'}
+                >
+                  <MenuItem value="">Detectar por provider twilio</MenuItem>
+                  {connections
+                    .filter((connection) => connection.connectorId === 'twilio' || connection.config?.provider === 'twilio' || connection.type === 'Messaging')
+                    .map((connection) => (
+                      <MenuItem key={connection.id} value={connection.id}>
+                        {connection.name} ({connection.connectorId})
+                      </MenuItem>
+                    ))}
+                </TextField>
               </>
             )}
 

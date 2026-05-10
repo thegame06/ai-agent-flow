@@ -13,6 +13,7 @@ using AgentFlow.Evaluation;
 using AgentFlow.Events;
 using AgentFlow.Extensions;
 using AgentFlow.Infrastructure.Channels.Api;
+using AgentFlow.Infrastructure.Channels.Voice;
 using AgentFlow.Infrastructure.Channels.WebChat;
 using AgentFlow.Infrastructure.Channels.WhatsApp;
 using AgentFlow.Infrastructure.Memory;
@@ -144,6 +145,8 @@ public static class DependencyInjection
         services.AddSingleton<IChannelHandler, WhatsAppChannelHandler>();
         services.AddSingleton<IChannelHandler, WebChatChannelHandler>();
         services.AddSingleton<IChannelHandler, ApiChannelHandler>();
+        services.AddSingleton<IChannelHandler, VoiceChannelHandler>();
+        services.AddSingleton<IChannelHandler, CallCenterChannelHandler>();
         services.Configure<WhatsAppOptions>(configuration.GetSection("WhatsApp"));
 
         return services;

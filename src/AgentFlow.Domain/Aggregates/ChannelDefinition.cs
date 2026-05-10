@@ -59,6 +59,8 @@ public enum ChannelType
     Telegram = 3,
     Slack = 4,
     Email = 5,
+    Voice = 6,
+    CallCenter = 7,
     Custom = 99
 }
 

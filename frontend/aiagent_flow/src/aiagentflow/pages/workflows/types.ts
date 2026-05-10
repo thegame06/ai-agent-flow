@@ -120,7 +120,7 @@ export type ToolOption = {
 export type WorkflowIntegrationStatus = {
   key: string;
   displayName: string;
-  category: 'channel' | 'extension';
+  category: 'channel' | 'connection' | 'extension';
   enabled: boolean;
   connected: boolean;
   secretsConfigured: boolean;

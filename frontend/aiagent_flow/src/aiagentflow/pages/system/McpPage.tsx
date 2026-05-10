@@ -1,4 +1,4 @@
-import { Helmet } from 'react-helmet-async';
+ï»¿import { Helmet } from 'react-helmet-async';
 import { useState, useEffect, useCallback } from 'react';
 
 import Box from '@mui/material/Box';
@@ -47,6 +47,7 @@ export default function McpPage() {
   const [selectedServer, setSelectedServer] = useState('');
   const [tools, setTools] = useState<McpTool[]>([]);
   const [selectedTool, setSelectedTool] = useState('');
+  const [allowedServersCsv, setAllowedServersCsv] = useState('');
   const [inputJson, setInputJson] = useState('{}');
   const [output, setOutput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -56,6 +57,7 @@ export default function McpPage() {
     try {
       const res = await axios.get(`/api/v1/tenants/${tenantId}/mcp/settings`);
       setSettings(res.data);
+      setAllowedServersCsv((res.data?.allowedServers ?? []).join(','));
     } catch {
       setSettings(null);
     }
@@ -119,7 +121,7 @@ export default function McpPage() {
     setError(null);
     try {
       await axios.post(`/api/v1/tenants/${tenantId}/mcp/enable`, {
-        allowedServers: selectedServer ? [selectedServer] : undefined,
+        allowedServers: allowedServersCsv.split(',').map((item) => item.trim()).filter(Boolean).length ? allowedServersCsv.split(',').map((item) => item.trim()).filter(Boolean) : (selectedServer ? [selectedServer] : undefined),
         timeoutSeconds: 20,
         retryCount: 1,
       });
@@ -131,6 +133,28 @@ export default function McpPage() {
     }
   };
 
+
+  const saveSettings = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      await axios.put(`/api/v1/tenants/${tenantId}/mcp/settings`, {
+        enabled: true,
+        runtime: 'MicrosoftAgentFramework',
+        timeoutSeconds: settings?.timeoutSeconds ?? 20,
+        retryCount: settings?.retryCount ?? 1,
+        allowedServers: allowedServersCsv
+          .split(',')
+          .map((item) => item.trim())
+          .filter(Boolean),
+      });
+      await loadSettings();
+    } catch (e: any) {
+      setError(e?.message || 'Failed to save MCP settings');
+    } finally {
+      setLoading(false);
+    }
+  };
   return (
     <>
       <Helmet>
@@ -174,7 +198,7 @@ export default function McpPage() {
               ) : undefined
             }
           >
-            MCP: <b>{settings.enabled ? 'Activo' : 'Inactivo'}</b> · Runtime: <b>{settings.runtime}</b> · Timeout: {settings.timeoutSeconds}s · Reintentos: {settings.retryCount}
+            MCP: <b>{settings.enabled ? 'Activo' : 'Inactivo'}</b> Â· Runtime: <b>{settings.runtime}</b> Â· Timeout: {settings.timeoutSeconds}s Â· Reintentos: {settings.retryCount}
           </Alert>
         )}
 
@@ -210,6 +234,18 @@ export default function McpPage() {
                     </Button>
                   </Stack>
 
+
+                  <TextField
+                    label="Servidores permitidos para este tenant"
+                    value={allowedServersCsv}
+                    onChange={(e) => setAllowedServersCsv(e.target.value)}
+                    helperText="Separados por coma. Brain Studio solo podra usar servidores permitidos."
+                    fullWidth
+                  />
+
+                  <Button variant="outlined" onClick={saveSettings} disabled={loading}>
+                    Guardar permisos MCP
+                  </Button>
                   <TextField
                     select
                     label="Herramienta"

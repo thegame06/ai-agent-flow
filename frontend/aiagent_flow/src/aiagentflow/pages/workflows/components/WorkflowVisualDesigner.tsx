@@ -671,7 +671,24 @@ export function WorkflowVisualDesigner({
     setInspectorSection(type === 'ai.agent' ? 'ia' : 'general');
   };
   const selectedIntegration = useMemo(() => {
-    if (!selected?.type.startsWith('connect.')) return null;
+    if (!selected) return null;
+    if (selected.type === 'voice.call' || selected.type === 'callcenter.outbound_call') {
+      return (
+        integrations.find((x) => x.category === 'connection' && x.detail?.toLowerCase().includes('twilio')) ??
+        integrations.find((x) => x.category === 'connection' && x.capabilities?.includes('voice')) ??
+        null
+      );
+    }
+    if (selected.type === 'mcp.tool_call') {
+      return integrations.find((x) => x.category === 'connection' && x.detail?.toLowerCase().includes('mcp')) ?? null;
+    }
+    if (['files.read', 'drive.lookup', 'storage.write'].includes(selected.type)) {
+      return integrations.find((x) => x.category === 'connection' && x.detail?.toLowerCase().includes('storage')) ?? null;
+    }
+    if (selected.type === 'http.request' || selected.type === 'webhook.call') {
+      return integrations.find((x) => x.category === 'connection' && x.detail?.toLowerCase().includes('rest')) ?? null;
+    }
+    if (!selected.type.startsWith('connect.')) return null;
     const channel = (selected.config?.channel ?? '').toLowerCase();
     if (channel) {
       const byChannel = integrations.find((x) => x.category === 'channel' && x.key === `channel:${channel}`);
