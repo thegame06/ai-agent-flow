@@ -43,6 +43,7 @@ public static class DependencyInjection
         IConfiguration configuration)
     {
         services.AddDataProtection();
+        services.AddHttpClient("workflow-runtime");
 
         services
             .AddDslEngine()

@@ -22,7 +22,15 @@ public sealed class WorkflowSecurityPolicyService : IWorkflowSecurityPolicyServi
         "ai.agent",
         "kyc.document_check",
         "kyc.review_case",
-        "payments.create_intent"
+        "payments.create_intent",
+        "http.request",
+        "webhook.call",
+        "files.read",
+        "drive.lookup",
+        "storage.write",
+        "mcp.tool_call",
+        "voice.call",
+        "callcenter.outbound_call"
     };
 
     private const int MaxActivities = 100;

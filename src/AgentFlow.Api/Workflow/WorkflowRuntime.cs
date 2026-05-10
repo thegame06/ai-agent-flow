@@ -8,7 +8,11 @@ using AgentFlow.Abstractions.Workflow;
 using AgentFlow.Api.Connect;
 using AgentFlow.Api.Controllers;
 using AgentFlow.Domain.Repositories;
+using Microsoft.AspNetCore.DataProtection;
 using MongoDB.Driver;
+using System.Net.Http.Headers;
+using System.Text;
+using System.Text.RegularExpressions;
 
 namespace AgentFlow.Api.Workflow;
 
@@ -77,6 +81,10 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
         var agentExecutor = scope.ServiceProvider.GetRequiredService<IAgentExecutor>();
         var threadRepo = scope.ServiceProvider.GetRequiredService<IConversationThreadRepository>();
         var database = scope.ServiceProvider.GetRequiredService<IMongoDatabase>();
+        var connectionStore = scope.ServiceProvider.GetRequiredService<ITenantConnectionStore>();
+        var dataProtectionProvider = scope.ServiceProvider.GetRequiredService<IDataProtectionProvider>();
+        var httpClientFactory = scope.ServiceProvider.GetService<IHttpClientFactory>();
+        var mcpGateway = scope.ServiceProvider.GetRequiredService<IMcpToolGateway>();
 
         var execution = (await store.GetExecutionsAsync(item.TenantId, 500, ct))
             .FirstOrDefault(x => x.Id == item.ExecutionId);
@@ -146,6 +154,10 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
                         agentExecutor,
                         threadRepo,
                         database,
+                        connectionStore,
+                        dataProtectionProvider,
+                        httpClientFactory,
+                        mcpGateway,
                         current,
                         execution,
                         resolvedConfig,
@@ -201,6 +213,10 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
         IAgentExecutor agentExecutor,
         IConversationThreadRepository threadRepo,
         IMongoDatabase database,
+        ITenantConnectionStore connectionStore,
+        IDataProtectionProvider dataProtectionProvider,
+        IHttpClientFactory? httpClientFactory,
+        IMcpToolGateway mcpGateway,
         WorkflowRuntimeActivity activity,
         WorkflowExecutionContract execution,
         Dictionary<string, string> resolvedConfig,
@@ -462,6 +478,84 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
             return JsonSerializer.Serialize(new { paymentId = intent.PaymentId, status = intent.Status });
         }
 
+        if (string.Equals(activity.Type, "http.request", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(activity.Type, "webhook.call", StringComparison.OrdinalIgnoreCase))
+        {
+            return await ExecuteHttpActivityAsync(
+                tenantId,
+                connectionStore,
+                dataProtectionProvider,
+                httpClientFactory,
+                activity,
+                execution,
+                resolvedConfig,
+                ct);
+        }
+
+        if (string.Equals(activity.Type, "mcp.tool_call", StringComparison.OrdinalIgnoreCase))
+        {
+            return await ExecuteMcpActivityAsync(tenantId, mcpGateway, activity, execution, resolvedConfig, ct);
+        }
+
+        if (string.Equals(activity.Type, "storage.write", StringComparison.OrdinalIgnoreCase))
+        {
+            var storage = database.GetCollection<WorkflowStorageDocument>("workflow_storage");
+            var bucket = GetConfig(resolvedConfig, "bucket", "default")!;
+            var path = GetConfig(resolvedConfig, "path");
+            if (string.IsNullOrWhiteSpace(path))
+                throw new InvalidOperationException("Activity storage.write requires config.path.");
+
+            var doc = new WorkflowStorageDocument
+            {
+                Id = $"{tenantId}:{bucket}:{path}",
+                TenantId = tenantId,
+                Bucket = bucket,
+                Path = path!,
+                Content = GetConfig(resolvedConfig, "content", string.Empty) ?? string.Empty,
+                UpdatedAt = DateTimeOffset.UtcNow,
+                UpdatedBy = execution.RequestedBy
+            };
+            await storage.ReplaceOneAsync(x => x.Id == doc.Id, doc, new ReplaceOptions { IsUpsert = true }, ct);
+            return JsonSerializer.Serialize(new { bucket, path, status = "stored" });
+        }
+
+        if (string.Equals(activity.Type, "files.read", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(activity.Type, "drive.lookup", StringComparison.OrdinalIgnoreCase))
+        {
+            var storage = database.GetCollection<WorkflowStorageDocument>("workflow_storage");
+            var path = GetConfig(resolvedConfig, "path", GetConfig(resolvedConfig, "folder", string.Empty));
+            var query = GetConfig(resolvedConfig, "query", string.Empty);
+            var bucket = GetConfig(resolvedConfig, "bucket", "default")!;
+            var filter = Builders<WorkflowStorageDocument>.Filter.Eq(x => x.TenantId, tenantId);
+            if (!string.IsNullOrWhiteSpace(path))
+                filter &= Builders<WorkflowStorageDocument>.Filter.Regex(x => x.Path, new MongoDB.Bson.BsonRegularExpression(Regex.Escape(path), "i"));
+            if (!string.IsNullOrWhiteSpace(query))
+                filter &= Builders<WorkflowStorageDocument>.Filter.Regex(x => x.Content, new MongoDB.Bson.BsonRegularExpression(Regex.Escape(query), "i"));
+
+            var docs = await storage.Find(filter).Limit(10).ToListAsync(ct);
+            return JsonSerializer.Serialize(new
+            {
+                source = GetConfig(resolvedConfig, "source", activity.Type.StartsWith("drive.", StringComparison.OrdinalIgnoreCase) ? "drive" : "storage"),
+                bucket,
+                count = docs.Count,
+                items = docs.Select(x => new { x.Path, preview = x.Content.Length > 240 ? x.Content[..240] : x.Content })
+            });
+        }
+
+        if (string.Equals(activity.Type, "voice.call", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(activity.Type, "callcenter.outbound_call", StringComparison.OrdinalIgnoreCase))
+        {
+            return await ExecuteTwilioVoiceActivityAsync(
+                tenantId,
+                connectionStore,
+                dataProtectionProvider,
+                httpClientFactory,
+                activity,
+                execution,
+                resolvedConfig,
+                ct);
+        }
+
         throw new InvalidOperationException($"Unknown activity type '{activity.Type}'.");
     }
 
@@ -472,6 +566,10 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
         IAgentExecutor agentExecutor,
         IConversationThreadRepository threadRepo,
         IMongoDatabase database,
+        ITenantConnectionStore connectionStore,
+        IDataProtectionProvider dataProtectionProvider,
+        IHttpClientFactory? httpClientFactory,
+        IMcpToolGateway mcpGateway,
         WorkflowRuntimeActivity activity,
         WorkflowExecutionContract execution,
         Dictionary<string, string> resolvedConfig,
@@ -489,7 +587,21 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
 
             try
             {
-                return await ExecuteActivityAsync(tenantId, connectStore, policy, agentExecutor, threadRepo, database, activity, execution, resolvedConfig, linked.Token);
+                return await ExecuteActivityAsync(
+                    tenantId,
+                    connectStore,
+                    policy,
+                    agentExecutor,
+                    threadRepo,
+                    database,
+                    connectionStore,
+                    dataProtectionProvider,
+                    httpClientFactory,
+                    mcpGateway,
+                    activity,
+                    execution,
+                    resolvedConfig,
+                    linked.Token);
             }
             catch (OperationCanceledException oce) when (!ct.IsCancellationRequested)
             {
@@ -513,6 +625,256 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
             return defaultValue;
 
         return value ?? defaultValue;
+    }
+
+    private static async Task<string?> ExecuteHttpActivityAsync(
+        string tenantId,
+        ITenantConnectionStore connectionStore,
+        IDataProtectionProvider dataProtectionProvider,
+        IHttpClientFactory? httpClientFactory,
+        WorkflowRuntimeActivity activity,
+        WorkflowExecutionContract execution,
+        Dictionary<string, string> resolvedConfig,
+        CancellationToken ct)
+    {
+        var url = GetConfig(resolvedConfig, "url");
+        if (string.IsNullOrWhiteSpace(url))
+            throw new InvalidOperationException($"Activity {activity.Type} requires config.url.");
+
+        var connection = await ResolveConnectionAsync(tenantId, connectionStore, resolvedConfig, "rest", ct);
+        if (connection is not null && !Uri.IsWellFormedUriString(url, UriKind.Absolute))
+        {
+            var baseUrl = GetConnectionConfig(connection.Connection, "baseUrl");
+            if (string.IsNullOrWhiteSpace(baseUrl))
+                throw new InvalidOperationException($"Connection {connection.Connection.Id} requires config.baseUrl.");
+            url = $"{baseUrl.TrimEnd('/')}/{url.TrimStart('/')}";
+        }
+
+        using var request = new HttpRequestMessage(
+            new HttpMethod(GetConfig(resolvedConfig, "method", activity.Type == "webhook.call" ? "POST" : "GET")!),
+            url);
+
+        var body = GetConfig(resolvedConfig, "body", string.Empty);
+        if (!string.IsNullOrWhiteSpace(body) && request.Method != HttpMethod.Get)
+            request.Content = new StringContent(body, Encoding.UTF8, "application/json");
+
+        if (connection is not null)
+            ApplyConnectionAuth(request, connection, dataProtectionProvider);
+
+        var http = httpClientFactory?.CreateClient("workflow-runtime") ?? new HttpClient();
+        var started = DateTimeOffset.UtcNow;
+        var response = await http.SendAsync(request, ct);
+        var responseBody = await response.Content.ReadAsStringAsync(ct);
+        var durationMs = (long)(DateTimeOffset.UtcNow - started).TotalMilliseconds;
+        if (!response.IsSuccessStatusCode)
+            throw new InvalidOperationException($"HTTP activity failed with {(int)response.StatusCode}: {responseBody}");
+
+        return JsonSerializer.Serialize(new
+        {
+            statusCode = (int)response.StatusCode,
+            durationMs,
+            body = responseBody,
+            connectionId = connection?.Connection.Id
+        });
+    }
+
+    private static async Task<string?> ExecuteMcpActivityAsync(
+        string tenantId,
+        IMcpToolGateway mcpGateway,
+        WorkflowRuntimeActivity activity,
+        WorkflowExecutionContract execution,
+        Dictionary<string, string> resolvedConfig,
+        CancellationToken ct)
+    {
+        var server = GetConfig(resolvedConfig, "server");
+        var tool = GetConfig(resolvedConfig, "tool");
+        if (string.IsNullOrWhiteSpace(server) || string.IsNullOrWhiteSpace(tool))
+            throw new InvalidOperationException("Activity mcp.tool_call requires config.server and config.tool.");
+
+        var result = await mcpGateway.ExecuteAsync(
+            server!,
+            tool!,
+            new ToolExecutionContext
+            {
+                TenantId = tenantId,
+                UserId = execution.RequestedBy,
+                ExecutionId = execution.Id,
+                StepId = activity.Id ?? activity.Name ?? activity.Type,
+                CorrelationId = execution.CorrelationId,
+                InputJson = GetConfig(resolvedConfig, "input", "{}") ?? "{}",
+                Metadata = new Dictionary<string, string>
+                {
+                    ["source"] = "workflow-runtime",
+                    ["workflowDefinitionId"] = execution.WorkflowDefinitionId
+                }
+            },
+            ct);
+
+        if (!result.IsSuccess)
+            throw new InvalidOperationException($"MCP activity failed: {result.ErrorCode} {result.ErrorMessage}");
+
+        return result.OutputJson;
+    }
+
+    private static async Task<string?> ExecuteTwilioVoiceActivityAsync(
+        string tenantId,
+        ITenantConnectionStore connectionStore,
+        IDataProtectionProvider dataProtectionProvider,
+        IHttpClientFactory? httpClientFactory,
+        WorkflowRuntimeActivity activity,
+        WorkflowExecutionContract execution,
+        Dictionary<string, string> resolvedConfig,
+        CancellationToken ct)
+    {
+        var phoneNumber = GetConfig(resolvedConfig, "phoneNumber");
+        var script = GetConfig(resolvedConfig, "script");
+        if (string.IsNullOrWhiteSpace(phoneNumber))
+            throw new InvalidOperationException($"Activity {activity.Type} requires config.phoneNumber.");
+        if (string.IsNullOrWhiteSpace(script))
+            throw new InvalidOperationException($"Activity {activity.Type} requires config.script.");
+
+        var connection = await ResolveConnectionAsync(tenantId, connectionStore, resolvedConfig, "twilio", ct)
+            ?? throw new InvalidOperationException("Twilio connection not found. Configure one tenant connection with connectorId/provider 'twilio'.");
+        var secret = ReadConnectionSecret(connection, dataProtectionProvider);
+        var accountSid = GetConnectionConfig(connection.Connection, "accountSid", secret, "accountSid", "account");
+        var authToken = GetSecretValue(secret, "authToken", "token", "secret");
+        var fromPhone = GetConnectionConfig(connection.Connection, "fromPhoneNumber", secret, "fromPhoneNumber", "senderPhoneNumber", "from");
+        var statusCallback = GetConnectionConfig(connection.Connection, "statusCallbackUrl", secret, "statusCallbackUrl", "statusCallbackURI");
+
+        if (string.IsNullOrWhiteSpace(accountSid) || string.IsNullOrWhiteSpace(authToken) || string.IsNullOrWhiteSpace(fromPhone))
+            throw new InvalidOperationException("Twilio connection requires accountSid, authToken secret and fromPhoneNumber.");
+
+        var twiml = script!.Contains("<Say", StringComparison.OrdinalIgnoreCase)
+            ? script
+            : $"<Response><Say language='es-MX' loop='1' voice='Polly.Mia'>{System.Security.SecurityElement.Escape(CleanForAudio(script))}</Say></Response>";
+
+        var form = new Dictionary<string, string>
+        {
+            ["To"] = phoneNumber!,
+            ["From"] = fromPhone!,
+            ["Twiml"] = twiml
+        };
+        if (!string.IsNullOrWhiteSpace(statusCallback))
+        {
+            form["StatusCallback"] = statusCallback!;
+            form["StatusCallbackEvent"] = "initiated ringing answered completed busy no-answer canceled";
+        }
+
+        var http = httpClientFactory?.CreateClient("workflow-runtime") ?? new HttpClient();
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"https://api.twilio.com/2010-04-01/Accounts/{accountSid}/Calls.json")
+        {
+            Content = new FormUrlEncodedContent(form)
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue(
+            "Basic",
+            Convert.ToBase64String(Encoding.ASCII.GetBytes($"{accountSid}:{authToken}")));
+
+        var response = await http.SendAsync(request, ct);
+        var body = await response.Content.ReadAsStringAsync(ct);
+        if (!response.IsSuccessStatusCode)
+            throw new InvalidOperationException($"Twilio voice call failed with {(int)response.StatusCode}: {body}");
+
+        return JsonSerializer.Serialize(new
+        {
+            provider = "twilio",
+            channel = activity.Type == "callcenter.outbound_call" ? "callcenter" : "voice",
+            phoneNumber,
+            connectionId = connection.Connection.Id,
+            body
+        });
+    }
+
+    private static async Task<ResolvedConnection?> ResolveConnectionAsync(
+        string tenantId,
+        ITenantConnectionStore connectionStore,
+        Dictionary<string, string> resolvedConfig,
+        string preferredConnector,
+        CancellationToken ct)
+    {
+        var connectionId = GetConfig(resolvedConfig, "connectionId", GetConfig(resolvedConfig, "authProfileId", string.Empty));
+        if (!string.IsNullOrWhiteSpace(connectionId))
+        {
+            var byId = await connectionStore.GetConnectionAsync(tenantId, connectionId!, ct);
+            if (byId is not null)
+                return new ResolvedConnection(byId, await connectionStore.GetSecretAsync(tenantId, byId.Id, ct));
+        }
+
+        var provider = GetConfig(resolvedConfig, "provider", preferredConnector);
+        var connections = await connectionStore.GetConnectionsAsync(tenantId, ct);
+        var match = connections.FirstOrDefault(x =>
+            string.Equals(x.ConnectorId, preferredConnector, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(x.ConnectorId, provider, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(GetConnectionConfig(x, "provider"), preferredConnector, StringComparison.OrdinalIgnoreCase) ||
+            x.Name.Contains(preferredConnector, StringComparison.OrdinalIgnoreCase));
+
+        return match is null
+            ? null
+            : new ResolvedConnection(match, await connectionStore.GetSecretAsync(tenantId, match.Id, ct));
+    }
+
+    private static void ApplyConnectionAuth(HttpRequestMessage request, ResolvedConnection connection, IDataProtectionProvider dataProtectionProvider)
+    {
+        var secret = ReadConnectionSecret(connection, dataProtectionProvider);
+        var authType = GetConnectionConfig(connection.Connection, "authType", secret, "authType");
+        if (string.Equals(authType, "basic", StringComparison.OrdinalIgnoreCase))
+        {
+            var username = GetConnectionConfig(connection.Connection, "username", secret, "username", "user");
+            var password = GetSecretValue(secret, "password", "token", "secret");
+            if (!string.IsNullOrWhiteSpace(username) && !string.IsNullOrWhiteSpace(password))
+                request.Headers.Authorization = new AuthenticationHeaderValue("Basic", Convert.ToBase64String(Encoding.ASCII.GetBytes($"{username}:{password}")));
+            return;
+        }
+
+        var token = GetSecretValue(secret, "bearerToken", "apiKey", "token", "secret");
+        if (!string.IsNullOrWhiteSpace(token))
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+    }
+
+    private static Dictionary<string, string> ReadConnectionSecret(ResolvedConnection connection, IDataProtectionProvider dataProtectionProvider)
+    {
+        if (connection.Secret is null)
+            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        var protector = dataProtectionProvider.CreateProtector("tenant-connections-secrets-v1");
+        var plain = protector.Unprotect(connection.Secret.CipherText);
+        if (plain.TrimStart().StartsWith("{", StringComparison.Ordinal))
+            return JsonSerializer.Deserialize<Dictionary<string, string>>(plain) ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["secret"] = plain };
+    }
+
+    private static string? GetConnectionConfig(TenantConnectionContract connection, string key, Dictionary<string, string>? secret = null, params string[] aliases)
+    {
+        if (connection.Config.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value))
+            return value;
+
+        foreach (var alias in aliases)
+        {
+            if (connection.Config.TryGetValue(alias, out value) && !string.IsNullOrWhiteSpace(value))
+                return value;
+        }
+
+        return secret is null ? null : GetSecretValue(secret, key, aliases);
+    }
+
+    private static string? GetSecretValue(Dictionary<string, string> secret, string key, params string[] aliases)
+    {
+        if (secret.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value))
+            return value;
+
+        foreach (var alias in aliases)
+        {
+            if (secret.TryGetValue(alias, out value) && !string.IsNullOrWhiteSpace(value))
+                return value;
+        }
+
+        return null;
+    }
+
+    private static string CleanForAudio(string text)
+    {
+        var firstLine = text.Split('\n')[0];
+        return Regex.Replace(firstLine, @"\d{3,}", match => string.Join(" ", match.Value.ToCharArray()));
     }
 
     private static string ApplyBasicDlp(string input)
@@ -618,6 +980,19 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
         [JsonPropertyName("equals")]
         public string? EqualsValue { get; init; }
         public string? NotEquals { get; init; }
+    }
+
+    private sealed record ResolvedConnection(TenantConnectionContract Connection, TenantConnectionSecretContract? Secret);
+
+    private sealed class WorkflowStorageDocument
+    {
+        public string Id { get; set; } = string.Empty;
+        public string TenantId { get; set; } = string.Empty;
+        public string Bucket { get; set; } = string.Empty;
+        public string Path { get; set; } = string.Empty;
+        public string Content { get; set; } = string.Empty;
+        public DateTimeOffset UpdatedAt { get; set; }
+        public string UpdatedBy { get; set; } = string.Empty;
     }
 
     private static bool ShouldExecute(Dictionary<string, JsonElement> payload, WorkflowCondition? condition)

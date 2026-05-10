@@ -20,16 +20,6 @@ export function validateWorkflow(
   requiredConfigByType: Record<string, string[]>
 ): string[] {
   const errors: string[] = [];
-  const designOnlyTypes = new Set([
-    'http.request',
-    'webhook.call',
-    'files.read',
-    'drive.lookup',
-    'storage.write',
-    'mcp.tool_call',
-    'voice.call',
-    'callcenter.outbound_call',
-  ]);
   if (!triggerEventName.trim()) errors.push('El evento disparador es requerido.');
   if (activities.length === 0) errors.push('Agrega al menos un nodo.');
   if (activities.length > 100) errors.push('El workflow excede el maximo de 100 nodos.');
@@ -44,10 +34,6 @@ export function validateWorkflow(
     if (!allowedTypes.includes(activity.type)) {
       errors.push(`Nodo ${step}: el tipo '${activity.type}' no esta permitido.`);
     }
-    if (designOnlyTypes.has(activity.type)) {
-      errors.push(`Nodo ${step}: '${activity.type}' requiere conectar su runtime/integracion antes de publicar.`);
-    }
-
     const timeoutMs = activity.timeoutMs ?? 30000;
     const retryCount = activity.retryCount ?? 0;
     const retryDelayMs = activity.retryDelayMs ?? 0;

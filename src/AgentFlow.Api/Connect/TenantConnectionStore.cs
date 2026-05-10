@@ -9,7 +9,10 @@ public enum TenantConnectionType
     Sql,
     NoSql,
     Rest,
-    Sheets
+    Sheets,
+    Messaging,
+    Storage,
+    Mcp
 }
 
 public enum ConnectionHealthStatus

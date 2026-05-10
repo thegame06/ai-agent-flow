@@ -169,6 +169,8 @@ public sealed class WorkflowCatalogSeeder : IHostedService
             }, cancellationToken);
         }
 
+        await SeedRuntimeIntegrationActivitiesAsync(store, cancellationToken);
+
         var events = await store.GetEventsAsync(cancellationToken);
         if (events.Count == 0)
         {
@@ -218,4 +220,136 @@ public sealed class WorkflowCatalogSeeder : IHostedService
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+    private static async Task SeedRuntimeIntegrationActivitiesAsync(IWorkflowStudioStore store, CancellationToken ct)
+    {
+        var actor = "system-seed";
+        var now = DateTimeOffset.UtcNow;
+        var activities = new[]
+        {
+            new WorkflowActivityCatalogContract
+            {
+                TypeName = "http.request",
+                DisplayName = "Consultar API",
+                Category = "Datos",
+                Description = "Consulta o envia datos a una API usando una conexion REST reutilizable.",
+                InputSchema = new Dictionary<string, string>
+                {
+                    ["url"] = "string (required)",
+                    ["method"] = "GET|POST|PUT",
+                    ["body"] = "json|string",
+                    ["connectionId"] = "string"
+                },
+                OutputSchema = new Dictionary<string, string> { ["statusCode"] = "number", ["body"] = "string" },
+                UpdatedAt = now,
+                UpdatedBy = actor
+            },
+            new WorkflowActivityCatalogContract
+            {
+                TypeName = "webhook.call",
+                DisplayName = "Llamar webhook",
+                Category = "Datos",
+                Description = "Envia un evento a un webhook externo.",
+                InputSchema = new Dictionary<string, string>
+                {
+                    ["url"] = "string (required)",
+                    ["body"] = "json|string",
+                    ["connectionId"] = "string"
+                },
+                OutputSchema = new Dictionary<string, string> { ["statusCode"] = "number", ["body"] = "string" },
+                UpdatedAt = now,
+                UpdatedBy = actor
+            },
+            new WorkflowActivityCatalogContract
+            {
+                TypeName = "files.read",
+                DisplayName = "Leer archivo",
+                Category = "Archivos",
+                Description = "Busca contenido almacenado por el workflow o sincronizado desde archivos.",
+                InputSchema = new Dictionary<string, string> { ["path"] = "string", ["query"] = "string" },
+                OutputSchema = new Dictionary<string, string> { ["count"] = "number", ["items"] = "array" },
+                UpdatedAt = now,
+                UpdatedBy = actor
+            },
+            new WorkflowActivityCatalogContract
+            {
+                TypeName = "drive.lookup",
+                DisplayName = "Buscar en Drive",
+                Category = "Archivos",
+                Description = "Busca documentos sincronizados desde Drive o storage conectado.",
+                InputSchema = new Dictionary<string, string> { ["folder"] = "string", ["query"] = "string" },
+                OutputSchema = new Dictionary<string, string> { ["count"] = "number", ["items"] = "array" },
+                UpdatedAt = now,
+                UpdatedBy = actor
+            },
+            new WorkflowActivityCatalogContract
+            {
+                TypeName = "storage.write",
+                DisplayName = "Guardar en storage",
+                Category = "Archivos",
+                Description = "Guarda informacion generada por el flujo para reutilizarla en otros pasos.",
+                InputSchema = new Dictionary<string, string>
+                {
+                    ["bucket"] = "string",
+                    ["path"] = "string (required)",
+                    ["content"] = "string"
+                },
+                OutputSchema = new Dictionary<string, string> { ["status"] = "stored" },
+                UpdatedAt = now,
+                UpdatedBy = actor
+            },
+            new WorkflowActivityCatalogContract
+            {
+                TypeName = "mcp.tool_call",
+                DisplayName = "Usar herramienta MCP",
+                Category = "MCP",
+                Description = "Ejecuta una herramienta MCP permitida para el tenant.",
+                InputSchema = new Dictionary<string, string>
+                {
+                    ["server"] = "string (required)",
+                    ["tool"] = "string (required)",
+                    ["input"] = "json|string"
+                },
+                OutputSchema = new Dictionary<string, string> { ["outputJson"] = "json" },
+                UpdatedAt = now,
+                UpdatedBy = actor
+            },
+            new WorkflowActivityCatalogContract
+            {
+                TypeName = "voice.call",
+                DisplayName = "Llamada de voz",
+                Category = "Voz",
+                Description = "Inicia una llamada de voz usando la conexion Twilio comun del tenant.",
+                InputSchema = new Dictionary<string, string>
+                {
+                    ["connectionId"] = "string",
+                    ["phoneNumber"] = "string (required)",
+                    ["script"] = "string (required)"
+                },
+                OutputSchema = new Dictionary<string, string> { ["provider"] = "twilio", ["body"] = "json" },
+                UpdatedAt = now,
+                UpdatedBy = actor
+            },
+            new WorkflowActivityCatalogContract
+            {
+                TypeName = "callcenter.outbound_call",
+                DisplayName = "Llamada call center",
+                Category = "Call Center",
+                Description = "Inicia una llamada saliente por campana o troncal usando la misma conexion Twilio.",
+                InputSchema = new Dictionary<string, string>
+                {
+                    ["campaignId"] = "string",
+                    ["connectionId"] = "string",
+                    ["phoneNumber"] = "string (required)",
+                    ["script"] = "string (required)"
+                },
+                OutputSchema = new Dictionary<string, string> { ["provider"] = "twilio", ["body"] = "json" },
+                UpdatedAt = now,
+                UpdatedBy = actor
+            }
+        };
+
+        foreach (var activity in activities)
+            await store.UpsertActivityAsync(activity, ct);
+    }
 }

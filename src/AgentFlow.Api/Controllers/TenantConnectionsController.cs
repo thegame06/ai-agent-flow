@@ -264,6 +264,9 @@ public sealed class TenantConnectionsController : ControllerBase
             TenantConnectionType.NoSql => "database",
             TenantConnectionType.Rest => "baseUrl",
             TenantConnectionType.Sheets => "spreadsheetId",
+            TenantConnectionType.Messaging => "provider",
+            TenantConnectionType.Storage => "bucket",
+            TenantConnectionType.Mcp => "server",
             _ => "endpoint"
         };
 
