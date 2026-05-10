@@ -31,6 +31,8 @@ describe('workflowRuntimeSlice', () => {
       activityCatalog: [{ typeName: 'connect.send_whatsapp_template' }],
       availableModels: [{ modelId: 'gpt-4o', displayName: 'GPT-4o' }],
       availableTools: [{ key: 'http.request', displayName: 'HTTP Request' }],
+      availableAgents: [{ id: 'agent-1', name: 'Agent', status: 'Published' }],
+      availableChannels: [{ id: 'ch-1', name: 'WhatsApp', type: 'WhatsApp', status: 'Active', config: { DefaultAgentId: 'agent-1' } }],
     };
 
     const next = reducer(
@@ -43,6 +45,8 @@ describe('workflowRuntimeSlice', () => {
     expect(next.executions).toHaveLength(1);
     expect(next.availableModels[0].modelId).toBe('gpt-4o');
     expect(next.availableTools[0].key).toBe('http.request');
+    expect(next.availableAgents[0].id).toBe('agent-1');
+    expect(next.availableChannels[0].defaultAgentId).toBe('agent-1');
   });
 
   it('sets running false and error on runWorkflowEvent.rejected', () => {

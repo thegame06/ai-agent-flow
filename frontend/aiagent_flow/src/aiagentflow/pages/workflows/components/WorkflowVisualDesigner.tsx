@@ -1368,10 +1368,129 @@ export function WorkflowVisualDesigner({
                       />
                     </Stack>
                   )}
+                  {(selected.type === 'http.request' || selected.type === 'webhook.call') && (
+                    <Stack spacing={1}>
+                      <TextField
+                        label="Sistema o endpoint"
+                        size="small"
+                        value={selected.config?.url ?? ''}
+                        helperText="URL del sistema al que se consultara."
+                        onChange={(e) => onUpdateActivityConfig(selectedIndex, 'url', e.target.value)}
+                      />
+                      <TextField
+                        label="Metodo"
+                        select
+                        size="small"
+                        value={selected.config?.method ?? 'GET'}
+                        onChange={(e) => onUpdateActivityConfig(selectedIndex, 'method', e.target.value)}
+                      >
+                        <MenuItem value="GET">Consultar informacion</MenuItem>
+                        <MenuItem value="POST">Enviar informacion</MenuItem>
+                        <MenuItem value="PUT">Actualizar informacion</MenuItem>
+                      </TextField>
+                      <TextField
+                        label="Datos a enviar"
+                        multiline
+                        minRows={3}
+                        size="small"
+                        value={selected.config?.body ?? ''}
+                        helperText="Puede usar variables como {{payload.customerId}}."
+                        onChange={(e) => onUpdateActivityConfig(selectedIndex, 'body', e.target.value)}
+                      />
+                    </Stack>
+                  )}
+                  {(selected.type === 'files.read' || selected.type === 'drive.lookup' || selected.type === 'storage.write') && (
+                    <Stack spacing={1}>
+                      <TextField
+                        label="Origen o destino"
+                        select
+                        size="small"
+                        value={selected.config?.source ?? (selected.type === 'drive.lookup' ? 'drive' : selected.type === 'storage.write' ? 'storage' : 'excel')}
+                        onChange={(e) => onUpdateActivityConfig(selectedIndex, 'source', e.target.value)}
+                      >
+                        <MenuItem value="excel">Excel</MenuItem>
+                        <MenuItem value="drive">Google Drive</MenuItem>
+                        <MenuItem value="storage">Storage</MenuItem>
+                        <MenuItem value="document">Documento</MenuItem>
+                      </TextField>
+                      <TextField
+                        label="Ruta, carpeta o bucket"
+                        size="small"
+                        value={selected.config?.path ?? selected.config?.folder ?? selected.config?.bucket ?? ''}
+                        onChange={(e) => {
+                          onUpdateActivityConfig(selectedIndex, 'path', e.target.value);
+                          onUpdateActivityConfig(selectedIndex, 'folder', e.target.value);
+                          onUpdateActivityConfig(selectedIndex, 'bucket', e.target.value);
+                        }}
+                      />
+                      <TextField
+                        label={selected.type === 'storage.write' ? 'Contenido a guardar' : 'Que buscar o leer'}
+                        multiline
+                        minRows={3}
+                        size="small"
+                        value={selected.config?.query ?? selected.config?.content ?? ''}
+                        onChange={(e) => {
+                          onUpdateActivityConfig(selectedIndex, selected.type === 'storage.write' ? 'content' : 'query', e.target.value);
+                        }}
+                      />
+                    </Stack>
+                  )}
+                  {selected.type === 'mcp.tool_call' && (
+                    <Stack spacing={1}>
+                      <TextField
+                        label="Servidor MCP"
+                        size="small"
+                        value={selected.config?.server ?? ''}
+                        helperText="Nombre del servidor MCP habilitado en Configuracion."
+                        onChange={(e) => onUpdateActivityConfig(selectedIndex, 'server', e.target.value)}
+                      />
+                      <TextField
+                        label="Herramienta"
+                        size="small"
+                        value={selected.config?.tool ?? ''}
+                        onChange={(e) => onUpdateActivityConfig(selectedIndex, 'tool', e.target.value)}
+                      />
+                      <TextField
+                        label="Entrada"
+                        multiline
+                        minRows={3}
+                        size="small"
+                        value={selected.config?.input ?? '{{payload}}'}
+                        onChange={(e) => onUpdateActivityConfig(selectedIndex, 'input', e.target.value)}
+                      />
+                    </Stack>
+                  )}
+                  {(selected.type === 'voice.call' || selected.type === 'callcenter.outbound_call') && (
+                    <Stack spacing={1}>
+                      <TextField
+                        label="Proveedor o canal de voz"
+                        size="small"
+                        value={selected.config?.provider ?? (selected.type === 'voice.call' ? 'twilio' : 'callcenter')}
+                        helperText="Ejemplo: Twilio, troncal SIP o call center."
+                        onChange={(e) => onUpdateActivityConfig(selectedIndex, 'provider', e.target.value)}
+                      />
+                      <TextField
+                        label="Telefono del cliente"
+                        size="small"
+                        value={selected.config?.phoneNumber ?? ''}
+                        onChange={(e) => onUpdateActivityConfig(selectedIndex, 'phoneNumber', e.target.value)}
+                      />
+                      <TextField
+                        label="Guion o mensaje de voz"
+                        multiline
+                        minRows={3}
+                        size="small"
+                        value={selected.config?.script ?? ''}
+                        helperText="Puede venir de una respuesta del agente: {{steps.agent.result}}."
+                        onChange={(e) => onUpdateActivityConfig(selectedIndex, 'script', e.target.value)}
+                      />
+                    </Stack>
+                  )}
                   {!selected.type.startsWith('connect.') &&
                     !selected.type.startsWith('human.') &&
                     !selected.type.startsWith('kyc.') &&
-                    !selected.type.startsWith('payments.') && (
+                    !selected.type.startsWith('payments.') &&
+                    !['http.request', 'webhook.call', 'files.read', 'drive.lookup', 'storage.write', 'mcp.tool_call', 'voice.call', 'callcenter.outbound_call'].includes(selected.type) && (
                       <Alert severity="info">
                         Este tipo de nodo aun no tiene formulario guiado. Usa Avanzado para configurar sus campos.
                       </Alert>

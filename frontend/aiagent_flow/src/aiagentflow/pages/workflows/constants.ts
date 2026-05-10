@@ -10,6 +10,14 @@ export const ALLOWED_ACTIVITY_TYPES = [
   'kyc.document_check',
   'kyc.review_case',
   'payments.create_intent',
+  'http.request',
+  'webhook.call',
+  'files.read',
+  'drive.lookup',
+  'storage.write',
+  'mcp.tool_call',
+  'voice.call',
+  'callcenter.outbound_call',
 ] as const;
 
 export const WORKFLOW_DESIGN_TYPES = ['workflow', 'tool'] as const;
@@ -34,6 +42,14 @@ export const ACTIVITY_TYPE_LABELS_ES: Record<string, string> = {
   'kyc.document_check': 'Validacion de documento KYC',
   'kyc.review_case': 'Revision humana KYC',
   'payments.create_intent': 'Crear intencion de pago',
+  'http.request': 'Consultar API',
+  'webhook.call': 'Llamar webhook',
+  'files.read': 'Leer archivo',
+  'drive.lookup': 'Buscar en Drive',
+  'storage.write': 'Guardar en storage',
+  'mcp.tool_call': 'Usar herramienta MCP',
+  'voice.call': 'Llamada de voz',
+  'callcenter.outbound_call': 'Llamada call center',
 };
 
 export const ACTIVITY_TYPE_CATEGORY_ES: Record<string, string> = {
@@ -42,6 +58,14 @@ export const ACTIVITY_TYPE_CATEGORY_ES: Record<string, string> = {
   human: 'Atencion Humana',
   kyc: 'Identidad (KYC)',
   payments: 'Pagos',
+  http: 'Datos',
+  webhook: 'Datos',
+  files: 'Archivos',
+  drive: 'Archivos',
+  storage: 'Archivos',
+  mcp: 'MCP',
+  voice: 'Voz',
+  callcenter: 'Call Center',
   other: 'Otros',
 };
 
@@ -110,6 +134,46 @@ export const ACTIVITY_TYPE_PRESETS: Record<string, Record<string, string>> = {
     amount: '{{payload.amount}}',
     currency: '{{payload.currency}}',
     reference: '{{payload.reference}}',
+  },
+  'http.request': {
+    method: 'GET',
+    url: '',
+    body: '',
+    authProfileId: '',
+  },
+  'webhook.call': {
+    url: '',
+    body: '{{payload}}',
+    authProfileId: '',
+  },
+  'files.read': {
+    source: 'excel',
+    path: '',
+    query: '{{payload.query}}',
+  },
+  'drive.lookup': {
+    folder: '',
+    query: '{{payload.query}}',
+  },
+  'storage.write': {
+    bucket: '',
+    path: '',
+    content: '{{steps.agent.result}}',
+  },
+  'mcp.tool_call': {
+    server: '',
+    tool: '',
+    input: '{{payload}}',
+  },
+  'voice.call': {
+    provider: 'twilio',
+    phoneNumber: '{{payload.phone}}',
+    script: '{{steps.agent.result}}',
+  },
+  'callcenter.outbound_call': {
+    campaignId: '{{payload.campaignId}}',
+    phoneNumber: '{{payload.phone}}',
+    script: '{{steps.agent.result}}',
   },
   'ai.agent': {
     agentId: '',

@@ -14,6 +14,7 @@ import ToggleButton from '@mui/material/ToggleButton';
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 
 import { CONFIG } from 'src/global-config';
+import axios, { endpoints } from 'src/lib/axios';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
 
@@ -66,6 +67,7 @@ export default function WorkflowsPage() {
   const [editorMode, setEditorMode] = useState<'builder' | 'advanced'>('builder');
   const [designType, setDesignType] = useState<WorkflowDesignType>('workflow');
   const [activePanel, setActivePanel] = useState<ActivePanel>('none');
+  const [syncingIntents, setSyncingIntents] = useState(false);
   const tenantId = useTenantId();
   const {
     loading,
@@ -157,6 +159,26 @@ export default function WorkflowsPage() {
     () => readStartIntents(editor.definitionJson, editor.triggerEventName),
     [editor.definitionJson, editor.triggerEventName]
   );
+  const workflowChannel = useMemo(() => {
+    const context = [
+      editor.triggerEventName,
+      ...startIntents.flatMap((intent) => [intent.label, intent.description, intent.eventName, ...(intent.examples ?? [])]),
+    ]
+      .join(' ')
+      .toLowerCase();
+    const activeChannels = availableChannels.filter((channel) => channel.status === 'Active');
+    return (
+      activeChannels.find((channel) => context.includes(channel.type.toLowerCase())) ??
+      activeChannels.find((channel) => context.includes(channel.name.toLowerCase())) ??
+      activeChannels[0] ??
+      availableChannels[0] ??
+      null
+    );
+  }, [availableChannels, editor.triggerEventName, startIntents]);
+  const firstAgentNode = useMemo(
+    () => activities.find((activity) => activity.type === 'ai.agent' && (activity.config?.agentId || activity.aiAgent?.agentId)),
+    [activities]
+  );
 
   useEffect(() => {
     if (!latestWorkflow || selectedWorkflowId || editor.id || isDirty) return;
@@ -199,6 +221,47 @@ export default function WorkflowsPage() {
         intents.map((intent) => ({ ...intent, eventName: editor.triggerEventName }))
       )
     );
+  };
+
+  const syncIntentsToRouting = async () => {
+    const sourceAgentId = workflowChannel?.defaultAgentId || workflowChannel?.routingAgents?.[0] || '';
+    const targetAgentId = firstAgentNode?.config?.agentId || firstAgentNode?.aiAgent?.agentId || sourceAgentId;
+    const channel = workflowChannel?.type?.toLowerCase();
+
+    if (!sourceAgentId || !targetAgentId) {
+      setError('No se pudieron sincronizar intenciones: configura un canal con agente asignado y un nodo Agente de IA.');
+      return;
+    }
+
+    try {
+      setSyncingIntents(true);
+      await Promise.all(
+        startIntents.map((intent, index) =>
+          axios.post(endpoints.agentflow.intentRouting.rules(tenantId), {
+            id: `brain-${editor.id || 'draft'}-${intent.id}`,
+            intentKey: intent.label || intent.id,
+            sourceAgentId,
+            targetAgentId,
+            priority: 100 + index,
+            enabled: true,
+            channel,
+            conditionsJson: JSON.stringify({
+              workflowId: editor.id,
+              workflowName: editor.name,
+              eventName: editor.triggerEventName,
+              examples: intent.examples ?? [],
+              description: intent.description ?? '',
+            }),
+            handoffPolicyJson: JSON.stringify({ source: 'brain-studio' }),
+          })
+        )
+      );
+      setError(null);
+    } catch (err: any) {
+      setError(err?.message || 'No se pudieron sincronizar las intenciones con intent-routing.');
+    } finally {
+      setSyncingIntents(false);
+    }
   };
 
   return (
@@ -279,6 +342,16 @@ export default function WorkflowsPage() {
                 color={readyToPublish ? 'success' : 'warning'}
                 label={readyToPublish ? 'Listo' : `${designValidationErrors.length} validaciones`}
               />
+              <Button
+                size="small"
+                variant="outlined"
+                color="info"
+                onClick={syncIntentsToRouting}
+                disabled={syncingIntents || startIntents.length === 0}
+                startIcon={<Iconify icon="mdi:source-branch-sync" />}
+              >
+                {syncingIntents ? 'Sincronizando...' : 'Sincronizar intenciones'}
+              </Button>
               <ToggleButtonGroup
                 value={editorMode}
                 exclusive

@@ -16,6 +16,10 @@ vi.mock('../../services/workflowStudioApi', () => ({
     getCatalogActivities: vi.fn(),
     getModels: vi.fn(),
     getTools: vi.fn(),
+    getAgents: vi.fn(),
+    getChannels: vi.fn(),
+    getIntegrationStatus: vi.fn(),
+    getConnectTemplates: vi.fn(),
     upsertDefinition: vi.fn(),
   },
 }));
@@ -33,6 +37,10 @@ describe('workflowThunks', () => {
     vi.mocked(workflowStudioApi.getCatalogActivities).mockResolvedValue({ data: [{ typeName: 'x' }] } as any);
     vi.mocked(workflowStudioApi.getModels).mockResolvedValue({ data: [{ modelId: 'gpt-4o' }] } as any);
     vi.mocked(workflowStudioApi.getTools).mockResolvedValue({ data: [{ key: 'http.request' }] } as any);
+    vi.mocked(workflowStudioApi.getAgents).mockResolvedValue({ data: [{ id: 'agent-1', name: 'Agent', status: 'Published' }] } as any);
+    vi.mocked(workflowStudioApi.getChannels).mockResolvedValue({ data: [{ id: 'ch-1', name: 'WhatsApp', type: 'WhatsApp', status: 'Active', config: {} }] } as any);
+    vi.mocked(workflowStudioApi.getIntegrationStatus).mockResolvedValue({ data: [] } as any);
+    vi.mocked(workflowStudioApi.getConnectTemplates).mockResolvedValue({ data: [] } as any);
 
     const dispatch = vi.fn();
     const getState = vi.fn();
@@ -44,6 +52,8 @@ describe('workflowThunks', () => {
     expect(result.payload.executions).toHaveLength(1);
     expect(result.payload.availableModels).toHaveLength(1);
     expect(result.payload.availableTools).toHaveLength(1);
+    expect(result.payload.availableAgents).toHaveLength(1);
+    expect(result.payload.availableChannels).toHaveLength(1);
   });
 
   it('saveWorkflowDraft rejects invalid JSON', async () => {
