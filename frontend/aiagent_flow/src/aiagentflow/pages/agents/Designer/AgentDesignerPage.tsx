@@ -640,7 +640,7 @@ export default function AgentDesignerPage() {
   return (
     <>
       <Helmet>
-        <title>{draft.name || 'New Agent'} â€” Designer | {CONFIG.appName}</title>
+        <title>{draft.name || 'New Agent'} - Designer | {CONFIG.appName}</title>
       </Helmet>
 
       <DashboardContent maxWidth="lg">

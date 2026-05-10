@@ -174,6 +174,9 @@ export const endpoints = {
       agents: (tenantId: string) => `/api/v1/tenants/${tenantId}/intent-routing/agents`,
       agentById: (tenantId: string, agentId: string) => `/api/v1/tenants/${tenantId}/intent-routing/agents/${agentId}`,
     },
+    systemOrchestrator: {
+      status: (tenantId: string) => `/api/v1/tenants/${tenantId}/system-orchestrator/status`,
+    },
     // System
     health: '/health',
   },

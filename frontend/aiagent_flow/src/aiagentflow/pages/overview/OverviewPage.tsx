@@ -1,6 +1,6 @@
 import type { RootState, AppDispatch } from 'src/aiagentflow/store';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { useDispatch, useSelector } from 'react-redux';
 
@@ -27,12 +27,27 @@ import { paths } from 'src/routes/paths';
 import { RouterLink } from 'src/routes/components';
 
 import { CONFIG } from 'src/global-config';
+import axios, { endpoints } from 'src/lib/axios';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
 
 import { Iconify } from 'src/components/iconify';
 
 import { fetchOverview } from './overviewSlice';
+
+type SystemOrchestratorStatus = {
+  systemAgent?: {
+    name: string;
+    description: string;
+    locked: boolean;
+    capabilities: string[];
+  };
+  gaps?: string[];
+  workflows?: unknown[];
+  channels?: unknown[];
+  connections?: Array<{ ready: boolean }>;
+  events?: unknown[];
+};
 
 // ─── Stat Card ───────────────────────────────────────────────────────────
 interface StatCardProps {
@@ -188,7 +203,7 @@ export default function OverviewPage() {
                 Inicio
               </Typography>
               <Typography variant="h3" sx={{ fontWeight: 800 }}>
-                Jelou, Bladimir
+                Annonai
               </Typography>
               <Typography variant="body2" color="text.secondary">
                 Construye flujos, conecta canales y revisa la operacion desde un solo lugar.

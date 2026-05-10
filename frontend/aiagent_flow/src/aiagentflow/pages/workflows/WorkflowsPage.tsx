@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
 import { Helmet } from 'react-helmet-async';
+import { useMemo, useState, useEffect } from 'react';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -35,6 +35,23 @@ import { TOOL_ACTIVITY_TYPES, WORKFLOW_QUICKSTARTS, type WorkflowDesignType } fr
 import type { WorkflowDefinition, WorkflowStartIntent } from './types';
 
 type ActivePanel = 'none' | 'flows' | 'templates' | 'metrics' | 'executions';
+
+type SystemOrchestratorStatus = {
+  systemAgent: {
+    id: string;
+    name: string;
+    description: string;
+    locked: boolean;
+    configurableBy: string;
+    capabilities: string[];
+  };
+  events: Array<{ eventName: string; displayName: string; entity: string; description: string }>;
+  workflows: Array<{ id: string; name: string; readiness: string; intentLabels: string[]; syncedRoutingRules: number }>;
+  channels: Array<{ id: string; name: string; type: string; status: string; systemEvent: string; defaultAgentId?: string | null }>;
+  connections: Array<{ id: string; name: string; type: string; connectorId: string; ready: boolean; capabilities: string[] }>;
+  agentRegistry: Array<{ agentId: string; agentType: string; enabled: boolean }>;
+  gaps: string[];
+};
 
 const SYSTEM_EVENT_OPTIONS = [
   {
@@ -101,6 +118,7 @@ export default function WorkflowsPage() {
   const [activePanel, setActivePanel] = useState<ActivePanel>('none');
   const [syncingIntents, setSyncingIntents] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [orchestratorStatus, setOrchestratorStatus] = useState<SystemOrchestratorStatus | null>(null);
   const tenantId = useTenantId();
   const {
     loading,
@@ -223,6 +241,22 @@ export default function WorkflowsPage() {
   ].filter(Boolean).length;
   const setupPercent = Math.round((completedSetupSteps / 6) * 100);
   const showWorkflowLibrary = !editor.id && !selectedWorkflowId && !isDirty;
+
+  useEffect(() => {
+    let active = true;
+    axios
+      .get(endpoints.agentflow.systemOrchestrator.status(tenantId))
+      .then((res) => {
+        if (active) setOrchestratorStatus(res.data as SystemOrchestratorStatus);
+      })
+      .catch(() => {
+        if (active) setOrchestratorStatus(null);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [tenantId, workflows.length, availableChannels.length, integrations.length]);
 
   const handleSelectWorkflow = (wf: WorkflowDefinition) => {
     selectWorkflow(wf);
@@ -353,6 +387,70 @@ export default function WorkflowsPage() {
                     Actualizar
                   </Button>
                 </Stack>
+              </Stack>
+            </Card>
+
+            <Card variant="outlined" sx={{ p: 2.2, borderRadius: 2.5 }}>
+              <Stack spacing={1.5}>
+                <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={1.5}>
+                  <Stack direction="row" spacing={1.5} alignItems="center">
+                    <Box
+                      sx={{
+                        width: 44,
+                        height: 44,
+                        borderRadius: 2,
+                        display: 'grid',
+                        placeItems: 'center',
+                        bgcolor: 'primary.lighter',
+                        color: 'primary.main',
+                      }}
+                    >
+                      <Iconify icon="mdi:shield-crown-outline" width={26} />
+                    </Box>
+                    <Box>
+                      <Typography variant="h6">
+                        {orchestratorStatus?.systemAgent.name ?? 'Annonai System Orchestrator'}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Agente de sistema bloqueado: traduce eventos de canal, intenciones, agentes e integraciones a reglas operables.
+                      </Typography>
+                    </Box>
+                  </Stack>
+                  <Stack direction="row" spacing={0.8} flexWrap="wrap" alignItems="center">
+                    <Chip size="small" color="success" label="Sistema" />
+                    <Chip size="small" color="info" label="No editable por usuarios" />
+                    <Chip size="small" label={`${orchestratorStatus?.events.length ?? SYSTEM_EVENT_OPTIONS.length} eventos`} />
+                  </Stack>
+                </Stack>
+
+                <Grid container spacing={1.5}>
+                  {[
+                    ['Workflows', orchestratorStatus?.workflows.length ?? workflows.length, 'mdi:source-branch'],
+                    ['Canales', orchestratorStatus?.channels.length ?? availableChannels.length, 'mdi:chat-processing-outline'],
+                    ['Integraciones', orchestratorStatus?.connections.length ?? integrations.length, 'mdi:connection'],
+                    ['Reglas activas', orchestratorStatus?.agentRegistry.length ?? 0, 'mdi:routes'],
+                  ].map(([label, value, icon]) => (
+                    <Grid item xs={6} md={3} key={String(label)}>
+                      <Card variant="outlined" sx={{ p: 1.5, bgcolor: 'background.neutral' }}>
+                        <Stack direction="row" spacing={1} alignItems="center">
+                          <Iconify icon={String(icon)} width={22} sx={{ color: 'primary.main' }} />
+                          <Box>
+                            <Typography variant="h6">{String(value)}</Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              {label}
+                            </Typography>
+                          </Box>
+                        </Stack>
+                      </Card>
+                    </Grid>
+                  ))}
+                </Grid>
+
+                <Alert severity={orchestratorStatus?.gaps?.[0]?.includes('lista') ? 'success' : 'info'}>
+                  {(orchestratorStatus?.gaps ?? [
+                    'El orquestador valida que existan eventos, canal activo, agente publicado, integraciones listas e intenciones sincronizadas.',
+                  ])[0]}
+                </Alert>
               </Stack>
             </Card>
 
