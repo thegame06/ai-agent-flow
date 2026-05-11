@@ -2,44 +2,25 @@ import type { NavSectionProps } from 'src/components/nav-section';
 
 import { paths } from 'src/routes/paths';
 
-import { CONFIG } from 'src/global-config';
-
-import { SvgColor } from 'src/components/svg-color';
+import { Iconify } from 'src/components/iconify';
 
 // ----------------------------------------------------------------------
 
-const icon = (name: string) => (
-  <SvgColor src={`${CONFIG.assetsDir}/assets/icons/navbar/${name}.svg`} />
-);
+const icon = (name: string) => <Iconify icon={name} width={24} />;
 
 const ICONS = {
-  job: icon('ic-job'),
-  blog: icon('ic-blog'),
-  chat: icon('ic-chat'),
-  mail: icon('ic-mail'),
-  user: icon('ic-user'),
-  file: icon('ic-file'),
-  lock: icon('ic-lock'),
-  tour: icon('ic-tour'),
-  order: icon('ic-order'),
-  label: icon('ic-label'),
-  blank: icon('ic-blank'),
-  kanban: icon('ic-kanban'),
-  folder: icon('ic-folder'),
-  course: icon('ic-course'),
-  banking: icon('ic-banking'),
-  booking: icon('ic-booking'),
-  invoice: icon('ic-invoice'),
-  product: icon('ic-product'),
-  calendar: icon('ic-calendar'),
-  disabled: icon('ic-disabled'),
-  external: icon('ic-external'),
-  menuItem: icon('ic-menu-item'),
-  ecommerce: icon('ic-ecommerce'),
-  analytics: icon('ic-analytics'),
-  channel: icon('ic-chat'),
-  dashboard: icon('ic-dashboard'),
-  parameter: icon('ic-parameter'),
+  dashboard: icon('mdi:view-dashboard-outline'),
+  workflow: icon('mdi:source-branch'),
+  agent: icon('mdi:robot-happy-outline'),
+  intent: icon('mdi:target-variant'),
+  inbox: icon('mdi:inbox-outline'),
+  executions: icon('mdi:chart-timeline-variant'),
+  humanReview: icon('mdi:account-supervisor-outline'),
+  kycPayments: icon('mdi:shield-account-outline'),
+  channels: icon('mdi:access-point'),
+  marketplace: icon('mdi:storefront-outline'),
+  mcp: icon('mdi:connection'),
+  settings: icon('mdi:cog-outline'),
 };
 
 // ----------------------------------------------------------------------
@@ -61,17 +42,17 @@ export const navData: NavSectionProps['data'] = [
       {
         title: 'Workflow Studio',
         path: paths.dashboard.workflows,
-        icon: ICONS.kanban,
+        icon: ICONS.workflow,
       },
       {
         title: 'Agentes',
         path: paths.dashboard.agents,
-        icon: ICONS.user,
+        icon: ICONS.agent,
       },
       {
         title: 'Intenciones',
         path: paths.dashboard.intentMap,
-        icon: ICONS.folder,
+        icon: ICONS.intent,
       },
     ],
   },
@@ -81,22 +62,22 @@ export const navData: NavSectionProps['data'] = [
       {
         title: 'Bandeja de entrada',
         path: paths.dashboard.threads,
-        icon: ICONS.chat,
+        icon: ICONS.inbox,
       },
       {
         title: 'Ejecuciones',
         path: paths.dashboard.executions,
-        icon: ICONS.analytics,
+        icon: ICONS.executions,
       },
       {
         title: 'Revision humana',
         path: paths.dashboard.checkpoints,
-        icon: ICONS.order,
+        icon: ICONS.humanReview,
       },
       {
         title: 'KYC y pagos',
         path: paths.dashboard.kycPayments,
-        icon: ICONS.lock,
+        icon: ICONS.kycPayments,
       },
     ],
   },
@@ -106,17 +87,17 @@ export const navData: NavSectionProps['data'] = [
       {
         title: 'Canales',
         path: paths.dashboard.system.channels,
-        icon: ICONS.channel,
+        icon: ICONS.channels,
       },
       {
         title: 'Marketplace',
         path: paths.dashboard.marketplace,
-        icon: ICONS.product,
+        icon: ICONS.marketplace,
       },
       {
         title: 'MCP',
         path: paths.dashboard.system.mcp,
-        icon: ICONS.parameter,
+        icon: ICONS.mcp,
       },
     ],
   },
@@ -126,7 +107,7 @@ export const navData: NavSectionProps['data'] = [
       {
         title: 'Configuracion',
         path: paths.dashboard.system.settings,
-        icon: ICONS.parameter,
+        icon: ICONS.settings,
         children: [
           { title: 'Modelos', path: paths.dashboard.system.models },
           { title: 'Auth profiles', path: paths.dashboard.system.authProfiles },
