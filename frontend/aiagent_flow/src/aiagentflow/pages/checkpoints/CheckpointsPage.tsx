@@ -297,29 +297,67 @@ export default function CheckpointsPage() {
       </Helmet>
 
       <DashboardContent maxWidth="lg">
-        {/* Header */}
-        <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 4 }}>
-          <Box>
+        <Paper
+          variant="outlined"
+          sx={{
+            mb: 3,
+            p: { xs: 2.5, md: 3 },
+            borderRadius: 4,
+            background:
+              'radial-gradient(circle at 8% 18%, rgba(255,171,0,0.16), transparent 30%), linear-gradient(135deg, #FBFDF9 0%, #F3F9F5 100%)',
+          }}
+        >
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between" alignItems={{ md: 'center' }}>
             <Stack direction="row" alignItems="center" spacing={1.5}>
-              <Typography variant="h4" fontWeight={800}>
-                Cola de revision
-              </Typography>
-              <Badge badgeContent={items.length} color="warning" max={99}>
-                <Iconify icon="mdi:bell-ring-outline" width={24} sx={{ color: 'text.secondary' }} />
-              </Badge>
+              <Avatar sx={{ width: 56, height: 56, bgcolor: 'warning.lighter', color: 'warning.dark' }}>
+                <Badge badgeContent={items.length} color="warning" max={99}>
+                  <Iconify icon="mdi:account-supervisor-outline" width={30} />
+                </Badge>
+              </Avatar>
+              <Box>
+                <Typography variant="overline" color="text.secondary">
+                  Human in the loop
+                </Typography>
+                <Typography variant="h3">Revision humana</Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                  Aprueba o rechaza acciones sensibles de agentes y workflows antes de que continuen.
+                </Typography>
+              </Box>
             </Stack>
-            <Typography variant="body2" color="text.secondary">
-              Aprueba o rechaza acciones del agente que requieren verificacion humana.
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<Iconify icon="mdi:refresh" />}
+              onClick={() => dispatch(fetchCheckpoints(tenantId))}
+            >
+              Actualizar
+            </Button>
+          </Stack>
+        </Paper>
+
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mb: 3 }}>
+          <Card variant="outlined" sx={{ p: 2, flex: 1 }}>
+            <Typography variant="subtitle2" color="text.secondary">Pendientes</Typography>
+            <Typography variant="h4">{items.length}</Typography>
+          </Card>
+          <Card variant="outlined" sx={{ p: 2, flex: 1 }}>
+            <Typography variant="subtitle2" color="text.secondary">Criticas</Typography>
+            <Typography variant="h4">
+              {
+                items.filter(
+                  (item) =>
+                    item.reason.toLowerCase().includes('high') ||
+                    item.reason.toLowerCase().includes('security') ||
+                    item.toolName?.toLowerCase().includes('delete') ||
+                    item.toolName?.toLowerCase().includes('admin')
+                ).length
+              }
             </Typography>
-          </Box>
-          <Button
-            variant="outlined"
-            size="small"
-            startIcon={<Iconify icon="mdi:refresh" />}
-            onClick={() => dispatch(fetchCheckpoints(tenantId))}
-          >
-            Actualizar
-          </Button>
+          </Card>
+          <Card variant="outlined" sx={{ p: 2, flex: 1 }}>
+            <Typography variant="subtitle2" color="text.secondary">Auto refresh</Typography>
+            <Typography variant="h4">15s</Typography>
+          </Card>
         </Stack>
 
         {/* Error */}
