@@ -1,4 +1,4 @@
-import type { RootState, AppDispatch } from 'src/aiagentflow/store';
+﻿import type { RootState, AppDispatch } from 'src/aiagentflow/store';
 
 import { useState, useEffect } from 'react';
 import { Helmet } from 'react-helmet-async';
@@ -36,32 +36,23 @@ type SystemOrchestratorStatus = {
   workflows?: unknown[];
   channels?: unknown[];
   connections?: Array<{ ready: boolean }>;
-  events?: unknown[];
 };
 
-type ActionCardProps = {
+type QuickAction = {
   title: string;
   helper: string;
   icon: string;
   href: string;
   cta: string;
-  color?: 'primary' | 'success' | 'warning' | 'info';
 };
 
-function ActionCard({ title, helper, icon, href, cta, color = 'primary' }: ActionCardProps) {
+function QuickActionCard({ title, helper, icon, href, cta }: QuickAction) {
   return (
     <Card variant="outlined" sx={{ height: '100%', borderRadius: 3 }}>
       <CardContent>
         <Stack spacing={1.5}>
-          <Avatar
-            sx={{
-              width: 46,
-              height: 46,
-              bgcolor: `${color}.lighter`,
-              color: `${color}.main`,
-            }}
-          >
-            <Iconify icon={icon} width={24} />
+          <Avatar sx={{ width: 44, height: 44, bgcolor: 'primary.lighter', color: 'primary.main' }}>
+            <Iconify icon={icon} width={23} />
           </Avatar>
           <Box>
             <Typography variant="h6">{title}</Typography>
@@ -106,35 +97,34 @@ export default function OverviewPage() {
     };
   }, [tenantId]);
 
+  const workflowCount = orchestratorStatus?.workflows?.length ?? 0;
+  const channelCount = orchestratorStatus?.channels?.length ?? 0;
   const readyConnections = orchestratorStatus?.connections?.filter((connection) => connection.ready).length ?? 0;
   const systemHint =
     orchestratorStatus?.gaps?.[0] ??
-    'Empieza conectando un canal, selecciona un agente y crea un workflow con una intencion clara.';
+    'Todo listo para construir: crea una intencion, selecciona un agente y conecta la accion que quieres automatizar.';
 
-  const readinessItems = [
+  const quickActions: QuickAction[] = [
     {
-      label: 'Workflows',
-      value: orchestratorStatus?.workflows?.length ?? 0,
+      title: 'Crear un workflow',
+      helper: 'Diseña el comportamiento del negocio con nodos simples e intenciones claras.',
       icon: 'mdi:source-branch',
-      helper: 'Flujos de negocio creados',
+      href: paths.dashboard.workflows,
+      cta: 'Abrir studio',
     },
     {
-      label: 'Canales',
-      value: orchestratorStatus?.channels?.length ?? 0,
-      icon: 'mdi:chat-processing-outline',
-      helper: 'Entradas conectadas',
+      title: 'Conectar un canal',
+      helper: 'Activa WhatsApp, web chat, voz, call center o email para recibir eventos reales.',
+      icon: 'mdi:message-processing-outline',
+      href: paths.dashboard.system.channels,
+      cta: 'Ver canales',
     },
     {
-      label: 'Integraciones',
-      value: readyConnections,
+      title: 'Agregar una integracion',
+      helper: 'Configura Twilio, APIs, Storage, Drive o MCP una vez y reutilizalos.',
       icon: 'mdi:connection',
-      helper: 'Listas para usar',
-    },
-    {
-      label: 'Eventos',
-      value: orchestratorStatus?.events?.length ?? 0,
-      icon: 'mdi:flash-outline',
-      helper: 'Disparadores del sistema',
+      href: paths.dashboard.marketplace,
+      cta: 'Ir a Marketplace',
     },
   ];
 
@@ -155,27 +145,28 @@ export default function OverviewPage() {
             borderRadius: 4,
             overflow: 'hidden',
             position: 'relative',
+            borderColor: alpha(theme.palette.primary.main, 0.16),
             background:
-              'radial-gradient(circle at 8% 18%, rgba(14,124,90,0.18), transparent 28%), radial-gradient(circle at 92% 6%, rgba(0,167,181,0.18), transparent 26%), linear-gradient(135deg, #fbfdf9 0%, #f3f9f5 100%)',
+              'radial-gradient(circle at 6% 18%, rgba(14,124,90,0.20), transparent 30%), radial-gradient(circle at 96% 0%, rgba(0,167,181,0.20), transparent 28%), linear-gradient(135deg, #FBFDF9 0%, #F3F9F5 100%)',
           }}
         >
           <Grid container spacing={3} alignItems="center">
-            <Grid item xs={12} md={7}>
-              <Stack spacing={2.2}>
+            <Grid item xs={12} md={8}>
+              <Stack spacing={2.5}>
                 <Stack direction="row" spacing={1.5} alignItems="center">
                   <Avatar
                     src="/logo/logo-single.svg"
                     alt="Annonai"
                     sx={{
-                      width: 62,
-                      height: 62,
+                      width: 64,
+                      height: 64,
                       bgcolor: 'transparent',
-                      boxShadow: `0 18px 40px ${alpha(theme.palette.primary.main, 0.22)}`,
+                      boxShadow: `0 18px 42px ${alpha(theme.palette.primary.main, 0.22)}`,
                     }}
                   />
                   <Box>
                     <Typography variant="overline" color="text.secondary">
-                      Tu asistente de plataforma
+                      Annonai
                     </Typography>
                     <Typography variant="h3" sx={{ fontWeight: 900, letterSpacing: -0.8 }}>
                       hola, soy annonai, tu amigo inteligente.
@@ -183,9 +174,10 @@ export default function OverviewPage() {
                   </Box>
                 </Stack>
 
-                <Typography variant="body1" color="text.secondary" sx={{ maxWidth: 720 }}>
-                  Te ayudo a convertir canales, agentes e integraciones en workflows simples de entender.
-                  No necesitas saber nombres tecnicos: dime que quieres automatizar y te llevo al lugar correcto.
+                <Typography variant="body1" color="text.secondary" sx={{ maxWidth: 760 }}>
+                  Dime que quieres automatizar y te guio al lugar correcto: canal, agente,
+                  integracion o workflow. La plataforma se encarga de traducirlo a eventos,
+                  intenciones y nodos.
                 </Typography>
 
                 <Paper sx={{ p: 1, maxWidth: 760, borderRadius: 2.5, boxShadow: 8 }}>
@@ -195,7 +187,7 @@ export default function OverviewPage() {
                       size="small"
                       value={assistantPrompt}
                       onChange={(event) => setAssistantPrompt(event.target.value)}
-                      placeholder="Ejemplo: quiero atender WhatsApp, validar KYC o conectar Twilio"
+                      placeholder="Ejemplo: quiero atender WhatsApp y agendar citas automaticamente"
                     />
                     <Button
                       component={RouterLink}
@@ -208,43 +200,43 @@ export default function OverviewPage() {
                   </Stack>
                 </Paper>
 
-                <Alert severity="info" sx={{ borderRadius: 2 }}>
+                <Alert severity="info" sx={{ maxWidth: 760, borderRadius: 2 }}>
                   {systemHint}
                 </Alert>
               </Stack>
             </Grid>
 
-            <Grid item xs={12} md={5}>
+            <Grid item xs={12} md={4}>
               <Card variant="outlined" sx={{ borderRadius: 3, bgcolor: 'rgba(255,255,255,0.78)' }}>
                 <CardContent>
                   <Stack spacing={2}>
                     <Box>
-                      <Typography variant="h6">Estado rapido</Typography>
+                      <Typography variant="h6">Estado del espacio</Typography>
                       <Typography variant="body2" color="text.secondary">
-                        Lo minimo que necesitas para operar.
+                        Solo lo esencial para saber si puedes operar.
                       </Typography>
                     </Box>
-                    <Grid container spacing={1.2}>
-                      {readinessItems.map((item) => (
-                        <Grid item xs={6} key={item.label}>
-                          <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2 }}>
-                            <Stack spacing={0.8}>
-                              <Iconify icon={item.icon} width={22} sx={{ color: 'primary.main' }} />
-                              <Typography variant="h5">{item.value}</Typography>
-                              <Box>
-                                <Typography variant="caption" fontWeight={700}>{item.label}</Typography>
-                                <Typography variant="caption" color="text.secondary" display="block">
-                                  {item.helper}
-                                </Typography>
-                              </Box>
-                            </Stack>
-                          </Paper>
-                        </Grid>
-                      ))}
-                    </Grid>
+                    {[
+                      ['Workflows', workflowCount, 'mdi:source-branch'],
+                      ['Canales', channelCount, 'mdi:chat-processing-outline'],
+                      ['Integraciones listas', readyConnections, 'mdi:connection'],
+                    ].map(([label, value, icon]) => (
+                      <Stack key={String(label)} direction="row" spacing={1.5} alignItems="center">
+                        <Avatar sx={{ width: 36, height: 36, bgcolor: 'background.neutral', color: 'primary.main' }}>
+                          <Iconify icon={String(icon)} width={20} />
+                        </Avatar>
+                        <Box sx={{ flexGrow: 1 }}>
+                          <Typography variant="subtitle2">{label}</Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {Number(value) > 0 ? 'Configurado' : 'Pendiente'}
+                          </Typography>
+                        </Box>
+                        <Typography variant="h5">{String(value)}</Typography>
+                      </Stack>
+                    ))}
                     <Chip
-                      color={readyConnections > 0 ? 'success' : 'warning'}
-                      label={readyConnections > 0 ? 'Listo para construir workflows' : 'Faltan integraciones'}
+                      color={workflowCount > 0 && channelCount > 0 ? 'success' : 'warning'}
+                      label={workflowCount > 0 && channelCount > 0 ? 'Listo para probar' : 'Configuracion pendiente'}
                       sx={{ alignSelf: 'flex-start' }}
                     />
                   </Stack>
@@ -255,72 +247,32 @@ export default function OverviewPage() {
         </Paper>
 
         <Grid container spacing={2.5} sx={{ mb: 3 }}>
-          <Grid item xs={12} md={4}>
-            <ActionCard
-              title="Construir un workflow"
-              helper="Define una intencion, selecciona un agente y agrega acciones como WhatsApp, API, KYC o pagos."
-              icon="mdi:source-branch"
-              href={paths.dashboard.workflows}
-              cta="Abrir Workflow Studio"
-            />
-          </Grid>
-          <Grid item xs={12} md={4}>
-            <ActionCard
-              title="Conectar canales"
-              helper="Activa WhatsApp, Web Chat, voz o call center para recibir mensajes y llamadas reales."
-              icon="mdi:message-processing-outline"
-              href={paths.dashboard.system.channels}
-              cta="Ver canales"
-              color="success"
-            />
-          </Grid>
-          <Grid item xs={12} md={4}>
-            <ActionCard
-              title="Agregar integraciones"
-              helper="Configura Twilio, Storage, Drive, APIs o MCP una vez y reutilizalos en agentes y flujos."
-              icon="mdi:connection"
-              href={paths.dashboard.marketplace}
-              cta="Ir a Marketplace"
-              color="info"
-            />
-          </Grid>
+          {quickActions.map((action) => (
+            <Grid key={action.title} item xs={12} md={4}>
+              <QuickActionCard {...action} />
+            </Grid>
+          ))}
         </Grid>
 
-        <Grid container spacing={2.5}>
-          <Grid item xs={12} md={4}>
-            <Card variant="outlined" sx={{ borderRadius: 3 }}>
-              <CardContent>
-                <Typography variant="overline" color="text.secondary">Operacion</Typography>
-                <Typography variant="h4">{metrics.completedToday}</Typography>
+        <Card variant="outlined" sx={{ borderRadius: 3 }}>
+          <CardContent>
+            <Grid container spacing={2} alignItems="center">
+              <Grid item xs={12} md={8}>
+                <Typography variant="h6">Resumen operativo</Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Ejecuciones completadas hoy.
+                  Este bloque queda como referencia rapida; la accion principal esta arriba.
                 </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-          <Grid item xs={12} md={4}>
-            <Card variant="outlined" sx={{ borderRadius: 3 }}>
-              <CardContent>
-                <Typography variant="overline" color="text.secondary">Agentes</Typography>
-                <Typography variant="h4">{metrics.publishedAgents}/{metrics.totalAgents}</Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Agentes publicados sobre el total configurado.
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-          <Grid item xs={12} md={4}>
-            <Card variant="outlined" sx={{ borderRadius: 3 }}>
-              <CardContent>
-                <Typography variant="overline" color="text.secondary">Calidad</Typography>
-                <Typography variant="h4">{Math.round(metrics.avgQualityScore * 100)}%</Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Score promedio de respuestas recientes.
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-        </Grid>
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <Stack direction="row" spacing={1} justifyContent={{ xs: 'flex-start', md: 'flex-end' }} flexWrap="wrap">
+                  <Chip label={`${metrics.completedToday} ejecuciones hoy`} />
+                  <Chip label={`${metrics.publishedAgents}/${metrics.totalAgents} agentes publicados`} />
+                  <Chip label={`${Math.round(metrics.avgQualityScore * 100)}% calidad`} />
+                </Stack>
+              </Grid>
+            </Grid>
+          </CardContent>
+        </Card>
       </DashboardContent>
     </>
   );

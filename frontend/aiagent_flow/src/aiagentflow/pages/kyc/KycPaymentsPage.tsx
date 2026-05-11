@@ -7,6 +7,8 @@ import Grid from '@mui/material/Grid';
 import Stack from '@mui/material/Stack';
 import Alert from '@mui/material/Alert';
 import Table from '@mui/material/Table';
+import Paper from '@mui/material/Paper';
+import Avatar from '@mui/material/Avatar';
 import Button from '@mui/material/Button';
 import TableRow from '@mui/material/TableRow';
 import TableCell from '@mui/material/TableCell';
@@ -20,6 +22,8 @@ import { CONFIG } from 'src/global-config';
 import axios, { endpoints } from 'src/lib/axios';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
+
+import { Iconify } from 'src/components/iconify';
 
 type KycCase = {
   caseId: string;
@@ -155,15 +159,34 @@ export default function KycPaymentsPage() {
   return (
     <>
       <Helmet>
-        <title>KYC & Payments | {CONFIG.appName}</title>
+        <title>KYC y pagos | {CONFIG.appName}</title>
       </Helmet>
       <DashboardContent maxWidth="xl">
-        <Box sx={{ mb: 3 }}>
-          <Typography variant="h4">KYC & Payments</Typography>
-          <Typography variant="body2" color="text.secondary">
-            Base flow: document check, supervisor review, and payment intent lifecycle.
-          </Typography>
-        </Box>
+        <Paper
+          variant="outlined"
+          sx={{
+            mb: 3,
+            p: { xs: 2.5, md: 3 },
+            borderRadius: 4,
+            background:
+              'radial-gradient(circle at 8% 18%, rgba(14,124,90,0.14), transparent 30%), linear-gradient(135deg, #FBFDF9 0%, #F3F9F5 100%)',
+          }}
+        >
+          <Stack direction="row" spacing={1.5} alignItems="center">
+            <Avatar sx={{ width: 56, height: 56, bgcolor: 'primary.lighter', color: 'primary.main' }}>
+              <Iconify icon="mdi:shield-account-outline" width={30} />
+            </Avatar>
+            <Box>
+              <Typography variant="overline" color="text.secondary">
+                Operacion segura
+              </Typography>
+              <Typography variant="h3">KYC y pagos</Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                Valida identidad, gestiona revision humana y confirma intenciones de pago con trazabilidad.
+              </Typography>
+            </Box>
+          </Stack>
+        </Paper>
 
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 

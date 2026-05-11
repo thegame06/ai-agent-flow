@@ -8,6 +8,8 @@ import Chip from '@mui/material/Chip';
 import Stack from '@mui/material/Stack';
 import Alert from '@mui/material/Alert';
 import Table from '@mui/material/Table';
+import Paper from '@mui/material/Paper';
+import Avatar from '@mui/material/Avatar';
 import Button from '@mui/material/Button';
 import Dialog from '@mui/material/Dialog';
 import MenuItem from '@mui/material/MenuItem';
@@ -398,27 +400,46 @@ export default function ChannelsPage() {
       </Helmet>
 
       <DashboardContent maxWidth="xl">
-        <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Box>
-            <Typography variant="h4">Conectores de canal</Typography>
-            <Typography variant="body2" sx={{ color: 'text.secondary', mt: 1 }}>
-              Conecta WhatsApp, web chat y APIs para usarlos en Inbox, campañas y workflows.
-            </Typography>
-          </Box>
-          <Stack direction="row" spacing={1}>
-            <Button
-              variant="outlined"
-              component={RouterLink}
-              href={paths.dashboard.marketplace}
-              startIcon={<Iconify icon="mdi:connection" />}
-            >
-              Integraciones
-            </Button>
-            <Button variant="contained" startIcon={<Iconify icon="mingcute:add-line" />} onClick={() => setOpenCreate(true)}>
-              Agregar canal
-            </Button>
+        <Paper
+          variant="outlined"
+          sx={{
+            mb: 3,
+            p: { xs: 2.5, md: 3 },
+            borderRadius: 4,
+            background:
+              'radial-gradient(circle at 8% 18%, rgba(0,167,181,0.14), transparent 30%), linear-gradient(135deg, #FBFDF9 0%, #F3F9F5 100%)',
+          }}
+        >
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between" alignItems={{ md: 'center' }}>
+            <Stack direction="row" spacing={1.5} alignItems="center">
+              <Avatar sx={{ width: 56, height: 56, bgcolor: 'primary.lighter', color: 'primary.main' }}>
+                <Iconify icon="mdi:access-point" width={30} />
+              </Avatar>
+              <Box>
+                <Typography variant="overline" color="text.secondary">
+                  Canales omnicanal
+                </Typography>
+                <Typography variant="h3">Conectores de canal</Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                  Conecta WhatsApp, web chat, voz, call center, email y APIs para usarlos en Inbox y workflows.
+                </Typography>
+              </Box>
+            </Stack>
+            <Stack direction="row" spacing={1}>
+              <Button
+                variant="outlined"
+                component={RouterLink}
+                href={paths.dashboard.marketplace}
+                startIcon={<Iconify icon="mdi:connection" />}
+              >
+                Integraciones
+              </Button>
+              <Button variant="contained" startIcon={<Iconify icon="mingcute:add-line" />} onClick={() => setOpenCreate(true)}>
+                Agregar canal
+              </Button>
+            </Stack>
           </Stack>
-        </Box>
+        </Paper>
 
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
@@ -450,7 +471,7 @@ export default function ChannelsPage() {
                       <Box>
                         <Typography variant="h5">{String(value)}</Typography>
                         <Typography variant="caption" color="text.secondary">
-                          {label} · {helper}
+                          {label} Â· {helper}
                         </Typography>
                       </Box>
                     </Stack>
@@ -575,7 +596,7 @@ export default function ChannelsPage() {
                       </Box>
                       <Typography variant="body2" fontWeight={700}>{s.identifier}</Typography>
                       <Typography variant="caption" color="text.secondary">
-                        Agente: {s.agentId ?? '-'} · Hilo: {s.threadId?.slice(0, 8) ?? '-'}
+                        Agente: {s.agentId ?? '-'} Â· Hilo: {s.threadId?.slice(0, 8) ?? '-'}
                       </Typography>
                       <Typography variant="caption" display="block" sx={{ mt: 0.5 }}>
                         Ultima: {new Date(s.lastActivityAt).toLocaleString()}

@@ -5,6 +5,8 @@ import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import Chip from '@mui/material/Chip';
 import Stack from '@mui/material/Stack';
+import Paper from '@mui/material/Paper';
+import Avatar from '@mui/material/Avatar';
 import Button from '@mui/material/Button';
 import Dialog from '@mui/material/Dialog';
 import MenuItem from '@mui/material/MenuItem';
@@ -155,17 +157,36 @@ export default function ThreadsPage() {
       </Helmet>
 
       <DashboardContent maxWidth="xl">
-        <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Box>
-            <Typography variant="h4">Inbox - Hilos de conversacion</Typography>
-            <Typography variant="body2" sx={{ color: 'text.secondary', mt: 1 }}>
-              Opera conversaciones, backlog y SLA desde una sola bandeja.
-            </Typography>
-          </Box>
-          <Button variant="outlined" startIcon={<Iconify icon="solar:refresh-line-duotone" />} onClick={handleRefresh}>
-            Actualizar
-          </Button>
-        </Box>
+        <Paper
+          variant="outlined"
+          sx={{
+            mb: 3,
+            p: { xs: 2.5, md: 3 },
+            borderRadius: 4,
+            background:
+              'radial-gradient(circle at 8% 18%, rgba(0,167,181,0.14), transparent 30%), linear-gradient(135deg, #FBFDF9 0%, #F3F9F5 100%)',
+          }}
+        >
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between" alignItems={{ md: 'center' }}>
+            <Stack direction="row" spacing={1.5} alignItems="center">
+              <Avatar sx={{ width: 56, height: 56, bgcolor: 'primary.lighter', color: 'primary.main' }}>
+                <Iconify icon="mdi:inbox-outline" width={30} />
+              </Avatar>
+              <Box>
+                <Typography variant="overline" color="text.secondary">
+                  Inbox omnicanal
+                </Typography>
+                <Typography variant="h3">Bandeja de entrada</Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                  Opera conversaciones, backlog, asignaciones y SLA desde una sola vista.
+                </Typography>
+              </Box>
+            </Stack>
+            <Button variant="outlined" startIcon={<Iconify icon="solar:refresh-line-duotone" />} onClick={handleRefresh}>
+              Actualizar
+            </Button>
+          </Stack>
+        </Paper>
 
         {error && (
           <Box sx={{ mb: 2 }}>

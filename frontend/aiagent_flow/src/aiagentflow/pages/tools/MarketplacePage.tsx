@@ -7,6 +7,8 @@ import Chip from '@mui/material/Chip';
 import Grid from '@mui/material/Grid';
 import Stack from '@mui/material/Stack';
 import Alert from '@mui/material/Alert';
+import Paper from '@mui/material/Paper';
+import Avatar from '@mui/material/Avatar';
 import Button from '@mui/material/Button';
 import Dialog from '@mui/material/Dialog';
 import MenuItem from '@mui/material/MenuItem';
@@ -482,12 +484,35 @@ export default function MarketplacePage() {
       </Helmet>
       <DashboardContent maxWidth="xl">
         <Stack spacing={2.5} sx={{ mb: 3 }}>
-          <Box>
-            <Typography variant="h4">Marketplace de conectores</Typography>
-            <Typography variant="body2" color="text.secondary">
-              Instala capacidades para workflows, agentes, canales y herramientas externas.
-            </Typography>
-          </Box>
+          <Paper
+            variant="outlined"
+            sx={{
+              p: { xs: 2.5, md: 3 },
+              borderRadius: 4,
+              background:
+                'radial-gradient(circle at 8% 18%, rgba(14,124,90,0.14), transparent 30%), linear-gradient(135deg, #FBFDF9 0%, #F3F9F5 100%)',
+            }}
+          >
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between" alignItems={{ md: 'center' }}>
+              <Stack direction="row" spacing={1.5} alignItems="center">
+                <Avatar sx={{ width: 56, height: 56, bgcolor: 'primary.lighter', color: 'primary.main' }}>
+                  <Iconify icon="mdi:storefront-outline" width={30} />
+                </Avatar>
+                <Box>
+                  <Typography variant="overline" color="text.secondary">
+                    Integraciones
+                  </Typography>
+                  <Typography variant="h3">Marketplace de conectores</Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                    Instala y configura capacidades para workflows, agentes, canales y herramientas externas.
+                  </Typography>
+                </Box>
+              </Stack>
+              <Button variant="contained" href={paths.dashboard.workflows}>
+                Usar en Workflow Studio
+              </Button>
+            </Stack>
+          </Paper>
 
           <Grid container spacing={2}>
             {[

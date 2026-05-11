@@ -51,7 +51,7 @@ export function NavVertical({
                 Annonai
               </Typography>
               <Typography variant="caption" color="text.secondary">
-                Workflow AI
+                Automatizacion AI
               </Typography>
             </Box>
           </Box>

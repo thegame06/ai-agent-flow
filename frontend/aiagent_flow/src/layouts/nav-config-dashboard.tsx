@@ -4,7 +4,6 @@ import { paths } from 'src/routes/paths';
 
 import { CONFIG } from 'src/global-config';
 
-import { Label } from 'src/components/label';
 import { SvgColor } from 'src/components/svg-color';
 
 // ----------------------------------------------------------------------
@@ -63,13 +62,26 @@ export const navData: NavSectionProps['data'] = [
         title: 'Workflow Studio',
         path: paths.dashboard.workflows,
         icon: ICONS.kanban,
-        info: <Label color="info">Studio</Label>,
       },
       {
         title: 'Agentes',
         path: paths.dashboard.agents,
         icon: ICONS.user,
-        info: <Label color="success">Studio</Label>,
+      },
+      {
+        title: 'Intenciones',
+        path: paths.dashboard.intentMap,
+        icon: ICONS.folder,
+      },
+    ],
+  },
+  {
+    subheader: 'Operacion',
+    items: [
+      {
+        title: 'Bandeja de entrada',
+        path: paths.dashboard.threads,
+        icon: ICONS.chat,
       },
       {
         title: 'Ejecuciones',
@@ -77,25 +89,9 @@ export const navData: NavSectionProps['data'] = [
         icon: ICONS.analytics,
       },
       {
-        title: 'Intenciones',
-        path: paths.dashboard.intentMap,
-        icon: ICONS.folder,
-      },
-      {
         title: 'Revision humana',
         path: paths.dashboard.checkpoints,
         icon: ICONS.order,
-        info: <Label color="warning">HITL</Label>,
-      },
-    ],
-  },
-  {
-    subheader: 'Gestion',
-    items: [
-      {
-        title: 'Bandeja de entrada',
-        path: paths.dashboard.threads,
-        icon: ICONS.chat,
       },
       {
         title: 'KYC y pagos',

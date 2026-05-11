@@ -7,6 +7,8 @@ import Card from '@mui/material/Card';
 import Chip from '@mui/material/Chip';
 import Grid from '@mui/material/Grid';
 import Stack from '@mui/material/Stack';
+import Paper from '@mui/material/Paper';
+import Avatar from '@mui/material/Avatar';
 import Button from '@mui/material/Button';
 import Divider from '@mui/material/Divider';
 import MenuItem from '@mui/material/MenuItem';
@@ -142,30 +144,92 @@ export default function AgentsPage() {
     }
   };
 
+  const publishedAgents = agents.filter((agent) => agent.status === 'Published').length;
+  const draftAgents = agents.filter((agent) => agent.status === 'Draft').length;
+  const toolReadyAgents = agents.filter((agent) => (agent.availableTools?.length ?? agent.tools?.length ?? 0) > 0).length;
+
   return (
     <>
       <Helmet>
-        <title>Agents | {CONFIG.appName}</title>
+        <title>Agentes | {CONFIG.appName}</title>
       </Helmet>
 
       <DashboardContent maxWidth="xl">
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 5 }}>
-          <Box>
-            <Typography variant="h4">Agent Management</Typography>
-            <Typography variant="body2" sx={{ color: 'text.secondary', mt: 1 }}>
-              Create, configure, and deploy AI agents with enterprise-grade controls
-            </Typography>
-          </Box>
+        <Paper
+          variant="outlined"
+          sx={{
+            mb: 3,
+            p: { xs: 2.5, md: 3 },
+            borderRadius: 4,
+            background:
+              'radial-gradient(circle at 8% 18%, rgba(14,124,90,0.16), transparent 30%), linear-gradient(135deg, #FBFDF9 0%, #F3F9F5 100%)',
+          }}
+        >
+          <Grid container spacing={3} alignItems="center">
+            <Grid item xs={12} md={7}>
+              <Stack direction="row" spacing={1.5} alignItems="center">
+                <Avatar sx={{ width: 56, height: 56, bgcolor: 'primary.lighter', color: 'primary.main' }}>
+                  <Iconify icon="mdi:robot-happy-outline" width={30} />
+                </Avatar>
+                <Box>
+                  <Typography variant="overline" color="text.secondary">
+                    Agent Studio
+                  </Typography>
+                  <Typography variant="h3">Agentes de IA</Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                    Diseña bots reutilizables para canales y Workflow Studio. Cada agente puede tener modelo,
+                    memoria, tools, MCP y reglas de seguridad.
+                  </Typography>
+                </Box>
+              </Stack>
+            </Grid>
+            <Grid item xs={12} md={5}>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent={{ md: 'flex-end' }}>
+                <Button
+                  component={RouterLink}
+                  href={paths.dashboard.workflows}
+                  variant="outlined"
+                  startIcon={<Iconify icon="mdi:source-branch" />}
+                >
+                  Usar en workflow
+                </Button>
+                <Button
+                  component={RouterLink}
+                  href={paths.dashboard.agentDesigner}
+                  variant="contained"
+                  startIcon={<Iconify icon="mingcute:add-line" />}
+                >
+                  Nuevo agente
+                </Button>
+              </Stack>
+            </Grid>
+          </Grid>
+        </Paper>
 
-          <Button
-            component={RouterLink}
-            href={paths.dashboard.agentDesigner}
-            variant="contained"
-            startIcon={<Iconify icon="mingcute:add-line" />}
-          >
-            Create New Agent
-          </Button>
-        </Box>
+        <Grid container spacing={2} sx={{ mb: 3 }}>
+          {[
+            ['Total', agents.length, 'mdi:robot-outline'],
+            ['Publicados', publishedAgents, 'mdi:check-decagram-outline'],
+            ['Borradores', draftAgents, 'mdi:file-edit-outline'],
+            ['Con tools', toolReadyAgents, 'mdi:tools'],
+          ].map(([label, value, icon]) => (
+            <Grid key={String(label)} item xs={12} sm={6} md={3}>
+              <Card variant="outlined" sx={{ p: 2 }}>
+                <Stack direction="row" spacing={1.5} alignItems="center">
+                  <Avatar sx={{ width: 38, height: 38, bgcolor: 'background.neutral', color: 'primary.main' }}>
+                    <Iconify icon={String(icon)} width={21} />
+                  </Avatar>
+                  <Box>
+                    <Typography variant="h5">{String(value)}</Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {label}
+                    </Typography>
+                  </Box>
+                </Stack>
+              </Card>
+            </Grid>
+          ))}
+        </Grid>
 
         {loading ? (
           <LinearProgress />
@@ -173,10 +237,10 @@ export default function AgentsPage() {
           <Card sx={{ p: 5, textAlign: 'center' }}>
             <Iconify icon="mdi:robot-outline" width={80} sx={{ color: 'text.disabled', mb: 2 }} />
             <Typography variant="h6" color="text.secondary">
-              No agents found
+              No hay agentes creados
             </Typography>
             <Typography variant="body2" color="text.disabled" sx={{ mb: 3 }}>
-              Create your first agent to get started
+              Crea tu primer agente para usarlo en canales o como nodo dentro de Workflow Studio.
             </Typography>
             <Button
               component={RouterLink}
@@ -184,7 +248,7 @@ export default function AgentsPage() {
               variant="contained"
               startIcon={<Iconify icon="mingcute:add-line" />}
             >
-              Create Agent
+              Crear agente
             </Button>
           </Card>
         ) : (
@@ -258,7 +322,7 @@ export default function AgentsPage() {
                         <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                           <Typography variant="caption" color="text.secondary">
                             <Iconify icon="mdi:calendar" width={14} sx={{ mr: 0.5, verticalAlign: 'text-bottom' }} />
-                            Created
+                            Creado
                           </Typography>
                           <Typography variant="caption" fontWeight={600}>
                             {new Date(agent.createdAt).toLocaleDateString()}
@@ -267,7 +331,7 @@ export default function AgentsPage() {
                         <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                           <Typography variant="caption" color="text.secondary">
                             <Iconify icon="mdi:update" width={14} sx={{ mr: 0.5, verticalAlign: 'text-bottom' }} />
-                            Updated
+                            Actualizado
                           </Typography>
                           <Typography variant="caption" fontWeight={600}>
                             {new Date(agent.updatedAt).toLocaleDateString()}
@@ -284,7 +348,7 @@ export default function AgentsPage() {
                       startIcon={<Iconify icon="mdi:eye-outline" />}
                       onClick={() => handleViewDetail(agent.id)}
                     >
-                      View Detail
+                      Ver detalle
                     </Button>
                     <Button
                       fullWidth
@@ -292,7 +356,7 @@ export default function AgentsPage() {
                       startIcon={<Iconify icon="mdi:play" />}
                       onClick={() => handleExecute(agent.id)}
                     >
-                      Execute
+                      Ejecutar
                     </Button>
                   </CardActions>
                 </Card>
@@ -361,7 +425,7 @@ function AgentMenu({ agentId, onEdit, onChat, onClone, onDelete }: AgentMenuProp
           }}
         >
           <Iconify icon="mdi:pencil-outline" />
-          Edit
+          Editar
         </MenuItem>
 
         <MenuItem
@@ -381,7 +445,7 @@ function AgentMenu({ agentId, onEdit, onChat, onClone, onDelete }: AgentMenuProp
           }}
         >
           <Iconify icon="mdi:content-copy" />
-          Clone
+          Clonar
         </MenuItem>
 
         <Divider sx={{ borderStyle: 'dashed' }} />
@@ -394,7 +458,7 @@ function AgentMenu({ agentId, onEdit, onChat, onClone, onDelete }: AgentMenuProp
           sx={{ color: 'error.main' }}
         >
           <Iconify icon="mdi:delete-outline" />
-          Delete
+          Eliminar
         </MenuItem>
       </CustomPopover>
     </>

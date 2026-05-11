@@ -3,6 +3,10 @@ import { Helmet } from 'react-helmet-async';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
+import Chip from '@mui/material/Chip';
+import Stack from '@mui/material/Stack';
+import Paper from '@mui/material/Paper';
+import Avatar from '@mui/material/Avatar';
 import { DataGrid } from '@mui/x-data-grid';
 import Typography from '@mui/material/Typography';
 
@@ -11,6 +15,8 @@ import { paths } from 'src/routes/paths';
 import { CONFIG } from 'src/global-config';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
+
+import { Iconify } from 'src/components/iconify';
 
 import { EXECUTION_COLUMNS } from './Config/Columns';
 import { useExecutions } from './Hooks/useExecutions';
@@ -25,16 +31,38 @@ export default function ExecutionsPage() {
   return (
     <>
       <Helmet>
-        <title>Executions | {CONFIG.appName}</title>
+        <title>Ejecuciones | {CONFIG.appName}</title>
       </Helmet>
 
       <DashboardContent maxWidth="xl">
-        <Box sx={{ mb: 5 }}>
-          <Typography variant="h4">Execution History</Typography>
-          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-            Monitor and audit all agent executions across the platform. Click a row to view the full decision trace.
-          </Typography>
-        </Box>
+        <Paper
+          variant="outlined"
+          sx={{
+            mb: 3,
+            p: { xs: 2.5, md: 3 },
+            borderRadius: 4,
+            background:
+              'radial-gradient(circle at 8% 18%, rgba(14,124,90,0.14), transparent 30%), linear-gradient(135deg, #FBFDF9 0%, #F3F9F5 100%)',
+          }}
+        >
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between" alignItems={{ md: 'center' }}>
+            <Stack direction="row" spacing={1.5} alignItems="center">
+              <Avatar sx={{ width: 56, height: 56, bgcolor: 'primary.lighter', color: 'primary.main' }}>
+                <Iconify icon="mdi:chart-timeline-variant" width={30} />
+              </Avatar>
+              <Box>
+                <Typography variant="overline" color="text.secondary">
+                  Observabilidad
+                </Typography>
+                <Typography variant="h3">Ejecuciones</Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                  Monitorea agentes, workflows y trazas de decision. Haz click en una fila para ver el detalle.
+                </Typography>
+              </Box>
+            </Stack>
+            <Chip label={`${executions.length} registros`} color="primary" variant="soft" />
+          </Stack>
+        </Paper>
 
         <Card sx={{ height: 600, width: '100%' }}>
           <DataGrid
