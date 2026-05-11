@@ -1308,6 +1308,47 @@ export function WorkflowVisualDesigner({
               <Chip size="small" label={activityTypeLabel(selected.type)} />
             </Stack>
             <Divider />
+            {selectedIntegration && (
+              <Card
+                variant="outlined"
+                sx={{
+                  p: 1.2,
+                  borderColor: selectedIntegration.connected ? 'success.light' : 'warning.light',
+                  bgcolor: selectedIntegration.connected ? 'success.lighter' : 'warning.lighter',
+                }}
+              >
+                <Stack spacing={1}>
+                  <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
+                    <Box>
+                      <Typography variant="subtitle2">{selectedIntegration.displayName}</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Integracion que usara este nodo al ejecutarse.
+                      </Typography>
+                    </Box>
+                    <Chip
+                      size="small"
+                      color={selectedIntegration.connected ? 'success' : 'warning'}
+                      label={selectedIntegration.connected ? 'Conectada' : 'Pendiente'}
+                    />
+                  </Stack>
+                  <Stack direction="row" spacing={0.6} flexWrap="wrap">
+                    <Chip
+                      size="small"
+                      variant="outlined"
+                      label={selectedIntegration.secretsConfigured ? 'Secret listo' : 'Secret pendiente'}
+                    />
+                    {(selectedIntegration.capabilities || []).slice(0, 3).map((capability) => (
+                      <Chip key={capability} size="small" variant="outlined" label={capability} />
+                    ))}
+                  </Stack>
+                  {!selectedIntegration.connected && (
+                    <Button size="small" variant="contained" href={paths.dashboard.marketplace}>
+                      Configurar en Marketplace
+                    </Button>
+                  )}
+                </Stack>
+              </Card>
+            )}
             {selected.type === 'ai.agent' && (
               <Card variant="outlined" sx={{ p: 1.2, bgcolor: '#fbfdff' }}>
                 <Stack spacing={1}>

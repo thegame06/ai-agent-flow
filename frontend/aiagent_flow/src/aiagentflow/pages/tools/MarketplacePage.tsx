@@ -17,6 +17,8 @@ import CardContent from '@mui/material/CardContent';
 import DialogActions from '@mui/material/DialogActions';
 import DialogContent from '@mui/material/DialogContent';
 
+import { paths } from 'src/routes/paths';
+
 import { CONFIG } from 'src/global-config';
 import axios, { endpoints } from 'src/lib/axios';
 import { DashboardContent } from 'src/layouts/dashboard';
@@ -539,6 +541,9 @@ export default function MarketplacePage() {
                             <Button size="small" variant={configured ? 'outlined' : 'contained'} onClick={() => openQuickConnection(preset)}>
                               {configured ? 'Editar' : 'Configurar'}
                             </Button>
+                            <Button size="small" variant="outlined" href={paths.dashboard.workflows}>
+                              Usar en workflow
+                            </Button>
                             {configuredConnection && (
                               <Button size="small" variant="text" onClick={() => checkConnectionHealth(configuredConnection.id)}>
                                 Probar
@@ -629,7 +634,8 @@ export default function MarketplacePage() {
                       <Button variant="contained" disabled={isInstalled || entry.metadata.isQuarantined} onClick={() => install(entry.extensionId)}>
                         {isInstalled ? 'Instalado' : 'Instalar'}
                       </Button>
-                      <Button variant="outlined" onClick={() => update(entry)}>Actualizar metadata</Button>
+                      <Button variant="outlined" href={paths.dashboard.workflows}>Usar en workflow</Button>
+                      <Button variant="text" onClick={() => update(entry)}>Actualizar metadata</Button>
                     </Stack>
                   </Stack>
                 </CardContent>
