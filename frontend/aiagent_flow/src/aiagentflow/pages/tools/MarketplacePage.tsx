@@ -54,6 +54,19 @@ type TenantConnection = {
   secretExpiresAt?: string;
 };
 
+type ConnectionResource = {
+  id: string;
+  name: string;
+  type: string;
+  connectorId: string;
+  ready: boolean;
+  capabilities: string[];
+  suggestedNodes: string[];
+  requiredConfigKeys: string[];
+  secretRequired: boolean;
+  checks: Array<{ check: string; status: string; detail: string }>;
+};
+
 const CAPABILITY_LABELS: Record<string, string> = {
   'voice.call': 'Llamadas de voz',
   'callcenter.outbound_call': 'Call center saliente',
@@ -66,6 +79,18 @@ const CAPABILITY_LABELS: Record<string, string> = {
   'storage.write': 'Guardar documentos',
   'mcp.tool_call': 'Usar herramientas MCP',
   'tool discovery': 'Descubrir tools',
+};
+
+const NODE_LABELS: Record<string, string> = {
+  'voice.call': 'Llamada de voz',
+  'callcenter.outbound_call': 'Llamada de call center',
+  'connect.enqueue_campaign_message': 'Mensaje saliente',
+  'files.read': 'Leer archivo',
+  'drive.lookup': 'Buscar en Drive',
+  'storage.write': 'Guardar archivo',
+  'mcp.tool_call': 'Tool MCP',
+  'http.request': 'Consultar API',
+  'webhook.call': 'Webhook',
 };
 
 const QUICK_CONNECTIONS = [
@@ -121,6 +146,7 @@ export default function MarketplacePage() {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [installed, setInstalled] = useState<Record<string, boolean>>({});
   const [connections, setConnections] = useState<TenantConnection[]>([]);
+  const [resources, setResources] = useState<ConnectionResource[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [healthMessage, setHealthMessage] = useState<string | null>(null);
   const [openConnection, setOpenConnection] = useState(false);
@@ -143,15 +169,17 @@ export default function MarketplacePage() {
   const load = useCallback(async () => {
     setError(null);
     try {
-      const [catalogRes, statesRes, connectionsRes] = await Promise.all([
+      const [catalogRes, statesRes, connectionsRes, resourcesRes] = await Promise.all([
         axios.get('/api/v1/extensions/catalog', { params: query ? { q: query } : {} }),
         axios.get(`/api/v1/extensions/tenants/${tenantId}/states`),
         axios.get(endpoints.agentflow.connections.list(tenantId)).catch(() => ({ data: [] })),
+        axios.get(endpoints.agentflow.connections.resources(tenantId)).catch(() => ({ data: [] })),
       ]);
 
       setEntries(catalogRes.data ?? []);
       setInstalled(statesRes.data ?? {});
       setConnections(connectionsRes.data ?? []);
+      setResources(resourcesRes.data ?? []);
     } catch (err: any) {
       setError(err?.message || 'Error cargando marketplace');
     }
@@ -174,6 +202,7 @@ export default function MarketplacePage() {
   );
 
   const installedCount = Object.values(installed).filter(Boolean).length;
+  const readyResources = resources.filter((resource) => resource.ready).length;
   const configuredConnectionIds = new Set(connections.map((connection) => connection.connectorId));
 
   const configuredByConnectorId = (connectorId: string) =>
@@ -407,7 +436,7 @@ export default function MarketplacePage() {
     try {
       const res = await axios.get(endpoints.agentflow.connections.health(tenantId, connectionId));
       const checks = (res.data?.checks ?? [])
-        .map((check: any) => `${check.check}: ${check.status}`)
+        .map((check: any) => `${check.check}: ${check.status === 'Healthy' ? 'listo' : check.status}`)
         .join(', ');
       setHealthMessage(`Estado ${res.data?.status ?? 'desconocido'} - ${checks || 'sin checks'}`);
       setError(null);
@@ -465,6 +494,7 @@ export default function MarketplacePage() {
               ['Disponibles', visibleEntries.length, 'mdi:storefront-outline'],
               ['Instalados', installedCount, 'mdi:check-decagram-outline'],
               ['Conexiones', connections.length, 'mdi:connection'],
+              ['Listas para usar', readyResources, 'mdi:check-circle-outline'],
               ['En revision', entries.filter((e) => e.metadata.isQuarantined).length, 'mdi:shield-alert-outline'],
             ].map(([label, value, icon]) => (
               <Grid item xs={12} md={3} key={label}>
@@ -568,6 +598,71 @@ export default function MarketplacePage() {
                   />
                 ))}
               </Stack>
+            )}
+          </Stack>
+        </Card>
+
+        <Card variant="outlined" sx={{ p: 2, mb: 3 }}>
+          <Stack spacing={1.5}>
+            <Box>
+              <Typography variant="h6">Recursos disponibles para agentes y workflows</Typography>
+              <Typography variant="body2" color="text.secondary">
+                Esta es la lista real que consume Workflow Studio. Si algo aparece pendiente, el nodo lo avisara antes de publicar.
+              </Typography>
+            </Box>
+            {resources.length === 0 ? (
+              <Alert severity="info">Aun no hay recursos. Configura Twilio, Storage, API o MCP arriba.</Alert>
+            ) : (
+              <Grid container spacing={2}>
+                {resources.map((resource) => (
+                  <Grid item xs={12} md={4} key={resource.id}>
+                    <Card variant="outlined" sx={{ height: '100%' }}>
+                      <CardContent>
+                        <Stack spacing={1.2}>
+                          <Stack direction="row" justifyContent="space-between" alignItems="center">
+                            <Box>
+                              <Typography variant="subtitle2">{resource.name}</Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                {resource.connectorId} / {resource.type}
+                              </Typography>
+                            </Box>
+                            <Chip
+                              size="small"
+                              color={resource.ready ? 'success' : 'warning'}
+                              label={resource.ready ? 'Listo' : 'Pendiente'}
+                            />
+                          </Stack>
+                          <Stack direction="row" spacing={0.5} flexWrap="wrap">
+                            {resource.capabilities.map((capability) => (
+                              <Chip
+                                key={capability}
+                                size="small"
+                                label={CAPABILITY_LABELS[capability] ?? capability}
+                              />
+                            ))}
+                          </Stack>
+                          <Typography variant="caption" color="text.secondary">
+                            Nodos sugeridos: {resource.suggestedNodes.map((node) => NODE_LABELS[node] ?? node).join(', ') || 'sin nodos'}
+                          </Typography>
+                          {!resource.ready && (
+                            <Typography variant="caption" color="warning.main">
+                              Pendiente: {resource.checks.filter((check) => check.status !== 'Healthy').map((check) => check.check).join(', ')}
+                            </Typography>
+                          )}
+                          <Stack direction="row" spacing={1}>
+                            <Button size="small" variant="outlined" onClick={() => openQuickConnection(QUICK_CONNECTIONS.find((preset) => preset.connectorId === resource.connectorId) ?? QUICK_CONNECTIONS[0])}>
+                              Editar
+                            </Button>
+                            <Button size="small" href={paths.dashboard.workflows}>
+                              Usar
+                            </Button>
+                          </Stack>
+                        </Stack>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                ))}
+              </Grid>
             )}
           </Stack>
         </Card>

@@ -150,16 +150,29 @@ public sealed class TenantConnectionsController : ControllerBase
     {
         if (!CanAccess(tenantId, AgentFlowPermissions.ConnectRead)) return Forbid();
 
-        var resources = (await _store.GetConnectionsAsync(tenantId, ct)).Select(x => new
+        var resources = new List<object>();
+        foreach (var connection in await _store.GetConnectionsAsync(tenantId, ct))
         {
-            resourceType = "workflow-connection",
-            resourceKey = $"connection:{x.Id}",
-            x.Id,
-            x.Name,
-            x.Type,
-            x.ConnectorId,
-            policy = new { x.AllowedAgentIds, x.AllowedNodeIds, x.AllowedConnectorIds }
-        });
+            var secret = await _store.GetSecretAsync(tenantId, connection.Id, ct);
+            var checks = BuildChecks(connection, secret);
+            var ready = checks.All(check => check.Status == ConnectionHealthStatus.Healthy);
+            resources.Add(new
+            {
+                resourceType = "workflow-connection",
+                resourceKey = $"connection:{connection.Id}",
+                connection.Id,
+                connection.Name,
+                connection.Type,
+                connection.ConnectorId,
+                ready,
+                capabilities = CapabilitiesForConnection(connection),
+                suggestedNodes = SuggestedNodesForConnection(connection),
+                requiredConfigKeys = RequiredConfigKeys(connection),
+                secretRequired = SecretRequired(connection),
+                policy = new { connection.AllowedAgentIds, connection.AllowedNodeIds, connection.AllowedConnectorIds },
+                checks
+            });
+        }
 
         return Ok(resources);
     }
@@ -235,10 +248,15 @@ public sealed class TenantConnectionsController : ControllerBase
             connection.Config.Count > 0 ? ConnectionHealthStatus.Healthy : ConnectionHealthStatus.Unhealthy,
             connection.Config.Count > 0 ? "Configuration is present." : "Configuration is empty."));
 
+        var secretRequired = SecretRequired(connection);
         checks.Add(new ConnectionHealthCheck(
             "secret.exists",
-            secret is null ? ConnectionHealthStatus.Unhealthy : ConnectionHealthStatus.Healthy,
-            secret is null ? "No secret configured." : $"Secret version {secret.Version} found."));
+            !secretRequired || secret is not null ? ConnectionHealthStatus.Healthy : ConnectionHealthStatus.Unhealthy,
+            !secretRequired
+                ? "Secret is optional for this connection."
+                : secret is null
+                    ? "No secret configured."
+                    : $"Secret version {secret.Version} found."));
 
         if (secret is not null)
         {
@@ -258,25 +276,117 @@ public sealed class TenantConnectionsController : ControllerBase
                     : $"Secret expires at {secret.ExpiresAt:O}."));
         }
 
-        var requiredConfigKey = connection.Type switch
+        foreach (var requiredConfigKey in RequiredConfigKeys(connection))
         {
-            TenantConnectionType.Sql => "connectionString",
-            TenantConnectionType.NoSql => "database",
-            TenantConnectionType.Rest => "baseUrl",
-            TenantConnectionType.Sheets => "spreadsheetId",
-            TenantConnectionType.Messaging => "provider",
-            TenantConnectionType.Storage => "bucket",
-            TenantConnectionType.Mcp => "server",
-            _ => "endpoint"
-        };
-
-        checks.Add(new ConnectionHealthCheck(
-            "config.required-key",
-            connection.Config.ContainsKey(requiredConfigKey) ? ConnectionHealthStatus.Healthy : ConnectionHealthStatus.Unhealthy,
-            $"Required key for {connection.Type}: {requiredConfigKey}."));
+            checks.Add(new ConnectionHealthCheck(
+                $"config.{requiredConfigKey}",
+                HasConfigValue(connection, requiredConfigKey) ? ConnectionHealthStatus.Healthy : ConnectionHealthStatus.Unhealthy,
+                $"Required key for {connection.ConnectorId}: {requiredConfigKey}."));
+        }
 
         return checks;
     }
+
+    private static bool HasConfigValue(TenantConnectionContract connection, string key)
+        => connection.Config.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value);
+
+    private static bool SecretRequired(TenantConnectionContract connection)
+    {
+        if (connection.Type == TenantConnectionType.Storage &&
+            (!connection.Config.TryGetValue("provider", out var provider) ||
+             string.Equals(provider, "internal", StringComparison.OrdinalIgnoreCase)))
+        {
+            return false;
+        }
+
+        return connection.Type is not TenantConnectionType.Storage;
+    }
+
+    private static IReadOnlyList<string> RequiredConfigKeys(TenantConnectionContract connection)
+    {
+        if (string.Equals(connection.ConnectorId, "twilio", StringComparison.OrdinalIgnoreCase))
+        {
+            return new[] { "provider", "accountSid", "fromPhoneNumber" };
+        }
+
+        if (string.Equals(connection.ConnectorId, "rest-api", StringComparison.OrdinalIgnoreCase))
+        {
+            return new[] { "baseUrl", "authType" };
+        }
+
+        if (string.Equals(connection.ConnectorId, "mcp", StringComparison.OrdinalIgnoreCase))
+        {
+            return new[] { "server", "runtime" };
+        }
+
+        if (string.Equals(connection.ConnectorId, "storage", StringComparison.OrdinalIgnoreCase))
+        {
+            return new[] { "provider", "bucket" };
+        }
+
+        return connection.Type switch
+        {
+            TenantConnectionType.Sql => new[] { "connectionString" },
+            TenantConnectionType.NoSql => new[] { "database" },
+            TenantConnectionType.Rest => new[] { "baseUrl" },
+            TenantConnectionType.Sheets => new[] { "spreadsheetId" },
+            TenantConnectionType.Messaging => new[] { "provider" },
+            TenantConnectionType.Storage => new[] { "bucket" },
+            TenantConnectionType.Mcp => new[] { "server" },
+            _ => new[] { "endpoint" }
+        };
+    }
+
+    private static IReadOnlyList<string> CapabilitiesForConnection(TenantConnectionContract connection)
+    {
+        if (string.Equals(connection.ConnectorId, "twilio", StringComparison.OrdinalIgnoreCase))
+        {
+            return new[] { "voice.call", "callcenter.outbound_call", "sms", "status callbacks" };
+        }
+
+        if (string.Equals(connection.ConnectorId, "storage", StringComparison.OrdinalIgnoreCase))
+        {
+            return new[] { "files.read", "drive.lookup", "storage.write" };
+        }
+
+        if (string.Equals(connection.ConnectorId, "mcp", StringComparison.OrdinalIgnoreCase))
+        {
+            return new[] { "mcp.tool_call", "tool discovery" };
+        }
+
+        if (string.Equals(connection.ConnectorId, "rest-api", StringComparison.OrdinalIgnoreCase))
+        {
+            return new[] { "http.request", "webhook.call" };
+        }
+
+        return connection.Type switch
+        {
+            TenantConnectionType.Messaging => new[] { "messages", "callbacks" },
+            TenantConnectionType.Storage => new[] { "files.read", "storage.write" },
+            TenantConnectionType.Mcp => new[] { "mcp.tool_call" },
+            TenantConnectionType.Rest => new[] { "http.request" },
+            TenantConnectionType.Sheets => new[] { "sheets.read", "sheets.write" },
+            _ => new[] { "connection.use" }
+        };
+    }
+
+    private static IReadOnlyList<string> SuggestedNodesForConnection(TenantConnectionContract connection)
+        => CapabilitiesForConnection(connection)
+            .Select(capability => capability switch
+            {
+                "voice.call" => "voice.call",
+                "callcenter.outbound_call" => "callcenter.outbound_call",
+                "sms" => "connect.enqueue_campaign_message",
+                "files.read" => "files.read",
+                "drive.lookup" => "drive.lookup",
+                "storage.write" => "storage.write",
+                "mcp.tool_call" => "mcp.tool_call",
+                "http.request" => "http.request",
+                "webhook.call" => "webhook.call",
+                _ => capability
+            })
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
     private async Task RecordUsageAsync(
         string tenantId,

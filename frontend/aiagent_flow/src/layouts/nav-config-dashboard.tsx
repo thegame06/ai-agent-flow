@@ -60,7 +60,7 @@ export const navData: NavSectionProps['data'] = [
     subheader: 'Construccion',
     items: [
       {
-        title: 'Workflow',
+        title: 'Workflow Studio',
         path: paths.dashboard.workflows,
         icon: ICONS.kanban,
         info: <Label color="info">Studio</Label>,
@@ -77,7 +77,7 @@ export const navData: NavSectionProps['data'] = [
         icon: ICONS.analytics,
       },
       {
-        title: 'Mapa de intenciones',
+        title: 'Intenciones',
         path: paths.dashboard.intentMap,
         icon: ICONS.folder,
       },
@@ -108,19 +108,19 @@ export const navData: NavSectionProps['data'] = [
     subheader: 'Integraciones',
     items: [
       {
+        title: 'Canales',
+        path: paths.dashboard.system.channels,
+        icon: ICONS.channel,
+      },
+      {
         title: 'Marketplace',
         path: paths.dashboard.marketplace,
         icon: ICONS.product,
       },
       {
-        title: 'Integraciones',
-        path: paths.dashboard.tools,
+        title: 'MCP',
+        path: paths.dashboard.system.mcp,
         icon: ICONS.parameter,
-        children: [
-          { title: 'Tools', path: paths.dashboard.tools },
-          { title: 'Canales', path: paths.dashboard.system.channels },
-          { title: 'MCP', path: paths.dashboard.system.mcp },
-        ],
       },
     ],
   },
@@ -138,7 +138,6 @@ export const navData: NavSectionProps['data'] = [
           { title: 'Feature flags', path: paths.dashboard.system.featureFlags },
           { title: 'Politicas', path: paths.dashboard.governance.policies },
           { title: 'Auditoria', path: paths.dashboard.governance.audit },
-          { title: 'Evaluaciones', path: paths.dashboard.evaluations },
         ],
       },
     ],

@@ -13,6 +13,8 @@ import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import CardContent from '@mui/material/CardContent';
 
+import { paths } from 'src/routes/paths';
+
 import axios from 'src/lib/axios';
 import { CONFIG } from 'src/global-config';
 import { DashboardContent } from 'src/layouts/dashboard';
@@ -162,11 +164,44 @@ export default function McpPage() {
       </Helmet>
       <DashboardContent maxWidth="xl">
         <Box sx={{ mb: 4 }}>
-          <Typography variant="h4">MCP para agentes</Typography>
-          <Typography variant="body2" color="text.secondary">
-            Conecta servidores MCP y habilita sus herramientas para agentes y workflows.
-          </Typography>
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between">
+            <Box>
+              <Typography variant="h4">MCP para agentes y workflows</Typography>
+              <Typography variant="body2" color="text.secondary">
+                Habilita servidores MCP, descubre herramientas y confirma que pueden usarse desde Agent Studio y Workflow Studio.
+              </Typography>
+            </Box>
+            <Stack direction="row" spacing={1}>
+              <Button variant="outlined" href={paths.dashboard.marketplace}>
+                Configurar conexion
+              </Button>
+              <Button variant="contained" href={paths.dashboard.workflows}>
+                Usar en workflow
+              </Button>
+            </Stack>
+          </Stack>
         </Box>
+
+        <Grid container spacing={2} sx={{ mb: 3 }}>
+          {[
+            ['1', 'Configura MCP en Marketplace', 'Guarda servidor, runtime y token como recurso del tenant.'],
+            ['2', 'Permite servidores aqui', 'Define que servidores puede usar este tenant.'],
+            ['3', 'Descubre y prueba tools', 'Valida una tool antes de publicarla en agentes o workflows.'],
+            ['4', 'Usa el nodo MCP', 'Workflow Studio mostrara si la conexion esta lista.'],
+          ].map(([step, title, body]) => (
+            <Grid key={step} item xs={12} md={3}>
+              <Card variant="outlined" sx={{ height: '100%' }}>
+                <CardContent>
+                  <Stack spacing={1}>
+                    <Chip label={step} sx={{ width: 32 }} />
+                    <Typography variant="subtitle2">{title}</Typography>
+                    <Typography variant="caption" color="text.secondary">{body}</Typography>
+                  </Stack>
+                </CardContent>
+              </Card>
+            </Grid>
+          ))}
+        </Grid>
 
         <Grid container spacing={2} sx={{ mb: 3 }}>
           {[
