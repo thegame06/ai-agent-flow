@@ -41,6 +41,17 @@ public sealed class AgentExecution : AggregateRoot
     public string? ParentExecutionId { get; private set; }
     public ExecutionPriority Priority { get; private set; } = ExecutionPriority.Normal;
 
+    // --- Channel traceability ---
+    // Binds this execution to the channel message and session that originated it.
+    // Enables navigation: message → execution → steps and back.
+    public string? SessionId { get; private set; }
+    public string? ChannelMessageId { get; private set; }
+
+    // --- Agent role at time of execution ---
+    // Snapshot of the agent's system role so dashboards can segment Router vs
+    // WorkflowBrain vs ConfigAssistant metrics without joining to AgentDefinition.
+    public string AgentSystemRole { get; private set; } = "Custom";
+
     private AgentExecution() { }
 
     public static AgentExecution Create(
@@ -66,6 +77,17 @@ public sealed class AgentExecution : AggregateRoot
             CreatedBy = triggeredBy,
             UpdatedBy = triggeredBy
         };
+    }
+
+    /// <summary>
+    /// Binds this execution to the channel message and session that triggered it.
+    /// Called by ChannelGateway immediately after Create — before Insert.
+    /// </summary>
+    public void SetChannelContext(string sessionId, string channelMessageId, string agentSystemRole)
+    {
+        SessionId = sessionId;
+        ChannelMessageId = channelMessageId;
+        AgentSystemRole = agentSystemRole;
     }
 
     public Result Start()

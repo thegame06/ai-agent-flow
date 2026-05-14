@@ -1,3 +1,7 @@
+using AgentFlow.Abstractions.Connect;
+using AgentFlow.Abstractions.Workflow;
+using AgentFlow.Api.Connect;
+using AgentFlow.Api.Workflow;
 using AgentFlow.Application.Channels;
 using AgentFlow.Domain.Aggregates;
 using AgentFlow.Domain.Repositories;
@@ -18,6 +22,10 @@ public sealed class WhatsAppWebhookController : ControllerBase
     private readonly IChannelGateway _gateway;
     private readonly IChannelDefinitionRepository _channelRepo;
     private readonly IChannelMessageRepository _messageRepo;
+    private readonly IChannelSessionRepository _sessionRepo;
+    private readonly IConnectStore _connectStore;
+    private readonly IWorkflowTriggerService _triggerService;
+    private readonly IWorkflowAuditService _audit;
     private readonly ILogger<WhatsAppWebhookController> _logger;
     private readonly WhatsAppOptions _waOptions;
 
@@ -25,12 +33,20 @@ public sealed class WhatsAppWebhookController : ControllerBase
         IChannelGateway gateway,
         IChannelDefinitionRepository channelRepo,
         IChannelMessageRepository messageRepo,
+        IChannelSessionRepository sessionRepo,
+        IConnectStore connectStore,
+        IWorkflowTriggerService triggerService,
+        IWorkflowAuditService audit,
         IOptions<WhatsAppOptions> options,
         ILogger<WhatsAppWebhookController> logger)
     {
         _gateway = gateway;
         _channelRepo = channelRepo;
         _messageRepo = messageRepo;
+        _sessionRepo = sessionRepo;
+        _connectStore = connectStore;
+        _triggerService = triggerService;
+        _audit = audit;
         _waOptions = options.Value;
         _logger = logger;
     }
@@ -124,7 +140,9 @@ public sealed class WhatsAppWebhookController : ControllerBase
     }
 
     /// <summary>
-    /// Receive message from QR-based WhatsApp gateway (OpenClaw-style)
+    /// Receive message from QR-based WhatsApp gateway (OpenClaw-style).
+    /// Dispatches to the agent via ChannelGateway AND triggers any published
+    /// workflow listening on the "connect.message.received" event.
     /// </summary>
     [HttpPost("qr")]
     public async Task<IActionResult> ReceiveQrMessage(string tenantId, [FromBody] QrWhatsAppMessage message, CancellationToken ct)
@@ -137,30 +155,110 @@ public sealed class WhatsAppWebhookController : ControllerBase
             var activeChannel = channels.FirstOrDefault(c => c.Status == ChannelStatus.Active && c.Config.GetValueOrDefault("AuthMode") == "qr");
 
             if (activeChannel == null)
-            {
                 return BadRequest(new { error = "No active QR WhatsApp channel" });
+
+            // --- Resolve or create session for this sender ---
+            var existingSession = await _sessionRepo.GetByChannelAndIdentifierAsync(activeChannel.Id, message.From, tenantId, ct);
+            ChannelSession session;
+            if (existingSession != null && !existingSession.IsExpired())
+            {
+                session = existingSession;
+            }
+            else
+            {
+                session = ChannelSession.Create(tenantId, activeChannel.Id, activeChannel.Type, message.From);
+                var defaultAgentId = activeChannel.Config.GetValueOrDefault("DefaultAgentId");
+                if (!string.IsNullOrWhiteSpace(defaultAgentId))
+                    session.LinkAgent(defaultAgentId);
+                await _sessionRepo.InsertAsync(session, ct);
             }
 
-            var waMessage = new WhatsAppIncomingMessage
+            // --- Store inbox message for traceability ---
+            var inboxMessage = await _connectStore.CreateInboxMessageAsync(new ConnectInboxMessageContract
             {
-                Id = message.Id,
-                From = message.From,
-                Timestamp = message.Timestamp,
-                Text = new WhatsAppTextMessage { Body = message.Content },
-                Profile = new WhatsAppProfile { Name = message.PushName ?? "Unknown" }
-            };
+                Id = Guid.NewGuid().ToString("N"),
+                TenantId = tenantId,
+                Channel = "whatsapp",
+                Recipient = message.From,
+                Content = message.Content,
+                ExternalEventKey = string.IsNullOrWhiteSpace(message.Id) ? null : $"wa-qr:{message.Id}",
+                Status = ConnectOperationalStatus.Queued,
+                CreatedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow,
+                UpdatedBy = "qr-webhook"
+            }, ct);
 
-            var channelMessage = await ProcessWhatsAppMessage(waMessage, activeChannel, ct);
-            if (channelMessage == null)
-                return BadRequest(new { error = "Invalid message" });
+            // --- Trigger published workflow (if any) for connect.message.received ---
+            WorkflowExecutionContract? workflowExecution = null;
+            try
+            {
+                var workflowPayload = new Dictionary<string, object?>
+                {
+                    ["channel"] = "whatsapp",
+                    ["recipient"] = message.From,
+                    ["content"] = message.Content,
+                    ["pushName"] = message.PushName,
+                    ["inboxMessageId"] = inboxMessage.Id,
+                    ["sessionId"] = session.Id,
+                    ["assignedTo"] = session.AgentId
+                };
+                workflowExecution = await _triggerService.TriggerEventAsync(
+                    tenantId,
+                    "connect.message.received",
+                    message.From,
+                    HttpContext.TraceIdentifier,
+                    workflowPayload,
+                    ct);
+                await _audit.RecordExecutionActionAsync(
+                    tenantId,
+                    "qr-webhook",
+                    "workflow.execution.trigger.qr",
+                    workflowExecution.Id,
+                    workflowExecution.WorkflowDefinitionId,
+                    new { inboxMessageId = inboxMessage.Id, from = message.From },
+                    HttpContext.TraceIdentifier,
+                    ct);
+                _logger.LogInformation(
+                    "Workflow triggered for QR message. ExecutionId={ExecutionId}",
+                    workflowExecution.Id);
+            }
+            catch (InvalidOperationException)
+            {
+                // No published workflow for this event — fall through to direct agent execution
+                _logger.LogInformation(
+                    "No published workflow for connect.message.received in tenant {TenantId}. Routing directly to agent.",
+                    tenantId);
+            }
 
-            var response = await _gateway.ProcessMessageAsync(channelMessage, ct);
+            // --- If no workflow handled it, route directly through the channel gateway ---
+            string? agentResponse = null;
+            string? agentExecutionId = null;
+            if (workflowExecution is null)
+            {
+                var waMessage = new WhatsAppIncomingMessage
+                {
+                    Id = message.Id,
+                    From = message.From,
+                    Timestamp = message.Timestamp,
+                    Text = new WhatsAppTextMessage { Body = message.Content },
+                    Profile = new WhatsAppProfile { Name = message.PushName ?? "Unknown" }
+                };
+                var channelMessage = await ProcessWhatsAppMessage(waMessage, activeChannel, ct);
+                if (channelMessage != null)
+                {
+                    var response = await _gateway.ProcessMessageAsync(channelMessage, ct);
+                    agentResponse = response.Content;
+                    agentExecutionId = response.AgentExecutionId;
+                }
+            }
 
             return Ok(new
             {
                 status = "success",
-                response = response.Content,
-                execution_id = response.AgentExecutionId
+                inboxMessageId = inboxMessage.Id,
+                workflowExecutionId = workflowExecution?.Id,
+                agentResponse,
+                agentExecutionId
             });
         }
         catch (Exception ex)

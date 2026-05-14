@@ -5,7 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RUN_DIR="$ROOT_DIR/.agent/run"
 COMPOSE_PROJECT="${COMPOSE_PROJECT_NAME:-aiagents}"
 
-PORTS=("${FRONTEND_PORT:-3039}" "${API_PORT:-5000}" "${QR_PORT:-3401}" "${MCP_TEST_PORT:-3501}")
+PORTS=("${FRONTEND_PORT:-3039}" "${API_PORT:-5000}" "${QR_PORT:-3401}" "${MCP_TEST_PORT:-3501}" "${MCP_SERVER_PORT:-3502}")
 
 stop_pid_file() {
   local file="$1"
@@ -53,9 +53,11 @@ echo "[clean] stopping known PID files"
 stop_pid_file "$RUN_DIR/api.pid"
 stop_pid_file "$RUN_DIR/frontend.pid"
 stop_pid_file "$RUN_DIR/qr.pid"
+stop_pid_file "$RUN_DIR/mcp.pid"
 
 echo "[clean] killing known process patterns"
 kill_by_pattern "AgentFlow.Api.csproj"
+kill_by_pattern "AgentFlow.McpServer.csproj"
 kill_by_pattern "vite --strictPort --port ${FRONTEND_PORT:-3039}"
 kill_by_pattern "whatsapp-qr-bridge"
 

@@ -90,6 +90,8 @@ const workflowRuntimeSlice = createSlice({
               toolsCount: agent.toolsCount ?? agent.ToolsCount ?? 0,
               primaryModel: agent.primaryModel ?? agent.PrimaryModel ?? '',
               provider: agent.provider ?? agent.Provider ?? '',
+              isSystemAgent: agent.isSystemAgent ?? agent.IsSystemAgent ?? false,
+              systemRole: agent.systemRole ?? agent.SystemRole ?? '',
             }) as AgentOption
         );
         state.availableChannels = ((action.payload.availableChannels as any[]) ?? []).map(

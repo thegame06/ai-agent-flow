@@ -42,6 +42,7 @@ type IntentRule = {
   id: string;
   tenantId: string;
   intentKey: string;
+  intentDescription?: string;
   sourceAgentId: string;
   targetAgentId: string;
   priority: number;
@@ -97,6 +98,7 @@ export default function ManagerOrchestrationPage() {
   const [sourceAgentId, setSourceAgentId] = useState('');
   const [targetAgentId, setTargetAgentId] = useState('');
   const [ruleIntentKey, setRuleIntentKey] = useState('agendar_cita');
+  const [ruleDescription, setRuleDescription] = useState('');
   const [ruleChannel, setRuleChannel] = useState('whatsapp');
   const [ruleExamples, setRuleExamples] = useState(DEFAULT_EXAMPLES.join('\n'));
   const [probeText, setProbeText] = useState(DEFAULT_EXAMPLES[0]);
@@ -162,6 +164,8 @@ export default function ManagerOrchestrationPage() {
     try {
       await axios.post(endpoints.agentflow.intentRouting.rules(tenantId), {
         intentKey: ruleIntentKey.trim(),
+        intentDescription: ruleDescription.trim() || undefined,
+        examplePhrases: examples,
         sourceAgentId,
         targetAgentId,
         priority: 100,
@@ -205,7 +209,14 @@ export default function ManagerOrchestrationPage() {
       headerName: 'Intencion',
       flex: 1,
       minWidth: 160,
-      renderCell: (params) => <Typography variant="subtitle2">{params.row.intentKey}</Typography>,
+      renderCell: (params) => (
+        <Stack spacing={0.2}>
+          <Typography variant="subtitle2">{params.row.intentKey}</Typography>
+          {params.row.intentDescription && (
+            <Typography variant="caption" color="text.secondary" noWrap>{params.row.intentDescription}</Typography>
+          )}
+        </Stack>
+      ),
     },
     {
       field: 'channel',
@@ -437,13 +448,23 @@ export default function ManagerOrchestrationPage() {
                       </Grid>
                       <Grid item xs={12}>
                         <TextField
-                          label="Ejemplos de frases"
+                          label="Descripcion de la intencion"
+                          value={ruleDescription}
+                          onChange={(event) => setRuleDescription(event.target.value)}
+                          fullWidth
+                          helperText="Describe en lenguaje natural cuando debe activarse esta intencion. El Router la usa como guia semantica."
+                          placeholder="El cliente quiere agendar una cita medica o de servicio"
+                        />
+                      </Grid>
+                      <Grid item xs={12}>
+                        <TextField
+                          label="Frases de ejemplo"
                           value={ruleExamples}
                           onChange={(event) => setRuleExamples(event.target.value)}
                           multiline
                           minRows={3}
                           fullWidth
-                          helperText="Una frase por linea. Estas frases alimentan el mapa de intenciones."
+                          helperText="Una frase por linea. Estas frases alimentan el mapa de intenciones y el Router las usa para clasificar mensajes."
                         />
                       </Grid>
                     </Grid>

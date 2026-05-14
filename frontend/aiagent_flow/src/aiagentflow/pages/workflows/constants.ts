@@ -2,6 +2,7 @@ import type { AiAgentNodeConfig } from './types';
 
 export const ALLOWED_ACTIVITY_TYPES = [
   'ai.agent',
+  'channel.send',
   'connect.send_whatsapp_template',
   'connect.update_inbox_status',
   'connect.enqueue_campaign_message',
@@ -34,6 +35,7 @@ export const TOOL_ACTIVITY_TYPES = [
 
 export const ACTIVITY_TYPE_LABELS_ES: Record<string, string> = {
   'ai.agent': 'Agente de IA',
+  'channel.send': 'Enviar por canal',
   'connect.send_whatsapp_template': 'Enviar plantilla de WhatsApp',
   'connect.update_inbox_status': 'Actualizar estado de conversacion',
   'connect.enqueue_campaign_message': 'Encolar mensaje de campana',
@@ -54,6 +56,7 @@ export const ACTIVITY_TYPE_LABELS_ES: Record<string, string> = {
 
 export const ACTIVITY_TYPE_CATEGORY_ES: Record<string, string> = {
   ai: 'IA',
+  channel: 'Canales',
   connect: 'Conexiones',
   human: 'Atencion Humana',
   kyc: 'Identidad (KYC)',

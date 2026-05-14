@@ -51,6 +51,24 @@ const statusColor = (status: string) => {
   }
 };
 
+const systemRoleLabel = (role?: string) => {
+  switch (role) {
+    case 'Router': return 'ROUTER';
+    case 'ConfigAssistant': return 'CONFIG';
+    case 'WorkflowBrain': return 'BRAIN';
+    default: return null;
+  }
+};
+
+const systemRoleColor = (role?: string) => {
+  switch (role) {
+    case 'Router': return 'primary';
+    case 'ConfigAssistant': return 'warning';
+    case 'WorkflowBrain': return 'info';
+    default: return 'default';
+  }
+};
+
 // ----------------------------------------------------------------------
 
 export default function AgentsPage() {
@@ -81,7 +99,7 @@ export default function AgentsPage() {
   });
 
   const handleEdit = (agentId: string) => {
-    router.push(`${paths.dashboard.agentDesigner}?id=${agentId}`);
+    router.push(`${paths.dashboard.agentDesigner}/${agentId}`);
   };
 
   const handleChat = (agentId: string) => {
@@ -147,6 +165,7 @@ export default function AgentsPage() {
   const publishedAgents = agents.filter((agent) => agent.status === 'Published').length;
   const draftAgents = agents.filter((agent) => agent.status === 'Draft').length;
   const toolReadyAgents = agents.filter((agent) => (agent.availableTools?.length ?? agent.tools?.length ?? 0) > 0).length;
+  const systemAgents = agents.filter((agent) => agent.isSystemAgent).length;
 
   return (
     <>
@@ -210,7 +229,7 @@ export default function AgentsPage() {
           {[
             ['Total', agents.length, 'mdi:robot-outline'],
             ['Publicados', publishedAgents, 'mdi:check-decagram-outline'],
-            ['Borradores', draftAgents, 'mdi:file-edit-outline'],
+            ['Sistema', systemAgents, 'mdi:shield-lock-outline'],
             ['Con tools', toolReadyAgents, 'mdi:tools'],
           ].map(([label, value, icon]) => (
             <Grid key={String(label)} item xs={12} sm={6} md={3}>
@@ -282,6 +301,8 @@ export default function AgentsPage() {
                         </Box>
                         <AgentMenu
                           agentId={agent.id}
+                          isSystemAgent={agent.isSystemAgent}
+                          systemRole={agent.systemRole}
                           onEdit={handleEdit}
                           onChat={handleChat}
                           onClone={handleClone}
@@ -290,10 +311,18 @@ export default function AgentsPage() {
                       </Box>
 
                       {/* Status & Tags */}
-                      <Stack direction="row" spacing={1} flexWrap="wrap">
+                      <Stack direction="row" spacing={1} flexWrap="wrap" alignItems="center">
                         <Label color={statusColor(agent.status)} variant="soft">
                           {agent.status}
                         </Label>
+                        {agent.isSystemAgent && systemRoleLabel(agent.systemRole) && (
+                          <Chip
+                            size="small"
+                            label={systemRoleLabel(agent.systemRole)}
+                            color={systemRoleColor(agent.systemRole) as any}
+                            icon={<Iconify icon="mdi:shield-lock-outline" width={14} />}
+                          />
+                        )}
                         {agent.tags?.slice(0, 2).map((tag: string) => (
                           <Chip key={tag} label={tag} size="small" variant="outlined" />
                         ))}
@@ -355,6 +384,7 @@ export default function AgentsPage() {
                       variant="contained"
                       startIcon={<Iconify icon="mdi:play" />}
                       onClick={() => handleExecute(agent.id)}
+                      disabled={agent.isSystemAgent === true}
                     >
                       Ejecutar
                     </Button>
@@ -402,13 +432,16 @@ export default function AgentsPage() {
 
 interface AgentMenuProps {
   agentId: string;
+  isSystemAgent?: boolean;
+  systemRole?: string;
   onEdit: (id: string) => void;
   onChat: (id: string) => void;
   onClone: (id: string) => void;
   onDelete: (id: string) => void;
 }
 
-function AgentMenu({ agentId, onEdit, onChat, onClone, onDelete }: AgentMenuProps) {
+function AgentMenu({ agentId, isSystemAgent, systemRole, onEdit, onChat, onClone, onDelete }: AgentMenuProps) {
+  const isReadOnly = isSystemAgent === true && systemRole !== 'WorkflowBrain';
   const { open, anchorEl, onClose, onOpen } = usePopover();
 
   return (
@@ -419,6 +452,7 @@ function AgentMenu({ agentId, onEdit, onChat, onClone, onDelete }: AgentMenuProp
 
       <CustomPopover open={open} anchorEl={anchorEl} onClose={onClose}>
         <MenuItem
+          disabled={isReadOnly}
           onClick={() => {
             onClose();
             onEdit(agentId);
@@ -429,6 +463,7 @@ function AgentMenu({ agentId, onEdit, onChat, onClone, onDelete }: AgentMenuProp
         </MenuItem>
 
         <MenuItem
+          disabled={isSystemAgent === true}
           onClick={() => {
             onClose();
             onChat(agentId);
@@ -451,11 +486,12 @@ function AgentMenu({ agentId, onEdit, onChat, onClone, onDelete }: AgentMenuProp
         <Divider sx={{ borderStyle: 'dashed' }} />
 
         <MenuItem
+          disabled={isReadOnly}
           onClick={() => {
             onClose();
             onDelete(agentId);
           }}
-          sx={{ color: 'error.main' }}
+          sx={{ color: isReadOnly ? 'text.disabled' : 'error.main' }}
         >
           <Iconify icon="mdi:delete-outline" />
           Eliminar

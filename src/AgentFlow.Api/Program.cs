@@ -44,7 +44,10 @@ builder.Services.AddCors(opt =>
 {
     opt.AddDefaultPolicy(policy =>
     {
-        policy.WithOrigins("http://localhost:5173", "http://localhost:3000", "http://localhost:8081", "http://localhost:8082", "http://localhost:8083") 
+        policy.WithOrigins(
+                  "http://localhost:5173", "http://localhost:3000",
+                  "http://localhost:3039",
+                  "http://localhost:8081", "http://localhost:8082", "http://localhost:8083")
               .AllowAnyHeader()
               .AllowAnyMethod()
               .AllowCredentials();
@@ -93,10 +96,7 @@ app.MapControllers();
 app.MapGet("/health", () => Results.Ok(new { status = "healthy", timestamp = DateTimeOffset.UtcNow }))
     .AllowAnonymous();
 
-// Seed demo data in development
-if (app.Environment.IsDevelopment())
-{
-    await SeedData.SeedDemoDataAsync(app.Services);
-}
+// System agents always seed (guarded internally — skips if already exists)
+await SeedData.SeedSystemAgentsAsync(app.Services);
 
 app.Run();

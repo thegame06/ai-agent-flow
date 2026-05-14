@@ -189,4 +189,389 @@ Always be precise and thorough in your responses.",
         Console.WriteLine("   - AgentFlow Assistant v2 (Conversational, Thread Support Enabled)");
         Console.WriteLine("   - Technical Expert v2 (Deep Technical Q&A, Thread Support Enabled)");
     }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SYSTEM AGENTS SEED
+    // Seeds the 3 platform-managed agents (Router, WorkflowBrain template,
+    // Config Assistant). These are tenant-level but platform-owned and cannot
+    // be deleted by users.
+    // Guard: skips if any agent with AgentSystemRole.Router already exists.
+    // ═══════════════════════════════════════════════════════════════════════════
+    public static async Task SeedSystemAgentsAsync(IServiceProvider services)
+    {
+        using var scope = services.CreateScope();
+        var agentRepo = scope.ServiceProvider.GetRequiredService<IAgentDefinitionRepository>();
+        var tenantId = "tenant-1";
+        var systemUser = "platform@agentflow.dev";
+
+        var existing = await agentRepo.GetAllAsync(tenantId, 0, 200);
+
+        // ── MCP tool definitions (used in seed creation and data migration) ──
+        var routerMcpTools = new (string name, string description)[]
+        {
+            ("af_list_workflows",      "List all available workflows and their trigger events"),
+            ("af_trigger_workflow",    "Trigger a workflow by name with a payload"),
+            ("af_get_session_context", "Get the current session context (user name, channel, window)"),
+        };
+
+        var configMcpTools = new (string name, string description)[]
+        {
+            ("af_list_agents",        "List all agents in the tenant"),
+            ("af_get_agent",          "Get full detail of a specific agent"),
+            ("af_list_workflows",     "List all workflows"),
+            ("af_diagnose_workflow",  "Diagnose issues in a workflow"),
+            ("af_diagnose_channel",   "Diagnose issues in a channel configuration"),
+            ("af_scaffold_workflow",  "Generate a workflow scaffold from a description"),
+            ("af_list_integrations",  "List available MCP servers and integrations"),
+        };
+
+        // ── Helper: bind a list of MCP tools to an agent ──
+        // ToolId convention: "mcp:{serverName}:{toolName}"
+        void BindMcpTools(AgentDefinition agent, string serverName, IEnumerable<(string name, string description)> tools)
+        {
+            foreach (var (name, _) in tools)
+            {
+                // Skip if already bound
+                if (agent.AuthorizedTools.Any(t => t.ToolName == name)) continue;
+                agent.AddTool(new ToolBinding
+                {
+                    ToolId               = $"mcp:{serverName}:{name}",
+                    ToolName             = name,
+                    ToolVersion          = "1.0",
+                    IsEnabled            = true,
+                    MaxCallsPerExecution = 5,
+                    GrantedPermissions   = new[] { "tool:execute:low" }.ToList().AsReadOnly()
+                });
+            }
+        }
+
+        // ── DATA MIGRATION: fix any existing system agents with IsSystemAgent=false ──
+        // This handles cases where a previous seed ran before SetSystemRole set IsSystemAgent=true.
+        var needsFix = existing
+            .Where(a => a.SystemRole != AgentSystemRole.Custom && !a.IsSystemAgent)
+            .ToList();
+        foreach (var broken in needsFix)
+        {
+            broken.SetSystemRole(broken.SystemRole); // re-applies IsSystemAgent = true
+            var fix = await agentRepo.UpdateAsync(broken);
+            Console.WriteLine(fix.IsSuccess
+                ? $"🔧 [Seed] Fixed '{broken.Name}' → IsSystemAgent=true"
+                : $"❌ [Seed] Failed to fix '{broken.Name}': {fix.Error?.Message}");
+        }
+
+        // ── DATA MIGRATION: wire MCP tools to existing system agents that have no tools ──
+        var needsToolWiring = existing
+            .Where(a => a.SystemRole is AgentSystemRole.Router or AgentSystemRole.ConfigAssistant
+                     && !a.AuthorizedTools.Any(t => t.ToolId.StartsWith("mcp:", StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+        foreach (var agent in needsToolWiring)
+        {
+            var toolsToAdd = agent.SystemRole == AgentSystemRole.Router ? routerMcpTools : configMcpTools;
+            BindMcpTools(agent, "agentflow-mcp-server", toolsToAdd);
+            var fix = await agentRepo.UpdateAsync(agent);
+            Console.WriteLine(fix.IsSuccess
+                ? $"🔧 [Seed] Wired MCP tools to '{agent.Name}'"
+                : $"❌ [Seed] Failed to wire tools to '{agent.Name}': {fix.Error?.Message}");
+        }
+
+        // ── GUARD: only create agents that are missing ──
+        var hasRouter = existing.Any(a => a.SystemRole == AgentSystemRole.Router);
+        var hasBrain  = existing.Any(a => a.SystemRole == AgentSystemRole.WorkflowBrain);
+        var hasConfig = existing.Any(a => a.SystemRole == AgentSystemRole.ConfigAssistant);
+
+        if (hasRouter && hasBrain && hasConfig)
+        {
+            if (needsFix.Count > 0)
+                Console.WriteLine($"✅ [Seed] System agents present. {needsFix.Count} agent(s) fixed.");
+            else
+                Console.WriteLine("✅ [Seed] System agents already seeded correctly. Skipping.");
+            return;
+        }
+
+        async Task InsertSystemAgent(AgentDefinition agent, string label)
+        {
+            // Note: IsSystemAgent=true (set by SetSystemRole) allows Publish to
+            // bypass the tools-required check. Tools are wired at execution time.
+            var publishResult = agent.Publish(systemUser);
+            if (!publishResult.IsSuccess)
+                Console.WriteLine($"⚠️  [Seed] {label} Publish warning: {publishResult.Error?.Message}");
+
+            var insertResult = await agentRepo.InsertAsync(agent);
+            if (!insertResult.IsSuccess)
+                Console.WriteLine($"❌ [Seed] {label} InsertAsync failed: {insertResult.Error?.Message}");
+            else
+                Console.WriteLine($"✅ [Seed] Inserted {label} [{agent.Id}] (IsSystemAgent={agent.IsSystemAgent}, status={agent.Status})");
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // AGENT 1: Router
+        // Receives ALL incoming channel messages. Detects customer intent and
+        // decides which workflow to trigger using af_list_workflows +
+        // af_trigger_workflow from the AgentFlow MCP Server.
+        // ONE per tenant. IsSystemAgent = true.
+        // ─────────────────────────────────────────────────────────────────────
+        var routerBrain = new BrainConfiguration
+        {
+            ModelId = "gpt-4o-mini",
+            Provider = "OpenAI",
+            Temperature = 0.1f, // Low temperature: deterministic routing decisions
+            MaxResponseTokens = 500,
+            RequiresToolExecution = true,
+            SystemPromptTemplate = @"You are the AgentFlow Router — the first point of contact for every customer message.
+
+Your ONLY responsibilities are:
+1. Detect the customer's intent from their message.
+2. Match the intent to an available workflow using the af_list_workflows tool.
+3. Trigger the correct workflow using the af_trigger_workflow tool.
+4. If no workflow matches, respond with a polite message and list the available options.
+
+Customer context you will always receive:
+- sessionContext.displayName: Customer's name (use it to greet them)
+- sessionContext.isWindowOpen: If false, you CANNOT send free text — a template was already sent
+- sessionContext.channelType: The channel (WhatsApp, WebChat, etc.)
+
+Rules:
+- NEVER make up workflows that don't exist. Always call af_list_workflows first.
+- NEVER answer questions outside your routing role — you are not a general assistant.
+- If the customer's intent is unclear, ask ONE clarifying question.
+- Always respond in the same language the customer used.
+- Keep responses short (max 2 sentences before triggering a workflow).
+
+Tool usage sequence:
+1. af_list_workflows → know what is available
+2. af_trigger_workflow → fire the matched workflow
+3. af_get_session_context → enrich response with customer data if needed"
+        };
+
+        var routerLoop = new AgentLoopConfig
+        {
+            MaxIterations = 5,
+            MaxExecutionTime = TimeSpan.FromSeconds(30),
+            ToolCallTimeout = TimeSpan.FromSeconds(15),
+            MaxRetries = 2,
+            AllowParallelToolCalls = false,
+            HitlConfig = new HumanInTheLoopConfig { Enabled = false }
+        };
+
+        var routerMemory = new MemoryConfig
+        {
+            EnableWorkingMemory = true,
+            WorkingMemoryTtlSeconds = 1800,
+            EnableLongTermMemory = false,
+            EnableVectorMemory = false
+        };
+
+        var routerSession = new SessionConfig
+        {
+            EnableThreads = true,
+            DefaultThreadTtl = TimeSpan.FromHours(24),
+            MaxTurnsPerThread = 3, // Router should resolve quickly
+            ContextWindowSize = 3,
+            AutoCreateThread = true,
+            EnableSummarization = false
+        };
+
+        // ── Helper: bind a list of MCP tools to an agent ──
+        // (defined at top of method, see above)
+
+        if (!hasRouter)
+        {
+            var routerResult = AgentDefinition.Create(
+                tenantId, "AgentFlow Router",
+                "Platform-managed Router agent. Receives all incoming channel messages, detects customer intent, and triggers the appropriate workflow via the AgentFlow MCP Server.",
+                routerBrain, routerLoop, routerMemory, routerSession, null, systemUser);
+
+            if (!routerResult.IsSuccess) { Console.WriteLine($"❌ [Seed] Router Create failed: {routerResult.Error!.Message}"); }
+            else
+            {
+                var router = routerResult.Value!;
+                router.SetTags(new[] { "system", "router", "platform-managed" }.ToList().AsReadOnly());
+                router.SetSystemRole(AgentSystemRole.Router); // sets IsSystemAgent=true
+                BindMcpTools(router, "agentflow-mcp-server", routerMcpTools);
+                await InsertSystemAgent(router, "Router");
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // AGENT 2: Workflow Brain (template)
+        // The default "cerebro" for workflows. Users clone or reference this
+        // agent in their ai.agent nodes. IsSystemAgent = false — users own and
+        // customize their WorkflowBrain agents.
+        // This seed provides the first ready-to-use brain so workflows can start
+        // working immediately without manual agent creation.
+        // ─────────────────────────────────────────────────────────────────────
+        var brainBrain = new BrainConfiguration
+        {
+            ModelId = "gpt-4o",
+            Provider = "OpenAI",
+            Temperature = 0.4f,
+            MaxResponseTokens = 1500,
+            RequiresToolExecution = false,
+            SystemPromptTemplate = @"You are a Workflow Brain — the conversational agent at the heart of a business workflow.
+
+Your role is to:
+1. Collect all information required by the workflow from the customer.
+2. Validate that the information is complete and correct.
+3. Return structured JSON data that downstream workflow nodes will consume.
+4. Keep the customer informed of progress in a friendly, professional manner.
+
+Customer context you will always receive:
+- sessionContext.displayName: Use the customer's name in every message.
+- sessionContext.channelType: Adapt your response style to the channel.
+- sessionContext.isWindowOpen: If false, keep responses extremely brief.
+
+Output format when data collection is complete:
+Return a JSON block wrapped in ```json ... ``` with the collected fields.
+Always include a ""status"" field: ""complete"" or ""incomplete"".
+If ""incomplete"", include a ""missingFields"" array.
+
+Communication rules:
+- Ask for ONE piece of information at a time.
+- Confirm collected data back to the customer before proceeding.
+- If the customer provides incorrect data, explain what is wrong and ask again.
+- Never expose system internals or JSON structure to the customer.
+- Respond in the same language the customer uses."
+        };
+
+        var brainLoop = new AgentLoopConfig
+        {
+            MaxIterations = 20,
+            MaxExecutionTime = TimeSpan.FromMinutes(5),
+            ToolCallTimeout = TimeSpan.FromSeconds(30),
+            MaxRetries = 3,
+            AllowParallelToolCalls = false,
+            HitlConfig = new HumanInTheLoopConfig { Enabled = false }
+        };
+
+        var brainMemory = new MemoryConfig
+        {
+            EnableWorkingMemory = true,
+            WorkingMemoryTtlSeconds = 7200,
+            EnableLongTermMemory = false,
+            EnableVectorMemory = false
+        };
+
+        var brainSession = new SessionConfig
+        {
+            EnableThreads = true,
+            DefaultThreadTtl = TimeSpan.FromHours(24),
+            MaxTurnsPerThread = 50,
+            ContextWindowSize = 10,
+            AutoCreateThread = true,
+            EnableSummarization = true
+        };
+
+        if (!hasBrain)
+        {
+            var brainResult = AgentDefinition.Create(
+                tenantId, "Workflow Brain - Default",
+                "Default WorkflowBrain agent for business logic execution. Assign this agent to ai.agent nodes in your workflows, or clone it to create specialized versions per workflow.",
+                brainBrain, brainLoop, brainMemory, brainSession, null, systemUser);
+
+            if (!brainResult.IsSuccess) { Console.WriteLine($"❌ [Seed] WorkflowBrain Create failed: {brainResult.Error!.Message}"); }
+            else
+            {
+                var brain = brainResult.Value!;
+                brain.SetTags(new[] { "system", "workflow-brain", "default", "cloneable" }.ToList().AsReadOnly());
+                brain.SetSystemRole(AgentSystemRole.WorkflowBrain); // sets IsSystemAgent=true
+                await InsertSystemAgent(brain, "WorkflowBrain");
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // AGENT 3: Config Assistant
+        // Helps users build and configure workflows and agents via natural
+        // language. Uses the AgentFlow MCP Server tools to inspect the tenant's
+        // current configuration and detect what is missing.
+        // IsSystemAgent = true.
+        // ─────────────────────────────────────────────────────────────────────
+        var configBrain = new BrainConfiguration
+        {
+            ModelId = "gpt-4o",
+            Provider = "OpenAI",
+            Temperature = 0.5f,
+            MaxResponseTokens = 2000,
+            RequiresToolExecution = true,
+            SystemPromptTemplate = @"You are the AgentFlow Config Assistant — a platform configuration expert and workflow architect.
+
+Your mission is to help users build, configure, and troubleshoot AgentFlow workflows and agents through natural language conversation.
+
+You have access to these AgentFlow tools (via the AgentFlow MCP Server):
+- af_list_agents: See all existing agents (system + user)
+- af_get_agent: Inspect a specific agent's configuration
+- af_list_workflows: See all workflows and their status
+- af_diagnose_workflow: Find issues in a workflow (broken nodes, missing agents, draft status)
+- af_diagnose_channel: Check if a channel has Router assigned, session window set, and is active
+- af_list_integrations: List available MCP servers and external tools
+- af_scaffold_workflow: Generate a workflow JSON scaffold from a natural language description
+
+How to help users:
+1. START by calling af_list_agents and af_list_workflows to understand the current state.
+2. DIAGNOSE before prescribing: use af_diagnose_workflow and af_diagnose_channel to find issues.
+3. GUIDE step-by-step: break complex configurations into small achievable tasks.
+4. EXPLAIN WHY: when something is misconfigured, explain the business impact.
+5. SCAFFOLD when asked: use af_scaffold_workflow to generate a starting point.
+
+You CANNOT directly create or modify workflows — you guide the user to do it in the Workflow Designer.
+You CAN generate scaffold JSON that the user can copy into the Designer.
+
+Common issues to detect and explain:
+- Workflows in Draft status (not triggerable)
+- ai.agent nodes without an assigned WorkflowBrain agent
+- Channels without a Router agent assigned
+- Missing session window configuration
+- No published workflows matching the Router's available events
+- Integrations not connected to any agent's tool set
+
+Always be concrete: tell the user EXACTLY what to click or configure."
+        };
+
+        var configLoop = new AgentLoopConfig
+        {
+            MaxIterations = 15,
+            MaxExecutionTime = TimeSpan.FromMinutes(3),
+            ToolCallTimeout = TimeSpan.FromSeconds(20),
+            MaxRetries = 2,
+            AllowParallelToolCalls = true, // Can call af_list_agents + af_list_workflows in parallel
+            HitlConfig = new HumanInTheLoopConfig { Enabled = false }
+        };
+
+        var configMemory = new MemoryConfig
+        {
+            EnableWorkingMemory = true,
+            WorkingMemoryTtlSeconds = 3600,
+            EnableLongTermMemory = false,
+            EnableVectorMemory = false
+        };
+
+        var configSession = new SessionConfig
+        {
+            EnableThreads = true,
+            DefaultThreadTtl = TimeSpan.FromHours(2),
+            MaxTurnsPerThread = 100,
+            ContextWindowSize = 15,
+            AutoCreateThread = true,
+            EnableSummarization = true
+        };
+
+        if (!hasConfig)
+        {
+            var configResult = AgentDefinition.Create(
+                tenantId, "AgentFlow Config Assistant",
+                "Platform-managed Config Assistant. Guides users in building and configuring workflows, agents, and channels via natural language. Uses the AgentFlow MCP Server to inspect and diagnose the tenant configuration.",
+                configBrain, configLoop, configMemory, configSession, null, systemUser);
+
+            if (!configResult.IsSuccess) { Console.WriteLine($"❌ [Seed] ConfigAssistant Create failed: {configResult.Error!.Message}"); }
+            else
+            {
+                var configAssistant = configResult.Value!;
+                configAssistant.SetTags(new[] { "system", "config-assistant", "platform-managed" }.ToList().AsReadOnly());
+                configAssistant.SetSystemRole(AgentSystemRole.ConfigAssistant); // sets IsSystemAgent=true
+                BindMcpTools(configAssistant, "agentflow-mcp-server", configMcpTools);
+                await InsertSystemAgent(configAssistant, "ConfigAssistant");
+            }
+        }
+
+        Console.WriteLine("✅ [Seed] System agents seed complete.");
+    }
 }

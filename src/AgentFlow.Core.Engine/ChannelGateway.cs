@@ -19,6 +19,7 @@ public sealed class ChannelGateway : IChannelGateway
     private readonly IAgentExecutor _agentExecutor;
     private readonly IAgentHandoffExecutor _handoffExecutor;
     private readonly IManagerHandoffPolicy _handoffPolicy;
+    private readonly IIntentRoutingStore _intentRoutingStore;
     private readonly ILogger<ChannelGateway> _logger;
 
     public ChannelGateway(
@@ -28,6 +29,7 @@ public sealed class ChannelGateway : IChannelGateway
         IAgentExecutor agentExecutor,
         IAgentHandoffExecutor handoffExecutor,
         IManagerHandoffPolicy handoffPolicy,
+        IIntentRoutingStore intentRoutingStore,
         IEnumerable<IChannelHandler> handlers,
         ILogger<ChannelGateway> logger)
     {
@@ -37,6 +39,7 @@ public sealed class ChannelGateway : IChannelGateway
         _agentExecutor = agentExecutor;
         _handoffExecutor = handoffExecutor;
         _handoffPolicy = handoffPolicy;
+        _intentRoutingStore = intentRoutingStore;
         _logger = logger;
 
         foreach (var handler in handlers)
@@ -85,7 +88,42 @@ public sealed class ChannelGateway : IChannelGateway
                 await _sessionRepo.UpdateAsync(session, ct);
             }
 
+            // Build typed session context so every agent knows who it's talking to
+            // and whether the conversation window is open, without parsing ContextJson.
+            var sessionContext = session != null ? new AgentSessionContext
+            {
+                SessionId      = session.Id,
+                UserIdentifier = session.Identifier,
+                DisplayName    = session.Metadata.GetValueOrDefault("display_name"),
+                ChannelType    = channel.Type.ToString(),
+                ChannelId      = channel.Id,
+                IsWindowOpen   = !session.IsExpired(),
+                WindowHours    = channel.SessionWindowHours,
+                WindowExpiresAt = session.ExpiresAt
+            } : null;
+
             // Execute agent
+            // When the Router is executing, inject the intent catalog for this channel
+            // so the LLM can classify messages without extra tool calls.
+            var intentCatalogJson = (string?)null;
+            if (channel.RouterAgentId == agentKey || session?.AgentId == channel.RouterAgentId)
+            {
+                var rules = await _intentRoutingStore.GetRulesByChannelAsync(
+                    incomingMessage.TenantId, channel.Type.ToString().ToLowerInvariant(), ct);
+                if (rules.Count > 0)
+                {
+                    intentCatalogJson = System.Text.Json.JsonSerializer.Serialize(
+                        rules.Select(r => new
+                        {
+                            intentKey        = r.IntentKey,
+                            description      = r.IntentDescription,
+                            examplePhrases   = r.ExamplePhrases,
+                            targetAgentId    = r.TargetAgentId,
+                            workflowId       = r.WorkflowDefinitionId
+                        }));
+                }
+            }
+
             var executionRequest = new AgentExecutionRequest
             {
                 TenantId = incomingMessage.TenantId,
@@ -97,11 +135,22 @@ public sealed class ChannelGateway : IChannelGateway
                     ChannelType = channel.Type.ToString(),
                     ChannelId = channel.Id,
                     SessionId = incomingMessage.SessionId,
-                    From = incomingMessage.From
+                    From = incomingMessage.From,
+                    // Injected for the Router: the full intent catalog for this channel.
+                    // The Router uses this to emit the correct routing_handoff directive
+                    // (targetAgentId + workflowId) without calling af_list_workflows.
+                    IntentCatalog = intentCatalogJson
                 }),
                 CorrelationId = incomingMessage.SessionId,
                 ThreadId = incomingMessage.SessionId,
-                Priority = ExecutionPriority.Normal
+                Priority = ExecutionPriority.Normal,
+                SessionContext = sessionContext,
+                Metadata = new Dictionary<string, string>
+                {
+                    // Pass the originating message ID so AgentExecutionEngine
+                    // can stamp it into AgentExecution.ChannelMessageId
+                    ["channelMessageId"] = incomingMessage.Id
+                }
             };
 
             var executionResult = await _agentExecutor.ExecuteAsync(executionRequest, ct);
@@ -110,46 +159,87 @@ public sealed class ChannelGateway : IChannelGateway
             var finalResponse = executionResult.FinalResponse;
             var executionIdForOutgoing = executionResult.ExecutionId;
 
-            var handoff = TryParseHandoffDirective(finalResponse);
-            if (handoff is not null && session is not null)
+            // ── Router → WorkflowBrain session handoff ────────────────────────
+            // When the Router emits a routing_handoff directive, re-assign the
+            // session to the WorkflowBrain agent. From the next message onward,
+            // ResolveAgentKey will return the WorkflowBrain (sticky routing).
+            // The Router does NOT send a visible reply to the customer — the
+            // WorkflowBrain will greet and continue the conversation.
+            var routingHandoff = TryParseRoutingHandoff(finalResponse);
+            if (routingHandoff != null && session != null)
             {
-                if (_handoffPolicy.IsAllowed(incomingMessage.TenantId, agentKey, handoff.TargetAgentId))
+                _logger.LogInformation(
+                    "Router handed off session {SessionId} to WorkflowBrain {AgentId} (workflow: {WorkflowId}, intent: {Intent})",
+                    session.Id, routingHandoff.WorkflowBrainAgentId,
+                    routingHandoff.WorkflowExecutionId, routingHandoff.Intent);
+
+                session.LinkAgent(routingHandoff.WorkflowBrainAgentId);
+                session.Metadata["routing_handoff_workflow"] = routingHandoff.WorkflowExecutionId ?? string.Empty;
+                session.Metadata["routing_handoff_intent"]   = routingHandoff.Intent ?? string.Empty;
+                session.Metadata["routing_handoff_at"]       = DateTimeOffset.UtcNow.ToString("O");
+                await _sessionRepo.UpdateAsync(session, ct);
+
+                // Now execute the WorkflowBrain as the first turn of the workflow
+                var brainRequest = executionRequest with
                 {
-                    var handoffResponse = await _handoffExecutor.ExecuteAsync(new AgentHandoffRequest
+                    AgentKey  = routingHandoff.WorkflowBrainAgentId,
+                    Metadata  = new Dictionary<string, string>(executionRequest.Metadata)
                     {
-                        TenantId = incomingMessage.TenantId,
-                        SessionId = incomingMessage.SessionId,
-                        ThreadId = incomingMessage.SessionId,
-                        CorrelationId = incomingMessage.SessionId,
-                        SourceAgentKey = agentKey,
-                        TargetAgentKey = handoff.TargetAgentId,
-                        Intent = handoff.Intent,
-                        PayloadJson = handoff.PayloadJson,
-                        Metadata = new Dictionary<string, string>
+                        ["channelMessageId"]      = incomingMessage.Id,
+                        ["routerExecutionId"]     = executionResult.ExecutionId,
+                        ["workflowExecutionId"]   = routingHandoff.WorkflowExecutionId ?? string.Empty,
+                        ["routingIntent"]         = routingHandoff.Intent ?? string.Empty
+                    }
+                };
+
+                var brainResult = await _agentExecutor.ExecuteAsync(brainRequest, ct);
+                finalResponse = brainResult.FinalResponse;
+                executionIdForOutgoing = brainResult.ExecutionId;
+            }
+            else
+            {
+                // Standard A2A handoff (agent-to-agent delegation)
+                var handoff = TryParseHandoffDirective(finalResponse);
+                if (handoff is not null && session is not null)
+                {
+                    if (_handoffPolicy.IsAllowed(incomingMessage.TenantId, agentKey, handoff.TargetAgentId))
+                    {
+                        var handoffResponse = await _handoffExecutor.ExecuteAsync(new AgentHandoffRequest
                         {
-                            ["channelId"] = incomingMessage.ChannelId,
-                            ["source"] = "channel-gateway"
+                            TenantId = incomingMessage.TenantId,
+                            SessionId = incomingMessage.SessionId,
+                            ThreadId = incomingMessage.SessionId,
+                            CorrelationId = incomingMessage.SessionId,
+                            SourceAgentKey = agentKey,
+                            TargetAgentKey = handoff.TargetAgentId,
+                            Intent = handoff.Intent,
+                            PayloadJson = handoff.PayloadJson,
+                            Metadata = new Dictionary<string, string>
+                            {
+                                ["channelId"] = incomingMessage.ChannelId,
+                                ["source"] = "channel-gateway"
+                            }
+                        }, ct);
+
+                        if (handoffResponse.Ok)
+                        {
+                            finalResponse = ExtractResponseText(handoffResponse.ResultJson) ?? handoffResponse.ResultJson;
+                            executionIdForOutgoing = handoffResponse.StatePatch.TryGetValue("lastExecutionId", out var delegatedId)
+                                ? delegatedId
+                                : executionIdForOutgoing;
+
+                            session.LinkAgent(handoff.TargetAgentId);
+                            await _sessionRepo.UpdateAsync(session, ct);
                         }
-                    }, ct);
-
-                    if (handoffResponse.Ok)
-                    {
-                        finalResponse = ExtractResponseText(handoffResponse.ResultJson) ?? handoffResponse.ResultJson;
-                        executionIdForOutgoing = handoffResponse.StatePatch.TryGetValue("lastExecutionId", out var delegatedId)
-                            ? delegatedId
-                            : executionIdForOutgoing;
-
-                        session.LinkAgent(handoff.TargetAgentId);
-                        await _sessionRepo.UpdateAsync(session, ct);
+                        else
+                        {
+                            finalResponse = "I couldn't complete that request right now.";
+                        }
                     }
                     else
                     {
-                        finalResponse = "I couldn't complete that request right now.";
+                        finalResponse = "That delegation target is not allowed by policy.";
                     }
-                }
-                else
-                {
-                    finalResponse = "That delegation target is not allowed by policy.";
                 }
             }
 
@@ -297,6 +387,42 @@ public sealed class ChannelGateway : IChannelGateway
     }
 
     private sealed record HandoffDirective(string TargetAgentId, string Intent, string PayloadJson);
+
+    /// <summary>
+    /// Emitted by the Router agent when it successfully triggers a workflow.
+    /// The gateway re-assigns the session to the WorkflowBrain agent and the
+    /// Router stops responding until the workflow completes or the session resets.
+    /// 
+    /// JSON shape the Router must emit:
+    /// { "type": "routing_handoff", "workflowBrainAgentId": "...", "workflowExecutionId": "...", "intent": "..." }
+    /// </summary>
+    private sealed record RoutingHandoffDirective(
+        string WorkflowBrainAgentId,
+        string? WorkflowExecutionId,
+        string? Intent);
+
+    private static RoutingHandoffDirective? TryParseRoutingHandoff(string? response)
+    {
+        if (string.IsNullOrWhiteSpace(response)) return null;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(response);
+            var root = doc.RootElement;
+            if (root.ValueKind != System.Text.Json.JsonValueKind.Object) return null;
+            if (!root.TryGetProperty("type", out var typeEl) ||
+                !string.Equals(typeEl.GetString(), "routing_handoff", StringComparison.OrdinalIgnoreCase))
+                return null;
+            if (!root.TryGetProperty("workflowBrainAgentId", out var agentEl) ||
+                string.IsNullOrWhiteSpace(agentEl.GetString()))
+                return null;
+
+            var execId = root.TryGetProperty("workflowExecutionId", out var execEl) ? execEl.GetString() : null;
+            var intent = root.TryGetProperty("intent", out var intentEl) ? intentEl.GetString() : null;
+            return new RoutingHandoffDirective(agentEl.GetString()!, execId, intent);
+        }
+        catch { return null; }
+    }
+
     private static string ResolveAgentKey(ChannelDefinition channel, ChannelSession? session)
     {
         // Sticky routing: preserve owner agent for the current session.

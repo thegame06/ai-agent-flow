@@ -97,6 +97,16 @@ public sealed class AgentExecutionEngine : IAgentExecutor
             parentExecutionId: request.ParentExecutionId,
             priority: (AgentFlow.Abstractions.ExecutionPriority)(int)request.Priority);
 
+        // Bind channel traceability: session, originating message, and agent role snapshot
+        if (request.SessionContext != null)
+        {
+            var channelMsgId = request.Metadata.TryGetValue("channelMessageId", out var mid) ? mid : string.Empty;
+            execution.SetChannelContext(
+                request.SessionContext.SessionId,
+                channelMsgId,
+                agentDef.SystemRole.ToString());
+        }
+
         var insertResult = await _executionRepo.InsertAsync(execution, ct);
         if (!insertResult.IsSuccess)
         {
@@ -271,6 +281,37 @@ public sealed class AgentExecutionEngine : IAgentExecutor
                 { "agent_id", agentDef.Id.ToString() },
                 { "tenant_id", request.TenantId }
             });
+
+            // --- Router routing decision audit ---
+            // When the Router agent completes, record which workflow it triggered
+            // (if any) so there is a traceable RoutingDecision entry per message.
+            if (agentDef.SystemRole == AgentSystemRole.Router)
+            {
+                var triggeredWorkflow = execution.Steps
+                    .Where(s => s.ToolName == "af_trigger_workflow" && s.IsSuccess)
+                    .Select(s => s.OutputJson)
+                    .LastOrDefault();
+
+                await _memory.Audit.RecordAsync(new AuditEntry
+                {
+                    ExecutionId = execution.Id,
+                    AgentId = agentDef.Id.ToString(),
+                    TenantId = request.TenantId,
+                    UserId = request.UserId,
+                    EventType = AuditEventType.RoutingDecision,
+                    CorrelationId = request.CorrelationId ?? string.Empty,
+                    EventJson = JsonSerializer.Serialize(new
+                    {
+                        sessionId          = request.SessionContext?.SessionId,
+                        channelMessageId   = execution.ChannelMessageId,
+                        userMessage        = request.UserMessage,
+                        triggeredWorkflow  = triggeredWorkflow,
+                        totalSteps         = execution.Steps.Count,
+                        totalTokens,
+                        durationMs
+                    })
+                }, CancellationToken.None);
+            }
         }
         else if (execution.Status == ExecutionStatus.Failed)
         {

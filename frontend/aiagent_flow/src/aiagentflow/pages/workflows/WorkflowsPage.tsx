@@ -1,12 +1,15 @@
-import { Helmet } from 'react-helmet-async';
+﻿import { Helmet } from 'react-helmet-async';
 import { useMemo, useState, useEffect } from 'react';
 
 import Box from '@mui/material/Box';
+import Tab from '@mui/material/Tab';
 import Card from '@mui/material/Card';
 import Chip from '@mui/material/Chip';
 import Grid from '@mui/material/Grid';
+import Tabs from '@mui/material/Tabs';
 import Alert from '@mui/material/Alert';
 import Stack from '@mui/material/Stack';
+import Badge from '@mui/material/Badge';
 import Button from '@mui/material/Button';
 import Divider from '@mui/material/Divider';
 import MenuItem from '@mui/material/MenuItem';
@@ -118,6 +121,7 @@ const writeStartIntents = (definitionJson: string, intents: WorkflowStartIntent[
 export default function WorkflowsPage() {
   const [editorMode, setEditorMode] = useState<'builder' | 'advanced'>('builder');
   const [designType, setDesignType] = useState<WorkflowDesignType>('workflow');
+  const [mainTab, setMainTab] = useState(0);
   const [activePanel, setActivePanel] = useState<ActivePanel>('none');
   const [workflowSearch, setWorkflowSearch] = useState('');
   const [intentProbe, setIntentProbe] = useState('Quiero agendar una cita por WhatsApp');
@@ -301,6 +305,7 @@ export default function WorkflowsPage() {
   const handleSelectWorkflow = (wf: WorkflowDefinition) => {
     selectWorkflow(wf);
     setActivePanel('none');
+    setMainTab(0);
   };
 
   const handleCreateBlank = () => {
@@ -310,12 +315,14 @@ export default function WorkflowsPage() {
     setEditorField('triggerEventName', 'connect.message.received');
     setDefinitionJson(JSON.stringify({ activities: [] }, null, 2));
     setActivePanel('none');
+    setMainTab(0);
   };
 
   const handleCreateDefault = () => {
     setSelectedWorkflowId(null);
     createNew();
     setActivePanel('none');
+    setMainTab(0);
   };
 
   const handleUseTemplate = (tpl: (typeof WORKFLOW_QUICKSTARTS)[number]) => {
@@ -325,6 +332,7 @@ export default function WorkflowsPage() {
     setEditorField('triggerEventName', tpl.triggerEventName);
     setDefinitionJson(tpl.definitionJson);
     setActivePanel('none');
+    setMainTab(0);
   };
 
   const updateStartIntents = (intents: WorkflowStartIntent[]) => {
@@ -420,305 +428,105 @@ export default function WorkflowsPage() {
           </Alert>
         )}
 
-        {showWorkflowLibrary ? (
-          <Stack spacing={2.5}>
-            <Card
-              variant="outlined"
-              sx={{
-                p: 3,
-                borderRadius: 3,
-                bgcolor: 'background.paper',
-                backgroundImage:
-                  'linear-gradient(135deg, rgba(14,124,90,0.10), rgba(0,167,181,0.08))',
-              }}
-            >
-              <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={2}>
-                <Box>
-                  <Typography variant="h3">Workflow Studio</Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 760 }}>
-                    Elige un workflow existente o crea uno nuevo. Los eventos los dispara el sistema desde canales,
-                    campanas, KYC o pagos. Las intenciones del nodo Inicio son frases de negocio que Annonai usa
-                    para decidir que workflow y que agente atienden cada mensaje, llamada o webhook.
-                  </Typography>
-                </Box>
-                <Stack direction="row" spacing={1} flexWrap="wrap" alignItems="flex-start">
+        {/* â”€â”€ Page Header â”€â”€ */}
+        <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ md: 'center' }} spacing={1.5} sx={{ mb: 2 }}>
+          <Box>
+            <Typography variant="h4">Workflow Studio</Typography>
+            <Typography variant="body2" color="text.secondary">
+              DiseÃ±a flujos omnicanal que combinan IA, KYC, pagos, voz y handoff humano.
+            </Typography>
+          </Box>
+          <Stack direction="row" spacing={1} flexWrap="wrap">
+            <Button variant="contained" startIcon={<Iconify icon="mingcute:add-line" />} onClick={handleCreateBlank}>
+              Crear flujo
+            </Button>
+            <Button variant="outlined" startIcon={<Iconify icon="mdi:refresh" />} onClick={loadAll}>
+              Actualizar
+            </Button>
+          </Stack>
+        </Stack>
+
+        {/* â”€â”€ Tab Bar â”€â”€ */}
+        <Tabs
+          value={mainTab}
+          onChange={(_, v) => setMainTab(v)}
+          sx={{ mb: 2.5, borderBottom: 1, borderColor: 'divider' }}
+        >
+          <Tab
+            label="Editor"
+            icon={<Iconify icon="mdi:pencil-ruler" width={18} />}
+            iconPosition="start"
+          />
+          <Tab
+            label={
+              <Badge badgeContent={workflows.length} color="primary" max={99}>
+                <Box sx={{ pr: 1.5 }}>Mis flujos</Box>
+              </Badge>
+            }
+            icon={<Iconify icon="mdi:folder-multiple-outline" width={18} />}
+            iconPosition="start"
+          />
+          <Tab
+            label={
+              <Badge badgeContent={failedExecutions || undefined} color="error" max={9}>
+                <Box sx={{ pr: failedExecutions ? 1.5 : 0 }}>Monitor</Box>
+              </Badge>
+            }
+            icon={<Iconify icon="mdi:chart-box-outline" width={18} />}
+            iconPosition="start"
+          />
+        </Tabs>
+
+        {/* â”€â”€ Tab 0: Editor â”€â”€ */}
+        {mainTab === 0 && (
+          <>
+            {!hasSelection && (
+              <Card variant="outlined" sx={{ p: 4, textAlign: 'center', mb: 2, borderRadius: 3 }}>
+                <Iconify icon="mdi:graph-outline" width={48} sx={{ color: 'primary.main', mb: 1.5 }} />
+                <Typography variant="h5" sx={{ mb: 0.5 }}>Sin workflow activo</Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5, maxWidth: 480, mx: 'auto' }}>
+                  Selecciona un flujo existente en &quot;Mis flujos&quot; o crea uno nuevo desde cero.
+                </Typography>
+                <Stack direction="row" spacing={1.5} justifyContent="center" flexWrap="wrap">
                   <Button variant="contained" startIcon={<Iconify icon="mingcute:add-line" />} onClick={handleCreateBlank}>
                     Crear desde cero
                   </Button>
                   <Button variant="outlined" onClick={handleCreateDefault}>
                     Base WhatsApp
                   </Button>
-                  <Button variant="outlined" startIcon={<Iconify icon="mdi:refresh" />} onClick={loadAll}>
-                    Actualizar
-                  </Button>
-                </Stack>
-              </Stack>
-            </Card>
-
-            <Grid container spacing={2}>
-              {[
-                {
-                  title: '1. Evento de sistema',
-                  helper: 'El canal dispara eventos como Mensaje recibido o Llamada recibida.',
-                  icon: 'mdi:flash-outline',
-                },
-                {
-                  title: '2. Intenciones',
-                  helper: 'El usuario define frases de negocio en Inicio: comprar, pagar, agendar, soporte.',
-                  icon: 'mdi:target-account',
-                },
-                {
-                  title: '3. Agente y acciones',
-                  helper: 'El nodo Agente usa agentes publicados y luego ejecuta WhatsApp, API, MCP, KYC, pagos o humano.',
-                  icon: 'mdi:robot-outline',
-                },
-                {
-                  title: '4. Confirmacion',
-                  helper: 'El Mapa de intenciones permite ver y probar que el routing quedo sincronizado.',
-                  icon: 'mdi:map-check-outline',
-                },
-              ].map((item) => (
-                <Grid item xs={12} md={3} key={item.title}>
-                  <Card variant="outlined" sx={{ p: 2, height: '100%' }}>
-                    <Stack spacing={1}>
-                      <Iconify icon={item.icon} width={28} sx={{ color: 'primary.main' }} />
-                      <Typography variant="subtitle2">{item.title}</Typography>
-                      <Typography variant="caption" color="text.secondary">{item.helper}</Typography>
-                    </Stack>
-                  </Card>
-                </Grid>
-              ))}
-            </Grid>
-
-            <Card variant="outlined" sx={{ p: 2.2, borderRadius: 2.5 }}>
-              <Stack spacing={1.5}>
-                <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={1.5}>
-                  <Stack direction="row" spacing={1.5} alignItems="center">
-                    <Box
-                      sx={{
-                        width: 44,
-                        height: 44,
-                        borderRadius: 2,
-                        display: 'grid',
-                        placeItems: 'center',
-                        bgcolor: 'primary.lighter',
-                        color: 'primary.main',
-                      }}
-                    >
-                      <Iconify icon="mdi:shield-crown-outline" width={26} />
-                    </Box>
-                    <Box>
-                      <Typography variant="h6">
-                        {orchestratorStatus?.systemAgent.name ?? 'Annonai System Orchestrator'}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Agente de sistema bloqueado: traduce eventos de canal, intenciones, agentes e integraciones a reglas operables.
-                      </Typography>
-                    </Box>
-                  </Stack>
-                  <Stack direction="row" spacing={0.8} flexWrap="wrap" alignItems="center">
-                    <Chip size="small" color="success" label="Sistema" />
-                    <Chip size="small" color="info" label="No editable por usuarios" />
-                    <Chip size="small" label={`${orchestratorStatus?.events.length ?? SYSTEM_EVENT_OPTIONS.length} eventos`} />
-                  </Stack>
-                </Stack>
-
-                <Grid container spacing={1.5}>
-                  {[
-                    ['Workflows', orchestratorStatus?.workflows.length ?? workflows.length, 'mdi:source-branch'],
-                    ['Canales', orchestratorStatus?.channels.length ?? availableChannels.length, 'mdi:chat-processing-outline'],
-                    ['Integraciones', orchestratorStatus?.connections.length ?? integrations.length, 'mdi:connection'],
-                    ['Reglas activas', orchestratorStatus?.agentRegistry.length ?? 0, 'mdi:routes'],
-                  ].map(([label, value, icon]) => (
-                    <Grid item xs={6} md={3} key={String(label)}>
-                      <Card variant="outlined" sx={{ p: 1.5, bgcolor: 'background.neutral' }}>
-                        <Stack direction="row" spacing={1} alignItems="center">
-                          <Iconify icon={String(icon)} width={22} sx={{ color: 'primary.main' }} />
-                          <Box>
-                            <Typography variant="h6">{String(value)}</Typography>
-                            <Typography variant="caption" color="text.secondary">
-                              {label}
-                            </Typography>
-                          </Box>
-                        </Stack>
-                      </Card>
-                    </Grid>
-                  ))}
-                </Grid>
-
-                <Alert severity={orchestratorStatus?.gaps?.[0]?.includes('lista') ? 'success' : 'info'}>
-                  {(orchestratorStatus?.gaps ?? [
-                    'El orquestador valida que existan eventos, canal activo, agente publicado, integraciones listas e intenciones sincronizadas.',
-                  ])[0]}
-                </Alert>
-
-                <Stack direction={{ xs: 'column', md: 'row' }} spacing={1}>
-                  <Button
-                    variant="outlined"
-                    component={RouterLink}
-                    href={paths.dashboard.intentMap}
-                    startIcon={<Iconify icon="mdi:map-search-outline" />}
-                  >
-                    Ver mapa de intenciones
-                  </Button>
-                  <Button
-                    variant="outlined"
-                    component={RouterLink}
-                    href={paths.dashboard.marketplace}
-                    startIcon={<Iconify icon="mdi:storefront-outline" />}
-                  >
-                    Configurar integraciones
-                  </Button>
-                  <Button
-                    variant="outlined"
-                    component={RouterLink}
-                    href={paths.dashboard.system.channels}
-                    startIcon={<Iconify icon="mdi:message-processing-outline" />}
-                  >
-                    Configurar canales
-                  </Button>
-                </Stack>
-              </Stack>
-            </Card>
-
-            <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.2} alignItems={{ md: 'center' }}>
-              <TextField
-                value={workflowSearch}
-                onChange={(e) => setWorkflowSearch(e.target.value)}
-                placeholder="Buscar workflow por nombre, evento o ID"
-                size="small"
-                sx={{ maxWidth: 440 }}
-                fullWidth
-              />
-              <Chip size="small" label={`${filteredWorkflows.length} de ${workflows.length} workflows`} />
-            </Stack>
-
-            <Grid container spacing={2}>
-              {filteredWorkflows.map((workflow) => {
-                const readiness = workflowReadiness(workflow);
-                return (
-                <Grid item xs={12} md={4} key={workflow.id}>
-                  <Card
-                    variant="outlined"
-                    onClick={() => handleSelectWorkflow(workflow)}
-                    sx={{
-                      p: 2.2,
-                      height: '100%',
-                      cursor: 'pointer',
-                      borderRadius: 2.5,
-                      transition: '160ms ease',
-                      '&:hover': { borderColor: 'primary.main', boxShadow: '0 16px 42px rgba(16,35,29,0.10)' },
-                    }}
-                  >
-                    <Stack spacing={1.2}>
-                      <Stack direction="row" justifyContent="space-between" spacing={1}>
-                        <Iconify icon="mdi:source-branch" width={28} sx={{ color: 'primary.main' }} />
-                        <Chip
-                          size="small"
-                          color={workflow.status === 'Published' ? 'success' : 'default'}
-                          label={workflow.status === 'Published' ? 'Publicado' : 'Borrador'}
-                        />
-                      </Stack>
-                      <Box>
-                        <Typography variant="h6">{workflow.name}</Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          Evento: {SYSTEM_EVENT_OPTIONS.find((event) => event.value === workflow.triggerEventName)?.label ?? (workflow.triggerEventName || 'sin evento')}
-                        </Typography>
-                      </Box>
-                      <Stack direction="row" spacing={0.5} flexWrap="wrap">
-                        <Chip size="small" color={readiness.percent >= 80 ? 'success' : 'warning'} label={`${readiness.percent}% listo`} />
-                        <Chip size="small" label={`${readiness.intents.length} intenciones`} />
-                        <Chip size="small" color={readiness.hasAgent ? 'primary' : 'default'} label={readiness.hasAgent ? 'con agente' : 'sin agente'} />
-                      </Stack>
-                      <Typography variant="body2" color="text.secondary">
-                        Actualizado: {workflow.updatedAt ? new Date(workflow.updatedAt).toLocaleString() : 'sin fecha'}
-                      </Typography>
-                      <Button size="small" variant="outlined">
-                        Abrir Studio
-                      </Button>
-                    </Stack>
-                  </Card>
-                </Grid>
-              );})}
-
-              {filteredWorkflows.length === 0 && (
-                <Grid item xs={12}>
-                  <Card variant="outlined" sx={{ p: 4, textAlign: 'center', borderRadius: 3 }}>
-                    <Iconify icon="mdi:graph-outline" width={42} sx={{ color: 'primary.main', mb: 1 }} />
-                    <Typography variant="h6">{workflows.length === 0 ? 'No hay workflows creados' : 'No encontramos workflows'}</Typography>
-                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                      {workflows.length === 0
-                        ? 'Crea tu primer flujo con un nodo Inicio, un agente y acciones de negocio.'
-                        : 'Cambia la busqueda o usa Actualizar para recargar desde backend.'}
-                    </Typography>
-                    <Button variant="contained" onClick={handleCreateBlank}>
-                      Crear workflow
+                  {quickstarts.slice(0, 3).map((tpl) => (
+                    <Button key={tpl.id} variant="outlined" onClick={() => handleUseTemplate(tpl)}>
+                      {tpl.name}
                     </Button>
-                  </Card>
-                </Grid>
-              )}
-            </Grid>
-          </Stack>
-        ) : (
-          <>
+                  ))}
+                  <Button variant="text" startIcon={<Iconify icon="mdi:folder-open-outline" />} onClick={() => setMainTab(1)}>
+                    Ver mis flujos
+                  </Button>
+                </Stack>
+              </Card>
+            )}
+
+            {hasSelection && (
         <Card variant="outlined" sx={{ p: 2, mb: 2, borderRadius: 2 }}>
           <Stack spacing={2}>
-            <Stack direction={{ xs: 'column', lg: 'row' }} justifyContent="space-between" spacing={2}>
-              <Box>
-                <Typography variant="h4">Workflow Studio</Typography>
-                <Typography variant="body2" color="text.secondary">
-                  {editor.name || selectedWorkflow?.name || latestWorkflow?.name || 'Selecciona o crea un flujo'}
-                </Typography>
-              </Box>
+            {/* â”€â”€ Editor toolbar â”€â”€ */}
+            <Stack direction={{ xs: 'column', lg: 'row' }} justifyContent="space-between" spacing={1.5} alignItems={{ lg: 'center' }}>
+              <Stack direction="row" spacing={0.8} flexWrap="wrap" alignItems="center">
+                <Chip size="small" color={selectedWorkflow?.status === 'Published' ? 'success' : 'default'} label={selectedWorkflow?.status === 'Published' ? 'Publicado' : 'Borrador'} />
+                <Chip size="small" color={readyToPublish ? 'success' : 'warning'} label={`${setupPercent}% listo`} />
+                <Chip size="small" label={`${startIntents.length} intent.`} />
+                <Chip size="small" label={workflowChannel ? workflowChannel.name : 'Sin canal'} />
+                <Chip size="small" color={hasAiAgentNode ? 'primary' : 'default'} label={hasAiAgentNode ? 'Agente OK' : 'Sin agente'} />
+              </Stack>
               <Stack direction="row" spacing={1} flexWrap="wrap">
                 <Button
+                  size="small"
                   variant={activePanel === 'templates' ? 'contained' : 'outlined'}
                   startIcon={<Iconify icon="mingcute:add-line" />}
                   onClick={() => setActivePanel(activePanel === 'templates' ? 'none' : 'templates')}
                 >
-                  Nuevo
+                  Plantillas
                 </Button>
-                <Button
-                  variant={activePanel === 'flows' ? 'contained' : 'outlined'}
-                  startIcon={<Iconify icon="mdi:folder-multiple-outline" />}
-                  onClick={() => setActivePanel(activePanel === 'flows' ? 'none' : 'flows')}
-                >
-                  Ver todos
-                </Button>
-                <Button
-                  variant={activePanel === 'metrics' ? 'contained' : 'outlined'}
-                  startIcon={<Iconify icon="mdi:chart-box-outline" />}
-                  onClick={() => setActivePanel(activePanel === 'metrics' ? 'none' : 'metrics')}
-                >
-                  Metricas
-                </Button>
-                <Button
-                  variant={activePanel === 'executions' ? 'contained' : 'outlined'}
-                  startIcon={<Iconify icon="mdi:play-circle-outline" />}
-                  onClick={() => setActivePanel(activePanel === 'executions' ? 'none' : 'executions')}
-                >
-                  Ejecuciones
-                </Button>
-                <Button variant="outlined" startIcon={<Iconify icon="mdi:refresh" />} onClick={loadAll}>
-                  Actualizar
-                </Button>
-              </Stack>
-            </Stack>
-
-            <Stack
-              direction={{ xs: 'column', md: 'row' }}
-              spacing={1}
-              alignItems={{ md: 'center' }}
-              divider={<Divider flexItem orientation="vertical" />}
-            >
-              <Stack direction="row" spacing={0.8} flexWrap="wrap">
-                <Chip size="small" color={selectedWorkflow?.status === 'Published' ? 'success' : 'default'} label={selectedWorkflow?.status === 'Published' ? 'Publicado' : 'Borrador'} />
-                <Chip size="small" color={readyToPublish ? 'success' : 'warning'} label={`${setupPercent}% configurado`} />
-                <Chip size="small" label={`${startIntents.length} intenciones`} />
-                <Chip size="small" label={workflowChannel ? `Canal: ${workflowChannel.name}` : 'Sin canal'} />
-                <Chip size="small" color={hasAiAgentNode ? 'primary' : 'default'} label={hasAiAgentNode ? 'Agente asignado' : 'Falta agente'} />
-              </Stack>
-              <Stack direction="row" spacing={1} flexWrap="wrap">
                 <Button
                   size="small"
                   variant="contained"
@@ -751,34 +559,88 @@ export default function WorkflowsPage() {
             </Stack>
 
             {syncMessage && (
-              <Alert severity="success" onClose={() => setSyncMessage(null)}>
-                {syncMessage}
-              </Alert>
+              <Alert severity="success" onClose={() => setSyncMessage(null)}>{syncMessage}</Alert>
             )}
 
+            {/* â”€â”€ Workflow metadata row â”€â”€ */}
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.2} alignItems={{ md: 'center' }}>
+              <TextField
+                label="Nombre del flujo"
+                value={editor.name}
+                onChange={(e) => setEditorField('name', e.target.value)}
+                size="small"
+                sx={{ flex: 1, minWidth: 200 }}
+              />
+              <TextField
+                label="Evento que lo dispara"
+                select
+                value={editor.triggerEventName}
+                onChange={(e) => setEditorField('triggerEventName', e.target.value)}
+                size="small"
+                sx={{ minWidth: 260 }}
+              >
+                {SYSTEM_EVENT_OPTIONS.map((opt) => (
+                  <MenuItem key={opt.value} value={opt.value}>
+                    <Box>
+                      <Typography variant="body2">{opt.label}</Typography>
+                      <Typography variant="caption" color="text.secondary">{opt.helper}</Typography>
+                    </Box>
+                  </MenuItem>
+                ))}
+              </TextField>
+              <ToggleButtonGroup
+                value={designType}
+                exclusive
+                size="small"
+                onChange={(_, v) => { if (v) setDesignType(v); }}
+              >
+                <ToggleButton value="workflow">Workflow</ToggleButton>
+                <ToggleButton value="tool">Tool</ToggleButton>
+              </ToggleButtonGroup>
+              <ToggleButtonGroup
+                value={editorMode}
+                exclusive
+                size="small"
+                onChange={(_, v) => { if (v) setEditorMode(v); }}
+              >
+                <ToggleButton value="builder">Visual</ToggleButton>
+                <ToggleButton value="advanced">JSON</ToggleButton>
+              </ToggleButtonGroup>
+            </Stack>
+
+            {/* â”€â”€ Intent probe bar â”€â”€ */}
             <Card variant="outlined" sx={{ p: 1.5, bgcolor: 'background.neutral' }}>
               <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.2} alignItems={{ md: 'center' }}>
                 <Box sx={{ flex: 1 }}>
-                  <Typography variant="subtitle2">Mapa operativo de este flujo</Typography>
                   <Typography variant="caption" color="text.secondary">
-                    Evento: {SYSTEM_EVENT_OPTIONS.find((event) => event.value === editor.triggerEventName)?.label ?? editor.triggerEventName}
-                    {' '}| Canal: {workflowChannel?.name ?? 'sin canal'} | Agente: {firstAgentNode?.aiAgent?.agentName || firstAgentNode?.config?.agentName || firstAgentNode?.aiAgent?.agentId || firstAgentNode?.config?.agentId || 'sin agente'}
+                    Canal: <strong>{workflowChannel?.name ?? 'sin canal'}</strong>
+                    {' Â· '}Agente: <strong>{firstAgentNode?.aiAgent?.agentName || firstAgentNode?.config?.agentName || firstAgentNode?.config?.agentId || 'sin agente'}</strong>
                   </Typography>
                 </Box>
                 <TextField
-                  label="Probar texto o intencion"
+                  label="Simular frase del cliente"
                   value={intentProbe}
                   onChange={(e) => setIntentProbe(e.target.value)}
                   size="small"
-                  sx={{ minWidth: { md: 320 } }}
+                  sx={{ minWidth: { md: 300 } }}
                 />
                 <Button
                   variant="outlined"
+                  size="small"
                   onClick={simulateCurrentIntent}
                   disabled={probingIntent}
                   startIcon={<Iconify icon="mdi:radar" />}
                 >
                   {probingIntent ? 'Probando...' : 'Probar routing'}
+                </Button>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={syncIntentsToRouting}
+                  disabled={syncingIntents}
+                  startIcon={<Iconify icon="mdi:sync" />}
+                >
+                  {syncingIntents ? 'Sincronizando...' : 'Sincronizar'}
                 </Button>
               </Stack>
               {intentProbeResult && (
@@ -789,167 +651,34 @@ export default function WorkflowsPage() {
               )}
             </Card>
 
-            <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.2} alignItems={{ md: 'center' }}>
-              <TextField
-                label="Flujo actual"
-                value={editor.name}
-                onChange={(e) => setEditorField('name', e.target.value)}
-                size="small"
-                sx={{ flex: 1 }}
-              />
-              <TextField
-                select
-                label="Evento de sistema"
-                value={editor.triggerEventName}
-                onChange={(e) => setEditorField('triggerEventName', e.target.value)}
-                size="small"
-                sx={{ flex: 1 }}
-                helperText={
-                  SYSTEM_EVENT_OPTIONS.find((event) => event.value === editor.triggerEventName)?.helper ??
-                  'Evento avanzado. Usalo solo si ya existe en backend o en una integracion.'
-                }
-              >
-                {SYSTEM_EVENT_OPTIONS.map((event) => (
-                  <MenuItem key={event.value} value={event.value}>
-                    {event.label} - {event.value}
-                  </MenuItem>
-                ))}
-              </TextField>
-              <Chip size="small" label={`${activities.length} nodos`} />
-              <Chip
-                size="small"
-                color={readyToPublish ? 'success' : 'warning'}
-                label={readyToPublish ? 'Listo' : `${designValidationErrors.length} validaciones`}
-              />
-              <Button
-                size="small"
-                variant="outlined"
-                color="info"
-                onClick={syncIntentsToRouting}
-                disabled={syncingIntents || startIntents.length === 0}
-                startIcon={<Iconify icon="mdi:source-branch-sync" />}
-              >
-                {syncingIntents ? 'Sincronizando...' : 'Sincronizar intenciones'}
-              </Button>
-              <Button
-                size="small"
-                variant="outlined"
-                component={RouterLink}
-                href={paths.dashboard.intentMap}
-                startIcon={<Iconify icon="mdi:map-search-outline" />}
-              >
-                Ver mapa
-              </Button>
-              <ToggleButtonGroup
-                value={editorMode}
-                exclusive
-                size="small"
-                onChange={(_, v) => {
-                  if (v) setEditorMode(v);
-                }}
-              >
-                <ToggleButton value="builder">Builder</ToggleButton>
-                <ToggleButton value="advanced">Avanzado</ToggleButton>
-              </ToggleButtonGroup>
-              <ToggleButtonGroup
-                value={designType}
-                exclusive
-                size="small"
-                onChange={(_, v) => {
-                  if (v) setDesignType(v);
-                }}
-              >
-                <ToggleButton value="workflow">Workflow</ToggleButton>
-                <ToggleButton value="tool">Tool</ToggleButton>
-              </ToggleButtonGroup>
-            </Stack>
-
             {activePanel === 'templates' && (
               <Card variant="outlined" sx={{ p: 1.5, bgcolor: 'background.neutral' }}>
                 <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} flexWrap="wrap">
-                  <Button variant="contained" onClick={handleCreateBlank}>
-                    Desde cero
-                  </Button>
-                  <Button variant="outlined" onClick={handleCreateDefault}>
-                    Base WhatsApp
-                  </Button>
+                  <Button variant="contained" onClick={handleCreateBlank}>Desde cero</Button>
+                  <Button variant="outlined" onClick={handleCreateDefault}>Base WhatsApp</Button>
                   {quickstarts.map((tpl) => (
-                    <Button key={tpl.id} variant="outlined" onClick={() => handleUseTemplate(tpl)}>
-                      {tpl.name}
-                    </Button>
+                    <Button key={tpl.id} variant="outlined" onClick={() => handleUseTemplate(tpl)}>{tpl.name}</Button>
                   ))}
                 </Stack>
               </Card>
             )}
 
-            {activePanel === 'flows' && (
-              <WorkflowDefinitionsCard
-                loading={loading}
-                workflows={workflows}
-                selectedId={selectedWorkflowId}
-                onSelect={handleSelectWorkflow}
-              />
-            )}
-
-            {activePanel === 'metrics' && (
-              <Grid container spacing={2}>
-                <Grid item xs={12} md={4}>
-                  <Card variant="outlined" sx={{ p: 2 }}>
-                    <Typography variant="h5">{workflows.length}</Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      Flujos � {publishedCount} publicados
-                    </Typography>
-                  </Card>
-                </Grid>
-                <Grid item xs={12} md={4}>
-                  <Card variant="outlined" sx={{ p: 2 }}>
-                    <Typography variant="h5">{activities.length}</Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      Nodos � {readyToPublish ? 'listo para publicar' : `${designValidationErrors.length} pendientes`}
-                    </Typography>
-                  </Card>
-                </Grid>
-                <Grid item xs={12} md={4}>
-                  <Card variant="outlined" sx={{ p: 2 }}>
-                    <Typography variant="h5">{executions.length}</Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      Ejecuciones � {failedExecutions ? `${failedExecutions} fallidas` : 'sin fallas recientes'}
-                    </Typography>
-                  </Card>
-                </Grid>
-                <Grid item xs={12}>
-                  <RuntimeMetricsCard metrics={metrics} auditEvents={auditEvents} />
-                </Grid>
-              </Grid>
-            )}
-
-            {activePanel === 'executions' && (
-              <WorkflowExecutionsCard executions={executions} onOpenSteps={openSteps} onRetryExecution={retryExecution} />
-            )}
-
             {editorMode === 'advanced' && (
               <Stack spacing={1.2}>
-                <TextField
-                  label="ID interno del workflow"
-                  value={editor.id}
-                  onChange={(e) => setEditorField('id', e.target.value)}
-                  size="small"
-                  fullWidth
-                />
+                <TextField label="ID interno" value={editor.id} onChange={(e) => setEditorField('id', e.target.value)} size="small" fullWidth />
                 <TextField
                   label="JSON de definicion"
                   value={editor.definitionJson}
                   onChange={(e) => setDefinitionJson(e.target.value)}
-                  multiline
-                  minRows={10}
-                  maxRows={18}
-                  fullWidth
+                  multiline minRows={10} maxRows={18} fullWidth
                 />
               </Stack>
             )}
           </Stack>
         </Card>
+            )}
 
+            {hasSelection && (
         <WorkflowVisualDesigner
           activities={activities}
           allowedTypes={uiAllowedTypes}
@@ -974,7 +703,122 @@ export default function WorkflowsPage() {
           onUpdateActivityConfig={updateActivityConfig}
           onRemoveActivityConfig={removeActivityConfig}
         />
+            )}
           </>
+        )}
+
+        {/* â”€â”€ Tab 1: Mis Flujos â”€â”€ */}
+        {mainTab === 1 && (
+          <Stack spacing={2.5}>
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.2} alignItems={{ md: 'center' }}>
+              <TextField
+                value={workflowSearch}
+                onChange={(e) => setWorkflowSearch(e.target.value)}
+                placeholder="Buscar por nombre, evento o ID"
+                size="small"
+                sx={{ maxWidth: 440 }}
+                fullWidth
+              />
+              <Chip size="small" label={`${filteredWorkflows.length} de ${workflows.length} workflows`} />
+              <Stack direction="row" spacing={1} sx={{ ml: { md: 'auto' } }}>
+                <Button variant="contained" startIcon={<Iconify icon="mingcute:add-line" />} onClick={handleCreateBlank}>
+                  Crear desde cero
+                </Button>
+                <Button variant="outlined" onClick={handleCreateDefault}>Base WhatsApp</Button>
+              </Stack>
+            </Stack>
+
+            <Grid container spacing={2}>
+              {filteredWorkflows.map((workflow) => {
+                const readiness = workflowReadiness(workflow);
+                return (
+                <Grid item xs={12} md={4} key={workflow.id}>
+                  <Card
+                    variant="outlined"
+                    onClick={() => handleSelectWorkflow(workflow)}
+                    sx={{
+                      p: 2.2,
+                      height: '100%',
+                      cursor: 'pointer',
+                      borderRadius: 2.5,
+                      transition: '160ms ease',
+                      '&:hover': { borderColor: 'primary.main', boxShadow: '0 16px 42px rgba(16,35,29,0.10)' },
+                    }}
+                  >
+                    <Stack spacing={1.2}>
+                      <Stack direction="row" justifyContent="space-between" spacing={1}>
+                        <Iconify icon="mdi:source-branch" width={28} sx={{ color: 'primary.main' }} />
+                        <Chip
+                          size="small"
+                          color={workflow.status === 'Published' ? 'success' : 'default'}
+                          label={workflow.status === 'Published' ? 'Publicado' : 'Borrador'}
+                        />
+                      </Stack>
+                      <Box>
+                        <Typography variant="h6">{workflow.name}</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {SYSTEM_EVENT_OPTIONS.find((ev) => ev.value === workflow.triggerEventName)?.label ?? (workflow.triggerEventName || 'sin evento')}
+                        </Typography>
+                      </Box>
+                      <Stack direction="row" spacing={0.5} flexWrap="wrap">
+                        <Chip size="small" color={readiness.percent >= 80 ? 'success' : 'warning'} label={`${readiness.percent}% listo`} />
+                        <Chip size="small" label={`${readiness.intents.length} intent.`} />
+                        <Chip size="small" color={readiness.hasAgent ? 'primary' : 'default'} label={readiness.hasAgent ? 'con agente' : 'sin agente'} />
+                      </Stack>
+                      <Typography variant="caption" color="text.secondary">
+                        Actualizado: {workflow.updatedAt ? new Date(workflow.updatedAt).toLocaleString() : 'sin fecha'}
+                      </Typography>
+                      <Button size="small" variant="outlined">Abrir Studio</Button>
+                    </Stack>
+                  </Card>
+                </Grid>
+              );})}
+
+              {filteredWorkflows.length === 0 && (
+                <Grid item xs={12}>
+                  <Card variant="outlined" sx={{ p: 4, textAlign: 'center', borderRadius: 3 }}>
+                    <Iconify icon="mdi:graph-outline" width={42} sx={{ color: 'primary.main', mb: 1 }} />
+                    <Typography variant="h6">{workflows.length === 0 ? 'No hay workflows creados' : 'Sin resultados'}</Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                      {workflows.length === 0 ? 'Crea tu primer flujo.' : 'Cambia la busqueda.'}
+                    </Typography>
+                    <Button variant="contained" onClick={handleCreateBlank}>Crear workflow</Button>
+                  </Card>
+                </Grid>
+              )}
+            </Grid>
+          </Stack>
+        )}
+
+        {/* â”€â”€ Tab 2: Monitor â”€â”€ */}
+        {mainTab === 2 && (
+          <Stack spacing={2.5}>
+            <Grid container spacing={2}>
+              {[
+                { label: 'Flujos', value: workflows.length, helper: `${publishedCount} publicados`, icon: 'mdi:source-branch' },
+                { label: 'Ejecuciones', value: executions.length, helper: `${failedExecutions} fallidas`, icon: 'mdi:play-circle-outline' },
+                { label: 'Nodos activos', value: activities.length, helper: hasSelection ? 'en el editor' : 'sin workflow activo', icon: 'mdi:graph-outline' },
+                { label: 'Agentes en uso', value: availableAgents.filter((a) => !a.isSystemAgent).length, helper: 'agentes personalizados', icon: 'mdi:robot-outline' },
+              ].map((stat) => (
+                <Grid item xs={6} md={3} key={stat.label}>
+                  <Card variant="outlined" sx={{ p: 2 }}>
+                    <Stack direction="row" spacing={1.5} alignItems="center">
+                      <Box sx={{ width: 40, height: 40, borderRadius: 1.5, display: 'grid', placeItems: 'center', bgcolor: 'primary.lighter', color: 'primary.main' }}>
+                        <Iconify icon={stat.icon} width={22} />
+                      </Box>
+                      <Box>
+                        <Typography variant="h5">{stat.value}</Typography>
+                        <Typography variant="caption" color="text.secondary">{stat.label} Â· {stat.helper}</Typography>
+                      </Box>
+                    </Stack>
+                  </Card>
+                </Grid>
+              ))}
+            </Grid>
+
+            <RuntimeMetricsCard metrics={metrics} auditEvents={auditEvents} />
+            <WorkflowExecutionsCard executions={executions} onOpenSteps={openSteps} onRetryExecution={retryExecution} />
+          </Stack>
         )}
       </DashboardContent>
 

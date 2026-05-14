@@ -1,4 +1,4 @@
-namespace AgentFlow.Abstractions.Workflow;
+﻿namespace AgentFlow.Abstractions.Workflow;
 
 public enum WorkflowDefinitionStatus
 {

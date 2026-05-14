@@ -76,6 +76,15 @@ public sealed class ChannelsController : ControllerBase
             return BadRequest(new { message = "Invalid channel type" });
 
         var channel = ChannelDefinition.Create(tenantId, request.Name, channelType, request.Config);
+
+        if (request.SessionWindowHours.HasValue)
+            channel.SetSessionWindowHours(request.SessionWindowHours.Value);
+
+        if (!string.IsNullOrWhiteSpace(request.RouterAgentId))
+            channel.SetRouterAgentId(request.RouterAgentId);
+
+        if (!string.IsNullOrWhiteSpace(request.ReopenTemplateName))
+            channel.SetReopenTemplateName(request.ReopenTemplateName);
         
         var result = await _channelRepo.InsertAsync(channel, ct);
         if (!result.IsSuccess) return BadRequest(result.Error);
@@ -89,9 +98,134 @@ public sealed class ChannelsController : ControllerBase
         });
     }
 
-    [HttpPost("{channelId}/activate")]
-    public async Task<IActionResult> Activate(string tenantId, string channelId, CancellationToken ct)
+    // ──────────────────────────────────────────────────────────────────────────
+    // POST /{channelId}/messages — omnichannel message entry point
+    //
+    // This is the UNIFIED entry point for any system or integration that wants
+    // to send a message through AgentFlow without owning a native channel SDK.
+    //
+    // Two delivery modes, selected by the caller:
+    //
+    //   SYNC  (default, no CallbackUrl):
+    //     The HTTP request blocks until the agent finishes.
+    //     Response is returned inline in the HTTP body.
+    //     Best for: WebChat widget, internal tooling, low-latency integrations.
+    //
+    //   ASYNC (CallbackUrl provided):
+    //     Returns HTTP 202 immediately with a correlationId.
+    //     When the agent finishes, AgentFlow POSTs the result to CallbackUrl.
+    //     Best for: 3rd-party integrations, serverless backends, long workflows.
+    //
+    // Transport delivery (the actual send to end-user) is always handled by
+    // handler.SendReplyAsync — which is channel-specific:
+    //   WhatsApp  → WhatsApp Business API / QR Bridge
+    //   WebChat   → inline response or SSE buffer
+    //   Api/sync  → returned in this HTTP response
+    //   Api/async → POSTed to CallbackUrl
+    //   Slack     → Slack Web API        (future)
+    //   Telegram  → Telegram Bot API     (future)
+    // ──────────────────────────────────────────────────────────────────────────
+    [HttpPost("{channelId}/messages")]
+    public async Task<IActionResult> SendMessage(
+        string tenantId,
+        string channelId,
+        [FromBody] ChannelMessageRequest request,
+        CancellationToken ct)
     {
+        var context = _tenantContext.Current!;
+        if (context.TenantId != tenantId && !context.IsPlatformAdmin) return Forbid();
+
+        if (string.IsNullOrWhiteSpace(request.Content))
+            return BadRequest(new { message = "Content is required." });
+
+        var channel = await _channelRepo.GetByIdAsync(channelId, tenantId, ct);
+        if (channel is null) return NotFound(new { message = "Channel not found." });
+
+        if (channel.Status != ChannelStatus.Active)
+            return BadRequest(new { message = $"Channel is not active (status: {channel.Status})." });
+
+        // If async mode, override the channel's webhook URL for this specific call.
+        // This lets the caller provide a one-time callback per message.
+        if (!string.IsNullOrWhiteSpace(request.CallbackUrl))
+        {
+            var patched = new Dictionary<string, string>(channel.Config, StringComparer.OrdinalIgnoreCase)
+            {
+                ["WebhookCallbackUrl"] = request.CallbackUrl
+            };
+            channel.UpdateConfig(patched);
+        }
+
+        var correlationId = request.CorrelationId ?? Guid.NewGuid().ToString("N");
+        var from = request.From ?? context.UserId;
+
+        // Build a synthetic session for this message — reuse existing or create new
+        var handler = _gateway.GetHandler(channel.Type);
+        if (handler is null)
+            return BadRequest(new { message = $"No handler registered for channel type {channel.Type}." });
+
+        var channelCtx = Domain.Common.ChannelContext.Create(
+            channel.Type, channel.Id, correlationId, from, request.DisplayName);
+        var session = await handler.GetOrCreateSessionAsync(channelCtx, channel, ct);
+
+        var incoming = AgentFlow.Domain.Aggregates.ChannelMessage.CreateIncoming(
+            tenantId:   tenantId,
+            channelId:  channelId,
+            sessionId:  session.Id,
+            from:       from,
+            content:    request.Content);
+
+        incoming.Metadata["correlation_id"] = correlationId;
+        if (request.Metadata is not null)
+        {
+            foreach (var kv in request.Metadata)
+                incoming.Metadata.TryAdd(kv.Key, kv.Value);
+        }
+
+        // ASYNC mode: accept immediately, process in background
+        if (!string.IsNullOrWhiteSpace(request.CallbackUrl))
+        {
+            _ = Task.Run(async () =>
+            {
+                try { await _gateway.ProcessMessageAsync(incoming, CancellationToken.None); }
+                catch (Exception ex)
+                {
+                    // Errors in async mode are delivered to CallbackUrl by the channel handler.
+                    // If even that fails, they are only observable in the logs + OpenTelemetry.
+                    var logger = HttpContext.RequestServices
+                        .GetRequiredService<Microsoft.Extensions.Logging.ILogger<ChannelsController>>();
+                    logger.LogError(ex,
+                        "Async message processing failed for channel {ChannelId} correlation {CorrelationId}",
+                        channelId, correlationId);
+                }
+            }, CancellationToken.None);
+
+            return Accepted(new
+            {
+                correlationId,
+                sessionId  = session.Id,
+                channelId,
+                mode       = "async",
+                callbackUrl = request.CallbackUrl,
+                message    = "Message accepted. Response will be delivered to callbackUrl."
+            });
+        }
+
+        // SYNC mode: block until agent responds, return inline
+        var outgoing = await _gateway.ProcessMessageAsync(incoming, ct);
+        return Ok(new
+        {
+            correlationId,
+            sessionId     = session.Id,
+            channelId,
+            mode          = "sync",
+            response      = outgoing.Content,
+            messageId     = outgoing.Id,
+            executionId   = outgoing.AgentExecutionId
+        });
+    }
+
+    [HttpPost("{channelId}/activate")]
+    public async Task<IActionResult> Activate(string tenantId, string channelId, CancellationToken ct)    {
         var context = _tenantContext.Current!;
         if (context.TenantId != tenantId && !context.IsPlatformAdmin) return Forbid();
 
@@ -381,6 +515,18 @@ public sealed record CreateChannelRequest
     public required string Name { get; init; }
     public required string Type { get; init; }
     public Dictionary<string, string>? Config { get; init; }
+
+    /// <summary>
+    /// Duration of the open conversation window in hours (default: 24).
+    /// After expiry the channel sends a template message to re-open the window.
+    /// </summary>
+    public int? SessionWindowHours { get; init; }
+
+    /// <summary>ID of the Router agent to assign to this channel.</summary>
+    public string? RouterAgentId { get; init; }
+
+    /// <summary>WhatsApp-approved template name to use when the session window closes.</summary>
+    public string? ReopenTemplateName { get; init; }
 }
 
 public sealed record ChannelDto
@@ -415,4 +561,41 @@ public sealed record ChannelRoutingPreviewDto
     public string? SuggestedAgentId { get; init; }
     public Dictionary<string, int> ActiveLoadByAgent { get; init; } = new(StringComparer.OrdinalIgnoreCase);
     public Dictionary<string, int> RoutingCapacities { get; init; } = new(StringComparer.OrdinalIgnoreCase);
+}
+
+/// <summary>
+/// Request body for POST /{channelId}/messages.
+/// Supports both sync (inline response) and async (webhook callback) delivery modes.
+/// </summary>
+public sealed record ChannelMessageRequest
+{
+    /// <summary>Message content to send to the agent.</summary>
+    public required string Content { get; init; }
+
+    /// <summary>
+    /// Identifier of the sender — e.g. "user-123", "system", an email, a phone number.
+    /// Defaults to the authenticated user's ID if not provided.
+    /// </summary>
+    public string? From { get; init; }
+
+    /// <summary>Display name of the sender shown in conversation history.</summary>
+    public string? DisplayName { get; init; }
+
+    /// <summary>
+    /// Optional correlation ID to trace this message across your system.
+    /// If omitted, AgentFlow generates one and returns it in the response.
+    /// </summary>
+    public string? CorrelationId { get; init; }
+
+    /// <summary>
+    /// ASYNC mode: provide a URL and the request returns HTTP 202 immediately.
+    /// AgentFlow will POST the agent response to this URL when ready.
+    /// The payload matches the sync response shape plus a top-level "event": "message.completed".
+    ///
+    /// SYNC mode: omit this field. The request blocks and returns the response inline.
+    /// </summary>
+    public string? CallbackUrl { get; init; }
+
+    /// <summary>Extra key-value pairs forwarded to the agent's execution context.</summary>
+    public Dictionary<string, string>? Metadata { get; init; }
 }

@@ -3,6 +3,8 @@ using AgentFlow.Domain.Aggregates;
 using AgentFlow.Domain.Common;
 using AgentFlow.Domain.Repositories;
 using Microsoft.Extensions.Logging;
+using System.Net.Http.Json;
+using System.Text.Json;
 
 namespace AgentFlow.Infrastructure.Channels.Api;
 
@@ -12,15 +14,18 @@ namespace AgentFlow.Infrastructure.Channels.Api;
 public sealed class ApiChannelHandler : IChannelHandler
 {
     private readonly IChannelSessionRepository _sessionRepo;
+    private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<ApiChannelHandler> _logger;
 
     public ChannelType SupportedChannelType => ChannelType.Api;
 
     public ApiChannelHandler(
         IChannelSessionRepository sessionRepo,
+        IHttpClientFactory httpClientFactory,
         ILogger<ApiChannelHandler> logger)
     {
         _sessionRepo = sessionRepo;
+        _httpClientFactory = httpClientFactory;
         _logger = logger;
     }
 
@@ -68,10 +73,53 @@ public sealed class ApiChannelHandler : IChannelHandler
 
     public async Task<SendResult> SendReplyAsync(ChannelMessage message, ChannelDefinition definition, CancellationToken ct = default)
     {
-        // API replies are returned directly in the HTTP response
-        // This method is for callbacks/webhooks if needed
         message.MarkSent();
-        await Task.CompletedTask;
+
+        // If a WebhookCallbackUrl is configured, POST the response asynchronously.
+        // This is the "async API" mode: caller fires and forgets, receives result via webhook.
+        var webhookUrl = definition.Config.GetValueOrDefault("WebhookCallbackUrl");
+        if (!string.IsNullOrWhiteSpace(webhookUrl))
+        {
+            try
+            {
+                var payload = new
+                {
+                    messageId      = message.Id,
+                    sessionId      = message.SessionId,
+                    correlationId  = message.Metadata.GetValueOrDefault("correlation_id"),
+                    content        = message.Content,
+                    from           = message.From,
+                    channelId      = message.ChannelId,
+                    tenantId       = message.TenantId,
+                    executionId    = message.AgentExecutionId,
+                    metadata       = message.Metadata
+                };
+
+                using var http = _httpClientFactory.CreateClient("webhook");
+                var response = await http.PostAsJsonAsync(webhookUrl, payload, ct);
+                if (!response.IsSuccessStatusCode)
+                {
+                    _logger.LogWarning(
+                        "Webhook delivery to {Url} failed with HTTP {Status} for message {MessageId}",
+                        webhookUrl, (int)response.StatusCode, message.Id);
+                }
+                else
+                {
+                    _logger.LogDebug(
+                        "Webhook delivered to {Url} for message {MessageId}",
+                        webhookUrl, message.Id);
+                }
+            }
+            catch (Exception ex)
+            {
+                // Log but never throw — the agent response was already generated correctly.
+                // Webhook delivery failure is an infrastructure concern, not a domain error.
+                _logger.LogError(ex,
+                    "Webhook delivery exception for message {MessageId} → {Url}",
+                    message.Id, webhookUrl);
+            }
+        }
+
         return SendResult.Ok(message.Id);
     }
 

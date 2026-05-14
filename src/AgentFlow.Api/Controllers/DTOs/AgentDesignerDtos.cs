@@ -132,6 +132,10 @@ public sealed record AgentListItemDto
     public int ToolsCount { get; init; }
     public string PrimaryModel { get; init; } = string.Empty;
     public string Provider { get; init; } = string.Empty;
+    /// <summary>True if this agent is platform-managed (Router, WorkflowBrain, ConfigAssistant).</summary>
+    public bool IsSystemAgent { get; init; }
+    /// <summary>System role: Router | WorkflowBrain | ConfigAssistant | null for user agents.</summary>
+    public string? SystemRole { get; init; }
 }
 
 /// <summary>

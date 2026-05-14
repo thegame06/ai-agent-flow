@@ -49,6 +49,56 @@ public sealed class ChannelDefinition
     {
         LastActivityAt = DateTimeOffset.UtcNow;
     }
+
+    // ── Typed config helpers ────────────────────────────────────────────────
+    // Stored in Config dictionary for backward compatibility with existing records.
+
+    /// <summary>
+    /// Duration of an open conversation window in hours.
+    /// Within this window the channel sends free-text replies.
+    /// After expiry the channel must use a template message to re-open the window.
+    /// Defaults to 24 hours (WhatsApp Business policy).
+    /// </summary>
+    public int SessionWindowHours =>
+        Config.TryGetValue("SessionWindowHours", out var v) && int.TryParse(v, out var h) && h > 0
+            ? h
+            : 24;
+
+    /// <summary>
+    /// ID of the Router agent assigned to this channel.
+    /// The Router receives all incoming messages and decides which workflow to trigger.
+    /// </summary>
+    public string? RouterAgentId =>
+        Config.TryGetValue("RouterAgentId", out var id) && !string.IsNullOrWhiteSpace(id)
+            ? id
+            : null;
+
+    /// <summary>
+    /// WhatsApp template name to use when the session window is closed.
+    /// Must be a pre-approved template in the WhatsApp Business account.
+    /// </summary>
+    public string? ReopenTemplateName =>
+        Config.TryGetValue("ReopenTemplateName", out var t) && !string.IsNullOrWhiteSpace(t)
+            ? t
+            : null;
+
+    public void SetSessionWindowHours(int hours)
+    {
+        if (hours < 1) throw new ArgumentOutOfRangeException(nameof(hours), "SessionWindowHours must be at least 1.");
+        Config["SessionWindowHours"] = hours.ToString();
+    }
+
+    public void SetRouterAgentId(string agentId)
+    {
+        if (string.IsNullOrWhiteSpace(agentId)) throw new ArgumentException("RouterAgentId cannot be empty.");
+        Config["RouterAgentId"] = agentId;
+    }
+
+    public void SetReopenTemplateName(string templateName)
+    {
+        if (string.IsNullOrWhiteSpace(templateName)) throw new ArgumentException("ReopenTemplateName cannot be empty.");
+        Config["ReopenTemplateName"] = templateName;
+    }
 }
 
 public enum ChannelType

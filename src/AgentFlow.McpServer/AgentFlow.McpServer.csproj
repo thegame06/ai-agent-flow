@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>AgentFlow.McpServer</RootNamespace>
+    <AssemblyName>AgentFlow.McpServer</AssemblyName>
+  </PropertyGroup>
+
+  <!--
+    El MCP Server es un sidecar HTTP que llama a AgentFlow.Api por HttpClient.
+    Solo referencia Abstractions para tener los contratos/types compartidos.
+    NO referencia Infrastructure/Domain directamente → evita dependencia de Mongo/Redis.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\AgentFlow.Abstractions\AgentFlow.Abstractions.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -18,6 +18,7 @@ import Switch from '@mui/material/Switch';
 import Slider from '@mui/material/Slider';
 import Select from '@mui/material/Select';
 import Divider from '@mui/material/Divider';
+import Tooltip from '@mui/material/Tooltip';
 import MenuItem from '@mui/material/MenuItem';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
@@ -26,6 +27,10 @@ import IconButton from '@mui/material/IconButton';
 import CardContent from '@mui/material/CardContent';
 import FormControl from '@mui/material/FormControl';
 import { alpha, useTheme } from '@mui/material/styles';
+import LinearProgress from '@mui/material/LinearProgress';
+
+import { paths } from 'src/routes/paths';
+import { useRouter } from 'src/routes/hooks';
 
 import axios from 'src/lib/axios';
 import { CONFIG } from 'src/global-config';
@@ -535,15 +540,18 @@ export default function AgentDesignerPage() {
     (state: RootState) => state.designer
   );
   const theme = useTheme();
+  const router = useRouter();
   const { agentId } = useParams<{ agentId: string }>();
   const [availableModels, setAvailableModels] = useState<ModelOption[]>([]);
   const [availableTools, setAvailableTools] = useState<ToolOption[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(false);
+  const [agentLoading, setAgentLoading] = useState(false);
 
   // Load agent when editing an existing one
   useEffect(() => {
     if (agentId) {
-      dispatch(fetchAgentDetail(agentId));
+      setAgentLoading(true);
+      dispatch(fetchAgentDetail(agentId)).finally(() => setAgentLoading(false));
     } else {
       dispatch(resetDraft());
     }
@@ -640,41 +648,57 @@ export default function AgentDesignerPage() {
   return (
     <>
       <Helmet>
-        <title>{draft.name || 'New Agent'} - Designer | {CONFIG.appName}</title>
+        <title>{draft.name || 'Nuevo Agente'} — Agent Studio | {CONFIG.appName}</title>
       </Helmet>
 
       <DashboardContent maxWidth="lg">
+        {/* Loading bar */}
+        {agentLoading && <LinearProgress sx={{ mb: 2, borderRadius: 1 }} />}
+
         {/* Error Banner */}
         {Object.keys(errors).length > 0 && (
-          <Alert severity="error" sx={{ mb: 3 }}>
+          <Alert severity="error" sx={{ mb: 2 }}>
             {Object.values(errors).join(' · ')}
           </Alert>
         )}
 
-        {/* Header */}
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
-          <Box>
-            <Typography variant="h4">Studio de Agente IA</Typography>
-            <Typography variant="body2" color="text.secondary">
-              {draft.name || 'Agente sin nombre'} · v{draft.version}
-              {isDirty && (
+        {/* ── Header ── */}
+        <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 0.5 }}>
+          <Tooltip title="Volver a Agentes">
+            <IconButton onClick={() => router.push(paths.dashboard.agents)} size="small">
+              <Iconify icon="mdi:arrow-left" width={22} />
+            </IconButton>
+          </Tooltip>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Stack direction="row" spacing={1} alignItems="center">
+              <Typography variant="h4" noWrap>
+                {draft.name || (agentLoading ? 'Cargando...' : 'Nuevo Agente')}
+              </Typography>
+              {draft.id && (
                 <Chip
-                  label="Cambios sin guardar"
                   size="small"
-                  color="warning"
-                  variant="soft"
-                  sx={{ ml: 1 }}
+                  label={draft.status}
+                  color={draft.status === 'Published' ? 'success' : draft.status === 'Archived' ? 'error' : 'warning'}
                 />
               )}
-              {saving && (
-                <Chip label="Guardando..." size="small" color="info" variant="soft" sx={{ ml: 1 }} />
+              {isDirty && !saving && (
+                <Chip label="Sin guardar" size="small" color="warning" variant="soft" />
               )}
+              {saving && (
+                <Chip label="Guardando..." size="small" color="info" variant="soft" />
+              )}
+            </Stack>
+            <Typography variant="caption" color="text.secondary">
+              {draft.id ? `ID: ${draft.id}` : 'Agente nuevo'}
+              {draft.id && ` · v${draft.version}`}
+              {draft.model?.primaryModel && ` · ${draft.model.primaryModel}`}
             </Typography>
           </Box>
-          <Stack direction="row" spacing={1.5}>
+          <Stack direction="row" spacing={1}>
             <Button
               variant="outlined"
               color="inherit"
+              size="small"
               startIcon={<Iconify icon="mdi:refresh" />}
               onClick={() => dispatch(resetDraft())}
             >
@@ -682,15 +706,17 @@ export default function AgentDesignerPage() {
             </Button>
             <Button
               variant="contained"
-              startIcon={<Iconify icon="mdi:content-save" />}
+              size="small"
+              startIcon={<Iconify icon={saving ? 'mdi:loading' : 'mdi:content-save'} />}
               disabled={!isDirty || saving}
               onClick={handleSave}
             >
-              {saving ? 'Guardando...' : 'Guardar borrador'}
+              {saving ? 'Guardando...' : 'Guardar'}
             </Button>
             <Button
               variant="contained"
               color="success"
+              size="small"
               startIcon={<Iconify icon="mdi:rocket-launch" />}
               disabled={!draft.name || draft.steps.length === 0 || !draft.id || saving}
               onClick={handlePublish}
@@ -698,32 +724,50 @@ export default function AgentDesignerPage() {
               Publicar
             </Button>
           </Stack>
-        </Box>
+        </Stack>
 
-        {/* Tabs */}
-        <Card
-          sx={{
-            border: `1px solid ${alpha(theme.palette.grey[500], 0.12)}`,
-          }}
-        >
+        {/* ── Tab progress strip ── */}
+        <Stack direction="row" spacing={2} sx={{ mb: 2.5, mt: 0.5 }} alignItems="center">
+          {[
+            { label: 'Nombre', ok: Boolean(draft.name?.trim()) },
+            { label: 'Instrucciones', ok: Boolean(draft.systemPrompt?.trim()) },
+            { label: 'Modelo', ok: Boolean(draft.model?.primaryModel) },
+            { label: 'Steps', ok: draft.steps.length > 0 },
+            { label: 'Publicado', ok: draft.status === 'Published' },
+          ].map((step) => (
+            <Stack key={step.label} direction="row" spacing={0.4} alignItems="center">
+              <Iconify
+                icon={step.ok ? 'mdi:check-circle' : 'mdi:circle-outline'}
+                width={15}
+                sx={{ color: step.ok ? 'success.main' : 'text.disabled' }}
+              />
+              <Typography variant="caption" color={step.ok ? 'text.primary' : 'text.disabled'}>
+                {step.label}
+              </Typography>
+            </Stack>
+          ))}
+        </Stack>
+
+        {/* ── Tabs ── */}
+        <Card sx={{ border: `1px solid ${alpha(theme.palette.grey[500], 0.12)}` }}>
           <Tabs
             value={activeTab}
             onChange={(_, v) => dispatch(setActiveTab(v))}
-            sx={{
-              px: 3,
-              borderBottom: `1px solid ${alpha(theme.palette.grey[500], 0.12)}`,
-            }}
+            variant="scrollable"
+            scrollButtons="auto"
+            sx={{ px: 2, borderBottom: `1px solid ${alpha(theme.palette.grey[500], 0.12)}` }}
           >
             {TAB_LABELS.map((label, i) => (
               <Tab
                 key={label}
                 label={label}
-                icon={<Iconify icon={TAB_ICONS[i]} width={20} />}
+                icon={<Iconify icon={TAB_ICONS[i]} width={18} />}
                 iconPosition="start"
+                sx={{ minHeight: 48 }}
               />
             ))}
           </Tabs>
-          <CardContent sx={{ p: 4 }}>{renderTabContent()}</CardContent>
+          <CardContent sx={{ p: { xs: 2, md: 3 } }}>{renderTabContent()}</CardContent>
         </Card>
       </DashboardContent>
     </>

@@ -3,26 +3,32 @@ import { useState, useEffect, useCallback } from 'react';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
-import Grid from '@mui/material/Grid';
 import Chip from '@mui/material/Chip';
-import Stack from '@mui/material/Stack';
+import Grid from '@mui/material/Grid';
 import Alert from '@mui/material/Alert';
+import Stack from '@mui/material/Stack';
 import Table from '@mui/material/Table';
 import Paper from '@mui/material/Paper';
 import Avatar from '@mui/material/Avatar';
 import Button from '@mui/material/Button';
 import Dialog from '@mui/material/Dialog';
+import Select from '@mui/material/Select';
+import Divider from '@mui/material/Divider';
 import MenuItem from '@mui/material/MenuItem';
 import TableRow from '@mui/material/TableRow';
 import TableBody from '@mui/material/TableBody';
 import TableCell from '@mui/material/TableCell';
-import TextField from '@mui/material/TextField';
 import TableHead from '@mui/material/TableHead';
+import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import IconButton from '@mui/material/IconButton';
+import InputLabel from '@mui/material/InputLabel';
 import DialogTitle from '@mui/material/DialogTitle';
+import FormControl from '@mui/material/FormControl';
 import DialogActions from '@mui/material/DialogActions';
 import DialogContent from '@mui/material/DialogContent';
+import OutlinedInput from '@mui/material/OutlinedInput';
+import FormHelperText from '@mui/material/FormHelperText';
 import CircularProgress from '@mui/material/CircularProgress';
 
 import { paths } from 'src/routes/paths';
@@ -100,8 +106,13 @@ export default function ChannelsPage() {
   const [connections, setConnections] = useState<TenantConnection[]>([]);
   const [openRouting, setOpenRouting] = useState(false);
   const [routingChannel, setRoutingChannel] = useState<Channel | null>(null);
-  const [routingForm, setRoutingForm] = useState({ defaultAgentId: '', routingAgentsCsv: '', routingCapacitiesCsv: '' });
+  const [routingForm, setRoutingForm] = useState({ defaultAgentId: '', routingAgentIds: [] as string[] });
   const [routingPreview, setRoutingPreview] = useState<{ suggestedAgentId?: string; activeLoadByAgent?: Record<string, number> } | null>(null);
+  const [openTestPanel, setOpenTestPanel] = useState(false);
+  const [testPanelChannel, setTestPanelChannel] = useState<Channel | null>(null);
+  const [testMsg, setTestMsg] = useState({ content: '', from: '', callbackUrl: '', asyncMode: false });
+  const [testResult, setTestResult] = useState<{ status: number; data: any } | null>(null);
+  const [testSending, setTestSending] = useState(false);
 
   const [form, setForm] = useState({
     name: '',
@@ -110,10 +121,12 @@ export default function ChannelsPage() {
     apiToken: '',
     phoneNumberId: '',
     defaultAgentId: '',
-    routingAgentsCsv: '',
-    routingCapacitiesCsv: '',
+    routingAgentIds: [] as string[],
     connectionId: '',
     provider: 'twilio',
+    sessionWindowHours: '24',
+    routerAgentId: '',
+    reopenTemplateName: '',
   });
 
   const channelTypes = [
@@ -164,7 +177,7 @@ export default function ChannelsPage() {
       const config: Record<string, string> = {
         AuthMode: form.authMode,
         DefaultAgentId: form.defaultAgentId || 'default-agent',
-        RoutingAgents: form.routingAgentsCsv || '',
+        RoutingAgents: form.routingAgentIds.join(','),
       };
 
       if (form.connectionId) config.ConnectionId = form.connectionId;
@@ -179,10 +192,13 @@ export default function ChannelsPage() {
         name: form.name.trim(),
         type: form.type,
         config,
+        sessionWindowHours: form.sessionWindowHours ? Number(form.sessionWindowHours) : undefined,
+        routerAgentId: form.routerAgentId || undefined,
+        reopenTemplateName: form.reopenTemplateName || undefined,
       });
 
       setOpenCreate(false);
-      setForm({ name: '', type: 'WhatsApp', authMode: 'qr', apiToken: '', phoneNumberId: '', defaultAgentId: '', routingAgentsCsv: '', routingCapacitiesCsv: '', connectionId: '', provider: 'twilio' });
+      setForm({ name: '', type: 'WhatsApp', authMode: 'qr', apiToken: '', phoneNumberId: '', defaultAgentId: '', routingAgentIds: [], connectionId: '', provider: 'twilio', sessionWindowHours: '24', routerAgentId: '', reopenTemplateName: '' });
       await fetchAll();
     } catch (err: any) {
       alert(err?.message || 'Error creando canal');
@@ -194,13 +210,11 @@ export default function ChannelsPage() {
   const openRoutingDialog = async (channel: Channel) => {
     try {
       const res = await axios.get(endpoints.agentflow.channels.routingGet(TENANT_ID, channel.id));
-      const routingAgents = (res.data?.routingAgents ?? []) as string[];
-      setRoutingChannel(channel);
       setRoutingForm({
         defaultAgentId: res.data?.defaultAgentId || channel.config?.DefaultAgentId || '',
-        routingAgentsCsv: routingAgents.join(','),
-        routingCapacitiesCsv: Object.entries(res.data?.routingCapacities || {}).map(([agentId, cap]) => `${agentId}:${cap}`).join(','),
+        routingAgentIds: (res.data?.routingAgents ?? []) as string[],
       });
+      setRoutingChannel(channel);
       setRoutingPreview(null);
       setOpenRouting(true);
     } catch (err: any) {
@@ -214,20 +228,7 @@ export default function ChannelsPage() {
       setSaving(true);
       await axios.post(endpoints.agentflow.channels.routingUpdate(TENANT_ID, routingChannel.id), {
         defaultAgentId: routingForm.defaultAgentId,
-        routingAgents: routingForm.routingAgentsCsv
-          .split(',')
-          .map((x) => x.trim())
-          .filter(Boolean),
-        routingCapacities: routingForm.routingCapacitiesCsv
-          .split(',')
-          .map((entry) => entry.trim())
-          .filter(Boolean)
-          .reduce<Record<string, number>>((acc, entry) => {
-            const [agentId, capRaw] = entry.split(':').map((x) => x.trim());
-            const cap = Number(capRaw);
-            if (agentId && Number.isFinite(cap) && cap > 0) acc[agentId] = cap;
-            return acc;
-          }, {}),
+        routingAgents: routingForm.routingAgentIds,
       });
       setOpenRouting(false);
       setRoutingChannel(null);
@@ -356,6 +357,27 @@ export default function ChannelsPage() {
 
     setQrPolling(false);
     setError('Finalizo el polling de QR. Si sigue pendiente, usa Refrescar QR.');
+  };
+
+  const sendTestMessage = async () => {
+    if (!testPanelChannel || !testMsg.content.trim()) return;
+    try {
+      setTestSending(true);
+      setTestResult(null);
+      const res = await axios.post(
+        `/api/v1/tenants/${TENANT_ID}/channels/${testPanelChannel.id}/messages`,
+        {
+          content: testMsg.content,
+          from: testMsg.from || undefined,
+          callbackUrl: testMsg.asyncMode && testMsg.callbackUrl ? testMsg.callbackUrl : undefined,
+        }
+      );
+      setTestResult({ status: res.status, data: res.data });
+    } catch (err: any) {
+      setTestResult({ status: err?.response?.status ?? 0, data: err?.response?.data ?? { error: err?.message } });
+    } finally {
+      setTestSending(false);
+    }
   };
 
   const getStatusColor = (status: string) => {
@@ -565,6 +587,9 @@ export default function ChannelsPage() {
                             <IconButton size="small" onClick={() => handleCheckHealth(c)}>
                               <Iconify icon="mdi:heart-pulse" />
                             </IconButton>
+                            <IconButton size="small" title="Probar mensajes" onClick={() => { setTestPanelChannel(c); setTestResult(null); setTestMsg({ content: '', from: '', callbackUrl: '', asyncMode: false }); setOpenTestPanel(true); }}>
+                              <Iconify icon="mdi:message-flash-outline" />
+                            </IconButton>
                             <IconButton size="small" onClick={() => openRoutingDialog(c)}>
                               <Iconify icon="solar:settings-bold" />
                             </IconButton>
@@ -707,28 +732,77 @@ export default function ChannelsPage() {
               value={form.defaultAgentId}
               onChange={(e) => setForm((p) => ({ ...p, defaultAgentId: e.target.value }))}
               fullWidth
-              helperText={candidateAgents.length === 0 ? 'No hay agentes disponibles' : 'Selecciona el agente por defecto para este canal'}
+              helperText={candidateAgents.length === 0 ? 'No hay agentes disponibles' : 'Agente que responde cuando no hay router configurado'}
             >
               {candidateAgents.map((agent) => (
                 <MenuItem key={agent.id} value={agent.id}>
-                  {agent.name} ({agent.id})
+                  {agent.name}
                 </MenuItem>
               ))}
             </TextField>
-            <TextField
-              label="Agentes de enrutamiento (IDs separados por coma)"
-              value={form.routingAgentsCsv}
-              onChange={(e) => setForm((p) => ({ ...p, routingAgentsCsv: e.target.value }))}
-              fullWidth
-              helperText="Se usa round-robin por carga actual. Ejemplo: sales-agent,support-agent"
-            />
-            <TextField
-              label="Capacidades de enrutamiento (agentId:max, CSV)"
-              value={form.routingCapacitiesCsv}
-              onChange={(e) => setForm((p) => ({ ...p, routingCapacitiesCsv: e.target.value }))}
-              fullWidth
-              helperText="Maximo opcional de sesiones activas por agente. Ejemplo: sales-agent:20,support-agent:15"
-            />
+
+            <Divider textAlign="left">
+              <Typography variant="caption" color="text.secondary">Enrutamiento por carga (opcional)</Typography>
+            </Divider>
+
+            <FormControl fullWidth>
+              <InputLabel>Agentes de enrutamiento</InputLabel>
+              <Select
+                multiple
+                value={form.routingAgentIds}
+                onChange={(e) => setForm((p) => ({ ...p, routingAgentIds: e.target.value as string[] }))}
+                input={<OutlinedInput label="Agentes de enrutamiento" />}
+                renderValue={(selected) => (
+                  <Stack direction="row" spacing={0.5} flexWrap="wrap">
+                    {(selected as string[]).map((id) => {
+                      const agent = candidateAgents.find((a) => a.id === id);
+                      return <Chip key={id} label={agent?.name || id} size="small" />;
+                    })}
+                  </Stack>
+                )}
+              >
+                {candidateAgents.map((agent) => (
+                  <MenuItem key={agent.id} value={agent.id}>{agent.name}</MenuItem>
+                ))}
+              </Select>
+              <FormHelperText>Asignación automática por menor carga activa. Deja vacío para usar solo el agente por defecto.</FormHelperText>
+            </FormControl>
+
+            {form.type === 'WhatsApp' && (
+              <>
+                <TextField
+                  label="Ventana de sesion (horas)"
+                  type="number"
+                  value={form.sessionWindowHours}
+                  onChange={(e) => setForm((p) => ({ ...p, sessionWindowHours: e.target.value }))}
+                  fullWidth
+                  helperText="Horas que la sesion WhatsApp permanece abierta. Default: 24"
+                  inputProps={{ min: 1, max: 168 }}
+                />
+                <TextField
+                  select
+                  label="Agente Router (intent routing)"
+                  value={form.routerAgentId}
+                  onChange={(e) => setForm((p) => ({ ...p, routerAgentId: e.target.value }))}
+                  fullWidth
+                  helperText="Agente con rol Router que clasifica intenciones antes de asignar un workflow."
+                >
+                  <MenuItem value="">Sin Router (usa agente por defecto)</MenuItem>
+                  {candidateAgents.map((agent) => (
+                    <MenuItem key={agent.id} value={agent.id}>
+                      {agent.name}
+                    </MenuItem>
+                  ))}
+                </TextField>
+                <TextField
+                  label="Template de reapertura (WhatsApp)"
+                  value={form.reopenTemplateName}
+                  onChange={(e) => setForm((p) => ({ ...p, reopenTemplateName: e.target.value }))}
+                  fullWidth
+                  helperText="Nombre del template aprobado para reabrir la ventana expirada. Ejemplo: session_reopen"
+                />
+              </>
+            )}
           </Stack>
         </DialogContent>
         <DialogActions>
@@ -740,48 +814,70 @@ export default function ChannelsPage() {
       </Dialog>
 
       <Dialog open={openRouting} onClose={() => setOpenRouting(false)} fullWidth maxWidth="sm">
-        <DialogTitle>Reglas de enrutamiento - {routingChannel?.name}</DialogTitle>
+        <DialogTitle>Enrutamiento — {routingChannel?.name}</DialogTitle>
         <DialogContent>
-          <Stack spacing={2} sx={{ pt: 1 }}>
+          <Stack spacing={2.5} sx={{ pt: 1 }}>
+            <Alert severity="info" sx={{ mb: 0 }}>
+              El <strong>agente por defecto</strong> responde cuando no hay coincidencia de intención. Los <strong>agentes de enrutamiento</strong> se asignan automáticamente por menor carga activa.
+            </Alert>
+
             <TextField
               select
               label="Agente por defecto"
               value={routingForm.defaultAgentId}
               onChange={(e) => setRoutingForm((prev) => ({ ...prev, defaultAgentId: e.target.value }))}
               fullWidth
+              helperText="Agente de fallback cuando ninguna intención hace match"
             >
+              <MenuItem value=""><em>Sin agente por defecto</em></MenuItem>
               {candidateAgents.map((agent) => (
-                <MenuItem key={agent.id} value={agent.id}>
-                  {agent.name} ({agent.id})
-                </MenuItem>
+                <MenuItem key={agent.id} value={agent.id}>{agent.name}</MenuItem>
               ))}
             </TextField>
-            <TextField
-              label="Agentes de enrutamiento (IDs separados por coma)"
-              value={routingForm.routingAgentsCsv}
-              onChange={(e) => setRoutingForm((prev) => ({ ...prev, routingAgentsCsv: e.target.value }))}
-              fullWidth
-              helperText="Estos agentes se usan para asignacion automatica por menor carga activa."
-            />
-            <TextField
-              label="Capacidades de enrutamiento (agentId:max, CSV)"
-              value={routingForm.routingCapacitiesCsv}
-              onChange={(e) => setRoutingForm((prev) => ({ ...prev, routingCapacitiesCsv: e.target.value }))}
-              fullWidth
-              helperText="Limites de capacidad por agente. Ejemplo: a1:20,a2:15"
-            />
+
+            <FormControl fullWidth>
+              <InputLabel>Agentes de enrutamiento</InputLabel>
+              <Select
+                multiple
+                value={routingForm.routingAgentIds}
+                onChange={(e) => setRoutingForm((prev) => ({ ...prev, routingAgentIds: e.target.value as string[] }))}
+                input={<OutlinedInput label="Agentes de enrutamiento" />}
+                renderValue={(selected) => (
+                  <Stack direction="row" spacing={0.5} flexWrap="wrap">
+                    {(selected as string[]).map((id) => {
+                      const agent = candidateAgents.find((a) => a.id === id);
+                      return <Chip key={id} label={agent?.name || id} size="small" />;
+                    })}
+                  </Stack>
+                )}
+              >
+                {candidateAgents.map((agent) => (
+                  <MenuItem key={agent.id} value={agent.id}>{agent.name}</MenuItem>
+                ))}
+              </Select>
+              <FormHelperText>Se asignarán en round-robin por menor número de sesiones activas.</FormHelperText>
+            </FormControl>
+
             {routingPreview && (
-              <Alert severity="info">
-                Sugerido: {routingPreview.suggestedAgentId || 'N/A'} | Carga: {Object.entries(routingPreview.activeLoadByAgent || {}).map(([a, l]) => `${a}=${l}`).join(', ') || 'N/A'}
+              <Alert severity="success">
+                <strong>Próxima asignación:</strong> {candidateAgents.find(a => a.id === routingPreview.suggestedAgentId)?.name || routingPreview.suggestedAgentId || 'N/A'}
+                {Object.keys(routingPreview.activeLoadByAgent || {}).length > 0 && (
+                  <Typography variant="caption" display="block" sx={{ mt: 0.5 }}>
+                    Carga actual: {Object.entries(routingPreview.activeLoadByAgent || {}).map(([a, l]) => {
+                      const name = candidateAgents.find(ca => ca.id === a)?.name || a;
+                      return `${name}: ${l}`;
+                    }).join(' · ')}
+                  </Typography>
+                )}
               </Alert>
             )}
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={runRoutingPreview}>Vista previa de proxima asignacion</Button>
+          <Button onClick={runRoutingPreview} startIcon={<Iconify icon="mdi:eye-outline" />}>Vista previa</Button>
           <Button onClick={() => setOpenRouting(false)}>Cancelar</Button>
           <Button variant="contained" onClick={saveRouting} disabled={saving}>
-            Guardar enrutamiento
+            {saving ? 'Guardando...' : 'Guardar'}
           </Button>
         </DialogActions>
       </Dialog>
@@ -872,6 +968,67 @@ export default function ChannelsPage() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setSelectedSession(null)}>Cerrar</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Test Message Dialog */}
+      <Dialog open={openTestPanel} onClose={() => setOpenTestPanel(false)} fullWidth maxWidth="sm">
+        <DialogTitle>Probar mensaje — {testPanelChannel?.name}</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ pt: 1 }}>
+            <Alert severity="info">
+              Envia un mensaje al canal via <code>POST /channels/{'{channelId}'}/messages</code>. En modo sincrono el resultado aparece aqui; en modo async el canal procesara en background y responde 202.
+            </Alert>
+            <TextField
+              label="Contenido del mensaje"
+              value={testMsg.content}
+              onChange={(e) => setTestMsg((p) => ({ ...p, content: e.target.value }))}
+              multiline
+              minRows={2}
+              fullWidth
+              placeholder="Hola, quiero agendar una cita"
+            />
+            <TextField
+              label="Remitente (from)"
+              value={testMsg.from}
+              onChange={(e) => setTestMsg((p) => ({ ...p, from: e.target.value }))}
+              fullWidth
+              placeholder="+521234567890 o user@test.com"
+              helperText="Opcional. Simula el identificador del cliente."
+            />
+            <Stack direction="row" spacing={1} alignItems="center">
+              <Chip
+                label={testMsg.asyncMode ? 'Modo: Async (202)' : 'Modo: Sync (200)'}
+                color={testMsg.asyncMode ? 'info' : 'default'}
+                onClick={() => setTestMsg((p) => ({ ...p, asyncMode: !p.asyncMode }))}
+                clickable
+              />
+            </Stack>
+            {testMsg.asyncMode && (
+              <TextField
+                label="Callback URL (opcional)"
+                value={testMsg.callbackUrl}
+                onChange={(e) => setTestMsg((p) => ({ ...p, callbackUrl: e.target.value }))}
+                fullWidth
+                placeholder="https://webhook.site/xxx"
+                helperText="El resultado se entregara en este endpoint."
+              />
+            )}
+            {testResult && (
+              <Alert severity={testResult.status >= 200 && testResult.status < 300 ? 'success' : 'error'}>
+                <Typography variant="caption" display="block">HTTP {testResult.status}</Typography>
+                <Box component="pre" sx={{ fontSize: 11, maxHeight: 200, overflow: 'auto', mt: 0.5, whiteSpace: 'pre-wrap' }}>
+                  {JSON.stringify(testResult.data, null, 2)}
+                </Box>
+              </Alert>
+            )}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenTestPanel(false)}>Cerrar</Button>
+          <Button variant="contained" onClick={sendTestMessage} disabled={testSending || !testMsg.content.trim()}>
+            {testSending ? 'Enviando...' : 'Enviar mensaje'}
+          </Button>
         </DialogActions>
       </Dialog>
     </>

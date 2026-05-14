@@ -1,23 +1,23 @@
-﻿import type { RootState, AppDispatch } from 'src/aiagentflow/store';
+﻿import type { KeyboardEvent } from 'react';
+import type { RootState, AppDispatch } from 'src/aiagentflow/store';
 
-import { useState, useEffect } from 'react';
 import { Helmet } from 'react-helmet-async';
+import { useRef, useState, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 
 import Box from '@mui/material/Box';
-import Card from '@mui/material/Card';
 import Chip from '@mui/material/Chip';
-import Grid from '@mui/material/Grid';
-import Alert from '@mui/material/Alert';
 import Stack from '@mui/material/Stack';
 import Paper from '@mui/material/Paper';
 import Avatar from '@mui/material/Avatar';
 import Button from '@mui/material/Button';
+import Divider from '@mui/material/Divider';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
-import CardContent from '@mui/material/CardContent';
+import IconButton from '@mui/material/IconButton';
 import { alpha, useTheme } from '@mui/material/styles';
 import LinearProgress from '@mui/material/LinearProgress';
+import CircularProgress from '@mui/material/CircularProgress';
 
 import { paths } from 'src/routes/paths';
 import { RouterLink } from 'src/routes/components';
@@ -38,94 +38,108 @@ type SystemOrchestratorStatus = {
   connections?: Array<{ ready: boolean }>;
 };
 
-type QuickAction = {
-  title: string;
-  helper: string;
-  icon: string;
-  href: string;
-  cta: string;
-};
-
-function QuickActionCard({ title, helper, icon, href, cta }: QuickAction) {
-  return (
-    <Card variant="outlined" sx={{ height: '100%', borderRadius: 3 }}>
-      <CardContent>
-        <Stack spacing={1.5}>
-          <Avatar sx={{ width: 44, height: 44, bgcolor: 'primary.lighter', color: 'primary.main' }}>
-            <Iconify icon={icon} width={23} />
-          </Avatar>
-          <Box>
-            <Typography variant="h6">{title}</Typography>
-            <Typography variant="body2" color="text.secondary">
-              {helper}
-            </Typography>
-          </Box>
-          <Button component={RouterLink} href={href} variant="outlined" size="small" sx={{ alignSelf: 'flex-start' }}>
-            {cta}
-          </Button>
-        </Stack>
-      </CardContent>
-    </Card>
-  );
-}
+type ChatMessage = { role: 'user' | 'assistant'; content: string };
 
 export default function OverviewPage() {
   const dispatch = useDispatch<AppDispatch>();
   const tenantId = useTenantId();
   const theme = useTheme();
+  const inputRef = useRef<HTMLInputElement>(null);
+
   const [assistantPrompt, setAssistantPrompt] = useState('');
   const [orchestratorStatus, setOrchestratorStatus] = useState<SystemOrchestratorStatus | null>(null);
+  const [configAssistantId, setConfigAssistantId] = useState<string | null>(null);
+  const [chatThreadId, setChatThreadId] = useState<string | null>(null);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatLoading, setChatLoading] = useState(false);
+
   const { metrics, loading } = useSelector((state: RootState) => state.overview);
 
   useEffect(() => {
     dispatch(fetchOverview(tenantId));
   }, [dispatch, tenantId]);
 
+  // Fetch orchestrator status + find ConfigAssistant agent
   useEffect(() => {
     let active = true;
+
     axios
       .get(endpoints.agentflow.systemOrchestrator.status(tenantId))
-      .then((res) => {
-        if (active) setOrchestratorStatus(res.data as SystemOrchestratorStatus);
-      })
-      .catch(() => {
-        if (active) setOrchestratorStatus(null);
-      });
+      .then((res) => { if (active) setOrchestratorStatus(res.data as SystemOrchestratorStatus); })
+      .catch(() => { if (active) setOrchestratorStatus(null); });
 
-    return () => {
-      active = false;
-    };
+    axios
+      .get(endpoints.agentflow.agents.list(tenantId))
+      .then((res) => {
+        if (!active) return;
+        const agents: any[] = res.data ?? [];
+        const ca = agents.find((a) => a.systemRole === 'ConfigAssistant' || a.tags?.includes('config-assistant'));
+        if (ca) setConfigAssistantId(ca.id);
+      })
+      .catch(() => {});
+
+    return () => { active = false; };
   }, [tenantId]);
+
+  const sendMessage = async () => {
+    const msg = assistantPrompt.trim();
+    if (!msg || chatLoading) return;
+
+    setAssistantPrompt('');
+    setChatMessages((prev) => [...prev, { role: 'user', content: msg }]);
+    setChatLoading(true);
+
+    try {
+      let threadId = chatThreadId;
+
+      // Lazy-create thread on first message
+      if (!threadId) {
+        if (!configAssistantId) {
+          setChatMessages((prev) => [
+            ...prev,
+            { role: 'assistant', content: 'El agente asistente de configuración no está disponible todavía. Verifica que el seeder haya corrido correctamente.' },
+          ]);
+          setChatLoading(false);
+          return;
+        }
+        const threadRes = await axios.post(endpoints.agentflow.threads.create(tenantId), {
+          agentId: configAssistantId,
+        });
+        threadId = threadRes.data?.threadId ?? threadRes.data?.id;
+        setChatThreadId(threadId);
+      }
+
+      const msgRes = await axios.post(
+        endpoints.agentflow.threads.sendMessage(tenantId, threadId!),
+        { message: msg }
+      );
+
+      const reply: string = msgRes.data?.assistantResponse ?? msgRes.data?.response ?? '(sin respuesta)';
+      setChatMessages((prev) => [...prev, { role: 'assistant', content: reply }]);
+    } catch (err: any) {
+      setChatMessages((prev) => [
+        ...prev,
+        { role: 'assistant', content: `Error: ${err?.response?.data?.message ?? err?.message ?? 'Error desconocido'}` },
+      ]);
+    } finally {
+      setChatLoading(false);
+    }
+  };
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  };
 
   const workflowCount = orchestratorStatus?.workflows?.length ?? 0;
   const channelCount = orchestratorStatus?.channels?.length ?? 0;
-  const readyConnections = orchestratorStatus?.connections?.filter((connection) => connection.ready).length ?? 0;
-  const systemHint =
-    orchestratorStatus?.gaps?.[0] ??
-    'Todo listo para construir: crea una intencion, selecciona un agente y conecta la accion que quieres automatizar.';
+  const readyConnections = orchestratorStatus?.connections?.filter((c) => c.ready).length ?? 0;
+  const isReady = workflowCount > 0 && channelCount > 0;
 
-  const quickActions: QuickAction[] = [
-    {
-      title: 'Crear un workflow',
-      helper: 'Diseña el comportamiento del negocio con nodos simples e intenciones claras.',
-      icon: 'mdi:source-branch',
-      href: paths.dashboard.workflows,
-      cta: 'Abrir studio',
-    },
-    {
-      title: 'Conectar un canal',
-      helper: 'Activa WhatsApp, web chat, voz, call center o email para recibir eventos reales.',
-      icon: 'mdi:message-processing-outline',
-      href: paths.dashboard.system.channels,
-      cta: 'Ver canales',
-    },
-    {
-      title: 'Agregar una integracion',
-      helper: 'Configura Twilio, APIs, Storage, Drive o MCP una vez y reutilizalos.',
-      icon: 'mdi:connection',
-      href: paths.dashboard.marketplace,
-      cta: 'Ir a Marketplace',
-    },
+  const quickLinks = [
+    { label: 'Workflow Studio', icon: 'mdi:source-branch', href: paths.dashboard.workflows },
+    { label: 'Canales', icon: 'mdi:message-processing-outline', href: paths.dashboard.system.channels },
+    { label: 'Marketplace', icon: 'mdi:connection', href: paths.dashboard.marketplace },
+    { label: 'Agentes', icon: 'mdi:robot-outline', href: paths.dashboard.agents },
   ];
 
   return (
@@ -134,145 +148,154 @@ export default function OverviewPage() {
         <title>Inicio | {CONFIG.appName}</title>
       </Helmet>
 
-      <DashboardContent maxWidth="xl">
+      <DashboardContent maxWidth="md">
         {loading && <LinearProgress sx={{ mb: 2 }} />}
 
+        {/* ── Hero + Assistant ── */}
         <Paper
           variant="outlined"
           sx={{
-            mb: 3,
-            p: { xs: 2.5, md: 4 },
+            p: { xs: 3, md: 4 },
             borderRadius: 4,
             overflow: 'hidden',
-            position: 'relative',
             borderColor: alpha(theme.palette.primary.main, 0.16),
             background:
-              'radial-gradient(circle at 6% 18%, rgba(14,124,90,0.20), transparent 30%), radial-gradient(circle at 96% 0%, rgba(0,167,181,0.20), transparent 28%), linear-gradient(135deg, #FBFDF9 0%, #F3F9F5 100%)',
+              'radial-gradient(circle at 6% 18%, rgba(14,124,90,0.18), transparent 28%), radial-gradient(circle at 94% 0%, rgba(0,167,181,0.18), transparent 26%), linear-gradient(135deg, #FBFDF9 0%, #F3F9F5 100%)',
           }}
         >
-          <Grid container spacing={3} alignItems="center">
-            <Grid item xs={12} md={8}>
-              <Stack spacing={2.5}>
-                <Stack direction="row" spacing={1.5} alignItems="center">
-                  <Avatar
-                    src="/logo/logo-single.svg"
-                    alt="Annonai"
-                    sx={{
-                      width: 64,
-                      height: 64,
-                      bgcolor: 'transparent',
-                      boxShadow: `0 18px 42px ${alpha(theme.palette.primary.main, 0.22)}`,
-                    }}
-                  />
-                  <Box>
-                    <Typography variant="overline" color="text.secondary">
-                      Annonai
-                    </Typography>
-                    <Typography variant="h3" sx={{ fontWeight: 900, letterSpacing: -0.8 }}>
-                      hola, soy annonai, tu amigo inteligente.
-                    </Typography>
-                  </Box>
-                </Stack>
+          {/* Header */}
+          <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 2.5 }}>
+            <Avatar
+              src="/logo/logo-single.svg"
+              alt="AgentFlow"
+              sx={{ width: 52, height: 52, bgcolor: 'transparent', boxShadow: `0 12px 32px ${alpha(theme.palette.primary.main, 0.22)}` }}
+            />
+            <Box sx={{ flex: 1 }}>
+              <Typography variant="h4" sx={{ fontWeight: 800, letterSpacing: -0.6, lineHeight: 1.2 }}>
+                Hola, soy tu asistente
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Pregúntame qué quieres automatizar y te guío al lugar correcto.
+              </Typography>
+            </Box>
+            <Chip
+              size="small"
+              icon={<Iconify icon={isReady ? 'mdi:check-circle' : 'mdi:clock-outline'} width={14} />}
+              label={isReady ? 'Listo para operar' : 'Configuración pendiente'}
+              color={isReady ? 'success' : 'warning'}
+              variant="soft"
+            />
+          </Stack>
 
-                <Typography variant="body1" color="text.secondary" sx={{ maxWidth: 760 }}>
-                  Dime que quieres automatizar y te guio al lugar correcto: canal, agente,
-                  integracion o workflow. La plataforma se encarga de traducirlo a eventos,
-                  intenciones y nodos.
+          {/* Status row */}
+          <Stack direction="row" spacing={1} sx={{ mb: 3 }} flexWrap="wrap">
+            {[
+              { label: `${workflowCount} workflow${workflowCount !== 1 ? 's' : ''}`, icon: 'mdi:source-branch' },
+              { label: `${channelCount} canal${channelCount !== 1 ? 'es' : ''}`, icon: 'mdi:chat-processing-outline' },
+              { label: `${readyConnections} integración${readyConnections !== 1 ? 'es' : ''}`, icon: 'mdi:connection' },
+              { label: `${metrics.publishedAgents} agente${metrics.publishedAgents !== 1 ? 's' : ''} publicados`, icon: 'mdi:robot-outline' },
+            ].map((item) => (
+              <Chip
+                key={item.label}
+                size="small"
+                icon={<Iconify icon={item.icon} width={14} />}
+                label={item.label}
+                variant="outlined"
+                sx={{ bgcolor: alpha(theme.palette.background.paper, 0.7) }}
+              />
+            ))}
+          </Stack>
+
+          <Divider sx={{ mb: 3 }} />
+
+          {/* Chat area */}
+          <Stack spacing={1.5} sx={{ mb: 2 }}>
+            {chatMessages.length === 0 && (
+              <Typography variant="body2" color="text.disabled" sx={{ fontStyle: 'italic', textAlign: 'center', py: 1 }}>
+                Escribe tu primera pregunta y el asistente de configuración te ayudará.
+              </Typography>
+            )}
+            {chatMessages.map((m, i) => (
+              <Box
+                key={i}
+                sx={{
+                  p: 1.5,
+                  borderRadius: 2,
+                  maxWidth: '88%',
+                  alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
+                  ml: m.role === 'user' ? 'auto' : 0,
+                  bgcolor: m.role === 'user'
+                    ? alpha(theme.palette.primary.main, 0.12)
+                    : alpha(theme.palette.background.paper, 0.9),
+                  border: `1px solid ${alpha(m.role === 'user' ? theme.palette.primary.main : theme.palette.grey[300], 0.3)}`,
+                }}
+              >
+                <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
+                  {m.content}
                 </Typography>
+              </Box>
+            ))}
+            {chatLoading && (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, color: 'text.secondary', pl: 0.5 }}>
+                <CircularProgress size={14} />
+                <Typography variant="caption">El asistente está pensando...</Typography>
+              </Box>
+            )}
+          </Stack>
 
-                <Paper sx={{ p: 1, maxWidth: 760, borderRadius: 2.5, boxShadow: 8 }}>
-                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-                    <TextField
-                      fullWidth
-                      size="small"
-                      value={assistantPrompt}
-                      onChange={(event) => setAssistantPrompt(event.target.value)}
-                      placeholder="Ejemplo: quiero atender WhatsApp y agendar citas automaticamente"
-                    />
-                    <Button
-                      component={RouterLink}
-                      href={paths.dashboard.workflows}
-                      variant="contained"
-                      startIcon={<Iconify icon="mdi:creation-outline" />}
-                    >
-                      Empezar
-                    </Button>
-                  </Stack>
-                </Paper>
+          {/* Input */}
+          <Stack direction="row" spacing={1}>
+            <TextField
+              inputRef={inputRef}
+              fullWidth
+              size="small"
+              value={assistantPrompt}
+              onChange={(e) => setAssistantPrompt(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Ejemplo: quiero atender WhatsApp y agendar citas automáticamente..."
+              disabled={chatLoading}
+              sx={{ bgcolor: alpha(theme.palette.background.paper, 0.8), borderRadius: 2 }}
+            />
+            <IconButton
+              color="primary"
+              onClick={sendMessage}
+              disabled={chatLoading || !assistantPrompt.trim()}
+              sx={{ bgcolor: 'primary.main', color: 'white', '&:hover': { bgcolor: 'primary.dark' }, '&:disabled': { bgcolor: 'action.disabledBackground' } }}
+            >
+              {chatLoading ? <CircularProgress size={18} sx={{ color: 'white' }} /> : <Iconify icon="mdi:send" width={20} />}
+            </IconButton>
+          </Stack>
 
-                <Alert severity="info" sx={{ maxWidth: 760, borderRadius: 2 }}>
-                  {systemHint}
-                </Alert>
-              </Stack>
-            </Grid>
-
-            <Grid item xs={12} md={4}>
-              <Card variant="outlined" sx={{ borderRadius: 3, bgcolor: 'rgba(255,255,255,0.78)' }}>
-                <CardContent>
-                  <Stack spacing={2}>
-                    <Box>
-                      <Typography variant="h6">Estado del espacio</Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Solo lo esencial para saber si puedes operar.
-                      </Typography>
-                    </Box>
-                    {[
-                      ['Workflows', workflowCount, 'mdi:source-branch'],
-                      ['Canales', channelCount, 'mdi:chat-processing-outline'],
-                      ['Integraciones listas', readyConnections, 'mdi:connection'],
-                    ].map(([label, value, icon]) => (
-                      <Stack key={String(label)} direction="row" spacing={1.5} alignItems="center">
-                        <Avatar sx={{ width: 36, height: 36, bgcolor: 'background.neutral', color: 'primary.main' }}>
-                          <Iconify icon={String(icon)} width={20} />
-                        </Avatar>
-                        <Box sx={{ flexGrow: 1 }}>
-                          <Typography variant="subtitle2">{label}</Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            {Number(value) > 0 ? 'Configurado' : 'Pendiente'}
-                          </Typography>
-                        </Box>
-                        <Typography variant="h5">{String(value)}</Typography>
-                      </Stack>
-                    ))}
-                    <Chip
-                      color={workflowCount > 0 && channelCount > 0 ? 'success' : 'warning'}
-                      label={workflowCount > 0 && channelCount > 0 ? 'Listo para probar' : 'Configuracion pendiente'}
-                      sx={{ alignSelf: 'flex-start' }}
-                    />
-                  </Stack>
-                </CardContent>
-              </Card>
-            </Grid>
-          </Grid>
+          {!configAssistantId && (
+            <Typography variant="caption" color="text.disabled" sx={{ mt: 1, display: 'block' }}>
+              Asistente no disponible — el seeder debe haber creado el agente ConfigAssistant.
+            </Typography>
+          )}
         </Paper>
 
-        <Grid container spacing={2.5} sx={{ mb: 3 }}>
-          {quickActions.map((action) => (
-            <Grid key={action.title} item xs={12} md={4}>
-              <QuickActionCard {...action} />
-            </Grid>
+        {/* ── Quick links ── */}
+        <Stack direction="row" spacing={1} sx={{ mt: 2.5 }} flexWrap="wrap">
+          {quickLinks.map((link) => (
+            <Button
+              key={link.label}
+              component={RouterLink}
+              href={link.href}
+              variant="outlined"
+              size="small"
+              startIcon={<Iconify icon={link.icon} width={16} />}
+              sx={{ borderRadius: 6, color: 'text.secondary', borderColor: 'divider', '&:hover': { borderColor: 'primary.main', color: 'primary.main' } }}
+            >
+              {link.label}
+            </Button>
           ))}
-        </Grid>
-
-        <Card variant="outlined" sx={{ borderRadius: 3 }}>
-          <CardContent>
-            <Grid container spacing={2} alignItems="center">
-              <Grid item xs={12} md={8}>
-                <Typography variant="h6">Resumen operativo</Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Este bloque queda como referencia rapida; la accion principal esta arriba.
-                </Typography>
-              </Grid>
-              <Grid item xs={12} md={4}>
-                <Stack direction="row" spacing={1} justifyContent={{ xs: 'flex-start', md: 'flex-end' }} flexWrap="wrap">
-                  <Chip label={`${metrics.completedToday} ejecuciones hoy`} />
-                  <Chip label={`${metrics.publishedAgents}/${metrics.totalAgents} agentes publicados`} />
-                  <Chip label={`${Math.round(metrics.avgQualityScore * 100)}% calidad`} />
-                </Stack>
-              </Grid>
-            </Grid>
-          </CardContent>
-        </Card>
+          <Box sx={{ flex: 1 }} />
+          <Chip
+            size="small"
+            label={`${metrics.completedToday} ejecuciones hoy · ${Math.round(metrics.avgQualityScore * 100)}% calidad`}
+            variant="outlined"
+            sx={{ color: 'text.secondary' }}
+          />
+        </Stack>
       </DashboardContent>
     </>
   );

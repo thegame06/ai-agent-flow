@@ -40,6 +40,17 @@ public sealed class AgentDefinition : AggregateRoot
     public string? CanaryAgentId { get; private set; }
     public double CanaryWeight { get; private set; } = 0.0; // 0.0-1.0 (e.g., 0.10 = 10%)
 
+    // --- System Role ---
+    /// <summary>
+    /// Identifies the functional role this agent plays in the platform.
+    /// Router: intent detection + routing. WorkflowBrain: per-workflow business logic.
+    /// ConfigAssistant: helps users configure workflows. Custom: user-defined.
+    /// </summary>
+    public AgentSystemRole SystemRole { get; private set; } = AgentSystemRole.Custom;
+
+    /// <summary>True when this agent is managed by the platform (not deletable by users).</summary>
+    public bool IsSystemAgent { get; private set; } = false;
+
     // --- RBAC ---
     public string OwnerUserId { get; private set; } = string.Empty;
     public IReadOnlyList<string> AllowedRoles { get; private set; } = [];
@@ -80,7 +91,9 @@ public sealed class AgentDefinition : AggregateRoot
             WorkflowSteps = workflowSteps ?? [],
             OwnerUserId = ownerUserId,
             CreatedBy = ownerUserId,
-            UpdatedBy = ownerUserId
+            UpdatedBy = ownerUserId,
+            SystemRole = AgentSystemRole.Custom,
+            IsSystemAgent = false
         };
 
         agent.AddDomainEvent(new AgentDefinitionCreatedEvent(agent.Id, tenantId, ownerUserId));
@@ -163,12 +176,24 @@ public sealed class AgentDefinition : AggregateRoot
         MarkUpdated(UpdatedBy);
     }
 
+    /// <summary>
+    /// Marks this agent as a system-managed agent with a specific platform role.
+    /// Called only from SeedData or platform provisioning — not from user-facing APIs.
+    /// </summary>
+    public void SetSystemRole(AgentSystemRole role)
+    {
+        SystemRole = role;
+        IsSystemAgent = true;
+    }
+
     public Result Publish(string publishedBy)
     {
         if (Status == AgentStatus.Published)
             return Result.Failure(Error.Validation(nameof(Status), "Agent is already published."));
 
-        if (!AuthorizedTools.Any() && Brain.RequiresToolExecution)
+        // System agents are published by the platform regardless of tool bindings.
+        // Their tools are wired at execution time via the platform runtime, not at design time.
+        if (!IsSystemAgent && !AuthorizedTools.Any() && Brain.RequiresToolExecution)
             return Result.Failure(Error.Validation("Tools", "Agent requires at least one tool to be published."));
 
         Status = AgentStatus.Published;

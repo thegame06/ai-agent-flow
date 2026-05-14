@@ -147,6 +147,8 @@ export type AgentOption = {
   toolsCount?: number;
   primaryModel?: string;
   provider?: string;
+  isSystemAgent?: boolean;
+  systemRole?: string;
 };
 
 export type ChannelOption = {

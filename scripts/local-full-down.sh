@@ -21,6 +21,7 @@ stop_pid_file() {
 stop_pid_file "$RUN_DIR/api.pid"
 stop_pid_file "$RUN_DIR/frontend.pid"
 stop_pid_file "$RUN_DIR/qr.pid"
+stop_pid_file "$RUN_DIR/mcp.pid"
 
 if command -v docker >/dev/null 2>&1; then
   echo "[full-down] Stopping infra containers (keeping volumes/data)"

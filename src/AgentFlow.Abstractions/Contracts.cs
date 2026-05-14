@@ -44,11 +44,53 @@ public sealed record AgentExecutionRequest
     public IReadOnlyDictionary<string, string> Metadata { get; init; } 
         = new Dictionary<string, string>();
     public ExecutionPriority Priority { get; init; } = ExecutionPriority.Normal;
-    
+
     // A2A (Agents as Tools) Support
     public int CallDepth { get; init; } = 0;        // Nesting level (0 = root, 1+ = delegated)
     public int TokenBudget { get; init; } = 100_000; // Max tokens for this execution chain
-    public string? ContextJson { get; init; }      // Additional context
+    public string? ContextJson { get; init; }      // Additional context (legacy, prefer SessionContext)
+
+    /// <summary>
+    /// Typed session context injected by the channel gateway.
+    /// Available to all agents regardless of how they were invoked.
+    /// Enables personalization and session-window-aware responses without
+    /// each agent having to parse ContextJson manually.
+    /// </summary>
+    public AgentSessionContext? SessionContext { get; init; }
+}
+
+/// <summary>
+/// Typed session context passed to every agent execution that originates from a channel.
+/// Eliminates the need for agents to parse ContextJson to know who they're talking to.
+/// </summary>
+public sealed record AgentSessionContext
+{
+    /// <summary>Active session ID.</summary>
+    public required string SessionId { get; init; }
+
+    /// <summary>Channel-specific user identifier (e.g. phone number, user ID).</summary>
+    public required string UserIdentifier { get; init; }
+
+    /// <summary>Human-readable display name if known (e.g. WhatsApp profile name).</summary>
+    public string? DisplayName { get; init; }
+
+    /// <summary>Channel type that originated this message (WhatsApp, WebChat, etc.).</summary>
+    public required string ChannelType { get; init; }
+
+    /// <summary>ID of the channel definition.</summary>
+    public required string ChannelId { get; init; }
+
+    /// <summary>
+    /// True when the conversation window is still open (free-text replies allowed).
+    /// False when the window expired and a template message must be used to reply.
+    /// </summary>
+    public required bool IsWindowOpen { get; init; }
+
+    /// <summary>Configured window duration in hours for this channel.</summary>
+    public required int WindowHours { get; init; }
+
+    /// <summary>UTC timestamp when the current session window expires.</summary>
+    public DateTimeOffset? WindowExpiresAt { get; init; }
 }
 
 public sealed record AgentExecutionResult

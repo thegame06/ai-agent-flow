@@ -112,4 +112,12 @@ public sealed class WhatsAppClient
 
         return await _activeTransport.SendTextMessageAsync(to, content, ct);
     }
+
+    public async Task<string> SendTemplateMessageAsync(string to, string templateName, CancellationToken ct = default)
+    {
+        if (_activeTransport == null)
+            throw new InvalidOperationException("WhatsApp client is not connected");
+
+        return await _activeTransport.SendTemplateMessageAsync(to, templateName, ct);
+    }
 }

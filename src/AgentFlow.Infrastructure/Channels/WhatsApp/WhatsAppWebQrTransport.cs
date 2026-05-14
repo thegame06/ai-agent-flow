@@ -137,4 +137,17 @@ public sealed class WhatsAppWebQrTransport : IWhatsAppTransport
             _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _options.QrBridgeApiKey);
         }
     }
+
+    /// <summary>
+    /// QR/WhatsApp Web does not support Business API templates.
+    /// Template messages are only available via WhatsApp Business Cloud API.
+    /// Log a warning and fall back to a plain text message as best-effort.
+    /// </summary>
+    public async Task<string> SendTemplateMessageAsync(string to, string templateName, CancellationToken ct = default)
+    {
+        // QR transport has no template API — send a plain notice instead so the conversation
+        // is not silently dropped. In production use the Business API transport.
+        var fallbackContent = $"[Template: {templateName}] — Por favor contáctanos para continuar.";
+        return await SendTextMessageAsync(to, fallbackContent, ct);
+    }
 }

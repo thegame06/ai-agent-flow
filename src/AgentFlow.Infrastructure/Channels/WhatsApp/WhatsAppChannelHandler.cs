@@ -122,9 +122,38 @@ public sealed class WhatsAppChannelHandler : IChannelHandler, IChannelQrProvider
             if (string.IsNullOrEmpty(to))
                 return SendResult.Fail("Missing recipient phone number");
 
-            var waMessageId = await _whatsappClient.SendTextMessageAsync(to, message.Content, ct);
+            // Determine if the session window is still open.
+            // If the session is expired (window closed) we must use a template message
+            // to re-open the 24-hour conversation window per WhatsApp Business policy.
+            var sessionId = message.Metadata.GetValueOrDefault("session_id");
+            var sessionExpired = await IsSessionExpiredAsync(sessionId, definition, ct);
+
+            string waMessageId;
+            if (sessionExpired)
+            {
+                var templateName = definition.ReopenTemplateName;
+                if (string.IsNullOrWhiteSpace(templateName))
+                {
+                    _logger.LogWarning(
+                        "Session window closed for {To} but no ReopenTemplateName configured on channel {ChannelId}. " +
+                        "Message will NOT be delivered. Configure a WhatsApp-approved template.",
+                        to, definition.Id);
+                    return SendResult.Fail("Session window closed and no reopen template configured.");
+                }
+
+                _logger.LogInformation(
+                    "Session window closed for {To}. Sending template '{Template}' to re-open window.",
+                    to, templateName);
+
+                waMessageId = await _whatsappClient.SendTemplateMessageAsync(to, templateName, ct);
+            }
+            else
+            {
+                waMessageId = await _whatsappClient.SendTextMessageAsync(to, message.Content, ct);
+            }
 
             message.Metadata["wa_message_id_out"] = waMessageId;
+            message.Metadata["wa_window_open"] = (!sessionExpired).ToString().ToLower();
             message.MarkSent();
             return SendResult.Ok(waMessageId);
         }
@@ -185,14 +214,31 @@ public sealed class WhatsAppChannelHandler : IChannelHandler, IChannelQrProvider
             context.UserIdentifier
         );
 
-        session.SetExpiration(TimeSpan.FromHours(24));
+        // Use channel-configured window; falls back to 24h if not set
+        session.SetExpiration(TimeSpan.FromHours(definition.SessionWindowHours));
         session.Metadata.TryAdd("display_name", context.UserDisplayName ?? "Unknown");
-        var assignedAgent = await SelectAgentForSessionAsync(definition, ct);
+
+        // Router agent takes priority over the round-robin selection
+        var routerAgentId = definition.RouterAgentId;
+        var assignedAgent = !string.IsNullOrWhiteSpace(routerAgentId)
+            ? routerAgentId
+            : await SelectAgentForSessionAsync(definition, ct);
         if (!string.IsNullOrWhiteSpace(assignedAgent))
             session.LinkAgent(assignedAgent);
 
         await _sessionRepo.InsertAsync(session, ct);
         return session;
+    }
+
+    /// <summary>
+    /// Returns true when the session window is closed and a template message is required.
+    /// </summary>
+    private async Task<bool> IsSessionExpiredAsync(
+        string? sessionId, ChannelDefinition definition, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(sessionId)) return false; // No session = first message, window is open
+        var session = await _sessionRepo.GetByIdAsync(sessionId, definition.TenantId, ct);
+        return session?.IsExpired() ?? false;
     }
 
     private async Task<string?> SelectAgentForSessionAsync(ChannelDefinition definition, CancellationToken ct)

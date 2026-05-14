@@ -61,6 +61,8 @@ public sealed class AgentsController : ControllerBase
             ToolsCount = a.AuthorizedTools.Count,
             PrimaryModel = a.Brain.ModelId,
             Provider = a.Brain.Provider,
+            IsSystemAgent = a.IsSystemAgent,
+            SystemRole = a.SystemRole == AgentSystemRole.Custom ? null : a.SystemRole.ToString(),
         });
 
         return Ok(result);

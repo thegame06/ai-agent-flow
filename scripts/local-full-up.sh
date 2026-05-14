@@ -10,10 +10,12 @@ mkdir -p "$RUN_DIR" "$LOG_DIR"
 API_LOG="$LOG_DIR/api-full.log"
 FRONT_LOG="$LOG_DIR/frontend-full.log"
 QR_LOG="$LOG_DIR/qr-bridge-full.log"
+MCP_LOG="$LOG_DIR/mcp-server-full.log"
 
 API_PID_FILE="$RUN_DIR/api.pid"
 FRONT_PID_FILE="$RUN_DIR/frontend.pid"
 QR_PID_FILE="$RUN_DIR/qr.pid"
+MCP_PID_FILE="$RUN_DIR/mcp.pid"
 DOTNET_BIN="$(bash "$ROOT_DIR/scripts/resolve-dotnet.sh")"
 
 host_path() {
@@ -69,15 +71,18 @@ else
 fi
 
 echo "[full-up] Ensuring ports are free..."
-for p in ${API_PORT:-5000} ${FRONTEND_PORT:-3039} ${QR_PORT:-3401}; do
+for p in ${API_PORT:-5000} ${FRONTEND_PORT:-3039} ${QR_PORT:-3401} ${MCP_SERVER_PORT:-3502}; do
   if ss -ltn "( sport = :$p )" | grep -q LISTEN; then
     echo "[full-up] Port $p is busy. Stop previous stack first: make down-local-full"
     exit 1
   fi
 done
 
-echo "[full-up] Starting API..."
+echo "[full-up] Building .NET projects..."
 API_PROJECT="$(host_path "$ROOT_DIR/src/AgentFlow.Api/AgentFlow.Api.csproj")"
+"$DOTNET_BIN" build "$API_PROJECT" -c Debug --nologo -v quiet 2>&1 || { echo "❌ [full-up] API build failed. Aborting."; exit 1; }
+
+echo "[full-up] Starting API..."
 (cd "$ROOT_DIR" && nohup env \
   ASPNETCORE_ENVIRONMENT=${ASPNETCORE_ENVIRONMENT:-Development} \
   ASPNETCORE_URLS=${ASPNETCORE_URLS:-http://0.0.0.0:${API_PORT:-5000}} \
@@ -95,16 +100,32 @@ echo "[full-up] Starting WhatsApp QR bridge..."
 (cd "$ROOT_DIR/tools/whatsapp-qr-bridge" && npm install >/dev/null && nohup env PORT=${QR_PORT:-3401} AGENTFLOW_BASE_URL=${AGENTFLOW_BASE_URL:-http://localhost:5000} TENANT_ID=${TENANT_ID:-tenant-1} BRIDGE_API_KEY=${BRIDGE_API_KEY:-dev-bridge-key} npm start >"$QR_LOG" 2>&1 & echo $! > "$QR_PID_FILE")
 wait_for_port "${QR_PORT:-3401}" "WhatsApp QR bridge" "$QR_PID_FILE" "$QR_LOG"
 
+echo "[full-up] Starting AgentFlow MCP Server (sidecar)..."
+MCP_PROJECT="$(host_path "$ROOT_DIR/src/AgentFlow.McpServer/AgentFlow.McpServer.csproj")"
+echo "[full-up]   Building MCP Server..."
+"$DOTNET_BIN" build "$MCP_PROJECT" -c Debug --nologo -v quiet 2>&1 || { echo "❌ [full-up] MCP Server build failed. Skipping sidecar."; }
+(cd "$ROOT_DIR" && nohup env \
+  ASPNETCORE_ENVIRONMENT=${ASPNETCORE_ENVIRONMENT:-Development} \
+  ASPNETCORE_URLS=http://0.0.0.0:${MCP_SERVER_PORT:-3502} \
+  AgentFlowApi__BaseUrl=${AGENTFLOW_BASE_URL:-http://localhost:5000} \
+  AgentFlowApi__TenantId=${TENANT_ID:-tenant-1} \
+  ConnectionStrings__MongoDB=${ConnectionStrings__MongoDB:-mongodb://localhost:27018} \
+  ConnectionStrings__Redis=${ConnectionStrings__Redis:-localhost:6380} \
+  "$DOTNET_BIN" run --no-build --no-launch-profile --project "$MCP_PROJECT" >"$MCP_LOG" 2>&1 & echo $! > "$MCP_PID_FILE")
+wait_for_port "${MCP_SERVER_PORT:-3502}" "AgentFlow MCP Server" "$MCP_PID_FILE" "$MCP_LOG" 60
+
 echo "[full-up] Done."
-echo "  API log:      $API_LOG"
-echo "  Front log:    $FRONT_LOG"
-echo "  QR bridge log:$QR_LOG"
+echo "  API log:        $API_LOG"
+echo "  Front log:      $FRONT_LOG"
+echo "  QR bridge log:  $QR_LOG"
+echo "  MCP server log: $MCP_LOG"
 echo "  PIDs:"
-for f in "$API_PID_FILE" "$FRONT_PID_FILE" "$QR_PID_FILE"; do
+for f in "$API_PID_FILE" "$FRONT_PID_FILE" "$QR_PID_FILE" "$MCP_PID_FILE"; do
   [[ -f "$f" ]] && echo "    $(basename "$f" .pid): $(cat "$f")"
 done
 
 echo "[full-up] URLs:"
-echo "  Frontend: http://localhost:${FRONTEND_PORT:-3039}"
-echo "  API:      ${ASPNETCORE_URLS:-http://localhost:${API_PORT:-5000}}"
-echo "  QR bridge:http://localhost:${QR_PORT:-3401}"
+echo "  Frontend:       http://localhost:${FRONTEND_PORT:-3039}"
+echo "  API:            ${ASPNETCORE_URLS:-http://localhost:${API_PORT:-5000}}"
+echo "  QR bridge:      http://localhost:${QR_PORT:-3401}"
+echo "  MCP Server:     http://localhost:${MCP_SERVER_PORT:-3502}"

@@ -85,6 +85,7 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
         var dataProtectionProvider = scope.ServiceProvider.GetRequiredService<IDataProtectionProvider>();
         var httpClientFactory = scope.ServiceProvider.GetService<IHttpClientFactory>();
         var mcpGateway = scope.ServiceProvider.GetRequiredService<IMcpToolGateway>();
+        var agentRepo = scope.ServiceProvider.GetRequiredService<IAgentDefinitionRepository>();
 
         var execution = (await store.GetExecutionsAsync(item.TenantId, 500, ct))
             .FirstOrDefault(x => x.Id == item.ExecutionId);
@@ -158,6 +159,8 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
                         dataProtectionProvider,
                         httpClientFactory,
                         mcpGateway,
+                        agentRepo,
+                        scope.ServiceProvider,
                         current,
                         execution,
                         resolvedConfig,
@@ -217,6 +220,8 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
         IDataProtectionProvider dataProtectionProvider,
         IHttpClientFactory? httpClientFactory,
         IMcpToolGateway mcpGateway,
+        IAgentDefinitionRepository agentRepo,
+        IServiceProvider serviceProvider,
         WorkflowRuntimeActivity activity,
         WorkflowExecutionContract execution,
         Dictionary<string, string> resolvedConfig,
@@ -360,10 +365,34 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
 
             var primaryModel = GetConfig(resolvedConfig, "model");
             var fallbackModel = GetConfig(resolvedConfig, "fallbackModel");
+            // Resolve agentId: use explicit config, fallback to first published NON-SYSTEM agent in tenant
+            var configuredAgentId = GetConfig(resolvedConfig, "agentId", null);
+            var resolvedAgentKey = configuredAgentId;
+            if (string.IsNullOrWhiteSpace(resolvedAgentKey))
+            {
+                var firstAgent = (await agentRepo.GetAllAsync(tenantId, 0, 50, ct))
+                    .FirstOrDefault(a => a.Status == AgentFlow.Domain.Enums.AgentStatus.Published
+                                      && !a.IsSystemAgent);
+                resolvedAgentKey = firstAgent?.Id.ToString()
+                    ?? throw new InvalidOperationException(
+                        $"Activity ai.agent has no agentId configured and no published custom agent found in tenant '{tenantId}'. " +
+                        "Create a custom agent (or clone the Workflow Brain Default) and assign it to this node.");
+            }
+            else
+            {
+                // Validate that the explicitly configured agent is not a system agent
+                var configuredAgent = (await agentRepo.GetAllAsync(tenantId, 0, 200, ct))
+                    .FirstOrDefault(a => a.Id.ToString() == resolvedAgentKey);
+                if (configuredAgent?.IsSystemAgent == true)
+                    throw new InvalidOperationException(
+                        $"Agent '{configuredAgent.Name}' (id: {resolvedAgentKey}) is a system-managed agent " +
+                        "and cannot be used in a workflow node. Assign a custom agent instead.");
+            }
+
             var request = new AgentExecutionRequest
             {
                 TenantId = tenantId,
-                AgentKey = GetConfig(resolvedConfig, "agentId", "default-agent") ?? "default-agent",
+                AgentKey = resolvedAgentKey,
                 UserId = execution.RequestedBy,
                 UserMessage = input!,
                 ContextJson = JsonSerializer.Serialize(new
@@ -556,6 +585,66 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
                 ct);
         }
 
+        // ── channel.send ──────────────────────────────────────────────────────
+        // Send a message directly through a channel without involving an agent.
+        // The channel's own transport handles delivery (WhatsApp API, webhook, etc.).
+        //
+        // This is the escape hatch for pure automation nodes that need to notify
+        // users (e.g., "your loan application was received") without a conversation.
+        //
+        // Config keys:
+        //   channelId  (required) — target channel
+        //   to         (required) — recipient identifier (phone, userId, etc.)
+        //   content    (required) — message text (supports {{variable}} substitution)
+        //   sessionId  (optional) — reuse existing session; new session created if absent
+        if (string.Equals(activity.Type, "channel.send", StringComparison.OrdinalIgnoreCase))
+        {
+            var channelId = GetConfig(resolvedConfig, "channelId");
+            if (string.IsNullOrWhiteSpace(channelId))
+                throw new InvalidOperationException("Activity channel.send requires config.channelId.");
+
+            var to = GetConfig(resolvedConfig, "to");
+            if (string.IsNullOrWhiteSpace(to))
+                throw new InvalidOperationException("Activity channel.send requires config.to.");
+
+            var content = GetConfig(resolvedConfig, "content");
+            if (string.IsNullOrWhiteSpace(content))
+                throw new InvalidOperationException("Activity channel.send requires config.content.");
+
+            var channelGateway = serviceProvider.GetRequiredService<AgentFlow.Application.Channels.IChannelGateway>();
+            var channelRepo    = serviceProvider.GetRequiredService<AgentFlow.Domain.Repositories.IChannelDefinitionRepository>();
+
+            var channelDef = await channelRepo.GetByIdAsync(channelId, tenantId, ct);
+            if (channelDef is null)
+                throw new InvalidOperationException($"Activity channel.send: channel '{channelId}' not found.");
+
+            if (channelDef.Status != AgentFlow.Domain.Aggregates.ChannelStatus.Active)
+                throw new InvalidOperationException($"Activity channel.send: channel '{channelId}' is not active.");
+
+            var sessionId = GetConfig(resolvedConfig, "sessionId") ?? execution.CorrelationId;
+            var outgoing = AgentFlow.Domain.Aggregates.ChannelMessage.CreateOutgoing(
+                tenantId:  tenantId,
+                channelId: channelId,
+                sessionId: sessionId,
+                to:        to!,
+                content:   content!
+            );
+            outgoing.Metadata["workflow_execution_id"]   = execution.Id;
+            outgoing.Metadata["workflow_definition_id"]  = execution.WorkflowDefinitionId;
+            outgoing.Metadata["activity_type"]           = "channel.send";
+
+            var sendResult = await channelGateway.SendMessageAsync(channelId, outgoing, ct);
+
+            return JsonSerializer.Serialize(new
+            {
+                channelId,
+                to,
+                messageId  = outgoing.Id,
+                success    = sendResult.Success,
+                error      = sendResult.Error
+            });
+        }
+
         throw new InvalidOperationException($"Unknown activity type '{activity.Type}'.");
     }
 
@@ -570,6 +659,8 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
         IDataProtectionProvider dataProtectionProvider,
         IHttpClientFactory? httpClientFactory,
         IMcpToolGateway mcpGateway,
+        IAgentDefinitionRepository agentRepo,
+        IServiceProvider serviceProvider,
         WorkflowRuntimeActivity activity,
         WorkflowExecutionContract execution,
         Dictionary<string, string> resolvedConfig,
@@ -598,6 +689,8 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
                     dataProtectionProvider,
                     httpClientFactory,
                     mcpGateway,
+                    agentRepo,
+                    serviceProvider,
                     activity,
                     execution,
                     resolvedConfig,

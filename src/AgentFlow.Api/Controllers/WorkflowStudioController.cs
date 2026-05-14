@@ -6,6 +6,7 @@ using AgentFlow.Extensions;
 using AgentFlow.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Text.Json;
 
 namespace AgentFlow.Api.Controllers;
 
@@ -22,6 +23,7 @@ public sealed class WorkflowStudioController : ControllerBase
     private readonly ITenantConnectionStore _connectionStore;
     private readonly IExtensionRegistry _extensionRegistry;
     private readonly ITenantContextAccessor _tenantContext;
+    private readonly IAgentDefinitionRepository _agentRepo;
 
     public WorkflowStudioController(
         IWorkflowStudioStore store,
@@ -31,7 +33,8 @@ public sealed class WorkflowStudioController : ControllerBase
         IChannelDefinitionRepository channelRepo,
         ITenantConnectionStore connectionStore,
         IExtensionRegistry extensionRegistry,
-        ITenantContextAccessor tenantContext)
+        ITenantContextAccessor tenantContext,
+        IAgentDefinitionRepository agentRepo)
     {
         _store = store;
         _triggerService = triggerService;
@@ -41,6 +44,7 @@ public sealed class WorkflowStudioController : ControllerBase
         _connectionStore = connectionStore;
         _extensionRegistry = extensionRegistry;
         _tenantContext = tenantContext;
+        _agentRepo = agentRepo;
     }
 
     [HttpGet("catalog/activities")]
@@ -286,6 +290,11 @@ public sealed class WorkflowStudioController : ControllerBase
             return BadRequest(new { message = ex.Message });
         }
 
+        // Validate that all ai.agent nodes reference custom (non-system) agents
+        var agentValidationError = await ValidateAiAgentNodesAsync(tenantId, existing.DefinitionJson, ct);
+        if (agentValidationError is not null)
+            return BadRequest(new { message = agentValidationError });
+
         var saved = await _store.UpsertDefinitionAsync(existing with
         {
             Status = WorkflowDefinitionStatus.Published,
@@ -402,6 +411,65 @@ public sealed class WorkflowStudioController : ControllerBase
         var context = _tenantContext.Current!;
         return (context.TenantId == tenantId || context.IsPlatformAdmin) &&
                (context.HasPermission(AgentFlowPermissions.AgentUpdate) || context.IsPlatformAdmin);
+    }
+
+    /// <summary>
+    /// Parses the workflow definition JSON and validates that all ai.agent nodes
+    /// reference agents that exist, are published, and are NOT system agents.
+    /// Returns an error message string if invalid, null if OK.
+    /// </summary>
+    private async Task<string?> ValidateAiAgentNodesAsync(string tenantId, string definitionJson, CancellationToken ct)
+    {
+        JsonDocument doc;
+        try { doc = JsonDocument.Parse(definitionJson); }
+        catch { return null; } // malformed JSON is caught by ValidateDefinitionOrThrow
+
+        using (doc)
+        {
+            if (!doc.RootElement.TryGetProperty("activities", out var activities) &&
+                !doc.RootElement.TryGetProperty("nodes", out activities) &&
+                !doc.RootElement.TryGetProperty("steps", out activities))
+                return null;
+
+            if (activities.ValueKind != JsonValueKind.Array) return null;
+
+            // Collect all agentId values from ai.agent nodes
+            var agentIds = new List<string>();
+            foreach (var node in activities.EnumerateArray())
+            {
+                string? type = null;
+                if (node.TryGetProperty("type", out var typeEl)) type = typeEl.GetString();
+                if (!string.Equals(type, "ai.agent", StringComparison.OrdinalIgnoreCase)) continue;
+
+                string? agentId = null;
+                if (node.TryGetProperty("config", out var config))
+                {
+                    if (config.TryGetProperty("agentId", out var agentIdEl))
+                        agentId = agentIdEl.GetString();
+                }
+                if (!string.IsNullOrWhiteSpace(agentId))
+                    agentIds.Add(agentId!);
+            }
+
+            if (agentIds.Count == 0) return null;
+
+            // Load all published agents for the tenant once
+            var published = await _agentRepo.GetPublishedAsync(tenantId, ct);
+            var publishedById = published.ToDictionary(a => a.Id.ToString());
+
+            foreach (var agentId in agentIds)
+            {
+                if (!publishedById.TryGetValue(agentId, out var agent))
+                    return $"Agent '{agentId}' referenced in an ai.agent node was not found or is not published in this tenant.";
+
+                if (agent.IsSystemAgent)
+                    return $"Agent '{agent.Name}' (id: {agentId}) is a system-managed agent and cannot be assigned to a workflow node. " +
+                           "Only custom agents created by your team can be used as WorkflowBrain. " +
+                           "Create a new agent or clone the Workflow Brain Default template.";
+            }
+        }
+
+        return null;
     }
 }
 

@@ -88,4 +88,38 @@ public sealed class WhatsAppBusinessApiTransport : IWhatsAppTransport
 
         return id;
     }
+
+    public async Task<string> SendTemplateMessageAsync(string to, string templateName, CancellationToken ct = default)
+    {
+        if (!_isConnected || string.IsNullOrEmpty(_activePhoneNumberId) || string.IsNullOrEmpty(_options.ApiKey))
+            throw new InvalidOperationException("WhatsApp Business transport is not connected");
+
+        var payload = new
+        {
+            messaging_product = "whatsapp",
+            recipient_type = "individual",
+            to,
+            type = "template",
+            template = new { name = templateName, language = new { code = "es" } }
+        };
+
+        var request = new HttpRequestMessage(HttpMethod.Post, $"{_options.BaseUrl}/{_activePhoneNumberId}/messages")
+        {
+            Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json")
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.ApiKey);
+
+        var response = await _httpClient.SendAsync(request, ct);
+        var responseBody = await response.Content.ReadAsStringAsync(ct);
+
+        if (!response.IsSuccessStatusCode)
+            throw new InvalidOperationException($"WhatsApp template send failed: {(int)response.StatusCode} {responseBody}");
+
+        using var doc = JsonDocument.Parse(responseBody);
+        var id = doc.RootElement.GetProperty("messages")[0].GetProperty("id").GetString();
+        if (string.IsNullOrWhiteSpace(id))
+            throw new InvalidOperationException("WhatsApp template response missing message id");
+
+        return id;
+    }
 }

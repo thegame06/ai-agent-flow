@@ -45,8 +45,12 @@ public sealed class MongoIntentRoutingStore : IIntentRoutingStore
             Id = string.IsNullOrWhiteSpace(rule.Id) ? Guid.NewGuid().ToString("N") : rule.Id,
             TenantId = rule.TenantId,
             IntentKey = rule.IntentKey,
+            IntentDescription = rule.IntentDescription,
+            ExamplePhrases = rule.ExamplePhrases.ToList(),
             SourceAgentId = rule.SourceAgentId,
             TargetAgentId = rule.TargetAgentId,
+            WorkflowDefinitionId = rule.WorkflowDefinitionId,
+            WorkflowName = rule.WorkflowName,
             Priority = rule.Priority,
             Enabled = rule.Enabled,
             Channel = rule.Channel,
@@ -75,6 +79,20 @@ public sealed class MongoIntentRoutingStore : IIntentRoutingStore
 
         var result = await _rules.UpdateOneAsync(x => x.TenantId == tenantId && x.Id == ruleId, update, cancellationToken: ct);
         return result.ModifiedCount > 0;
+    }
+
+    public async Task<IReadOnlyList<IntentRoutingRule>> GetRulesByChannelAsync(
+        string tenantId, string channel, CancellationToken ct = default)
+    {
+        var docs = await _rules
+            .Find(x => x.TenantId == tenantId
+                    && x.Enabled
+                    && (x.Channel == null || x.Channel == string.Empty || x.Channel == channel))
+            .SortBy(x => x.Priority)
+            .ThenBy(x => x.IntentKey)
+            .ToListAsync(ct);
+
+        return docs.Select(ToModel).ToList();
     }
 
     public async Task<IReadOnlyList<AgentRegistryEntry>> GetAgentsAsync(string tenantId, CancellationToken ct = default)
@@ -150,8 +168,12 @@ public sealed class MongoIntentRoutingStore : IIntentRoutingStore
         Id = x.Id,
         TenantId = x.TenantId,
         IntentKey = x.IntentKey,
+        IntentDescription = x.IntentDescription,
+        ExamplePhrases = x.ExamplePhrases.AsReadOnly(),
         SourceAgentId = x.SourceAgentId,
         TargetAgentId = x.TargetAgentId,
+        WorkflowDefinitionId = x.WorkflowDefinitionId,
+        WorkflowName = x.WorkflowName,
         Priority = x.Priority,
         Enabled = x.Enabled,
         Channel = x.Channel,
@@ -182,8 +204,12 @@ public sealed class MongoIntentRoutingStore : IIntentRoutingStore
         public string Id { get; set; } = Guid.NewGuid().ToString("N");
         public string TenantId { get; set; } = string.Empty;
         public string IntentKey { get; set; } = string.Empty;
+        public string IntentDescription { get; set; } = string.Empty;
+        public List<string> ExamplePhrases { get; set; } = [];
         public string SourceAgentId { get; set; } = string.Empty;
         public string TargetAgentId { get; set; } = string.Empty;
+        public string? WorkflowDefinitionId { get; set; }
+        public string? WorkflowName { get; set; }
         public int Priority { get; set; }
         public bool Enabled { get; set; } = true;
         public string? Channel { get; set; }

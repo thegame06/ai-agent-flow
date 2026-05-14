@@ -708,7 +708,7 @@ export function WorkflowVisualDesigner({
     [selected, selectedTemplate]
   );
   const publishedAgents = useMemo(
-    () => availableAgents.filter((agent) => agent.status === 'Published'),
+    () => availableAgents.filter((agent) => agent.status === 'Published' && !agent.isSystemAgent),
     [availableAgents]
   );
   const detectedWorkflowChannel = useMemo(() => {
@@ -1001,7 +1001,7 @@ export function WorkflowVisualDesigner({
                 spacing={1}
                 sx={{ width: 1 }}
               >
-                {['ai.agent', 'connect.send_whatsapp_template', 'human.handoff'].map((type) => (
+                {['ai.agent', 'channel.send', 'connect.send_whatsapp_template', 'human.handoff'].map((type) => (
                   <Button
                     key={type}
                     size="small"
@@ -1465,7 +1465,47 @@ export function WorkflowVisualDesigner({
                 </Stack>
               </Card>
             )}
-            {selected.type !== 'ai.agent' && (
+            {selected.type === 'channel.send' && (
+              <Card variant="outlined" sx={{ p: 1.2, bgcolor: '#f0fdf4' }}>
+                <Stack spacing={1}>
+                  <Typography variant="caption" color="text.secondary">
+                    Envia un mensaje directamente por el canal sin pasar por un agente. Util para notificaciones, templates o respuestas fijas.
+                  </Typography>
+                  <TextField
+                    select
+                    label="Canal destino"
+                    size="small"
+                    value={selected.config?.channelId ?? ''}
+                    helperText="Canal registrado en la plataforma."
+                    onChange={(e) => onUpdateActivityConfig(selectedIndex, 'channelId', e.target.value)}
+                  >
+                    <MenuItem value="">Seleccionar canal</MenuItem>
+                    {availableChannels.map((ch) => (
+                      <MenuItem key={ch.id} value={ch.id}>{ch.name} ({ch.type})</MenuItem>
+                    ))}
+                  </TextField>
+                  <TextField
+                    label="Destinatario (to)"
+                    size="small"
+                    value={selected.config?.to ?? ''}
+                    helperText="Identificador del destinatario. Puede ser variable: {{payload.from}}"
+                    onChange={(e) => onUpdateActivityConfig(selectedIndex, 'to', e.target.value)}
+                    placeholder="{{payload.from}}"
+                  />
+                  <TextField
+                    label="Contenido del mensaje"
+                    size="small"
+                    multiline
+                    minRows={2}
+                    value={selected.config?.content ?? ''}
+                    helperText="Texto a enviar. Puedes usar variables del workflow."
+                    onChange={(e) => onUpdateActivityConfig(selectedIndex, 'content', e.target.value)}
+                    placeholder="Tu solicitud ha sido recibida. En breve te contactamos."
+                  />
+                </Stack>
+              </Card>
+            )}
+            {selected.type !== 'ai.agent' && selected.type !== 'channel.send' && (
             <Accordion expanded={inspectorSection === 'general'} onChange={(_, e) => setInspectorSection(e ? 'general' : '')}>
               <AccordionSummary expandIcon={<Iconify icon="mdi:chevron-down" />}>
                 <Typography variant="subtitle2">General</Typography>
@@ -1495,7 +1535,7 @@ export function WorkflowVisualDesigner({
               </AccordionDetails>
             </Accordion>
             )}
-            {selected.type !== 'ai.agent' && (
+            {selected.type !== 'ai.agent' && selected.type !== 'channel.send' && (
               <Card variant="outlined" sx={{ p: 1.2, bgcolor: '#fbfdff' }}>
                 <Stack spacing={1.1}>
                   <Box>
@@ -2049,7 +2089,7 @@ export function WorkflowVisualDesigner({
                 )}
               </Card>
             )}
-            {selected.type !== 'ai.agent' && !showAdvanced && (
+            {selected.type !== 'ai.agent' && selected.type !== 'channel.send' && !showAdvanced && (
               <Button variant="text" onClick={() => setShowAdvanced(true)}>
                 Mostrar configuracion tecnica
               </Button>

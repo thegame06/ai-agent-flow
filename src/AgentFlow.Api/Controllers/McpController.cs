@@ -26,9 +26,6 @@ public sealed class McpController : ControllerBase
     [HttpGet("servers")]
     public IActionResult GetServers()
     {
-        var context = _tenantContext.Current!;
-        if (!context.IsPlatformAdmin) return Forbid();
-
         var servers = _configuration.GetSection("Mcp:Servers").Get<List<McpServerDto>>() ?? new();
         return Ok(servers.Select(s => new
         {
@@ -42,9 +39,6 @@ public sealed class McpController : ControllerBase
     [HttpGet("servers/{serverName}/tools")]
     public async Task<IActionResult> GetTools(string serverName, CancellationToken ct)
     {
-        var context = _tenantContext.Current!;
-        if (!context.IsPlatformAdmin) return Forbid();
-
         var servers = _configuration.GetSection("Mcp:Servers").Get<List<McpServerDto>>() ?? new();
         var server = servers.FirstOrDefault(s => string.Equals(s.Name, serverName, StringComparison.OrdinalIgnoreCase));
         if (server is null) return NotFound(new { message = $"MCP server '{serverName}' not configured." });
@@ -67,10 +61,22 @@ public sealed class McpController : ControllerBase
     public async Task<IActionResult> Invoke(string serverName, [FromBody] InvokeMcpRequest request, CancellationToken ct)
     {
         var context = _tenantContext.Current!;
-        if (!context.IsPlatformAdmin) return Forbid();
 
         if (string.IsNullOrWhiteSpace(request.ToolName))
             return BadRequest(new { message = "toolName is required" });
+
+        // For Open-mode servers invoked from the UI, automatically allow the default action
+        var servers = _configuration.GetSection("Mcp:Servers").Get<List<McpServerDto>>() ?? new();
+        var server = servers.FirstOrDefault(s => string.Equals(s.Name, serverName, StringComparison.OrdinalIgnoreCase));
+        var isOpenServer = string.Equals(server?.Security?.Mode, "Open", StringComparison.OrdinalIgnoreCase)
+                        || server?.Security?.Mode is null;
+
+        var metadata = request.Metadata is not null
+            ? new Dictionary<string, string>(request.Metadata)
+            : new Dictionary<string, string>();
+
+        if (isOpenServer && !metadata.ContainsKey("mcp.policy.allow_actions"))
+            metadata["mcp.policy.allow_actions"] = "tools.execute,records.read,files.upload";
 
         var result = await _gateway.ExecuteAsync(
             serverName,
@@ -83,7 +89,7 @@ public sealed class McpController : ControllerBase
                 StepId = request.StepId ?? "mcp-ui-step",
                 CorrelationId = request.CorrelationId ?? Guid.NewGuid().ToString("N"),
                 InputJson = string.IsNullOrWhiteSpace(request.InputJson) ? "{}" : request.InputJson,
-                Metadata = request.Metadata ?? new Dictionary<string, string>()
+                Metadata = metadata
             },
             ct);
 

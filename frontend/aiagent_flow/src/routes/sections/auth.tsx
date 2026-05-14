@@ -28,7 +28,10 @@ const authJwt = {
         <GuestGuard>
           <AuthSplitLayout
             slotProps={{
-              section: { title: 'Hi, Welcome back' },
+              section: {
+                title: 'Orquestación de Agentes de IA para empresas reales',
+                subtitle: 'Diseña, despliega y audita workflows conversacionales omnicanal.',
+              },
             }}
           >
             <Jwt.SignInPage />
