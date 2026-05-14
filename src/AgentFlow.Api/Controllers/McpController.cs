@@ -75,6 +75,9 @@ public sealed class McpController : ControllerBase
             ? new Dictionary<string, string>(request.Metadata)
             : new Dictionary<string, string>();
 
+        if (!metadata.ContainsKey("permissions"))
+            metadata["permissions"] = string.Join(",", ResolveEffectivePermissions(context));
+
         if (isOpenServer && !metadata.ContainsKey("mcp.policy.allow_actions"))
             metadata["mcp.policy.allow_actions"] = "tools.execute,records.read,files.upload";
 
@@ -109,6 +112,19 @@ public sealed class McpController : ControllerBase
         var idx = trimmed.LastIndexOf('/');
         if (idx <= 0) return trimmed + "/tools";
         return trimmed.Substring(0, idx) + "/tools";
+    }
+
+    private static IReadOnlyList<string> ResolveEffectivePermissions(TenantContext context)
+    {
+        var permissions = new HashSet<string>(context.Permissions, StringComparer.OrdinalIgnoreCase);
+
+        if (context.IsPlatformAdmin || context.HasRole("admin"))
+        {
+            foreach (var permission in AgentFlowRoles.Admin)
+                permissions.Add(permission);
+        }
+
+        return permissions.ToArray();
     }
 
     private sealed class McpServerDto

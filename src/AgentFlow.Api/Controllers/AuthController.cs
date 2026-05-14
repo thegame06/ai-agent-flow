@@ -102,6 +102,10 @@ public class AuthController : ControllerBase
             new("permission", AgentFlowPermissions.ExecutionRead),
             new("permission", AgentFlowPermissions.AuditRead),
             new("permission", AgentFlowPermissions.ToolRead),
+            new("permission", AgentFlowPermissions.ToolExecuteLow),
+            new("permission", AgentFlowPermissions.ToolExecuteMedium),
+            new("permission", AgentFlowPermissions.ToolExecuteHigh),
+            new("permission", AgentFlowPermissions.ToolExecuteCritical),
             new("permission", AgentFlowPermissions.TenantManage)
         };
 
