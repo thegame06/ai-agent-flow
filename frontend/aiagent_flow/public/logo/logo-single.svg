@@ -2,10 +2,10 @@
   <rect width="512" height="512" rx="120" fill="#0B2B24"/>
 
   <g aria-label="ai">
-    <circle cx="267" cy="64" r="7" fill="#00B7C7"/>
-    <path d="M265 91C262 122 259 153 256 188" stroke="#00B7C7" stroke-width="12" stroke-linecap="round"/>
-    <path d="M229 144C214 144 203 133 203 118C203 103 214 92 229 92C244 92 255 103 255 118C255 133 244 144 229 144Z" stroke="#69D99D" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M258 118V144" stroke="#69D99D" stroke-width="12" stroke-linecap="round"/>
+    <circle cx="260" cy="84" r="7" fill="#00B7C7"/>
+    <path d="M258 111C257 132 256 158 256 188" stroke="#00B7C7" stroke-width="12" stroke-linecap="round"/>
+    <path d="M229 168C214 168 203 157 203 142C203 127 214 116 229 116C244 116 255 127 255 142C255 157 244 168 229 168Z" stroke="#69D99D" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M258 142V168" stroke="#69D99D" stroke-width="12" stroke-linecap="round"/>
   </g>
 
   <g stroke="url(#flow)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round">

@@ -6,13 +6,11 @@
     @keyframes pulse { 0%,100% { transform: scale(.96); opacity:.82; } 50% { transform: scale(1.04); opacity:1; } }
   </style>
   <circle class="ring" cx="80" cy="80" r="66" stroke="#D8F7E8" stroke-width="10" stroke-linecap="round" stroke-dasharray="90 320"/>
-  <rect x="36" y="36" width="88" height="88" rx="25" fill="#0B2B24"/>
-
   <g class="canvas">
-    <circle cx="86" cy="36" r="2.3" fill="#00B7C7"/>
-    <path d="M85 45C84 54 83 62 82 73" stroke="#00B7C7" stroke-width="4" stroke-linecap="round"/>
-    <path d="M73 65C68 65 65 61 65 56C65 51 68 47 73 47C78 47 81 51 81 56C81 61 78 65 73 65Z" stroke="#69D99D" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M82 56V65" stroke="#69D99D" stroke-width="4" stroke-linecap="round"/>
+    <circle cx="82" cy="43" r="2.3" fill="#00B7C7"/>
+    <path d="M82 52C82 60 81 66 80 75" stroke="#00B7C7" stroke-width="4" stroke-linecap="round"/>
+    <path d="M73 72C68 72 65 68 65 63C65 58 68 54 73 54C78 54 81 58 81 63C81 68 78 72 73 72Z" stroke="#69D99D" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M82 63V72" stroke="#69D99D" stroke-width="4" stroke-linecap="round"/>
 
     <g stroke="url(#flow)" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round">
       <path d="M80 75C68 82 58 92 54 106"/>
