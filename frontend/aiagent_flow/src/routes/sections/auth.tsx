@@ -27,10 +27,28 @@ const authJwt = {
       element: (
         <GuestGuard>
           <AuthSplitLayout
+            cssVars={{ '--layout-auth-content-width': '420px' }}
             slotProps={{
+              main: {
+                sx: { position: 'relative', bgcolor: '#F6FAF7' },
+              },
               section: {
                 title: 'Orquestación de agentes de IA para empresas reales',
                 subtitle: 'Diseña, despliega y audita workflows conversacionales omnicanal.',
+              },
+              content: {
+                sx: (theme) => ({
+                  p: 0,
+                  zIndex: 20,
+                  width: { xs: 'calc(100% - 32px)', md: 'auto' },
+                  position: { xs: 'absolute', md: 'fixed' },
+                  top: { xs: 78, md: 18 },
+                  right: { xs: 16, md: 88 },
+                  alignItems: 'flex-end',
+                  [theme.breakpoints.up('md')]: {
+                    justifyContent: 'flex-start',
+                  },
+                }),
               },
             }}
           >
