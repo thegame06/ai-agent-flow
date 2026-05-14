@@ -29,7 +29,7 @@ const authJwt = {
           <AuthSplitLayout
             slotProps={{
               section: {
-                title: 'Orquestación de Agentes de IA para empresas reales',
+                title: 'Orquestación de agentes de IA para empresas reales',
                 subtitle: 'Diseña, despliega y audita workflows conversacionales omnicanal.',
               },
             }}
