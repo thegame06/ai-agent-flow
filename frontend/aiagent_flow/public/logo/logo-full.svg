@@ -1,16 +1,60 @@
-﻿<svg width="720" height="180" viewBox="0 0 720 180" fill="none" xmlns="http://www.w3.org/2000/svg">
+<svg width="720" height="180" viewBox="0 0 720 180" fill="none" xmlns="http://www.w3.org/2000/svg">
   <rect x="8" y="18" width="144" height="144" rx="36" fill="#0B2B24"/>
-  <path d="M44 116L68.8 64.8C73.9 54.1 89.1 54.1 94.2 64.8L119 116" stroke="url(#g1)" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M60.8 103H102.4" stroke="#E9FFF5" stroke-width="10" stroke-linecap="round"/>
-  <circle cx="81.5" cy="50" r="7.5" fill="#00B7C7"/>
-  <circle cx="40.5" cy="121" r="7" fill="#69D99D"/>
-  <circle cx="122.5" cy="121" r="7" fill="#00B7C7"/>
-  <text x="178" y="106" fill="#10231D" font-family="Inter, Manrope, Arial, sans-serif" font-size="58" font-weight="850" letter-spacing="-2.4">annonai</text>
-  <text x="181" y="137" fill="#5B7069" font-family="Inter, Manrope, Arial, sans-serif" font-size="18" font-weight="650" letter-spacing="2.8">WORKFLOW AI PLATFORM</text>
+
+  <g aria-label="ai">
+    <circle cx="86" cy="33" r="2.4" fill="#00B7C7"/>
+    <path d="M85 42C84 52 83 61 82 73" stroke="#00B7C7" stroke-width="4.4" stroke-linecap="round"/>
+    <path d="M73 64C68 64 64 60 64 55C64 50 68 46 73 46C78 46 82 50 82 55C82 60 78 64 73 64Z" stroke="#69D99D" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M83 55V64" stroke="#69D99D" stroke-width="4.4" stroke-linecap="round"/>
+  </g>
+
+  <g stroke="url(#flow)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M80 75C66 82 55 94 50 110"/>
+    <path d="M80 75C94 82 105 94 110 110"/>
+    <path d="M50 110C44 130 55 149 76 157"/>
+    <path d="M110 110C116 130 105 149 84 157"/>
+    <path d="M76 157C79 158 81 158 84 157"/>
+  </g>
+
+  <g stroke="#69D99D" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity=".9">
+    <path d="M80 75L70 96"/>
+    <path d="M80 75L90 96"/>
+    <path d="M70 96L63 117"/>
+    <path d="M70 96L77 117"/>
+    <path d="M90 96L83 117"/>
+    <path d="M90 96L97 117"/>
+    <path d="M77 117L72 139"/>
+    <path d="M83 117L88 139"/>
+    <path d="M72 139L80 151"/>
+    <path d="M88 139L80 151"/>
+  </g>
+
+  <g fill="#E9FFF5">
+    <circle cx="80" cy="75" r="3"/>
+    <circle cx="50" cy="110" r="2.4"/>
+    <circle cx="110" cy="110" r="2.4"/>
+    <circle cx="76" cy="157" r="2.5"/>
+    <circle cx="84" cy="157" r="2.5"/>
+  </g>
+  <g fill="#69D99D">
+    <circle cx="70" cy="96" r="2.1"/>
+    <circle cx="90" cy="96" r="2.1"/>
+    <circle cx="63" cy="117" r="1.8"/>
+    <circle cx="77" cy="117" r="1.8"/>
+    <circle cx="83" cy="117" r="1.8"/>
+    <circle cx="97" cy="117" r="1.8"/>
+    <circle cx="72" cy="139" r="1.8"/>
+    <circle cx="88" cy="139" r="1.8"/>
+    <circle cx="80" cy="151" r="2.1"/>
+  </g>
+
+  <text x="178" y="107" fill="#10231D" font-family="Inter, Manrope, Arial, sans-serif" font-size="58" font-weight="850">annonai</text>
+  <text x="181" y="138" fill="#5B7069" font-family="Inter, Manrope, Arial, sans-serif" font-size="18" font-weight="650" letter-spacing="2.8">WORKFLOW AI PLATFORM</text>
+
   <defs>
-    <linearGradient id="g1" x1="44" y1="118" x2="120" y2="54" gradientUnits="userSpaceOnUse">
+    <linearGradient id="flow" x1="44" y1="158" x2="116" y2="75" gradientUnits="userSpaceOnUse">
       <stop stop-color="#69D99D"/>
-      <stop offset="0.55" stop-color="#00B7C7"/>
+      <stop offset=".52" stop-color="#00B7C7"/>
       <stop offset="1" stop-color="#E9FFF5"/>
     </linearGradient>
   </defs>

@@ -1,15 +1,58 @@
-﻿<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
   <rect width="512" height="512" rx="120" fill="#0B2B24"/>
-  <path d="M126 344L212 168C230 132 282 132 300 168L386 344" stroke="url(#g1)" stroke-width="44" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M184 300H328" stroke="#E9FFF5" stroke-width="34" stroke-linecap="round"/>
-  <circle cx="256" cy="122" r="26" fill="#00B7C7"/>
-  <circle cx="114" cy="362" r="24" fill="#69D99D"/>
-  <circle cx="398" cy="362" r="24" fill="#00B7C7"/>
-  <path d="M256 148V216" stroke="#E9FFF5" stroke-width="18" stroke-linecap="round" opacity="0.86"/>
+
+  <g aria-label="ai">
+    <circle cx="267" cy="64" r="7" fill="#00B7C7"/>
+    <path d="M265 91C262 122 259 153 256 188" stroke="#00B7C7" stroke-width="12" stroke-linecap="round"/>
+    <path d="M229 144C214 144 203 133 203 118C203 103 214 92 229 92C244 92 255 103 255 118C255 133 244 144 229 144Z" stroke="#69D99D" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M258 118V144" stroke="#69D99D" stroke-width="12" stroke-linecap="round"/>
+  </g>
+
+  <g stroke="url(#flow)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M256 188C213 211 180 247 164 295"/>
+    <path d="M256 188C299 211 332 247 348 295"/>
+    <path d="M164 295C147 355 177 412 239 435"/>
+    <path d="M348 295C365 355 335 412 273 435"/>
+    <path d="M239 435C250 439 262 439 273 435"/>
+  </g>
+
+  <g stroke="#69D99D" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" opacity=".9">
+    <path d="M256 188L224 250"/>
+    <path d="M256 188L288 250"/>
+    <path d="M224 250L201 314"/>
+    <path d="M224 250L247 314"/>
+    <path d="M288 250L265 314"/>
+    <path d="M288 250L311 314"/>
+    <path d="M247 314L226 380"/>
+    <path d="M265 314L286 380"/>
+    <path d="M226 380L256 417"/>
+    <path d="M286 380L256 417"/>
+  </g>
+
+  <g fill="#E9FFF5">
+    <circle cx="256" cy="188" r="9"/>
+    <circle cx="164" cy="295" r="7"/>
+    <circle cx="348" cy="295" r="7"/>
+    <circle cx="239" cy="435" r="8"/>
+    <circle cx="273" cy="435" r="8"/>
+  </g>
+
+  <g fill="#69D99D">
+    <circle cx="224" cy="250" r="6"/>
+    <circle cx="288" cy="250" r="6"/>
+    <circle cx="201" cy="314" r="5"/>
+    <circle cx="247" cy="314" r="5"/>
+    <circle cx="265" cy="314" r="5"/>
+    <circle cx="311" cy="314" r="5"/>
+    <circle cx="226" cy="380" r="5"/>
+    <circle cx="286" cy="380" r="5"/>
+    <circle cx="256" cy="417" r="6"/>
+  </g>
+
   <defs>
-    <linearGradient id="g1" x1="126" y1="352" x2="390" y2="132" gradientUnits="userSpaceOnUse">
+    <linearGradient id="flow" x1="148" y1="435" x2="360" y2="188" gradientUnits="userSpaceOnUse">
       <stop stop-color="#69D99D"/>
-      <stop offset="0.52" stop-color="#00B7C7"/>
+      <stop offset=".52" stop-color="#00B7C7"/>
       <stop offset="1" stop-color="#E9FFF5"/>
     </linearGradient>
   </defs>
