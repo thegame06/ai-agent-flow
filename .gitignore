@@ -10,6 +10,7 @@ obj/
 # User-specific files
 *.user
 *.userosscache
+*.csproj.lscache
 *.suo
 .vs/
 

@@ -26,37 +26,26 @@ public sealed class ChannelSessionsController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<IActionResult> GetActive(string tenantId, [FromQuery] string? channelId = null, CancellationToken ct = default)
+    public async Task<IActionResult> GetActive(
+        string tenantId,
+        [FromQuery] string? channelId = null,
+        [FromQuery] string? status = null,
+        [FromQuery] string? query = null,
+        [FromQuery] int page = 0,
+        [FromQuery] int pageSize = 25,
+        CancellationToken ct = default)
     {
         var context = _tenantContext.Current!;
         if (context.TenantId != tenantId && !context.IsPlatformAdmin) return Forbid();
 
-        IReadOnlyList<Domain.Aggregates.ChannelSession> sessions;
-
-        if (!string.IsNullOrEmpty(channelId))
+        var result = await _sessionRepo.SearchAsync(tenantId, channelId, status, query, page, pageSize, ct);
+        return Ok(new PagedResponse<ChannelSessionDto>
         {
-            sessions = await _gateway.GetActiveSessionsAsync(channelId, tenantId, ct);
-        }
-        else
-        {
-            var count = await _sessionRepo.GetActiveCountAsync(tenantId, ct);
-            sessions = await _sessionRepo.GetActiveByUserAsync("%", tenantId, ct);
-        }
-
-        return Ok(sessions.Select(s => new ChannelSessionDto
-        {
-            Id = s.Id,
-            ChannelId = s.ChannelId,
-            ChannelType = s.ChannelType,
-            Identifier = s.Identifier,
-            AgentId = s.AgentId,
-            ThreadId = s.ThreadId,
-            Status = s.Status.ToString(),
-            MessageCount = s.MessageCount,
-            CreatedAt = s.CreatedAt,
-            LastActivityAt = s.LastActivityAt,
-            ExpiresAt = s.ExpiresAt
-        }));
+            Items = result.Items.Select(MapSession).ToList(),
+            Total = result.Total,
+            Page = Math.Max(0, page),
+            PageSize = Math.Clamp(pageSize, 1, 100)
+        });
     }
 
     [HttpGet("{sessionId}")]
@@ -68,20 +57,7 @@ public sealed class ChannelSessionsController : ControllerBase
         var session = await _sessionRepo.GetByIdAsync(sessionId, tenantId, ct);
         if (session == null) return NotFound();
 
-        return Ok(new ChannelSessionDto
-        {
-            Id = session.Id,
-            ChannelId = session.ChannelId,
-            ChannelType = session.ChannelType,
-            Identifier = session.Identifier,
-            AgentId = session.AgentId,
-            ThreadId = session.ThreadId,
-            Status = session.Status.ToString(),
-            MessageCount = session.MessageCount,
-            CreatedAt = session.CreatedAt,
-            LastActivityAt = session.LastActivityAt,
-            ExpiresAt = session.ExpiresAt
-        });
+        return Ok(MapSession(session));
     }
 
     [HttpPost("{sessionId}/close")]
@@ -96,30 +72,81 @@ public sealed class ChannelSessionsController : ControllerBase
 
     [HttpGet("{sessionId}/messages")]
     [HttpPost("{sessionId}/messages")]
-    public async Task<IActionResult> GetMessages(string tenantId, string sessionId, [FromQuery] int limit = 50, CancellationToken ct = default)
+    public async Task<IActionResult> GetMessages(
+        string tenantId,
+        string sessionId,
+        [FromQuery] int limit = 50,
+        [FromQuery] int page = 0,
+        [FromQuery] int pageSize = 50,
+        CancellationToken ct = default)
     {
         var context = _tenantContext.Current!;
         if (context.TenantId != tenantId && !context.IsPlatformAdmin) return Forbid();
 
         var messageRepo = HttpContext.RequestServices.GetRequiredService<IChannelMessageRepository>();
-        var messages = await messageRepo.GetBySessionAsync(sessionId, tenantId, limit, ct);
-
-        return Ok(messages.Select(m => new ChannelMessageDto
+        var paged = Request.Query.ContainsKey("page") || Request.Query.ContainsKey("pageSize");
+        if (paged)
         {
-            Id = m.Id,
-            Direction = m.Direction.ToString(),
-            Type = m.Type.ToString(),
-            From = m.From,
-            To = m.To,
-            Content = m.Content,
-            CreatedAt = m.CreatedAt,
-            Status = m.Status.ToString(),
-            AgentExecutionId = m.AgentExecutionId,
-            ChannelMessageIdIn = m.Metadata.GetValueOrDefault("wa_message_id"),
-            ChannelMessageIdOut = m.Metadata.GetValueOrDefault("wa_message_id_out"),
-            Metadata = m.Metadata
-        }));
+            var result = await messageRepo.GetBySessionPagedAsync(sessionId, tenantId, page, pageSize, ct);
+            return Ok(new PagedResponse<ChannelMessageDto>
+            {
+                Items = result.Items.Select(MapMessage).ToList(),
+                Total = result.Total,
+                Page = Math.Max(0, page),
+                PageSize = Math.Clamp(pageSize, 1, 100)
+            });
+        }
+
+        var messages = await messageRepo.GetBySessionAsync(sessionId, tenantId, limit, ct);
+        return Ok(messages.Select(MapMessage));
     }
+
+    private static ChannelSessionDto MapSession(Domain.Aggregates.ChannelSession s) => new()
+    {
+        Id = s.Id,
+        ChannelId = s.ChannelId,
+        ChannelType = s.ChannelType,
+        Identifier = s.Identifier,
+        AgentId = s.AgentId,
+        ThreadId = s.ThreadId,
+        Status = s.Status.ToString(),
+        MessageCount = s.MessageCount,
+        CreatedAt = s.CreatedAt,
+        LastActivityAt = s.LastActivityAt,
+        ExpiresAt = s.ExpiresAt,
+        WindowOpen = !s.IsExpired(),
+        CustomerKind = s.Metadata.GetValueOrDefault("customer_kind") ?? "unknown",
+        DisplayName = s.Metadata.GetValueOrDefault("display_name")
+    };
+
+    private static ChannelMessageDto MapMessage(Domain.Aggregates.ChannelMessage m) => new()
+    {
+        Id = m.Id,
+        Direction = m.Direction.ToString(),
+        Type = m.Type.ToString(),
+        From = m.From,
+        To = m.To,
+        Content = m.Content,
+        CreatedAt = m.CreatedAt,
+        Status = m.Status.ToString(),
+        AgentExecutionId = m.AgentExecutionId,
+        ChannelMessageIdIn = m.Metadata.GetValueOrDefault("wa_message_id"),
+        ChannelMessageIdOut = m.Metadata.GetValueOrDefault("wa_message_id_out"),
+        Metadata = m.Metadata,
+        ErrorMessage = m.ErrorMessage,
+        Actor = m.Metadata.GetValueOrDefault("actor") ??
+            (m.Direction == Domain.Aggregates.MessageDirection.Incoming ? "customer" : m.From),
+        DeliveryState = m.Metadata.GetValueOrDefault("agentflow.delivery") ??
+            (m.Direction == Domain.Aggregates.MessageDirection.Outgoing ? "sent" : "received")
+    };
+}
+
+public sealed record PagedResponse<T>
+{
+    public IReadOnlyList<T> Items { get; init; } = [];
+    public long Total { get; init; }
+    public int Page { get; init; }
+    public int PageSize { get; init; }
 }
 
 public sealed record ChannelSessionDto
@@ -135,6 +162,9 @@ public sealed record ChannelSessionDto
     public DateTimeOffset CreatedAt { get; init; }
     public DateTimeOffset LastActivityAt { get; init; }
     public DateTimeOffset? ExpiresAt { get; init; }
+    public bool WindowOpen { get; init; }
+    public string CustomerKind { get; init; } = "unknown";
+    public string? DisplayName { get; init; }
 }
 
 public sealed record ChannelMessageDto
@@ -150,5 +180,8 @@ public sealed record ChannelMessageDto
     public string? AgentExecutionId { get; init; }
     public string? ChannelMessageIdIn { get; init; }
     public string? ChannelMessageIdOut { get; init; }
+    public string? ErrorMessage { get; init; }
+    public string Actor { get; init; } = "system";
+    public string DeliveryState { get; init; } = "unknown";
     public Dictionary<string, string> Metadata { get; init; } = new();
 }

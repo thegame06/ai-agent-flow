@@ -40,7 +40,7 @@ export function useWorkflowEditorState(activityCatalog: WorkflowActivityCatalogE
   const hasSelection = useMemo(() => !!editor.id, [editor.id]);
 
   const allowedTypes = useMemo(
-    () => (activityCatalog.length > 0 ? activityCatalog.map((x) => x.typeName) : [...ALLOWED_ACTIVITY_TYPES]),
+    () => Array.from(new Set([...ALLOWED_ACTIVITY_TYPES, ...activityCatalog.map((x) => x.typeName)])),
     [activityCatalog]
   );
 

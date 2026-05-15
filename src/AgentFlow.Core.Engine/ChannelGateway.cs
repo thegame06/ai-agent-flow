@@ -1,5 +1,6 @@
 using AgentFlow.Abstractions;
 using AgentFlow.Application.Channels;
+using AgentFlow.Application.Memory;
 using AgentFlow.Domain.Aggregates;
 using AgentFlow.Domain.Repositories;
 using AgentFlow.Security;
@@ -21,6 +22,7 @@ public sealed class ChannelGateway : IChannelGateway
     private readonly IManagerHandoffPolicy _handoffPolicy;
     private readonly IIntentRoutingStore _intentRoutingStore;
     private readonly ITenantContextAccessor _tenantContext;
+    private readonly IAuditMemory _auditMemory;
     private readonly ILogger<ChannelGateway> _logger;
 
     public ChannelGateway(
@@ -32,6 +34,7 @@ public sealed class ChannelGateway : IChannelGateway
         IManagerHandoffPolicy handoffPolicy,
         IIntentRoutingStore intentRoutingStore,
         ITenantContextAccessor tenantContext,
+        IAuditMemory auditMemory,
         IEnumerable<IChannelHandler> handlers,
         ILogger<ChannelGateway> logger)
     {
@@ -43,6 +46,7 @@ public sealed class ChannelGateway : IChannelGateway
         _handoffPolicy = handoffPolicy;
         _intentRoutingStore = intentRoutingStore;
         _tenantContext = tenantContext;
+        _auditMemory = auditMemory;
         _logger = logger;
 
         foreach (var handler in handlers)
@@ -113,7 +117,7 @@ public sealed class ChannelGateway : IChannelGateway
             {
                 var rules = await _intentRoutingStore.GetRulesByChannelAsync(
                     incomingMessage.TenantId, channel.Type.ToString().ToLowerInvariant(), ct);
-                if (rules.Count > 0)
+                if (rules is { Count: > 0 })
                 {
                     intentCatalogJson = System.Text.Json.JsonSerializer.Serialize(
                         rules.Select(r => new
@@ -173,6 +177,17 @@ public sealed class ChannelGateway : IChannelGateway
             var executionResult = await _agentExecutor.ExecuteAsync(executionRequest, ct);
             incomingMessage.LinkExecution(executionResult.ExecutionId);
 
+            if (executionResult.Status == ExecutionStatus.Failed ||
+                string.IsNullOrWhiteSpace(executionResult.FinalResponse))
+            {
+                await MarkInboundFailureWithoutCustomerReplyAsync(
+                    incomingMessage,
+                    executionResult,
+                    "agent_execution_failed",
+                    ct);
+                return incomingMessage;
+            }
+
             var finalResponse = executionResult.FinalResponse;
             var executionIdForOutgoing = executionResult.ExecutionId;
 
@@ -210,6 +225,18 @@ public sealed class ChannelGateway : IChannelGateway
                 };
 
                 var brainResult = await _agentExecutor.ExecuteAsync(brainRequest, ct);
+                if (brainResult.Status == ExecutionStatus.Failed ||
+                    string.IsNullOrWhiteSpace(brainResult.FinalResponse))
+                {
+                    incomingMessage.LinkExecution(brainResult.ExecutionId);
+                    await MarkInboundFailureWithoutCustomerReplyAsync(
+                        incomingMessage,
+                        brainResult,
+                        "workflow_brain_execution_failed",
+                        ct);
+                    return incomingMessage;
+                }
+
                 finalResponse = brainResult.FinalResponse;
                 executionIdForOutgoing = brainResult.ExecutionId;
             }
@@ -247,27 +274,50 @@ public sealed class ChannelGateway : IChannelGateway
 
                             session.LinkAgent(handoff.TargetAgentId);
                             await _sessionRepo.UpdateAsync(session, ct);
+
+                            if (string.IsNullOrWhiteSpace(finalResponse))
+                            {
+                                await MarkInboundFailureWithoutCustomerReplyAsync(
+                                    incomingMessage,
+                                    CreateGatewayFailureResult(executionIdForOutgoing, agentKey, "handoff_empty_response", "Delegated agent produced no customer-safe reply."),
+                                    "agent_handoff_failed",
+                                    ct);
+                                return incomingMessage;
+                            }
                         }
                         else
                         {
-                            finalResponse = "I couldn't complete that request right now.";
+                            await MarkInboundFailureWithoutCustomerReplyAsync(
+                                incomingMessage,
+                                CreateGatewayFailureResult(executionIdForOutgoing, agentKey, "handoff_failed", "Agent handoff failed."),
+                                "agent_handoff_failed",
+                                ct);
+                            return incomingMessage;
                         }
                     }
                     else
                     {
-                        finalResponse = "That delegation target is not allowed by policy.";
+                        await MarkInboundFailureWithoutCustomerReplyAsync(
+                            incomingMessage,
+                            CreateGatewayFailureResult(executionIdForOutgoing, agentKey, "handoff_policy_denied", "Agent handoff target is not allowed by policy."),
+                            "agent_handoff_policy_denied",
+                            ct);
+                        return incomingMessage;
                     }
                 }
             }
 
             // Create outgoing message
+            var customerResponse = finalResponse!;
             var outgoingMessage = ChannelMessage.CreateOutgoing(
                 incomingMessage.TenantId,
                 incomingMessage.ChannelId,
                 incomingMessage.SessionId,
                 incomingMessage.From,
-                finalResponse ?? "Sorry, I couldn't process that."
+                customerResponse
             );
+            outgoingMessage.Metadata["actor"] = "bot";
+            outgoingMessage.Metadata["agentflow.delivery"] = "sent";
 
             outgoingMessage.LinkExecution(executionIdForOutgoing);
 
@@ -284,10 +334,66 @@ public sealed class ChannelGateway : IChannelGateway
         {
             _logger.LogError(ex, "Error processing message from channel {ChannelId}", incomingMessage.ChannelId);
             incomingMessage.MarkFailed(ex.Message);
+            incomingMessage.Metadata["agentflow.delivery"] = "not_sent";
+            incomingMessage.Metadata["agentflow.failure_level"] = "channel";
+            incomingMessage.Metadata["agentflow.error"] = ex.Message;
             await _messageRepo.UpdateAsync(incomingMessage, ct);
             throw;
         }
     }
+
+    private async Task MarkInboundFailureWithoutCustomerReplyAsync(
+        ChannelMessage incomingMessage,
+        AgentExecutionResult executionResult,
+        string failureLevel,
+        CancellationToken ct)
+    {
+        var error = executionResult.ErrorMessage
+            ?? executionResult.ErrorCode
+            ?? "Agent execution produced no customer-safe reply.";
+
+        incomingMessage.MarkFailed(error);
+        incomingMessage.Metadata["agentflow.delivery"] = "not_sent";
+        incomingMessage.Metadata["agentflow.failure_level"] = failureLevel;
+        incomingMessage.Metadata["agentflow.error_code"] = executionResult.ErrorCode ?? string.Empty;
+        incomingMessage.Metadata["agentflow.error"] = error;
+        incomingMessage.Metadata["agentflow.execution_status"] = executionResult.Status.ToString();
+
+        await _messageRepo.UpdateAsync(incomingMessage, ct);
+        await _auditMemory.RecordAsync(new AuditEntry
+        {
+            ExecutionId = executionResult.ExecutionId,
+            AgentId = executionResult.AgentKey,
+            TenantId = incomingMessage.TenantId,
+            UserId = incomingMessage.From,
+            EventType = AuditEventType.ExecutionFailed,
+            CorrelationId = incomingMessage.SessionId,
+            EventJson = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                level = failureLevel,
+                channelId = incomingMessage.ChannelId,
+                sessionId = incomingMessage.SessionId,
+                channelMessageId = incomingMessage.Id,
+                customerReplySent = false,
+                executionResult.ErrorCode,
+                error
+            })
+        }, ct);
+    }
+
+    private static AgentExecutionResult CreateGatewayFailureResult(
+        string executionId,
+        string agentKey,
+        string errorCode,
+        string errorMessage) => new()
+    {
+        ExecutionId = executionId,
+        AgentKey = agentKey,
+        AgentVersion = "channel-gateway",
+        Status = ExecutionStatus.Failed,
+        ErrorCode = errorCode,
+        ErrorMessage = errorMessage
+    };
 
     public async Task<SendResult> SendMessageAsync(string channelId, ChannelMessage message, CancellationToken ct = default)
     {

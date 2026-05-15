@@ -43,6 +43,28 @@ public sealed class MongoChannelMessageRepository : IChannelMessageRepository
             .ToListAsync(ct);
     }
 
+    public async Task<(IReadOnlyList<ChannelMessage> Items, long Total)> GetBySessionPagedAsync(
+        string sessionId,
+        string tenantId,
+        int page = 0,
+        int pageSize = 50,
+        CancellationToken ct = default)
+    {
+        page = Math.Max(0, page);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+
+        var filter = Builders<ChannelMessage>.Filter.Eq(x => x.SessionId, sessionId) &
+            Builders<ChannelMessage>.Filter.Eq(x => x.TenantId, tenantId);
+        var total = await _collection.CountDocumentsAsync(filter, cancellationToken: ct);
+        var items = await _collection.Find(filter)
+            .SortByDescending(x => x.CreatedAt)
+            .Skip(page * pageSize)
+            .Limit(pageSize)
+            .ToListAsync(ct);
+
+        return (items, total);
+    }
+
     public async Task<IReadOnlyList<ChannelMessage>> GetByChannelAsync(string channelId, string tenantId, int limit = 50, CancellationToken ct = default)
     {
         return await _collection.Find(x => x.ChannelId == channelId && x.TenantId == tenantId)

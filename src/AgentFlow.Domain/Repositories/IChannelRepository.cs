@@ -20,6 +20,14 @@ public interface IChannelSessionRepository
     Task<ChannelSession?> GetByChannelAndIdentifierAsync(string channelId, string identifier, string tenantId, CancellationToken ct = default);
     Task<IReadOnlyList<ChannelSession>> GetActiveByChannelAsync(string channelId, string tenantId, CancellationToken ct = default);
     Task<IReadOnlyList<ChannelSession>> GetActiveByUserAsync(string userIdentifier, string tenantId, CancellationToken ct = default);
+    Task<(IReadOnlyList<ChannelSession> Items, long Total)> SearchAsync(
+        string tenantId,
+        string? channelId = null,
+        string? status = null,
+        string? query = null,
+        int page = 0,
+        int pageSize = 25,
+        CancellationToken ct = default);
     Task<Result> InsertAsync(ChannelSession session, CancellationToken ct = default);
     Task<Result> UpdateAsync(ChannelSession session, CancellationToken ct = default);
     Task<Result> DeleteAsync(string sessionId, string tenantId, CancellationToken ct = default);
@@ -30,6 +38,12 @@ public interface IChannelMessageRepository
 {
     Task<ChannelMessage?> GetByIdAsync(string messageId, string tenantId, CancellationToken ct = default);
     Task<IReadOnlyList<ChannelMessage>> GetBySessionAsync(string sessionId, string tenantId, int limit = 50, CancellationToken ct = default);
+    Task<(IReadOnlyList<ChannelMessage> Items, long Total)> GetBySessionPagedAsync(
+        string sessionId,
+        string tenantId,
+        int page = 0,
+        int pageSize = 50,
+        CancellationToken ct = default);
     Task<IReadOnlyList<ChannelMessage>> GetByChannelAsync(string channelId, string tenantId, int limit = 50, CancellationToken ct = default);
     Task<Result> InsertAsync(ChannelMessage message, CancellationToken ct = default);
     Task<Result> UpdateAsync(ChannelMessage message, CancellationToken ct = default);

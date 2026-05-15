@@ -212,12 +212,30 @@ public sealed class ChannelsController : ControllerBase
 
         // SYNC mode: block until agent responds, return inline
         var outgoing = await _gateway.ProcessMessageAsync(incoming, ct);
+        if (outgoing.Direction == MessageDirection.Incoming && outgoing.Status == MessageStatus.Failed)
+        {
+            return StatusCode(StatusCodes.Status502BadGateway, new
+            {
+                correlationId,
+                sessionId = session.Id,
+                channelId,
+                mode = "sync",
+                delivered = false,
+                incomingMessageId = outgoing.Id,
+                executionId = outgoing.AgentExecutionId,
+                error = outgoing.ErrorMessage,
+                failureLevel = outgoing.Metadata.GetValueOrDefault("agentflow.failure_level"),
+                message = "AgentFlow did not send a customer reply because processing failed."
+            });
+        }
+
         return Ok(new
         {
             correlationId,
             sessionId     = session.Id,
             channelId,
             mode          = "sync",
+            delivered     = true,
             response      = outgoing.Content,
             messageId     = outgoing.Id,
             executionId   = outgoing.AgentExecutionId

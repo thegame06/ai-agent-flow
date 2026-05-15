@@ -24,6 +24,7 @@ import Typography from '@mui/material/Typography';
 import IconButton from '@mui/material/IconButton';
 import InputLabel from '@mui/material/InputLabel';
 import DialogTitle from '@mui/material/DialogTitle';
+import TablePagination from '@mui/material/TablePagination';
 import FormControl from '@mui/material/FormControl';
 import DialogActions from '@mui/material/DialogActions';
 import DialogContent from '@mui/material/DialogContent';
@@ -74,6 +75,9 @@ interface ChannelSession {
   createdAt: string;
   lastActivityAt: string;
   expiresAt?: string;
+  windowOpen?: boolean;
+  customerKind?: string;
+  displayName?: string;
 }
 
 interface SessionMessageEvidence {
@@ -85,12 +89,18 @@ interface SessionMessageEvidence {
   agentExecutionId?: string;
   channelMessageIdIn?: string;
   channelMessageIdOut?: string;
+  errorMessage?: string;
+  actor?: string;
+  deliveryState?: string;
 }
 
 export default function ChannelsPage() {
   const TENANT_ID = useTenantId();
   const [channels, setChannels] = useState<Channel[]>([]);
   const [sessions, setSessions] = useState<ChannelSession[]>([]);
+  const [sessionsTotal, setSessionsTotal] = useState(0);
+  const [sessionsPage, setSessionsPage] = useState(0);
+  const [sessionsPageSize, setSessionsPageSize] = useState(10);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -146,13 +156,15 @@ export default function ChannelsPage() {
       setError(null);
       const [channelsRes, sessionsRes, agentsRes, connectionsRes] = await Promise.all([
         axios.get(endpoints.agentflow.channels.list(TENANT_ID)),
-        axios.get(`/api/v1/tenants/${TENANT_ID}/channel-sessions?limit=50`),
+        axios.get(`/api/v1/tenants/${TENANT_ID}/channel-sessions?page=${sessionsPage}&pageSize=${sessionsPageSize}`),
         axios.get(`/api/v1/tenants/${TENANT_ID}/agents`),
         axios.get(endpoints.agentflow.connections.list(TENANT_ID)).catch(() => ({ data: [] })),
       ]);
 
       setChannels((channelsRes.data ?? []) as Channel[]);
-      setSessions((sessionsRes.data ?? []) as ChannelSession[]);
+      const sessionPayload = sessionsRes.data;
+      setSessions((sessionPayload?.items ?? sessionPayload ?? []) as ChannelSession[]);
+      setSessionsTotal(Number(sessionPayload?.total ?? (sessionPayload ?? []).length));
       const agents = (agentsRes.data ?? [])
         .filter((a: any) => a?.id && a.status !== 'Archived')
         .map((a: any) => ({ id: a.id, name: a.name }));
@@ -163,7 +175,7 @@ export default function ChannelsPage() {
     } finally {
       setLoading(false);
     }
-  }, [TENANT_ID]);
+  }, [TENANT_ID, sessionsPage, sessionsPageSize]);
 
   useEffect(() => {
     fetchAll();
@@ -319,8 +331,8 @@ export default function ChannelsPage() {
     try {
       setSelectedSession(session);
       setSessionLoading(true);
-      const res = await axios.get(`/api/v1/tenants/${TENANT_ID}/channel-sessions/${session.id}/messages?limit=50`);
-      setSessionMessages((res.data ?? []) as SessionMessageEvidence[]);
+      const res = await axios.get(`/api/v1/tenants/${TENANT_ID}/channel-sessions/${session.id}/messages?page=0&pageSize=100`);
+      setSessionMessages((res.data?.items ?? res.data ?? []) as SessionMessageEvidence[]);
     } catch (err: any) {
       alert(err?.message || 'Error cargando mensajes de sesion');
     } finally {
@@ -608,30 +620,73 @@ export default function ChannelsPage() {
 
           <Grid item xs={12} md={5}>
             <Card variant="outlined" sx={{ p: 2 }}>
-              <Typography variant="h6" sx={{ mb: 2 }}>Sesiones activas</Typography>
+              <Typography variant="h6" sx={{ mb: 2 }}>Sesiones de canal</Typography>
               {sessions.length === 0 ? (
-                <Alert severity="info">No hay sesiones activas.</Alert>
+                <Alert severity="info">No hay sesiones.</Alert>
               ) : (
-                <Stack spacing={2} sx={{ maxHeight: 600, overflow: 'auto' }}>
-                  {sessions.slice(0, 10).map((s) => (
-                    <Box key={s.id} sx={{ p: 2, border: 1, borderColor: 'divider', borderRadius: 1 }}>
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                        <Chip label={s.channelType} size="small" />
-                        <Typography variant="caption">{s.messageCount} msgs</Typography>
-                      </Box>
-                      <Typography variant="body2" fontWeight={700}>{s.identifier}</Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        Agente: {s.agentId ?? '-'} Â· Hilo: {s.threadId?.slice(0, 8) ?? '-'}
-                      </Typography>
-                      <Typography variant="caption" display="block" sx={{ mt: 0.5 }}>
-                        Ultima: {new Date(s.lastActivityAt).toLocaleString()}
-                      </Typography>
-                      <Button size="small" sx={{ mt: 1 }} onClick={() => openSessionEvidence(s)}>
-                        Ver evidencia
-                      </Button>
-                    </Box>
-                  ))}
-                </Stack>
+                <>
+                  <Box sx={{ overflowX: 'auto' }}>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Cliente</TableCell>
+                          <TableCell>Canal</TableCell>
+                          <TableCell>Estado</TableCell>
+                          <TableCell>Ventana</TableCell>
+                          <TableCell>Msgs</TableCell>
+                          <TableCell>Ultima</TableCell>
+                          <TableCell align="right">Accion</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {sessions.map((s) => (
+                          <TableRow key={s.id} hover>
+                            <TableCell>
+                              <Typography variant="body2" fontWeight={700}>
+                                {s.displayName || s.identifier}
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                {s.displayName ? s.identifier : s.customerKind || 'unknown'}
+                              </Typography>
+                            </TableCell>
+                            <TableCell>
+                              <Chip label={s.channelType} size="small" />
+                            </TableCell>
+                            <TableCell>
+                              <Chip label={s.status} size="small" color={getStatusColor(s.status) as any} />
+                            </TableCell>
+                            <TableCell>
+                              <Chip
+                                label={s.windowOpen ? 'Activa' : 'Cerrada'}
+                                size="small"
+                                color={s.windowOpen ? 'success' : 'default'}
+                              />
+                            </TableCell>
+                            <TableCell>{s.messageCount}</TableCell>
+                            <TableCell>{new Date(s.lastActivityAt).toLocaleString()}</TableCell>
+                            <TableCell align="right">
+                              <Button size="small" onClick={() => openSessionEvidence(s)}>
+                                Evidencia
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </Box>
+                  <TablePagination
+                    component="div"
+                    count={sessionsTotal}
+                    page={sessionsPage}
+                    rowsPerPage={sessionsPageSize}
+                    rowsPerPageOptions={[10, 25, 50]}
+                    onPageChange={(_, nextPage) => setSessionsPage(nextPage)}
+                    onRowsPerPageChange={(event) => {
+                      setSessionsPageSize(Number(event.target.value));
+                      setSessionsPage(0);
+                    }}
+                  />
+                </>
               )}
             </Card>
           </Grid>
@@ -944,8 +999,10 @@ export default function ChannelsPage() {
                   <TableHead>
                     <TableRow>
                       <TableCell>Direccion</TableCell>
+                      <TableCell>Actor</TableCell>
                       <TableCell>Contenido</TableCell>
                       <TableCell>Status</TableCell>
+                      <TableCell>Entrega</TableCell>
                       <TableCell>Creado</TableCell>
                     </TableRow>
                   </TableHead>
@@ -953,10 +1010,12 @@ export default function ChannelsPage() {
                     {sessionMessages.map((m) => (
                       <TableRow key={m.id}>
                         <TableCell>{m.direction}</TableCell>
+                        <TableCell>{m.actor || '-'}</TableCell>
                         <TableCell sx={{ maxWidth: 420, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                          {m.content}
+                          {m.errorMessage || m.content}
                         </TableCell>
                         <TableCell>{m.status}</TableCell>
+                        <TableCell>{m.deliveryState || '-'}</TableCell>
                         <TableCell>{new Date(m.createdAt).toLocaleString()}</TableCell>
                       </TableRow>
                     ))}

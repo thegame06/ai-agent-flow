@@ -70,6 +70,42 @@ public sealed class MongoChannelSessionRepository : IChannelSessionRepository
             .ToListAsync(ct);
     }
 
+    public async Task<(IReadOnlyList<ChannelSession> Items, long Total)> SearchAsync(
+        string tenantId,
+        string? channelId = null,
+        string? status = null,
+        string? query = null,
+        int page = 0,
+        int pageSize = 25,
+        CancellationToken ct = default)
+    {
+        page = Math.Max(0, page);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+
+        var filter = Builders<ChannelSession>.Filter.Eq(x => x.TenantId, tenantId);
+        if (!string.IsNullOrWhiteSpace(channelId))
+            filter &= Builders<ChannelSession>.Filter.Eq(x => x.ChannelId, channelId);
+        if (!string.IsNullOrWhiteSpace(status) &&
+            Enum.TryParse<SessionStatus>(status, true, out var parsedStatus))
+            filter &= Builders<ChannelSession>.Filter.Eq(x => x.Status, parsedStatus);
+        if (!string.IsNullOrWhiteSpace(query))
+        {
+            var safeQuery = System.Text.RegularExpressions.Regex.Escape(query.Trim());
+            filter &= Builders<ChannelSession>.Filter.Regex(
+                x => x.Identifier,
+                new MongoDB.Bson.BsonRegularExpression(safeQuery, "i"));
+        }
+
+        var total = await _collection.CountDocumentsAsync(filter, cancellationToken: ct);
+        var items = await _collection.Find(filter)
+            .SortByDescending(x => x.LastActivityAt)
+            .Skip(page * pageSize)
+            .Limit(pageSize)
+            .ToListAsync(ct);
+
+        return (items, total);
+    }
+
     public async Task<Result> InsertAsync(ChannelSession session, CancellationToken ct = default)
     {
         try

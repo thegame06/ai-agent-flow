@@ -1,5 +1,6 @@
 ﻿using AgentFlow.Abstractions;
 using AgentFlow.Application.Channels;
+using AgentFlow.Application.Memory;
 using AgentFlow.Core.Engine;
 using AgentFlow.Domain.Aggregates;
 using AgentFlow.Domain.Common;
@@ -54,6 +55,8 @@ public sealed class ChannelGatewayTests
             handoffExecutor.Object,
             handoffPolicy.Object,
             Mock.Of<AgentFlow.Security.IIntentRoutingStore>(),
+            Mock.Of<ITenantContextAccessor>(),
+            Mock.Of<IAuditMemory>(),
             new[] { new TestChannelHandler(ChannelType.Api) },
             NullLogger<ChannelGateway>.Instance);
 
@@ -105,6 +108,8 @@ public sealed class ChannelGatewayTests
             handoffExecutor.Object,
             handoffPolicy.Object,
             Mock.Of<AgentFlow.Security.IIntentRoutingStore>(),
+            Mock.Of<ITenantContextAccessor>(),
+            Mock.Of<IAuditMemory>(),
             new[] { new TestChannelHandler(ChannelType.Api) },
             NullLogger<ChannelGateway>.Instance);
 
@@ -171,6 +176,8 @@ public sealed class ChannelGatewayTests
             handoffExecutor.Object,
             handoffPolicy.Object,
             Mock.Of<AgentFlow.Security.IIntentRoutingStore>(),
+            Mock.Of<ITenantContextAccessor>(),
+            Mock.Of<IAuditMemory>(),
             new[] { new TestChannelHandler(ChannelType.Api) },
             NullLogger<ChannelGateway>.Instance);
 
