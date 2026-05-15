@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Linq;
 using AgentFlow.Abstractions;
+using MongoDB.Driver;
 
 namespace AgentFlow.Api.AuthProfiles;
 
@@ -51,6 +52,15 @@ internal sealed record StoredProfile
     public DateTimeOffset CreatedAt { get; init; }
     public DateTimeOffset? ExpiresAt { get; init; }
     public IReadOnlyDictionary<string, string>? Metadata { get; init; }
+}
+
+internal sealed record StoredModelProfileBinding
+{
+    public required string Id { get; init; }
+    public required string TenantId { get; init; }
+    public required string ModelId { get; init; }
+    public required string ProfileId { get; init; }
+    public DateTimeOffset UpdatedAt { get; init; }
 }
 
 public sealed class InMemoryAuthProfilesStore : IAuthProfilesStore
@@ -197,6 +207,186 @@ public sealed class InMemoryAuthProfilesStore : IAuthProfilesStore
 
         return Encoding.UTF8.GetString(plainBytes);
     }
+    private static byte[] GetKey()
+    {
+        var keyMaterial = Environment.GetEnvironmentVariable("AGENTFLOW_AUTH_KEY")
+            ?? "agentflow-dev-key-change-me";
+        return SHA256.HashData(Encoding.UTF8.GetBytes(keyMaterial));
+    }
+
+    private static string? Mask(string? secret)
+    {
+        if (string.IsNullOrWhiteSpace(secret)) return null;
+        if (secret.Length <= 6) return new string('*', secret.Length);
+        return $"{secret[..3]}***{secret[^3..]}";
+    }
+}
+
+public sealed class MongoAuthProfilesStore : IAuthProfilesStore
+{
+    private readonly IMongoCollection<StoredProfile> _profiles;
+    private readonly IMongoCollection<StoredModelProfileBinding> _bindings;
+
+    public MongoAuthProfilesStore(IMongoDatabase database)
+    {
+        _profiles = database.GetCollection<StoredProfile>("auth_profiles");
+        _bindings = database.GetCollection<StoredModelProfileBinding>("auth_model_bindings");
+    }
+
+    public ProviderAuthProfile Upsert(string tenantId, UpsertProviderAuthProfileRequest request)
+    {
+        var filter = ProfileFilter(tenantId, request.ProfileId);
+        var existing = _profiles.Find(filter).FirstOrDefault();
+        var now = DateTimeOffset.UtcNow;
+
+        var profile = existing is null
+            ? new StoredProfile
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                TenantId = tenantId,
+                Provider = request.Provider,
+                ProfileId = request.ProfileId,
+                AuthType = request.AuthType,
+                SecretCipher = Encrypt(request.Secret),
+                CreatedAt = now,
+                ExpiresAt = request.ExpiresAt,
+                Metadata = request.Metadata
+            }
+            : existing with
+            {
+                Provider = request.Provider,
+                AuthType = request.AuthType,
+                SecretCipher = string.IsNullOrWhiteSpace(request.Secret) ? existing.SecretCipher : Encrypt(request.Secret),
+                ExpiresAt = request.ExpiresAt,
+                Metadata = request.Metadata
+            };
+
+        _profiles.ReplaceOne(filter, profile, new ReplaceOptions { IsUpsert = true });
+        return ToPublic(profile);
+    }
+
+    public IReadOnlyList<ProviderAuthProfile> List(string tenantId, string? provider = null)
+    {
+        var filter = Builders<StoredProfile>.Filter.Eq(x => x.TenantId, tenantId);
+        if (!string.IsNullOrWhiteSpace(provider))
+        {
+            filter &= Builders<StoredProfile>.Filter.Regex(
+                x => x.Provider,
+                new MongoDB.Bson.BsonRegularExpression($"^{System.Text.RegularExpressions.Regex.Escape(provider)}$", "i"));
+        }
+
+        return _profiles.Find(filter)
+            .SortByDescending(x => x.CreatedAt)
+            .ToList()
+            .Select(ToPublic)
+            .ToList();
+    }
+
+    public ProviderAuthProfile? Get(string tenantId, string profileId)
+    {
+        var profile = _profiles.Find(ProfileFilter(tenantId, profileId)).FirstOrDefault();
+        return profile is null ? null : ToPublic(profile);
+    }
+
+    public string? GetSecret(string tenantId, string profileId)
+    {
+        var profile = _profiles.Find(ProfileFilter(tenantId, profileId)).FirstOrDefault();
+        return profile is null ? null : Decrypt(profile.SecretCipher);
+    }
+
+    public bool Delete(string tenantId, string profileId)
+    {
+        var deleted = _profiles.DeleteOne(ProfileFilter(tenantId, profileId)).DeletedCount > 0;
+        if (!deleted) return false;
+
+        _bindings.DeleteMany(Builders<StoredModelProfileBinding>.Filter.Eq(x => x.TenantId, tenantId) &
+            Builders<StoredModelProfileBinding>.Filter.Eq(x => x.ProfileId, profileId));
+        return true;
+    }
+
+    public bool LinkModelProfile(string tenantId, string modelId, string profileId)
+    {
+        if (Get(tenantId, profileId) is null) return false;
+
+        var filter = ModelBindingFilter(tenantId, modelId);
+        var existing = _bindings.Find(filter).FirstOrDefault();
+        var binding = new StoredModelProfileBinding
+        {
+            Id = existing?.Id ?? Guid.NewGuid().ToString("N"),
+            TenantId = tenantId,
+            ModelId = modelId,
+            ProfileId = profileId,
+            UpdatedAt = DateTimeOffset.UtcNow
+        };
+
+        _bindings.ReplaceOne(filter, binding, new ReplaceOptions { IsUpsert = true });
+        return true;
+    }
+
+    public string? GetModelProfileId(string tenantId, string modelId)
+    {
+        return _bindings.Find(ModelBindingFilter(tenantId, modelId))
+            .FirstOrDefault()
+            ?.ProfileId;
+    }
+
+    private static FilterDefinition<StoredProfile> ProfileFilter(string tenantId, string profileId) =>
+        Builders<StoredProfile>.Filter.Eq(x => x.TenantId, tenantId) &
+        Builders<StoredProfile>.Filter.Eq(x => x.ProfileId, profileId);
+
+    private static FilterDefinition<StoredModelProfileBinding> ModelBindingFilter(string tenantId, string modelId) =>
+        Builders<StoredModelProfileBinding>.Filter.Eq(x => x.TenantId, tenantId) &
+        Builders<StoredModelProfileBinding>.Filter.Eq(x => x.ModelId, modelId);
+
+    private static ProviderAuthProfile ToPublic(StoredProfile p) => new()
+    {
+        Id = p.Id,
+        TenantId = p.TenantId,
+        Provider = p.Provider,
+        ProfileId = p.ProfileId,
+        AuthType = p.AuthType,
+        SecretMasked = Mask(Decrypt(p.SecretCipher)),
+        CreatedAt = p.CreatedAt,
+        ExpiresAt = p.ExpiresAt,
+        Metadata = p.Metadata
+    };
+
+    private static string? Encrypt(string? plain)
+    {
+        if (string.IsNullOrWhiteSpace(plain)) return null;
+
+        using var aes = Aes.Create();
+        aes.Key = GetKey();
+        aes.GenerateIV();
+
+        using var encryptor = aes.CreateEncryptor(aes.Key, aes.IV);
+        var plainBytes = Encoding.UTF8.GetBytes(plain);
+        var cipherBytes = encryptor.TransformFinalBlock(plainBytes, 0, plainBytes.Length);
+
+        var packed = new byte[aes.IV.Length + cipherBytes.Length];
+        Buffer.BlockCopy(aes.IV, 0, packed, 0, aes.IV.Length);
+        Buffer.BlockCopy(cipherBytes, 0, packed, aes.IV.Length, cipherBytes.Length);
+
+        return Convert.ToBase64String(packed);
+    }
+
+    private static string? Decrypt(string? cipher)
+    {
+        if (string.IsNullOrWhiteSpace(cipher)) return null;
+
+        var packed = Convert.FromBase64String(cipher);
+        using var aes = Aes.Create();
+        aes.Key = GetKey();
+
+        var iv = packed[..16];
+        var cipherBytes = packed[16..];
+
+        using var decryptor = aes.CreateDecryptor(aes.Key, iv);
+        var plainBytes = decryptor.TransformFinalBlock(cipherBytes, 0, cipherBytes.Length);
+
+        return Encoding.UTF8.GetString(plainBytes);
+    }
+
     private static byte[] GetKey()
     {
         var keyMaterial = Environment.GetEnvironmentVariable("AGENTFLOW_AUTH_KEY")

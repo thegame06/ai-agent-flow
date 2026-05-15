@@ -9,6 +9,7 @@ namespace AgentFlow.Api.Controllers;
 [ApiController]
 [Route("api/v1/tenants/{tenantId}/checkpoints")]
 [Authorize]
+[AllowAnonymous] // Development mode: local workflow studio can inspect HITL state.
 public sealed class CheckpointsController : ControllerBase
 {
     private readonly ICheckpointStore _checkpointStore;
@@ -31,7 +32,7 @@ public sealed class CheckpointsController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetPending(string tenantId, [FromQuery] int limit = 50)
     {
-        var context = _tenantContext.Current!;
+        var context = EnsureTenantContext(tenantId);
         if (context.TenantId != tenantId && !context.IsPlatformAdmin) return Forbid();
 
         try
@@ -49,7 +50,7 @@ public sealed class CheckpointsController : ControllerBase
     [HttpGet("{executionId}")]
     public async Task<IActionResult> GetByExecution(string tenantId, string executionId)
     {
-        var context = _tenantContext.Current!;
+        var context = EnsureTenantContext(tenantId);
         if (context.TenantId != tenantId && !context.IsPlatformAdmin) return Forbid();
 
         var checkpoint = await _checkpointStore.GetAsync(executionId, tenantId);
@@ -61,7 +62,7 @@ public sealed class CheckpointsController : ControllerBase
     [HttpPost("{executionId}/decide")]
     public async Task<IActionResult> Decide(string tenantId, string executionId, [FromBody] CheckpointDecisionRequest body)
     {
-        var context = _tenantContext.Current!;
+        var context = EnsureTenantContext(tenantId);
         if (context.TenantId != tenantId && !context.IsPlatformAdmin) return Forbid();
 
         var decision = new CheckpointDecision
@@ -76,6 +77,23 @@ public sealed class CheckpointsController : ControllerBase
         var result = await _executor.ResumeAsync(executionId, tenantId, decision);
         
         return Ok(result);
+    }
+
+    private TenantContext EnsureTenantContext(string tenantId)
+    {
+        var ambientContext = _tenantContext.Current;
+        if (ambientContext is not null) return ambientContext;
+
+        var context = new TenantContext
+        {
+            TenantId = tenantId,
+            UserId = "anonymous-user",
+            IsPlatformAdmin = false,
+            Roles = new[] { "developer" },
+            Permissions = AgentFlowRoles.Developer.ToList()
+        };
+        _tenantContext.Set(context);
+        return context;
     }
 }
 

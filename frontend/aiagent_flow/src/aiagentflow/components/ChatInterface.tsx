@@ -58,6 +58,14 @@ interface ExecutionDetail {
   id: string;
   status?: string;
   errorMessage?: string;
+  reviewReason?: string;
+  steps?: Array<{
+    stepType?: string;
+    isSuccess?: boolean;
+    errorMessage?: string;
+    thinkingRationale?: string;
+    llmResponse?: string;
+  }>;
   output?: {
     finalResponse?: string;
     totalTokensUsed?: number;
@@ -153,7 +161,17 @@ export function ChatInterface({ agentId, agentName, tenantId }: ChatInterfacePro
   const loadExecutionDetail = useCallback(async (executionId: string) => {
     try {
       const res = await axios.get(`/api/v1/tenants/${tenantId}/executions/${executionId}`);
-      setSelectedExecution(res.data as ExecutionDetail);
+      const detail = res.data as ExecutionDetail;
+      if (detail.status === 'HumanReviewPending') {
+        try {
+          const checkpoint = await axios.get(`/api/v1/tenants/${tenantId}/checkpoints/${executionId}`);
+          detail.reviewReason = checkpoint.data?.reason || checkpoint.data?.llmRationale;
+        } catch {
+          detail.reviewReason = detail.steps?.find((s) => s.errorMessage || s.thinkingRationale)?.errorMessage
+            || detail.steps?.find((s) => s.errorMessage || s.thinkingRationale)?.thinkingRationale;
+        }
+      }
+      setSelectedExecution(detail);
     } catch (err) {
       console.warn('Failed to load execution detail', err);
     }
@@ -439,7 +457,12 @@ export function ChatInterface({ agentId, agentName, tenantId }: ChatInterfacePro
           <Alert severity={selectedExecution.status === 'Failed' ? 'error' : 'info'} sx={{ mb: 2 }}>
             <Typography variant="subtitle2">Execution {selectedExecution.id.slice(0, 8)}</Typography>
             <Typography variant="body2" sx={{ mt: 0.5, mb: 1 }}>
-              {selectedExecution.output?.finalResponse || selectedExecution.errorMessage || 'No detail available'}
+              {selectedExecution.output?.finalResponse
+                || selectedExecution.reviewReason
+                || selectedExecution.errorMessage
+                || selectedExecution.steps?.find((s) => s.errorMessage)?.errorMessage
+                || selectedExecution.steps?.find((s) => s.thinkingRationale)?.thinkingRationale
+                || 'No detail available'}
             </Typography>
             <Stack direction="row" spacing={1}>
               <Button

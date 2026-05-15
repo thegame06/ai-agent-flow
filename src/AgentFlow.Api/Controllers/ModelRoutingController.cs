@@ -15,15 +15,18 @@ public sealed class ModelRoutingController : ControllerBase
     private readonly IModelRegistry _registry;
     private readonly ITenantContextAccessor _tenantContext;
     private readonly IAuthProfilesStore _authProfiles;
+    private readonly IModelCatalogStore _catalog;
 
     public ModelRoutingController(
         IModelRegistry registry,
         ITenantContextAccessor tenantContext,
-        IAuthProfilesStore authProfiles)
+        IAuthProfilesStore authProfiles,
+        IModelCatalogStore catalog)
     {
         _registry = registry;
         _tenantContext = tenantContext;
         _authProfiles = authProfiles;
+        _catalog = catalog;
     }
 
     [HttpGet("models")]
@@ -159,6 +162,20 @@ public sealed class ModelRoutingController : ControllerBase
             _authProfiles.LinkModelProfile(context.TenantId, request.ModelId, providerProfileId);
         }
 
+        var existing = _catalog.Get(context.TenantId, request.ModelId);
+        _catalog.Upsert(new ModelCatalogEntry
+        {
+            Id = existing?.Id ?? Guid.NewGuid().ToString("N"),
+            TenantId = context.TenantId,
+            ModelId = request.ModelId,
+            ProviderId = request.ProviderId,
+            DisplayName = request.DisplayName,
+            CostPer1KTokens = request.CostPer1KTokens,
+            MaxContextTokens = request.MaxContextTokens,
+            Tier = request.Tier,
+            UpdatedAt = DateTimeOffset.UtcNow
+        });
+
         return CreatedAtAction(nameof(GetAvailableModels), new
         {
             provider.ModelId,
@@ -203,6 +220,20 @@ public sealed class ModelRoutingController : ControllerBase
                     MaxContextTokens = model.Metadata.MaxContextTokens,
                     Tier = tier
                 }));
+
+            var existing = _catalog.Get(context.TenantId, model.ModelId);
+            _catalog.Upsert(new ModelCatalogEntry
+            {
+                Id = existing?.Id ?? Guid.NewGuid().ToString("N"),
+                TenantId = context.TenantId,
+                ModelId = model.ModelId,
+                ProviderId = model.ProviderId,
+                DisplayName = model.Metadata.DisplayName,
+                CostPer1KTokens = model.Metadata.CostPer1KTokens,
+                MaxContextTokens = model.Metadata.MaxContextTokens,
+                Tier = tier,
+                UpdatedAt = DateTimeOffset.UtcNow
+            });
         }
 
         return Ok(new
@@ -260,6 +291,9 @@ public sealed class ModelRoutingController : ControllerBase
             return BadRequest(new { message = "Profile provider does not match model provider." });
 
         _authProfiles.LinkModelProfile(context.TenantId, modelId, request.ProviderProfileId);
+        var existing = _catalog.Get(context.TenantId, modelId);
+        if (existing is not null)
+            _catalog.Upsert(existing with { UpdatedAt = DateTimeOffset.UtcNow });
 
         return Ok(new
         {
@@ -278,6 +312,7 @@ public sealed class ModelRoutingController : ControllerBase
 
         var removed = _registry.Remove(modelId);
         if (!removed) return NotFound(new { message = $"Model '{modelId}' not found." });
+        _catalog.Delete(context.TenantId, modelId);
 
         return Ok(new { message = $"Model '{modelId}' removed from routing registry." });
     }

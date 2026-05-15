@@ -126,7 +126,8 @@ public sealed class AgentExecutionsController : ControllerBase
         [FromRoute] string executionId,
         CancellationToken ct = default)
     {
-        var context = _tenantContext.Current ?? new TenantContext
+        var ambientContext = _tenantContext.Current;
+        var context = ambientContext ?? new TenantContext
         {
             TenantId = tenantId,
             UserId = "anonymous-user",
@@ -134,6 +135,8 @@ public sealed class AgentExecutionsController : ControllerBase
             Roles = new[] { "developer" },
             Permissions = AgentFlow.Security.AgentFlowRoles.Developer.ToList()
         };
+        if (ambientContext is null)
+            _tenantContext.Set(context);
 
         if (context.TenantId != tenantId && !context.IsPlatformAdmin) return Forbid();
 
@@ -180,7 +183,8 @@ public sealed class AgentExecutionsController : ControllerBase
         CancellationToken ct)
     {
         // For development: allow anonymous access with default context
-        var context = _tenantContext.Current ?? new TenantContext
+        var triggerAmbientContext = _tenantContext.Current;
+        var context = triggerAmbientContext ?? new TenantContext
         {
             TenantId = tenantId,
             UserId = "anonymous-user",
@@ -188,6 +192,8 @@ public sealed class AgentExecutionsController : ControllerBase
             Roles = new[] { "developer" },
             Permissions = AgentFlow.Security.AgentFlowRoles.Developer.ToList()
         };
+        if (triggerAmbientContext is null)
+            _tenantContext.Set(context);
 
         if (context.TenantId != tenantId && !context.IsPlatformAdmin)
         {
@@ -266,7 +272,9 @@ public sealed class AgentExecutionsController : ControllerBase
         var metadata = new Dictionary<string, string>(routingMetadata)
         {
             ["RoutingStrategy"] = routingStrategy,
-            ["OriginalAgentId"] = agentId
+            ["OriginalAgentId"] = agentId,
+            ["permissions"] = string.Join(",", context.Permissions),
+            ["mcp.policy.allow_actions"] = "tools.execute"
         };
 
         var request = new AgentExecutionRequest

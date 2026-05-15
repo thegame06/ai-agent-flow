@@ -7,6 +7,7 @@ using AgentFlow.Security;
 using AgentFlow.Abstractions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Text.Json;
 
 namespace AgentFlow.Api.Controllers;
 
@@ -442,9 +443,51 @@ public sealed class AgentsController : ControllerBase
         Type = step.Type,
         Label = step.Label,
         Description = step.Description,
-        Config = step.Config,
+        Config = NormalizeConfig(step.Config),
         Position = new WorkflowPosition { X = step.Position.X, Y = step.Position.Y },
         Connections = step.Connections,
+    };
+
+    private static IReadOnlyDictionary<string, object> NormalizeConfig(IReadOnlyDictionary<string, object>? config)
+    {
+        if (config is null) return new Dictionary<string, object>();
+
+        return config.ToDictionary(
+            kvp => kvp.Key,
+            kvp => NormalizeConfigValue(kvp.Value));
+    }
+
+    private static object NormalizeConfigValue(object? value)
+    {
+        if (value is null) return string.Empty;
+
+        return value switch
+        {
+            JsonElement element => NormalizeJsonElement(element),
+            JsonDocument document => NormalizeJsonElement(document.RootElement),
+            IReadOnlyDictionary<string, object> typedDictionary => NormalizeConfig(typedDictionary),
+            IDictionary<string, object> dictionary => dictionary.ToDictionary(
+                kvp => kvp.Key,
+                kvp => NormalizeConfigValue(kvp.Value)),
+            IEnumerable<object> values when value is not string => values.Select(NormalizeConfigValue).ToList(),
+            _ => value
+        };
+    }
+
+    private static object NormalizeJsonElement(JsonElement element) => element.ValueKind switch
+    {
+        JsonValueKind.Object => element.EnumerateObject()
+            .ToDictionary(property => property.Name, property => NormalizeJsonElement(property.Value)),
+        JsonValueKind.Array => element.EnumerateArray()
+            .Select(NormalizeJsonElement)
+            .ToList(),
+        JsonValueKind.String => element.GetString() ?? string.Empty,
+        JsonValueKind.Number when element.TryGetInt64(out var longValue) => longValue,
+        JsonValueKind.Number when element.TryGetDouble(out var doubleValue) => doubleValue,
+        JsonValueKind.True => true,
+        JsonValueKind.False => false,
+        JsonValueKind.Null or JsonValueKind.Undefined => string.Empty,
+        _ => element.GetRawText()
     };
 
     private static PlannerType ParsePlannerType(string? value)

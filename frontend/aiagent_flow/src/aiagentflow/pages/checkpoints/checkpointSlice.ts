@@ -31,23 +31,28 @@ const initialState: CheckpointState = {
 
 export const fetchCheckpoints = createAsyncThunk(
   'checkpoints/fetchAll',
-  async (tenantId: string) => {
-    const response = await axios.get(`/api/v1/tenants/${tenantId}/checkpoints`);
-    return response.data;
+  async (tenantId: string, { rejectWithValue }) => {
+    try {
+      const response = await axios.get(`/api/v1/tenants/${tenantId}/checkpoints`);
+      return response.data;
+    } catch (error: any) {
+      return rejectWithValue(error?.response?.data?.error || error?.response?.data?.message || error.message);
+    }
   }
 );
 
 export const decideCheckpoint = createAsyncThunk(
   'checkpoints/decide',
-  async ({ tenantId, executionId, approved, feedback }: {
+  async ({ tenantId, executionId, checkpointId, approved, feedback }: {
     tenantId: string;
     executionId: string;
+    checkpointId: string;
     approved: boolean;
     feedback?: string;
   }) => {
     const response = await axios.post(
       `/api/v1/tenants/${tenantId}/checkpoints/${executionId}/decide`,
-      { approved, feedback }
+      { checkpointId, approved, feedback }
     );
     return { executionId, response: response.data };
   }
@@ -69,7 +74,7 @@ const checkpointSlice = createSlice({
       })
       .addCase(fetchCheckpoints.rejected, (state, action) => {
         state.loading = false;
-        state.error = action.error.message ?? 'Failed to load checkpoints';
+        state.error = (action.payload as string) || action.error.message || 'Failed to load checkpoints';
       })
       .addCase(decideCheckpoint.pending, (state, action) => {
         state.decidingId = action.meta.arg.executionId;

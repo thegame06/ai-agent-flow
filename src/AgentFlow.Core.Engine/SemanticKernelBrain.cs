@@ -10,12 +10,8 @@ public sealed class SemanticKernelBrain : IAgentBrain
 {
     public Task<ThinkResult> ThinkAsync(ThinkContext context, CancellationToken ct = default)
     {
-        return Task.FromResult(new ThinkResult
-        {
-            Decision = ThinkDecision.Checkpoint,
-            Rationale = "SemanticKernelBrain is legacy and disabled. Use MicrosoftAgentFramework as AgentBrain:DefaultProvider.",
-            TokensUsed = 0
-        });
+        throw new NotSupportedException(
+            "SemanticKernelBrain is legacy and disabled. Use MicrosoftAgentFramework as AgentBrain:DefaultProvider and republish the agent with that runtime.");
     }
 
     public Task<ObserveResult> ObserveAsync(ObserveContext context, CancellationToken ct = default)

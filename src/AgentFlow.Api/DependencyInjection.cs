@@ -58,7 +58,8 @@ public static class DependencyInjection
             .AddMongoDB(configuration)
             .AddRepositories()
             .AddChannelGateway(configuration)
-            .AddSingleton<IAuthProfilesStore, InMemoryAuthProfilesStore>()
+            .AddSingleton<IAuthProfilesStore, MongoAuthProfilesStore>()
+            .AddSingleton<IModelCatalogStore, MongoModelCatalogStore>()
             .AddScoped<IModelCredentialResolver, AuthProfileModelCredentialResolver>()
             .AddScoped<IConnectStore, MongoConnectStore>()
             .AddScoped<IWorkflowStudioStore, MongoWorkflowStudioStore>()
@@ -75,6 +76,7 @@ public static class DependencyInjection
         services.AddScoped<IWorkflowAuditService, WorkflowAuditService>();
         services.AddHostedService<WorkflowRuntimeWorker>();
         services.AddHostedService<WorkflowCatalogSeeder>();
+        services.AddHostedService<ModelRoutingBootstrapService>();
 
         return services;
     }

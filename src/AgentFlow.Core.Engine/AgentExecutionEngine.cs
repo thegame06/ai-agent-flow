@@ -576,7 +576,38 @@ public sealed class AgentExecutionEngine : IAgentExecutor
                 ThreadSnapshot = threadSnapshot // ✅ NEW: Pass thread history to LLM
             };
 
-            var thinkResult = await resolvedBrain.ThinkAsync(thinkCtx, ct);
+            ThinkResult thinkResult;
+            try
+            {
+                thinkResult = await resolvedBrain.ThinkAsync(thinkCtx, ct);
+            }
+            catch (Exception ex)
+            {
+                thinkSw.Stop();
+                _logger.LogError(
+                    ex,
+                    "Brain execution failed before producing a decision for execution {ExecutionId}",
+                    execution.Id);
+
+                var failedThinkStep = new AgentStep
+                {
+                    StepType = StepType.Think,
+                    Iteration = execution.CurrentIteration,
+                    StartedAt = DateTimeOffset.UtcNow.AddMilliseconds(-thinkSw.ElapsedMilliseconds),
+                    CompletedAt = DateTimeOffset.UtcNow,
+                    DurationMs = thinkSw.ElapsedMilliseconds,
+                    LlmPrompt = currentMessage,
+                    ThinkingRationale = "Brain execution failed before producing a decision.",
+                    IsSuccess = false,
+                    ErrorMessage = ex.Message
+                };
+
+                execution.AppendStep(failedThinkStep);
+                await _executionRepo.AppendStepAsync(execution.Id, request.TenantId, failedThinkStep, ct);
+
+                return Result<string?>.Failure(Error.EngineError($"Brain execution failed: {ex.Message}"));
+            }
+
             thinkSw.Stop();
             var rationale = thinkResult.Rationale ?? string.Empty;
             ExecutionTracing.RecordThinkDecision(thinkActivity, thinkResult.Decision.ToString(), rationale);

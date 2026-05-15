@@ -269,6 +269,7 @@ export default function CheckpointsPage() {
     dispatch(decideCheckpoint({
       tenantId: cp.tenantId,
       executionId: cp.executionId,
+      checkpointId: cp.checkpointId,
       approved: true,
     }));
   };
@@ -283,6 +284,7 @@ export default function CheckpointsPage() {
       dispatch(decideCheckpoint({
         tenantId: rejectDialog.tenantId,
         executionId: rejectDialog.executionId,
+        checkpointId: rejectDialog.checkpointId,
         approved: false,
         feedback: rejectFeedback || 'Rejected by human reviewer.',
       }));

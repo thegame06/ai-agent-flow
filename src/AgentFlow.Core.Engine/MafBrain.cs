@@ -237,9 +237,16 @@ public sealed class MafBrain : IAgentBrain
             var root = doc.RootElement;
 
             var decisionRaw = root.TryGetProperty("decision", out var d) ? d.GetString() : null;
-            var decision = Enum.TryParse<ThinkDecision>(decisionRaw, ignoreCase: true, out var parsed)
-                ? parsed
-                : ThinkDecision.Checkpoint;
+            if (!Enum.TryParse<ThinkDecision>(decisionRaw, ignoreCase: true, out var decision))
+            {
+                return new ThinkResult
+                {
+                    Decision = ThinkDecision.ProvideFinalAnswer,
+                    Rationale = "MAF returned a response without a valid decision; treating it as a final answer.",
+                    FinalAnswer = json,
+                    TokensUsed = 0
+                };
+            }
 
             var parsedResult = new ThinkResult
             {
@@ -255,13 +262,25 @@ public sealed class MafBrain : IAgentBrain
         }
         catch (JsonException ex)
         {
+            if (!string.IsNullOrWhiteSpace(json))
+            {
+                return new ThinkResult
+                {
+                    Decision = ThinkDecision.ProvideFinalAnswer,
+                    Rationale = "MAF returned non-JSON content; treating it as a final answer instead of pausing for human review.",
+                    FinalAnswer = json,
+                    TokensUsed = 0
+                };
+            }
+
             return new ThinkResult
             {
-                Decision = ThinkDecision.Checkpoint,
+                Decision = ThinkDecision.ProvideFinalAnswer,
                 Rationale = BrainContractValidator.SerializeContractErrors(
                     "MAF",
                     "ThinkResult",
                     [$"Malformed JSON: {ex.Message}"]),
+                FinalAnswer = "No pude procesar la respuesta del modelo porque vino vacia o mal formada.",
                 TokensUsed = 0
             };
         }

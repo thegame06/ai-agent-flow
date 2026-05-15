@@ -20,6 +20,7 @@ public sealed class ChannelGateway : IChannelGateway
     private readonly IAgentHandoffExecutor _handoffExecutor;
     private readonly IManagerHandoffPolicy _handoffPolicy;
     private readonly IIntentRoutingStore _intentRoutingStore;
+    private readonly ITenantContextAccessor _tenantContext;
     private readonly ILogger<ChannelGateway> _logger;
 
     public ChannelGateway(
@@ -30,6 +31,7 @@ public sealed class ChannelGateway : IChannelGateway
         IAgentHandoffExecutor handoffExecutor,
         IManagerHandoffPolicy handoffPolicy,
         IIntentRoutingStore intentRoutingStore,
+        ITenantContextAccessor tenantContext,
         IEnumerable<IChannelHandler> handlers,
         ILogger<ChannelGateway> logger)
     {
@@ -40,6 +42,7 @@ public sealed class ChannelGateway : IChannelGateway
         _handoffExecutor = handoffExecutor;
         _handoffPolicy = handoffPolicy;
         _intentRoutingStore = intentRoutingStore;
+        _tenantContext = tenantContext;
         _logger = logger;
 
         foreach (var handler in handlers)
@@ -124,11 +127,23 @@ public sealed class ChannelGateway : IChannelGateway
                 }
             }
 
+            var ambientContext = _tenantContext.Current;
+            var executionContext = ambientContext ?? new TenantContext
+            {
+                TenantId = incomingMessage.TenantId,
+                UserId = incomingMessage.From,
+                IsPlatformAdmin = false,
+                Roles = new[] { "developer" },
+                Permissions = AgentFlowRoles.Developer.ToList()
+            };
+            if (ambientContext is null)
+                _tenantContext.Set(executionContext);
+
             var executionRequest = new AgentExecutionRequest
             {
                 TenantId = incomingMessage.TenantId,
                 AgentKey = agentKey,
-                UserId = incomingMessage.From,
+                UserId = executionContext.UserId,
                 UserMessage = incomingMessage.Content,
                 ContextJson = System.Text.Json.JsonSerializer.Serialize(new
                 {
@@ -149,7 +164,9 @@ public sealed class ChannelGateway : IChannelGateway
                 {
                     // Pass the originating message ID so AgentExecutionEngine
                     // can stamp it into AgentExecution.ChannelMessageId
-                    ["channelMessageId"] = incomingMessage.Id
+                    ["channelMessageId"] = incomingMessage.Id,
+                    ["permissions"] = string.Join(",", executionContext.Permissions),
+                    ["mcp.policy.allow_actions"] = "tools.execute"
                 }
             };
 
