@@ -1,5 +1,4 @@
 using System.Reflection;
-using System.Runtime.Serialization;
 using System.Text.Json;
 using AgentFlow.Abstractions;
 using AgentFlow.Core.Engine;
@@ -9,40 +8,31 @@ namespace AgentFlow.Tests.Integration.Orchestration;
 public class BrainContractGoldenTests
 {
     [Fact]
-    public void ThinkContractGolden_SK_And_MAF_AreFunctionallyEquivalent()
+    public void ThinkContractGolden_MAF_NormalizesContract()
     {
         var fixture = LoadFixture();
         foreach (var testCase in fixture.ThinkCases)
         {
-            var sk = InvokeThinkParser(typeof(SemanticKernelBrain), testCase.Json);
             var maf = InvokeThinkParser(typeof(MafBrain), testCase.Json);
 
             var expectedDecision = Enum.Parse<ThinkDecision>(testCase.ExpectedDecision, ignoreCase: true);
-            Assert.Equal(expectedDecision, sk.Decision);
             Assert.Equal(expectedDecision, maf.Decision);
-            Assert.Equal(sk.Decision, maf.Decision);
 
-            Assert.Equal(testCase.ExpectedToolName, sk.NextToolName);
             Assert.Equal(testCase.ExpectedToolName, maf.NextToolName);
-            Assert.Equal(testCase.ExpectFinalAnswer, !string.IsNullOrWhiteSpace(sk.FinalAnswer));
             Assert.Equal(testCase.ExpectFinalAnswer, !string.IsNullOrWhiteSpace(maf.FinalAnswer));
         }
     }
 
     [Fact]
-    public void ObserveContractGolden_SK_And_MAF_AreFunctionallyEquivalent()
+    public void ObserveContractGolden_MAF_NormalizesContract()
     {
         var fixture = LoadFixture();
         foreach (var testCase in fixture.ObserveCases)
         {
-            var sk = InvokeObserveParser(typeof(SemanticKernelBrain), testCase.Json);
             var maf = InvokeObserveParser(typeof(MafBrain), testCase.Json);
 
-            Assert.Equal(testCase.ExpectedGoalAchieved, sk.GoalAchieved);
             Assert.Equal(testCase.ExpectedGoalAchieved, maf.GoalAchieved);
-            Assert.Equal(sk.GoalAchieved, maf.GoalAchieved);
 
-            Assert.Contains(testCase.ExpectSummaryContains, sk.Summary, StringComparison.OrdinalIgnoreCase);
             Assert.Contains(testCase.ExpectSummaryContains, maf.Summary, StringComparison.OrdinalIgnoreCase);
         }
     }
@@ -52,10 +42,7 @@ public class BrainContractGoldenTests
         var method = brainType.GetMethod("ParseThinkResult", BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance)
             ?? throw new InvalidOperationException($"ParseThinkResult not found for {brainType.Name}");
 
-        var instance = method.IsStatic ? null : FormatterServices.GetUninitializedObject(brainType);
-        var result = method.GetParameters().Length == 2
-            ? method.Invoke(instance, [json, null])
-            : method.Invoke(instance, [json]);
+        var result = method.Invoke(null, [json]);
 
         return Assert.IsType<ThinkResult>(result);
     }
@@ -65,8 +52,7 @@ public class BrainContractGoldenTests
         var method = brainType.GetMethod("ParseObserveResult", BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance)
             ?? throw new InvalidOperationException($"ParseObserveResult not found for {brainType.Name}");
 
-        var instance = method.IsStatic ? null : FormatterServices.GetUninitializedObject(brainType);
-        var result = method.Invoke(instance, [json]);
+        var result = method.Invoke(null, [json]);
         return Assert.IsType<ObserveResult>(result);
     }
 
@@ -75,7 +61,10 @@ public class BrainContractGoldenTests
         var root = FindRepositoryRoot();
         var path = Path.Combine(root, "tests", "AgentFlow.Tests.Integration", "Orchestration", "Fixtures", "brain-contract-golden.json");
         var json = File.ReadAllText(path);
-        return JsonSerializer.Deserialize<BrainContractFixture>(json)
+        return JsonSerializer.Deserialize<BrainContractFixture>(json, new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true
+        })
             ?? throw new InvalidOperationException("Could not deserialize brain contract fixture.");
     }
 

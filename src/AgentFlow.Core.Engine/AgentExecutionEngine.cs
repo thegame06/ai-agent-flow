@@ -470,6 +470,7 @@ public sealed class AgentExecutionEngine : IAgentExecutor
                 .Where(t => t.IsEnabled)
                 .Select(t => new AvailableToolDescriptor
                 {
+                    ToolId = t.ToolId,
                     Name = t.ToolName,
                     Description = t.ToolName,
                     InputSchemaJson = "{}"
@@ -547,6 +548,7 @@ public sealed class AgentExecutionEngine : IAgentExecutor
                 .Where(t => t.IsEnabled)
                 .Select(t => new AvailableToolDescriptor
                 {
+                    ToolId = t.ToolId,
                     Name = t.ToolName,
                     Description = t.ToolName,
                     InputSchemaJson = "{}"
@@ -560,13 +562,17 @@ public sealed class AgentExecutionEngine : IAgentExecutor
             var thinkCtx = new ThinkContext
             {
                 TenantId = request.TenantId,
+                UserId = request.UserId,
                 ExecutionId = execution.Id,
+                CorrelationId = request.CorrelationId ?? execution.Id,
+                ModelId = agentDef.Brain.ModelId,
                 SystemPrompt = agentDef.Brain.SystemPromptTemplate,
                 UserMessage = currentMessage,
                 Iteration = execution.CurrentIteration,
                 History = execution.Steps.Cast<object>().ToList(),
                 WorkingMemoryJson = memorySummary ?? "{}",
                 AvailableTools = availableTools,
+                Metadata = request.Metadata,
                 ThreadSnapshot = threadSnapshot // ✅ NEW: Pass thread history to LLM
             };
 
@@ -808,15 +814,24 @@ if (!preResponsePolicy.IsSuccess) return Result<string?>.Failure(preResponsePoli
                         var thinkResult = await brain.ThinkAsync(new ThinkContext
                         {
                             TenantId = request.TenantId,
+                            UserId = request.UserId,
                             ExecutionId = execution.Id,
+                            CorrelationId = request.CorrelationId ?? execution.Id,
+                            ModelId = agentDef.Brain.ModelId,
                             SystemPrompt = agentDef.Brain.SystemPromptTemplate,
                             UserMessage = prompt,
                             Iteration = execution.CurrentIteration,
                             History = execution.Steps.Cast<object>().ToList(),
                             WorkingMemoryJson = latestPayload ?? "{}",
                             AvailableTools = agentDef.AuthorizedTools.Where(t => t.IsEnabled)
-                                .Select(t => new AvailableToolDescriptor { Name = t.ToolName, Description = t.ToolName })
-                                .ToList()
+                                .Select(t => new AvailableToolDescriptor
+                                {
+                                    ToolId = t.ToolId,
+                                    Name = t.ToolName,
+                                    Description = t.ToolName
+                                })
+                                .ToList(),
+                            Metadata = request.Metadata
                         }, ct);
 
                         latestPayload = thinkResult.FinalAnswer ?? thinkResult.Rationale ?? prompt;
@@ -906,6 +921,7 @@ if (!preResponsePolicy.IsSuccess) return Result<string?>.Failure(preResponsePoli
                         var observe = await brain.ObserveAsync(new ObserveContext
                         {
                             TenantId = request.TenantId,
+                            ModelId = agentDef.Brain.ModelId,
                             ToolName = currentStep.Label,
                             ToolOutputJson = latestPayload ?? "{}",
                             ToolSucceeded = true,
@@ -1149,7 +1165,8 @@ if (!preResponsePolicy.IsSuccess) return Result<string?>.Failure(preResponsePoli
                 ToolId = binding.ToolId,
                 ToolName = toolName,
                 InputJson = toolInputJson,
-                CorrelationId = request.CorrelationId ?? execution.Id
+                CorrelationId = request.CorrelationId ?? execution.Id,
+                Metadata = request.Metadata
             }, toolCts.Token);
         }
         catch (OperationCanceledException)
@@ -1231,6 +1248,7 @@ if (!preResponsePolicy.IsSuccess) return Result<string?>.Failure(preResponsePoli
         var observeResult = await brain.ObserveAsync(new ObserveContext
         {
             TenantId = request.TenantId,
+            ModelId = agentDef.Brain.ModelId,
             ToolName = toolName,
             ToolOutputJson = toolResult.OutputJson ?? "{}",
             ToolSucceeded = toolResult.IsSuccess,

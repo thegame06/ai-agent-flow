@@ -1,10 +1,7 @@
 using AgentFlow.Abstractions;
-using AgentFlow.Core.Engine;
 using AgentFlow.Infrastructure.Gateways;
-using Castle.Core.Configuration;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.SemanticKernel;
 
 namespace AgentFlow.Tests.Integration.Orchestration;
 
@@ -26,36 +23,6 @@ public class MafAndMcpContractsTests
         public Task<TenantMcpSettings> SaveAsync(TenantMcpSettings settings, CancellationToken ct = default)
             => Task.FromResult(settings);
     }
-    [Fact]
-    public async Task MafBrain_WhenDisabled_ReturnsCheckpoint_InsteadOfFakeAnswer()
-    {
-        var config = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["Brains:MAF:Enabled"] = "false"
-            })
-            .Build();
-
-        var kernel = Kernel.CreateBuilder()
-            .AddOpenAIChatCompletion("gpt-4o-mini", "test-key")
-            .Build();
-        var brain = new MafBrain(kernel, config, NullLogger<MafBrain>.Instance);
-
-        var result = await brain.ThinkAsync(new ThinkContext
-        {
-            TenantId = "tenant-1",
-            ExecutionId = "exec-1",
-            UserMessage = "do something",
-            SystemPrompt = "system",
-            Iteration = 1,
-            AvailableTools = new List<AvailableToolDescriptor>()
-        });
-
-        Assert.Equal(ThinkDecision.Checkpoint, result.Decision);
-        Assert.Contains("disabled", result.Rationale, StringComparison.OrdinalIgnoreCase);
-        Assert.Null(result.FinalAnswer);
-    }
-
     [Fact]
     public async Task McpToolGateway_WithNonHttpTransport_ReturnsUnsupportedTransport()
     {
@@ -84,7 +51,12 @@ public class MafAndMcpContractsTests
                 ExecutionId = "exec-1",
                 StepId = "step-1",
                 CorrelationId = "corr-1",
-                InputJson = "{}"
+                InputJson = "{}",
+                Metadata = new Dictionary<string, string>
+                {
+                    ["permissions"] = "tool:execute:medium",
+                    ["mcp.policy.allow_actions"] = "tools.execute"
+                }
             });
 
         Assert.False(result.IsSuccess);

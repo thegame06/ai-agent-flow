@@ -191,14 +191,14 @@ export const DEFAULT_AI_AGENT_CONFIG: AiAgentNodeConfig = {
   agentId: '',
   agentName: '',
   agentVersion: '',
-  model: 'gpt-4o',
+  model: '',
   instructions: 'Responde al cliente de forma clara, breve y segura usando el contexto disponible.',
   tools: [],
   context: '',
   knowledge: [],
   input: '{{payload.content}}',
   outputVariable: 'agentResult',
-  fallbackModel: 'gpt-4o-mini',
+  fallbackModel: '',
   maxLatencyMs: 3000,
   maxCostUsd: 0.05,
   dlpEnabled: true,
@@ -333,4 +333,3 @@ export const WORKFLOW_QUICKSTARTS: Array<{ id: string; name: string; triggerEven
     ),
   },
 ];
-

@@ -237,6 +237,38 @@ public sealed class ModelRouter : IModelRouter
 }
 
 // =========================================================================
+// CONFIGURED PROVIDER
+// =========================================================================
+
+public sealed class ConfiguredModelProvider : IModelProvider
+{
+    private readonly Func<CancellationToken, Task<bool>> _healthCheck;
+
+    public ConfiguredModelProvider(
+        string modelId,
+        string providerId,
+        ModelMetadata metadata,
+        Func<CancellationToken, Task<bool>> healthCheck)
+    {
+        ModelId = modelId;
+        ProviderId = providerId;
+        Metadata = metadata;
+        _healthCheck = healthCheck;
+    }
+
+    public string ProviderId { get; }
+    public string ModelId { get; }
+    public ModelMetadata Metadata { get; init; }
+
+    public Task<LlmResponse> CompleteAsync(LlmRequest request, CancellationToken ct = default) =>
+        throw new NotSupportedException(
+            "ConfiguredModelProvider is a routing catalog entry. Runtime execution is handled by the configured brain provider SDK.");
+
+    public Task<bool> IsHealthyAsync(CancellationToken ct = default) =>
+        _healthCheck(ct);
+}
+
+// =========================================================================
 // DETERMINISTIC PROVIDER (for tests)
 // =========================================================================
 

@@ -51,8 +51,6 @@ import {
   updateGuardrails,
 } from './designerSlice';
 
-const FALLBACK_MODELS = ['gpt-4o', 'gpt-4o-mini', 'claude-3.5-sonnet', 'gemini-2.0-flash'];
-
 interface ModelOption {
   modelId: string;
   providerId: string;
@@ -445,13 +443,13 @@ function TabModel({
   const providerModels = models
     .filter((m) => m.providerId === mc.provider)
     .map((m) => m.modelId);
-  const modelOptions = providerModels.length > 0 ? providerModels : FALLBACK_MODELS;
+  const modelOptions = providerModels;
 
   return (
     <Stack spacing={3}>
       <Typography variant="subtitle1" fontWeight={700}>Configuracion del modelo IA</Typography>
       <Alert severity="info" variant="outlined">
-        Los modelos se cargan desde Model Routing API. Si no esta disponible, se muestran opciones fallback.
+        Los modelos se cargan desde Model Routing API. Si no hay modelos configurados, primero registra uno en Configuracion / Modelos.
       </Alert>
       {loading && (
         <Typography variant="body2" color="text.secondary">Cargando catalogo de modelos...</Typography>
@@ -475,7 +473,9 @@ function TabModel({
             value={mc.primaryModel}
             label="Modelo principal"
             onChange={(e) => dispatch(updateModel({ primaryModel: e.target.value }))}
+            disabled={modelOptions.length === 0}
           >
+            {modelOptions.length === 0 && <MenuItem value="">Sin modelos configurados</MenuItem>}
             {modelOptions.map((m) => <MenuItem key={m} value={m}>{m}</MenuItem>)}
           </Select>
         </FormControl>
@@ -485,7 +485,9 @@ function TabModel({
             value={mc.fallbackModel}
             label="Modelo de respaldo"
             onChange={(e) => dispatch(updateModel({ fallbackModel: e.target.value }))}
+            disabled={modelOptions.length === 0}
           >
+            {modelOptions.length === 0 && <MenuItem value="">Sin modelos configurados</MenuItem>}
             {modelOptions.map((m) => <MenuItem key={m} value={m}>{m}</MenuItem>)}
           </Select>
         </FormControl>

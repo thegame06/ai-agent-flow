@@ -16,7 +16,10 @@ public sealed class ModelRoutingController : ControllerBase
     private readonly ITenantContextAccessor _tenantContext;
     private readonly IAuthProfilesStore _authProfiles;
 
-    public ModelRoutingController(IModelRegistry registry, ITenantContextAccessor tenantContext, IAuthProfilesStore authProfiles)
+    public ModelRoutingController(
+        IModelRegistry registry,
+        ITenantContextAccessor tenantContext,
+        IAuthProfilesStore authProfiles)
     {
         _registry = registry;
         _tenantContext = tenantContext;
@@ -104,33 +107,56 @@ public sealed class ModelRoutingController : ControllerBase
             return BadRequest(new { message = "maxContextTokens must be > 0." });
         if (request.CostPer1KTokens < 0)
             return BadRequest(new { message = "costPer1KTokens must be >= 0." });
+        if (!string.Equals(request.ProviderId, "OpenAI", StringComparison.OrdinalIgnoreCase))
+            return BadRequest(new { message = "Only OpenAI models are supported by the current runtime. Add other providers after implementing their runtime adapter." });
 
-        if (!string.IsNullOrWhiteSpace(request.ProviderProfileId))
+        var providerProfileId = request.ProviderProfileId;
+        if (!string.IsNullOrWhiteSpace(request.ApiKey))
         {
-            var profile = _authProfiles.Get(context.TenantId, request.ProviderProfileId);
+            providerProfileId = string.IsNullOrWhiteSpace(providerProfileId)
+                ? $"{request.ProviderId}:{request.ModelId}"
+                : providerProfileId;
+
+            _authProfiles.Upsert(context.TenantId, new UpsertProviderAuthProfileRequest
+            {
+                Provider = request.ProviderId,
+                ProfileId = providerProfileId,
+                AuthType = "api_key",
+                Secret = request.ApiKey,
+                Metadata = new Dictionary<string, string>
+                {
+                    ["modelId"] = request.ModelId
+                }
+            });
+        }
+
+        if (!string.IsNullOrWhiteSpace(providerProfileId))
+        {
+            var profile = _authProfiles.Get(context.TenantId, providerProfileId);
             if (profile is null)
-                return BadRequest(new { message = $"providerProfileId '{request.ProviderProfileId}' not found for tenant." });
+                return BadRequest(new { message = $"providerProfileId '{providerProfileId}' not found for tenant." });
 
             if (!string.Equals(profile.Provider, request.ProviderId, StringComparison.OrdinalIgnoreCase))
                 return BadRequest(new { message = "providerProfileId provider does not match model providerId." });
         }
 
-        var provider = new DeterministicModelProvider(request.ModelId, request.ProviderId)
-        {
-            Metadata = new ModelMetadata
+        var provider = CreateConfiguredProvider(
+            request.ModelId,
+            request.ProviderId,
+            context.TenantId,
+            new ModelMetadata
             {
                 DisplayName = request.DisplayName,
                 CostPer1KTokens = request.CostPer1KTokens,
                 MaxContextTokens = request.MaxContextTokens,
                 Tier = request.Tier
-            }
-        };
+            });
 
         _registry.Register(provider);
 
-        if (!string.IsNullOrWhiteSpace(request.ProviderProfileId))
+        if (!string.IsNullOrWhiteSpace(providerProfileId))
         {
-            _authProfiles.LinkModelProfile(context.TenantId, request.ModelId, request.ProviderProfileId);
+            _authProfiles.LinkModelProfile(context.TenantId, request.ModelId, providerProfileId);
         }
 
         return CreatedAtAction(nameof(GetAvailableModels), new
@@ -145,7 +171,7 @@ public sealed class ModelRoutingController : ControllerBase
             provider.Metadata.CostPer1KTokens,
             provider.Metadata.MaxContextTokens,
             provider.Metadata.Tier,
-            ProviderProfileId = request.ProviderProfileId,
+            ProviderProfileId = providerProfileId,
             Status = "Active"
         });
     }
@@ -166,16 +192,17 @@ public sealed class ModelRoutingController : ControllerBase
         foreach (var model in sameProviderModels)
         {
             var tier = model.ModelId == modelId ? "Primary" : "Secondary";
-            _registry.Register(new DeterministicModelProvider(model.ModelId, model.ProviderId)
-            {
-                Metadata = new ModelMetadata
+            _registry.Register(CreateConfiguredProvider(
+                model.ModelId,
+                model.ProviderId,
+                context.TenantId,
+                new ModelMetadata
                 {
                     DisplayName = model.Metadata.DisplayName,
                     CostPer1KTokens = model.Metadata.CostPer1KTokens,
                     MaxContextTokens = model.Metadata.MaxContextTokens,
                     Tier = tier
-                }
-            });
+                }));
         }
 
         return Ok(new
@@ -263,6 +290,38 @@ public sealed class ModelRoutingController : ControllerBase
 
         var models = await _registry.GetHealthyModelIdsAsync();
         return Ok(models);
+    }
+
+    private ConfiguredModelProvider CreateConfiguredProvider(
+        string modelId,
+        string providerId,
+        string tenantId,
+        ModelMetadata metadata)
+    {
+        return new ConfiguredModelProvider(
+            modelId,
+            providerId,
+            metadata,
+            _ => Task.FromResult(HasProviderConfiguration(tenantId, modelId, providerId)));
+    }
+
+    private bool HasProviderConfiguration(string tenantId, string modelId, string providerId)
+    {
+        if (!string.Equals(providerId, "OpenAI", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var linkedProfileId = _authProfiles.GetModelProfileId(tenantId, modelId);
+        if (!string.IsNullOrWhiteSpace(linkedProfileId))
+        {
+            var profile = _authProfiles.Get(tenantId, linkedProfileId);
+            return profile is not null &&
+                (profile.ExpiresAt is null || profile.ExpiresAt > DateTimeOffset.UtcNow) &&
+                string.Equals(profile.Provider, providerId, StringComparison.OrdinalIgnoreCase);
+        }
+
+        return false;
     }
 }
 

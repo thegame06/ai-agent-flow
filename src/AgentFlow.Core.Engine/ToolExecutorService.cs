@@ -88,7 +88,8 @@ public sealed class ToolExecutorService : IToolExecutor
                 ExecutionId = request.ExecutionId,
                 StepId = request.StepId,
                 InputJson = request.InputJson,
-                CorrelationId = request.CorrelationId ?? request.ExecutionId
+                CorrelationId = request.CorrelationId ?? request.ExecutionId,
+                Metadata = request.Metadata
             };
 
             ToolResult pluginResult;

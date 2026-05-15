@@ -174,13 +174,17 @@ public sealed record BrainResolutionResult
 public sealed record ThinkContext
 {
     public required string TenantId { get; init; }
+    public string? UserId { get; init; }
     public required string ExecutionId { get; init; }
+    public string? CorrelationId { get; init; }
+    public string? ModelId { get; init; }
     public required string SystemPrompt { get; init; }
     public required string UserMessage { get; init; }
     public int Iteration { get; init; }
     public IReadOnlyList<object> History { get; init; } = [];
     public string WorkingMemoryJson { get; init; } = "{}";
     public IReadOnlyList<AvailableToolDescriptor> AvailableTools { get; init; } = [];
+    public IReadOnlyDictionary<string, string> Metadata { get; init; } = new Dictionary<string, string>();
     public string? RuntimeMode { get; init; }
     
     // ✅ NEW: Thread context for multi-turn conversations
@@ -238,6 +242,7 @@ public enum BrainProvider
 public sealed record ObserveContext
 {
     public required string TenantId { get; init; }
+    public string? ModelId { get; init; }
     public required string ToolName { get; init; }
     public required string ToolOutputJson { get; init; }
     public bool ToolSucceeded { get; init; }
@@ -254,6 +259,7 @@ public sealed record ObserveResult
 
 public sealed record AvailableToolDescriptor
 {
+    public string? ToolId { get; init; }
     public required string Name { get; init; }
     public required string Description { get; init; }
     public string InputSchemaJson { get; init; } = "{}";
@@ -849,6 +855,18 @@ public sealed record LlmResponse
     public string? FinishReason { get; init; }
     public string ModelId { get; init; } = string.Empty;
     public double? EstimatedCostUsd { get; init; }
+}
+
+public interface IModelCredentialResolver
+{
+    Task<ModelCredentials?> ResolveAsync(string tenantId, string modelId, CancellationToken ct = default);
+}
+
+public sealed record ModelCredentials
+{
+    public required string ProviderId { get; init; }
+    public required string AuthType { get; init; }
+    public string? ApiKey { get; init; }
 }
 
 // =========================================================================

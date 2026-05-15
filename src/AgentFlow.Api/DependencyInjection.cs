@@ -27,7 +27,6 @@ using AgentFlow.Security;
 using AgentFlow.TestRunner;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
-using Microsoft.SemanticKernel;
 using MongoDB.Bson.Serialization;
 using MongoDB.Driver;
 using System.Text;
@@ -60,6 +59,7 @@ public static class DependencyInjection
             .AddRepositories()
             .AddChannelGateway(configuration)
             .AddSingleton<IAuthProfilesStore, InMemoryAuthProfilesStore>()
+            .AddScoped<IModelCredentialResolver, AuthProfileModelCredentialResolver>()
             .AddScoped<IConnectStore, MongoConnectStore>()
             .AddScoped<IWorkflowStudioStore, MongoWorkflowStudioStore>()
             .AddScoped<ITenantConnectionStore, MongoTenantConnectionStore>()
@@ -260,29 +260,6 @@ public static class DependencyInjection
                 BrainProvider.MicrosoftAgentFramework => sp.GetRequiredService<MafBrain>(),
                 _ => sp.GetRequiredService<SemanticKernelBrain>()
             };
-        });
-
-        // Specific configuration for Semantic Kernel
-        services.AddScoped<Kernel>(sp =>
-        {
-            var config = sp.GetRequiredService<IConfiguration>();
-            var provider = config["SemanticKernel:Provider"] ?? "OpenAI";
-
-            if (provider == "AzureOpenAI")
-            {
-                return Kernel.CreateBuilder()
-                    .AddAzureOpenAIChatCompletion(
-                        deploymentName: config["SemanticKernel:AzureOpenAI:DeploymentName"]!,
-                        endpoint: config["SemanticKernel:AzureOpenAI:Endpoint"]!,
-                        apiKey: config["SemanticKernel:AzureOpenAI:ApiKey"]!)
-                    .Build();
-            }
-            
-            return Kernel.CreateBuilder()
-                .AddOpenAIChatCompletion(
-                    modelId: config["SemanticKernel:OpenAI:ModelId"] ?? "gpt-4o",
-                    apiKey: config["SemanticKernel:OpenAI:ApiKey"]!)
-                .Build();
         });
 
         return services;

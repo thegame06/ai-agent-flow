@@ -8,13 +8,14 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.SemanticKernel" Version="1.33.0" />
+    <PackageReference Include="Microsoft.Agents.AI.OpenAI" Version="1.6.1" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\AgentFlow.Domain\AgentFlow.Domain.csproj" />
     <ProjectReference Include="..\AgentFlow.Application\AgentFlow.Application.csproj" />
     <ProjectReference Include="..\AgentFlow.Abstractions\AgentFlow.Abstractions.csproj" />
+    <ProjectReference Include="..\AgentFlow.ModelRouting\AgentFlow.ModelRouting.csproj" />
     <ProjectReference Include="..\AgentFlow.Observability\AgentFlow.Observability.csproj" />
     <ProjectReference Include="..\AgentFlow.Policy\AgentFlow.Policy.csproj" />
     <ProjectReference Include="..\AgentFlow.Security\AgentFlow.Security.csproj" />

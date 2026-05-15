@@ -129,8 +129,8 @@ export const DEFAULT_AGENT_DRAFT: AgentDefinitionDraft = {
   },
   model: {
     provider: 'OpenAI',
-    primaryModel: 'gpt-4o',
-    fallbackModel: 'gpt-4o-mini',
+    primaryModel: '',
+    fallbackModel: '',
     temperature: 0.7,
     maxResponseTokens: 4096,
   },

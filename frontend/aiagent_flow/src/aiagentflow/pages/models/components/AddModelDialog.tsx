@@ -119,10 +119,6 @@ export function AddModelDialog({ open, onClose, onSuccess }: AddModelDialogProps
                 onChange={(e) => handleChange('providerId', e.target.value)}
               >
                 <MenuItem value="OpenAI">OpenAI</MenuItem>
-                <MenuItem value="Anthropic">Anthropic</MenuItem>
-                <MenuItem value="Azure">Azure OpenAI</MenuItem>
-                <MenuItem value="Google">Google Vertex AI</MenuItem>
-                <MenuItem value="AWS">AWS Bedrock</MenuItem>
               </TextField>
             </Grid>
 
@@ -168,18 +164,17 @@ export function AddModelDialog({ open, onClose, onSuccess }: AddModelDialogProps
               <TextField
                 fullWidth
                 type="password"
-                label="API Key (optional)"
+                label="API Key"
                 value={formData.apiKey}
                 onChange={(e) => handleChange('apiKey', e.target.value)}
                 placeholder="sk-..."
-                helperText="Leave empty to use default provider credentials"
+                helperText="Required for the runtime to use this model. It will be saved as a linked auth profile."
               />
             </Grid>
 
             <Grid item xs={12}>
               <Typography variant="caption" color="text.secondary">
-                Note: Model registration currently requires backend configuration. This dialog is a
-                Model registration requires backend support. Provider credentials can still be configured at API level in server settings.
+                The agent runtime uses the selected model ID and its linked auth profile from this catalog.
               </Typography>
             </Grid>
           </Grid>
@@ -194,7 +189,7 @@ export function AddModelDialog({ open, onClose, onSuccess }: AddModelDialogProps
           variant="contained"
           onClick={handleSubmit}
           loading={loading}
-          disabled={!formData.modelId || !formData.displayName}
+          disabled={!formData.modelId || !formData.displayName || !formData.apiKey}
           startIcon={<Iconify icon="mingcute:add-line" />}
         >
           Add Model

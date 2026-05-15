@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
 using System.Linq;
+using AgentFlow.Abstractions;
 
 namespace AgentFlow.Api.AuthProfiles;
 
@@ -33,6 +34,7 @@ public interface IAuthProfilesStore
     ProviderAuthProfile Upsert(string tenantId, UpsertProviderAuthProfileRequest request);
     IReadOnlyList<ProviderAuthProfile> List(string tenantId, string? provider = null);
     ProviderAuthProfile? Get(string tenantId, string profileId);
+    string? GetSecret(string tenantId, string profileId);
     bool Delete(string tenantId, string profileId);
     bool LinkModelProfile(string tenantId, string modelId, string profileId);
     string? GetModelProfileId(string tenantId, string modelId);
@@ -103,6 +105,13 @@ public sealed class InMemoryAuthProfilesStore : IAuthProfilesStore
     {
         return _profiles.TryGetValue(ComposeProfileKey(tenantId, profileId), out var profile)
             ? ToPublic(profile)
+            : null;
+    }
+
+    public string? GetSecret(string tenantId, string profileId)
+    {
+        return _profiles.TryGetValue(ComposeProfileKey(tenantId, profileId), out var profile)
+            ? Decrypt(profile.SecretCipher)
             : null;
     }
 
@@ -200,5 +209,33 @@ public sealed class InMemoryAuthProfilesStore : IAuthProfilesStore
         if (string.IsNullOrWhiteSpace(secret)) return null;
         if (secret.Length <= 6) return new string('*', secret.Length);
         return $"{secret[..3]}***{secret[^3..]}";
+    }
+}
+
+public sealed class AuthProfileModelCredentialResolver : IModelCredentialResolver
+{
+    private readonly IAuthProfilesStore _store;
+
+    public AuthProfileModelCredentialResolver(IAuthProfilesStore store)
+    {
+        _store = store;
+    }
+
+    public Task<ModelCredentials?> ResolveAsync(string tenantId, string modelId, CancellationToken ct = default)
+    {
+        var profileId = _store.GetModelProfileId(tenantId, modelId);
+        if (string.IsNullOrWhiteSpace(profileId))
+            return Task.FromResult<ModelCredentials?>(null);
+
+        var profile = _store.Get(tenantId, profileId);
+        if (profile is null || (profile.ExpiresAt is not null && profile.ExpiresAt <= DateTimeOffset.UtcNow))
+            return Task.FromResult<ModelCredentials?>(null);
+
+        return Task.FromResult<ModelCredentials?>(new ModelCredentials
+        {
+            ProviderId = profile.Provider,
+            AuthType = profile.AuthType,
+            ApiKey = _store.GetSecret(tenantId, profileId)
+        });
     }
 }

@@ -39,6 +39,8 @@ export function AiAgentConfigDialog({
   onClose,
   onUpdate,
 }: Props) {
+  const modelIds = availableModels.map((m) => m.modelId);
+
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
       <DialogTitle>AI Agent Node Configuration</DialogTitle>
@@ -63,12 +65,11 @@ export function AiAgentConfigDialog({
                   select
                   value={aiTarget.aiAgent?.model ?? DEFAULT_AI_AGENT_CONFIG.model}
                   onChange={(e) => onUpdate({ model: e.target.value })}
+                  disabled={modelIds.length === 0}
+                  helperText={modelIds.length === 0 ? 'No configured models are available.' : undefined}
                   fullWidth
                 >
-                  {(availableModels.length > 0
-                    ? availableModels.map((m) => m.modelId)
-                    : ['gpt-4o', 'gpt-4o-mini']
-                  ).map((m) => (
+                  {modelIds.map((m) => (
                     <MenuItem key={m} value={m}>
                       {m}
                     </MenuItem>
@@ -160,6 +161,7 @@ export function AiAgentConfigDialog({
                     label="Fallback Model"
                     value={aiTarget.aiAgent?.fallbackModel ?? DEFAULT_AI_AGENT_CONFIG.fallbackModel}
                     onChange={(e) => onUpdate({ fallbackModel: e.target.value })}
+                    helperText="Optional. Use a model id from Model Routing if you need a fallback."
                     fullWidth
                   />
                 </Grid>

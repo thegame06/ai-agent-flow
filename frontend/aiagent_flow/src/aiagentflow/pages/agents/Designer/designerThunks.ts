@@ -158,8 +158,8 @@ export function mapResponseToDraft(data: Record<string, unknown>): AgentDefiniti
     tags: (data.tags as string[]) ?? [],
     model: {
       provider: (brain.provider as string) ?? 'OpenAI',
-      primaryModel: (brain.primaryModel as string) ?? 'gpt-4o',
-      fallbackModel: (brain.fallbackModel as string) ?? 'gpt-4o-mini',
+      primaryModel: (brain.primaryModel as string) ?? '',
+      fallbackModel: (brain.fallbackModel as string) ?? '',
       temperature: (brain.temperature as number) ?? 0.7,
       maxResponseTokens: (brain.maxResponseTokens as number) ?? 4096,
     },
