@@ -91,6 +91,7 @@ public sealed class ExtensionRegistry : IExtensionRegistry
         _logger = logger;
         foreach (var tool in tools) RegisterTool(tool);
         foreach (var policy in policies) RegisterPolicy(policy);
+        SeedCommerceModules();
     }
 
     public void RegisterTool(IToolPlugin tool)
@@ -303,6 +304,36 @@ public sealed class ExtensionRegistry : IExtensionRegistry
         var digest = Convert.ToHexString(hash);
 
         return string.Equals(digest, request.Signature, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void SeedCommerceModules()
+    {
+        var modules = new[]
+        {
+            ("communication-inbox", "Communication Inbox", "Inbox comercial integrado en chat"),
+            ("inventory", "Inventory", "Inventario y catalogo de productos"),
+            ("sales-pos", "Sales POS", "Punto de venta y ordenes comerciales"),
+            ("billing", "Billing", "Facturacion y estados de cobro")
+        };
+
+        foreach (var (id, name, description) in modules)
+        {
+            _catalog.TryAdd(id, new ExtensionCatalogEntry
+            {
+                ExtensionId = id,
+                Name = name,
+                Version = "1.0.0",
+                Description = description,
+                Source = "builtin-module",
+                Metadata = new ExtensionCatalogMetadata
+                {
+                    Vendor = "agentflow",
+                    SignatureValid = true,
+                    SignatureAlgorithm = "builtin",
+                    Compatibility = "agentflow-core>=1.0.0"
+                }
+            });
+        }
     }
 }
 

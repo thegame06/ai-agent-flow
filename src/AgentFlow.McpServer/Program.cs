@@ -17,6 +17,20 @@ builder.Services.AddScoped<IAgentFlowMcpTool, DiagnoseWorkflowTool>();
 builder.Services.AddScoped<IAgentFlowMcpTool, DiagnoseChannelTool>();
 builder.Services.AddScoped<IAgentFlowMcpTool, ScaffoldWorkflowTool>();
 builder.Services.AddScoped<IAgentFlowMcpTool, ListIntegrationsTool>();
+builder.Services.AddScoped<IAgentFlowMcpTool, CommerceResolvePartyTool>();
+builder.Services.AddScoped<IAgentFlowMcpTool, CommerceAssertActiveSessionTool>();
+builder.Services.AddScoped<IAgentFlowMcpTool, CommerceSearchInventoryTool>();
+builder.Services.AddScoped<IAgentFlowMcpTool, CommerceCreateSaleTool>();
+builder.Services.AddScoped<IAgentFlowMcpTool, CommerceCreateOrderTool>();
+builder.Services.AddScoped<IAgentFlowMcpTool, CommerceCreateInvoiceTool>();
+builder.Services.AddScoped<IAgentFlowMcpTool, CommerceSearchCustomersTool>();
+builder.Services.AddScoped<IAgentFlowMcpTool, CommerceUpdateCustomerTool>();
+builder.Services.AddScoped<IAgentFlowMcpTool, CommerceSearchSalesTool>();
+builder.Services.AddScoped<IAgentFlowMcpTool, CommerceCalculateSaleTool>();
+builder.Services.AddScoped<IAgentFlowMcpTool, CommerceUpdateInvoiceStatusTool>();
+builder.Services.AddScoped<IAgentFlowMcpTool, CommerceSendInvoiceWhatsAppTool>();
+builder.Services.AddScoped<IAgentFlowMcpTool, CommerceSendConversationMessageTool>();
+builder.Services.AddScoped<IAgentFlowMcpTool, CommerceCloseConversationTool>();
 builder.Services.AddScoped<ToolDispatcher>();
 
 // ── Auth ──────────────────────────────────────────────────────────────────────

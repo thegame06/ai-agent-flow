@@ -17,6 +17,7 @@ public interface IChannelDefinitionRepository
 public interface IChannelSessionRepository
 {
     Task<ChannelSession?> GetByIdAsync(string sessionId, string tenantId, CancellationToken ct = default);
+    Task<ChannelSession?> GetByThreadIdAsync(string threadId, string tenantId, CancellationToken ct = default);
     Task<ChannelSession?> GetByChannelAndIdentifierAsync(string channelId, string identifier, string tenantId, CancellationToken ct = default);
     Task<IReadOnlyList<ChannelSession>> GetActiveByChannelAsync(string channelId, string tenantId, CancellationToken ct = default);
     Task<IReadOnlyList<ChannelSession>> GetActiveByUserAsync(string userIdentifier, string tenantId, CancellationToken ct = default);

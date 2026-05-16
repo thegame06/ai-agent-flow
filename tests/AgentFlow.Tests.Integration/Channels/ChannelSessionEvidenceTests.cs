@@ -55,7 +55,7 @@ public class ChannelSessionEvidenceTests
         };
 
         // Act
-        var result = await controller.GetMessages(tenantId, sessionId, 50, CancellationToken.None);
+        var result = await controller.GetMessages(tenantId, sessionId, limit: 50, ct: CancellationToken.None);
 
         // Assert
         var ok = Assert.IsType<OkObjectResult>(result);
@@ -87,6 +87,19 @@ public class ChannelSessionEvidenceTests
             return Task.FromResult(list);
         }
 
+        public Task<(IReadOnlyList<ChannelMessage> Items, long Total)> GetBySessionPagedAsync(
+            string sessionId,
+            string tenantId,
+            int page = 0,
+            int pageSize = 50,
+            CancellationToken ct = default)
+        {
+            IReadOnlyList<ChannelMessage> list = _message.SessionId == sessionId && _message.TenantId == tenantId
+                ? new[] { _message }
+                : Array.Empty<ChannelMessage>();
+            return Task.FromResult((list, (long)list.Count));
+        }
+
         public Task<IReadOnlyList<ChannelMessage>> GetByChannelAsync(string channelId, string tenantId, int limit = 50, CancellationToken ct = default)
             => Task.FromResult<IReadOnlyList<ChannelMessage>>(Array.Empty<ChannelMessage>());
 
@@ -104,6 +117,8 @@ public class ChannelSessionEvidenceTests
     {
         public Task<ChannelSession?> GetByIdAsync(string sessionId, string tenantId, CancellationToken ct = default)
             => Task.FromResult<ChannelSession?>(null);
+        public Task<ChannelSession?> GetByThreadIdAsync(string threadId, string tenantId, CancellationToken ct = default)
+            => Task.FromResult<ChannelSession?>(null);
 
         public Task<ChannelSession?> GetByChannelAndIdentifierAsync(string channelId, string identifier, string tenantId, CancellationToken ct = default)
             => Task.FromResult<ChannelSession?>(null);
@@ -113,6 +128,8 @@ public class ChannelSessionEvidenceTests
 
         public Task<IReadOnlyList<ChannelSession>> GetActiveByUserAsync(string userIdentifier, string tenantId, CancellationToken ct = default)
             => Task.FromResult<IReadOnlyList<ChannelSession>>(Array.Empty<ChannelSession>());
+        public Task<(IReadOnlyList<ChannelSession> Items, long Total)> SearchAsync(string tenantId, string? channelId = null, string? status = null, string? query = null, int page = 0, int pageSize = 25, CancellationToken ct = default)
+            => Task.FromResult(((IReadOnlyList<ChannelSession>)Array.Empty<ChannelSession>(), 0L));
 
         public Task<AgentFlow.Abstractions.Result> InsertAsync(ChannelSession session, CancellationToken ct = default)
             => Task.FromResult(AgentFlow.Abstractions.Result.Success());

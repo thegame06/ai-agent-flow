@@ -32,6 +32,13 @@ public sealed class MongoChannelSessionRepository : IChannelSessionRepository
             .FirstOrDefaultAsync(ct);
     }
 
+    public async Task<ChannelSession?> GetByThreadIdAsync(string threadId, string tenantId, CancellationToken ct = default)
+    {
+        return await _collection.Find(x => x.ThreadId == threadId && x.TenantId == tenantId)
+            .SortByDescending(x => x.LastActivityAt)
+            .FirstOrDefaultAsync(ct);
+    }
+
     public async Task<ChannelSession?> GetByChannelAndIdentifierAsync(string channelId, string identifier, string tenantId, CancellationToken ct = default)
     {
         return await _collection.Find(x => 

@@ -210,6 +210,8 @@ public class ConversationThreadsControllerAuthTests
     {
         public Task<ChannelSession?> GetByIdAsync(string id, string tenantId, CancellationToken ct = default)
             => Task.FromResult<ChannelSession?>(null);
+        public Task<ChannelSession?> GetByThreadIdAsync(string threadId, string tenantId, CancellationToken ct = default)
+            => Task.FromResult<ChannelSession?>(null);
 
         public Task<ChannelSession?> GetByChannelAndIdentifierAsync(string channelId, string customerIdentifier, string tenantId, CancellationToken ct = default)
             => Task.FromResult<ChannelSession?>(null);
@@ -222,6 +224,9 @@ public class ConversationThreadsControllerAuthTests
 
         public Task<IReadOnlyList<ChannelSession>> GetByAgentAsync(string agentId, string tenantId, CancellationToken ct = default)
             => Task.FromResult<IReadOnlyList<ChannelSession>>(Array.Empty<ChannelSession>());
+
+        public Task<(IReadOnlyList<ChannelSession> Items, long Total)> SearchAsync(string tenantId, string? channelId = null, string? status = null, string? query = null, int page = 0, int pageSize = 25, CancellationToken ct = default)
+            => Task.FromResult(((IReadOnlyList<ChannelSession>)Array.Empty<ChannelSession>(), 0L));
 
         public Task<Result> InsertAsync(ChannelSession session, CancellationToken ct = default)
             => Task.FromResult(Result.Success());

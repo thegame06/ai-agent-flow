@@ -37,6 +37,7 @@ const FeatureFlagsPage = lazy(() => import('src/aiagentflow/pages/system/Feature
 const SettingsPage = lazy(() => import('src/aiagentflow/pages/settings/SettingsPage'));
 const ManagerOrchestrationPage = lazy(() => import('src/aiagentflow/pages/orchestration/ManagerOrchestrationPage'));
 const ThreadsPage = lazy(() => import('src/aiagentflow/pages/threads/ThreadsPage'));
+const CommerceAdminPage = lazy(() => import('src/aiagentflow/pages/commerce/CommerceAdminPage'));
 const EvaluationsPage = lazy(() => import('src/aiagentflow/pages/evaluations/EvaluationsPage'));
 const KycPaymentsPage = lazy(() => import('src/aiagentflow/pages/kyc/KycPaymentsPage'));
 const WorkflowsPage = lazy(() => import('src/aiagentflow/pages/workflows/WorkflowsPage'));
@@ -77,6 +78,7 @@ export const dashboardRoutes: RouteObject[] = [
       { path: 'marketplace', element: <MarketplacePage /> },
       { path: 'orchestration', element: <ManagerOrchestrationPage /> },
       { path: 'threads', element: <ThreadsPage /> },
+      { path: 'commerce', element: <CommerceAdminPage /> },
       { path: 'evaluations', element: <EvaluationsPage /> },
       { path: 'kyc-payments', element: <KycPaymentsPage /> },
       { path: 'studio/workflows', element: <WorkflowsPage /> },

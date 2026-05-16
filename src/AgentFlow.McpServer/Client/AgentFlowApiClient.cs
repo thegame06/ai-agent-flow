@@ -69,6 +69,98 @@ public sealed class AgentFlowApiClient
     public async Task<List<IntegrationSummary>> ListIntegrationsAsync(string tenantId, CancellationToken ct) =>
         await GetAsync<List<IntegrationSummary>>($"/api/v1/tenants/{tenantId}/integrations", ct) ?? [];
 
+    // Commerce
+    public async Task<CommerceParty?> ResolvePartyAsync(
+        string tenantId,
+        string channel,
+        string identifier,
+        string? displayName,
+        string? kind,
+        string? phone,
+        string? email,
+        string? fullName,
+        string? sessionId,
+        CancellationToken ct)
+    {
+        var body = new { channel, identifier, displayName, kind, phone, email, fullName, sessionId };
+        return await PostAsync<CommerceParty>($"/api/v1/tenants/{tenantId}/commerce/crm/resolve-party", body, ct);
+    }
+
+    public async Task<CommerceConversationContext?> GetCommerceConversationContextAsync(string tenantId, string sessionId, CancellationToken ct) =>
+        await GetAsync<CommerceConversationContext>($"/api/v1/tenants/{tenantId}/commerce/conversation-context/{sessionId}", ct);
+    public async Task<CommerceConversationContext?> GetCommerceConversationContextByThreadAsync(string tenantId, string threadId, CancellationToken ct) =>
+        await GetAsync<CommerceConversationContext>($"/api/v1/tenants/{tenantId}/commerce/conversation-context/by-thread/{threadId}", ct);
+
+    public async Task<List<CommerceInventoryItem>> SearchInventoryAsync(string tenantId, string? query, int limit, CancellationToken ct) =>
+        await GetAsync<List<CommerceInventoryItem>>($"/api/v1/tenants/{tenantId}/commerce/inventory/search?query={Uri.EscapeDataString(query ?? string.Empty)}&limit={Math.Clamp(limit, 1, 100)}", ct) ?? [];
+
+    public async Task<CommerceSale?> CreateSaleAsync(string tenantId, string partyId, string? currency, string? sessionId, string? threadId, IReadOnlyList<CommerceLineItemPayload> items, CancellationToken ct)
+    {
+        var body = new { partyId, currency, sessionId, threadId, items };
+        return await PostAsync<CommerceSale>($"/api/v1/tenants/{tenantId}/commerce/sales", body, ct);
+    }
+
+    public async Task<CommerceOrder?> CreateOrderAsync(string tenantId, string partyId, string? currency, string? sessionId, string? threadId, IReadOnlyList<CommerceLineItemPayload> items, CancellationToken ct)
+    {
+        var body = new { partyId, currency, sessionId, threadId, items };
+        return await PostAsync<CommerceOrder>($"/api/v1/tenants/{tenantId}/commerce/orders", body, ct);
+    }
+
+    public async Task<CommerceInvoice?> CreateInvoiceAsync(string tenantId, string partyId, string? saleId, string? orderId, decimal total, string? currency, string? sessionId, string? threadId, CancellationToken ct)
+    {
+        var body = new { partyId, saleId, orderId, total, currency, sessionId, threadId };
+        return await PostAsync<CommerceInvoice>($"/api/v1/tenants/{tenantId}/commerce/billing/invoices", body, ct);
+    }
+
+    public async Task<CommercePagedResult<CommerceParty>?> SearchCustomersAsync(string tenantId, string? query, int page, int pageSize, CancellationToken ct) =>
+        await GetAsync<CommercePagedResult<CommerceParty>>($"/api/v1/tenants/{tenantId}/commerce/crm/customers?query={Uri.EscapeDataString(query ?? string.Empty)}&page={Math.Max(0, page)}&pageSize={Math.Clamp(pageSize, 1, 100)}", ct);
+
+    public async Task<CommerceParty?> UpdateCustomerAsync(string tenantId, string partyId, object body, CancellationToken ct)
+    {
+        var response = await _http.PutAsJsonAsync($"/api/v1/tenants/{tenantId}/commerce/crm/customers/{partyId}", body, _json, ct);
+        if (!response.IsSuccessStatusCode) return default;
+        return await response.Content.ReadFromJsonAsync<CommerceParty>(_json, ct);
+    }
+
+    public async Task<bool> DeleteCustomerAsync(string tenantId, string partyId, CancellationToken ct)
+    {
+        var response = await _http.DeleteAsync($"/api/v1/tenants/{tenantId}/commerce/crm/customers/{partyId}", ct);
+        return response.IsSuccessStatusCode;
+    }
+
+    public async Task<CommercePagedResult<CommerceSale>?> SearchSalesAsync(string tenantId, string? partyId, string? state, int page, int pageSize, CancellationToken ct)
+        => await GetAsync<CommercePagedResult<CommerceSale>>($"/api/v1/tenants/{tenantId}/commerce/sales?partyId={Uri.EscapeDataString(partyId ?? string.Empty)}&state={Uri.EscapeDataString(state ?? string.Empty)}&page={Math.Max(0, page)}&pageSize={Math.Clamp(pageSize, 1, 100)}", ct);
+
+    public async Task<CommerceSaleDetail?> GetSaleByIdAsync(string tenantId, string saleId, CancellationToken ct)
+        => await GetAsync<CommerceSaleDetail>($"/api/v1/tenants/{tenantId}/commerce/sales/{saleId}", ct);
+
+    public async Task<SaleCalculationResult?> CalculateSaleAsync(string tenantId, object body, CancellationToken ct)
+        => await PostAsync<SaleCalculationResult>($"/api/v1/tenants/{tenantId}/commerce/sales/calculate", body, ct);
+
+    public async Task<CommercePagedResult<CommerceInvoice>?> SearchInvoicesAsync(string tenantId, string? partyId, string? status, int page, int pageSize, CancellationToken ct)
+        => await GetAsync<CommercePagedResult<CommerceInvoice>>($"/api/v1/tenants/{tenantId}/commerce/billing/invoices?partyId={Uri.EscapeDataString(partyId ?? string.Empty)}&status={Uri.EscapeDataString(status ?? string.Empty)}&page={Math.Max(0, page)}&pageSize={Math.Clamp(pageSize, 1, 100)}", ct);
+
+    public async Task<CommerceInvoice?> UpdateInvoiceStatusAsync(string tenantId, string invoiceId, string status, CancellationToken ct)
+        => await PutAsync<CommerceInvoice>($"/api/v1/tenants/{tenantId}/commerce/billing/invoices/{invoiceId}/status", new { status }, ct);
+
+    public async Task<bool> SendInvoiceWhatsAppAsync(string tenantId, string invoiceId, CancellationToken ct)
+    {
+        var response = await _http.PostAsJsonAsync($"/api/v1/tenants/{tenantId}/commerce/billing/invoices/{invoiceId}/send-whatsapp", new { }, _json, ct);
+        return response.IsSuccessStatusCode;
+    }
+
+    public async Task<bool> CloseConversationAsync(string tenantId, string sessionId, CancellationToken ct)
+    {
+        var response = await _http.PostAsJsonAsync($"/api/v1/tenants/{tenantId}/commerce/conversation-context/{sessionId}/close", new { }, _json, ct);
+        return response.IsSuccessStatusCode;
+    }
+
+    public async Task<bool> SendConversationMessageAsync(string tenantId, string sessionId, string content, CancellationToken ct)
+    {
+        var response = await _http.PostAsJsonAsync($"/api/v1/tenants/{tenantId}/commerce/conversation-context/{sessionId}/messages", new { content }, _json, ct);
+        return response.IsSuccessStatusCode;
+    }
+
     // ─── Helpers ─────────────────────────────────────────────────────────────
 
     private async Task<T?> GetAsync<T>(string path, CancellationToken ct)
@@ -81,6 +173,13 @@ public sealed class AgentFlowApiClient
     private async Task<T?> PostAsync<T>(string path, object body, CancellationToken ct)
     {
         var response = await _http.PostAsJsonAsync(path, body, _json, ct);
+        if (!response.IsSuccessStatusCode) return default;
+        return await response.Content.ReadFromJsonAsync<T>(_json, ct);
+    }
+
+    private async Task<T?> PutAsync<T>(string path, object body, CancellationToken ct)
+    {
+        var response = await _http.PutAsJsonAsync(path, body, _json, ct);
         if (!response.IsSuccessStatusCode) return default;
         return await response.Content.ReadFromJsonAsync<T>(_json, ct);
     }
@@ -114,3 +213,32 @@ public sealed record SessionContext(
 
 public sealed record IntegrationSummary(
     string Id, string Name, string Type, string Status);
+
+public sealed record CommerceParty(
+    string Id, string Kind, string Channel, string Identifier, string? DisplayName,
+    string? FullName, string? Email, string? Phone, IReadOnlyList<CommerceIdentityLink>? LinkedIdentities,
+    string? LastSessionId, string? LastThreadId, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt);
+
+public sealed record CommerceConversationContext(
+    string Id, string ChannelType, string Identifier, string? ThreadId, string Status,
+    DateTimeOffset? ExpiresAt, bool IsExpired, CommerceParty? Party);
+
+public sealed record CommerceInventoryItem(
+    string Id, string Sku, string Name, decimal UnitPrice, int OnHand, bool Active);
+
+public sealed record CommerceLineItemPayload(
+    string Sku, string Name, decimal UnitPrice, decimal Quantity);
+
+public sealed record CommerceSale(
+    string Id, string PartyId, decimal Total, string Currency, DateTimeOffset CreatedAt);
+public sealed record CommerceSaleDetail(
+    string Id, string PartyId, decimal Subtotal, decimal Discount, decimal Tax, decimal Total, string Currency, string PaymentMethod, string State, IReadOnlyList<CommerceLineItemPayload> Items);
+
+public sealed record CommerceOrder(
+    string Id, string PartyId, decimal Total, string Currency, string Status, DateTimeOffset CreatedAt);
+
+public sealed record CommerceInvoice(
+    string Id, string PartyId, string? SaleId, string? OrderId, decimal Total, string Currency, string Status, DateTimeOffset CreatedAt);
+public sealed record CommerceIdentityLink(string Channel, string Identifier);
+public sealed record CommercePagedResult<T>(IReadOnlyList<T> Items, long Total, int Page, int PageSize);
+public sealed record SaleCalculationResult(decimal Subtotal, decimal Discount, decimal Tax, decimal Total);

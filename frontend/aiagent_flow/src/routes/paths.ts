@@ -55,6 +55,7 @@ export const paths = {
     orchestration: `${ROOTS.DASHBOARD}/orchestration`,
     intentMap: `${ROOTS.DASHBOARD}/orchestration`,
     threads: `${ROOTS.DASHBOARD}/threads`,
+    commerce: `${ROOTS.DASHBOARD}/commerce`,
     evaluations: `${ROOTS.DASHBOARD}/evaluations`,
     kycPayments: `${ROOTS.DASHBOARD}/kyc-payments`,
     workflows: `${ROOTS.DASHBOARD}/studio/workflows`,

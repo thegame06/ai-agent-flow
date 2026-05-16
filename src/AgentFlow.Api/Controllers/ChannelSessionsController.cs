@@ -78,6 +78,7 @@ public sealed class ChannelSessionsController : ControllerBase
         [FromQuery] int limit = 50,
         [FromQuery] int page = 0,
         [FromQuery] int pageSize = 50,
+        [FromQuery] string? cursor = null,
         CancellationToken ct = default)
     {
         var context = _tenantContext.Current!;
@@ -85,15 +86,22 @@ public sealed class ChannelSessionsController : ControllerBase
 
         var messageRepo = HttpContext.RequestServices.GetRequiredService<IChannelMessageRepository>();
         var paged = Request.Query.ContainsKey("page") || Request.Query.ContainsKey("pageSize");
-        if (paged)
+        if (paged || !string.IsNullOrWhiteSpace(cursor))
         {
+            if (!string.IsNullOrWhiteSpace(cursor) && int.TryParse(cursor, out var cursorPage) && cursorPage >= 0)
+            {
+                page = cursorPage;
+            }
             var result = await messageRepo.GetBySessionPagedAsync(sessionId, tenantId, page, pageSize, ct);
+            var hasMore = ((page + 1) * Math.Clamp(pageSize, 1, 100)) < result.Total;
             return Ok(new PagedResponse<ChannelMessageDto>
             {
                 Items = result.Items.Select(MapMessage).ToList(),
                 Total = result.Total,
                 Page = Math.Max(0, page),
-                PageSize = Math.Clamp(pageSize, 1, 100)
+                PageSize = Math.Clamp(pageSize, 1, 100),
+                HasMore = hasMore,
+                NextCursor = hasMore ? (page + 1).ToString() : null
             });
         }
 
@@ -147,6 +155,8 @@ public sealed record PagedResponse<T>
     public long Total { get; init; }
     public int Page { get; init; }
     public int PageSize { get; init; }
+    public bool HasMore { get; init; }
+    public string? NextCursor { get; init; }
 }
 
 public sealed record ChannelSessionDto

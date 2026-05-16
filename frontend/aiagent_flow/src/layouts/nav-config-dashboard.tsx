@@ -14,6 +14,7 @@ const ICONS = {
   agent: icon('mdi:robot-happy-outline'),
   intent: icon('mdi:target-variant'),
   inbox: icon('mdi:inbox-outline'),
+  commerce: icon('mdi:store-cog-outline'),
   executions: icon('mdi:chart-timeline-variant'),
   humanReview: icon('mdi:account-supervisor-outline'),
   kycPayments: icon('mdi:shield-account-outline'),
@@ -63,6 +64,11 @@ export const navData: NavSectionProps['data'] = [
         title: 'Bandeja de entrada',
         path: paths.dashboard.threads,
         icon: ICONS.inbox,
+      },
+      {
+        title: 'Commerce',
+        path: paths.dashboard.commerce,
+        icon: ICONS.commerce,
       },
       {
         title: 'Ejecuciones',
