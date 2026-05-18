@@ -23,6 +23,7 @@ import { CONFIG } from 'src/global-config';
 import axios, { endpoints } from 'src/lib/axios';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
+import { TermHelp } from 'src/aiagentflow/components/TermHelp';
 
 import { Iconify } from 'src/components/iconify';
 
@@ -206,7 +207,7 @@ export default function ManagerOrchestrationPage() {
   const columns: GridColDef<IntentRuleView>[] = [
     {
       field: 'intentKey',
-      headerName: 'Intencion',
+      headerName: 'Motivo',
       flex: 1,
       minWidth: 160,
       renderCell: (params) => (
@@ -226,21 +227,21 @@ export default function ManagerOrchestrationPage() {
     },
     {
       field: 'workflowName',
-      headerName: 'Workflow',
+      headerName: 'Flujo',
       flex: 1,
       minWidth: 180,
       renderCell: (params) => params.row.workflowName || params.row.workflowId || 'Pendiente de asociar',
     },
     {
       field: 'sourceAgentId',
-      headerName: 'Agente que escucha',
+      headerName: 'Asistente que recibe',
       flex: 1,
       minWidth: 180,
       renderCell: (params) => agentName(agents, params.row.sourceAgentId),
     },
     {
       field: 'targetAgentId',
-      headerName: 'Agente que ejecuta',
+      headerName: 'Asistente que resuelve',
       flex: 1,
       minWidth: 180,
       renderCell: (params) => agentName(agents, params.row.targetAgentId),
@@ -270,7 +271,7 @@ export default function ManagerOrchestrationPage() {
   return (
     <>
       <Helmet>
-        <title>Mapa de intenciones | {CONFIG.appName}</title>
+        <title>Motivos del cliente | {CONFIG.appName}</title>
       </Helmet>
 
       <DashboardContent maxWidth="xl">
@@ -284,15 +285,17 @@ export default function ManagerOrchestrationPage() {
             <CardContent>
               <Grid container spacing={3} alignItems="center">
                 <Grid item xs={12} md={8}>
-                  <Stack spacing={1.5}>
-                    <Typography variant="h3">Mapa de intenciones</Typography>
+                    <Stack spacing={1.5}>
+                    <Stack direction="row" spacing={0.75} alignItems="center">
+                      <Typography variant="h3">Motivos del cliente</Typography>
+                      <TermHelp title="Intención es el termino técnico para el motivo o necesidad que expresa el cliente, por ejemplo agendar, pagar o validar identidad." />
+                    </Stack>
                     <Typography sx={{ opacity: 0.86 }}>
-                      Aqui ves que frases del cliente activan cada workflow, que agente las interpreta y
-                      como confirmar que el enrutamiento funciona antes de publicarlo.
+                      Aquí defines qué necesita el cliente, qué frases lo representan y qué asistente o flujo debe hacerse cargo.
                     </Typography>
                     <Stack direction="row" spacing={1} flexWrap="wrap">
-                      <Chip label={`${enabledRules} intenciones activas`} />
-                      <Chip label={`${workflowCount} workflows sincronizados`} />
+                      <Chip label={`${enabledRules} motivos activos`} />
+                      <Chip label={`${workflowCount} flujos conectados`} />
                       <Chip label={`${channelCount || 'Todos'} canales`} />
                     </Stack>
                   </Stack>
@@ -316,9 +319,9 @@ export default function ManagerOrchestrationPage() {
           <Grid container spacing={3}>
             {[
               ['1', 'El canal recibe un mensaje', 'WhatsApp, voz, web chat o email generan un evento del sistema.'],
-              ['2', 'El orquestador detecta intencion', 'Compara la frase con ejemplos y reglas activas.'],
-              ['3', 'Se ejecuta el agente correcto', 'El agente publicado atiende la tarea o transfiere a otro subflujo.'],
-              ['4', 'El workflow continua', 'Segun el resultado, conecta pagos, KYC, humano, storage o MCP.'],
+                ['2', 'El sistema entiende la necesidad', 'Compara la frase con ejemplos y reglas activas para detectar el motivo correcto.'],
+                ['3', 'Se activa el asistente correcto', 'El asistente publicado atiende la tarea o la deriva a otro flujo.'],
+                ['4', 'El flujo continua', 'Según el resultado, conecta pagos, KYC, revisión humana, almacenamiento o herramientas externas.'],
             ].map(([step, title, body]) => (
               <Grid key={step} item xs={12} md={3}>
                 <Card variant="outlined" sx={{ height: '100%' }}>
@@ -339,13 +342,13 @@ export default function ManagerOrchestrationPage() {
               <Card>
                 <CardContent>
                   <Stack spacing={2}>
-                    <Typography variant="h6">Probar una frase</Typography>
+                    <Typography variant="h6">Probar un mensaje</Typography>
                     <Typography variant="body2" color="text.secondary">
-                      Usa esto para confirmar si el sistema entiende la intencion correcta antes de activar un flujo.
+                      Usa esto para confirmar si el sistema entiende el motivo correcto antes de activar un flujo real.
                     </Typography>
                     <TextField
                       select
-                      label="Agente que escucha el canal"
+                      label="Asistente que recibe primero"
                       value={sourceAgentId}
                       onChange={(event) => setSourceAgentId(event.target.value)}
                       fullWidth
@@ -366,7 +369,7 @@ export default function ManagerOrchestrationPage() {
                       ))}
                     </TextField>
                     <TextField
-                      label="Mensaje del cliente"
+                      label="Mensaje de ejemplo"
                       value={probeText}
                       onChange={(event) => setProbeText(event.target.value)}
                       multiline
@@ -374,11 +377,11 @@ export default function ManagerOrchestrationPage() {
                       fullWidth
                     />
                     <Button variant="contained" onClick={simulate} disabled={loading || !sourceAgentId}>
-                      Simular enrutamiento
+                      Simular decision
                     </Button>
                     {simulateResult && (
                       <Alert severity="success">
-                        Resultado: {simulateResult.intentKey || simulateResult.intent || 'sin intencion'} - destino:{' '}
+                        Resultado: {simulateResult.intentKey || simulateResult.intent || 'sin motivo detectado'} - destino:{' '}
                         {agentName(agents, simulateResult.targetAgentId)}
                       </Alert>
                     )}
@@ -391,14 +394,14 @@ export default function ManagerOrchestrationPage() {
               <Card>
                 <CardContent>
                   <Stack spacing={2}>
-                    <Typography variant="h6">Nueva intencion</Typography>
+                    <Typography variant="h6">Nuevo motivo del cliente</Typography>
                     <Typography variant="body2" color="text.secondary">
-                      El evento tecnico lo define el sistema. El usuario solo decide la intencion, el canal y el agente que ejecuta la tarea.
+                      El evento técnico lo resuelve el sistema. Aquí solo defines el motivo, el canal y quién debe hacerse cargo.
                     </Typography>
                     <Grid container spacing={2}>
                       <Grid item xs={12} md={6}>
                         <TextField
-                          label="Nombre de intencion"
+                          label="Nombre corto del motivo"
                           value={ruleIntentKey}
                           onChange={(event) => setRuleIntentKey(event.target.value)}
                           fullWidth
@@ -421,7 +424,7 @@ export default function ManagerOrchestrationPage() {
                       <Grid item xs={12} md={6}>
                         <TextField
                           select
-                          label="Agente que escucha"
+                          label="Asistente que recibe"
                           value={sourceAgentId}
                           onChange={(event) => setSourceAgentId(event.target.value)}
                           fullWidth
@@ -434,7 +437,7 @@ export default function ManagerOrchestrationPage() {
                       <Grid item xs={12} md={6}>
                         <TextField
                           select
-                          label="Agente que ejecuta"
+                          label="Asistente que resuelve"
                           value={targetAgentId}
                           onChange={(event) => setTargetAgentId(event.target.value)}
                           fullWidth
@@ -448,11 +451,11 @@ export default function ManagerOrchestrationPage() {
                       </Grid>
                       <Grid item xs={12}>
                         <TextField
-                          label="Descripcion de la intencion"
+                          label="Descripcion del motivo"
                           value={ruleDescription}
                           onChange={(event) => setRuleDescription(event.target.value)}
                           fullWidth
-                          helperText="Describe en lenguaje natural cuando debe activarse esta intencion. El Router la usa como guia semantica."
+                          helperText="Describe en lenguaje natural cuándo debe activarse este motivo. El router usa esta guía para entender mensajes."
                           placeholder="El cliente quiere agendar una cita medica o de servicio"
                         />
                       </Grid>
@@ -464,12 +467,12 @@ export default function ManagerOrchestrationPage() {
                           multiline
                           minRows={3}
                           fullWidth
-                          helperText="Una frase por linea. Estas frases alimentan el mapa de intenciones y el Router las usa para clasificar mensajes."
+                          helperText="Una frase por línea. Estas frases ayudan al sistema a clasificar mejor cada mensaje."
                         />
                       </Grid>
                     </Grid>
                     <Button variant="contained" onClick={createRule} startIcon={<Iconify icon="mdi:plus" />}>
-                      Crear y sincronizar
+                      Crear y publicar
                     </Button>
                   </Stack>
                 </CardContent>
@@ -482,9 +485,9 @@ export default function ManagerOrchestrationPage() {
               <Stack spacing={2}>
                 <Stack direction="row" justifyContent="space-between" alignItems="center">
                   <Box>
-                    <Typography variant="h6">Intenciones sincronizadas</Typography>
+                    <Typography variant="h6">Motivos publicados</Typography>
                     <Typography variant="body2" color="text.secondary">
-                      Lista operativa que usa el orquestador para enrutar mensajes y llamadas.
+                      Lista operativa que usa el sistema para decidir quién atiende cada mensaje o llamada.
                     </Typography>
                   </Box>
                   <Button variant="outlined" onClick={() => loadData()} disabled={loading}>
@@ -509,8 +512,8 @@ export default function ManagerOrchestrationPage() {
               <Stack spacing={2}>
                 <Typography variant="h6">Agente IA del sistema</Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Este agente no se edita desde el flujo normal. Su responsabilidad es asistir al usuario,
-                  explicar capacidades, validar configuraciones y ayudar a convertir necesidades de negocio en intenciones.
+                  Este asistente no se edita desde el flujo normal. Su responsabilidad es asistir al usuario,
+                  explicar capacidades, validar configuraciones y ayudar a convertir necesidades de negocio en motivos entendibles por el sistema.
                 </Typography>
                 <Divider />
                 <Grid container spacing={2}>

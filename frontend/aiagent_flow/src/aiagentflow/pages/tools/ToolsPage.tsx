@@ -20,6 +20,7 @@ import axios from 'src/lib/axios';
 import { CONFIG } from 'src/global-config';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
+import { TermHelp } from 'src/aiagentflow/components/TermHelp';
 
 import { Label } from 'src/components/label';
 import { Iconify } from 'src/components/iconify';
@@ -73,7 +74,7 @@ export default function ToolsPage() {
       const res = await axios.get(`/api/v1/tenants/${tenantId}/tools/status`);
       setTools(res.data ?? []);
     } catch (err: any) {
-      setError(err?.message || 'Failed to load tools');
+      setError(err?.message || 'No se pudieron cargar las herramientas');
     } finally {
       setLoading(false);
     }
@@ -88,7 +89,7 @@ export default function ToolsPage() {
       await axios.put(`/api/v1/tenants/${tenantId}/tools/${row.name}/enabled`, { enabled });
       await fetchTools();
     } catch (err: any) {
-      setError(err?.message || 'Failed to update tool status');
+      setError(err?.message || 'No se pudo actualizar el estado de la herramienta');
     }
   };
 
@@ -102,7 +103,7 @@ export default function ToolsPage() {
       });
       setResult(JSON.stringify(res.data, null, 2));
     } catch (err: any) {
-      setError(err?.response?.data?.errorMessage || err?.message || 'Tool invoke failed');
+      setError(err?.response?.data?.errorMessage || err?.message || 'La prueba de la herramienta fallo');
     } finally {
       setRunLoading(false);
     }
@@ -140,15 +141,18 @@ export default function ToolsPage() {
   return (
     <>
       <Helmet>
-        <title>Conectores y Tools | {CONFIG.appName}</title>
+        <title>Herramientas e integraciones | {CONFIG.appName}</title>
       </Helmet>
 
       <DashboardContent maxWidth="xl">
         <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Box>
-            <Typography variant="h4">Conectores y herramientas</Typography>
+            <Stack direction="row" spacing={1} alignItems="center">
+              <Typography variant="h4">Herramientas e integraciones</Typography>
+              <TermHelp title="Aqui administras herramientas disponibles para los asistentes y conexiones con sistemas externos." />
+            </Stack>
             <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-              Administra capacidades disponibles para agentes, workflows e integraciones.
+              Administra capacidades disponibles para asistentes, flujos automatizados e integraciones.
             </Typography>
           </Box>
           <Button variant="outlined" onClick={fetchTools}>Actualizar</Button>
@@ -156,9 +160,9 @@ export default function ToolsPage() {
 
         <Grid container spacing={2} sx={{ mb: 3 }}>
           {[
-            ['Marketplace', 'Instala nuevas capacidades', paths.dashboard.marketplace, 'mdi:storefront-outline'],
+            ['Integraciones', 'Instala nuevas capacidades', paths.dashboard.marketplace, 'mdi:storefront-outline'],
             ['Canales', 'Conecta WhatsApp, web chat y APIs', paths.dashboard.system.channels, 'mdi:message-processing-outline'],
-            ['MCP', 'Expone tools externas para agentes', paths.dashboard.system.mcp, 'mdi:connection'],
+            ['Herramientas externas', 'Expone herramientas externas para asistentes', paths.dashboard.system.mcp, 'mdi:connection'],
           ].map(([title, subtitle, href, icon]) => (
             <Grid item xs={12} md={4} key={title}>
               <Card
@@ -179,7 +183,7 @@ export default function ToolsPage() {
         </Grid>
 
         {error && (
-          <Alert severity="error" sx={{ mb: 2 }} action={<Button color="inherit" size="small" onClick={fetchTools}>Retry</Button>}>
+          <Alert severity="error" sx={{ mb: 2 }} action={<Button color="inherit" size="small" onClick={fetchTools}>Reintentar</Button>}>
             {error}
           </Alert>
         )}

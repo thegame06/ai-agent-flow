@@ -1,4 +1,4 @@
-import { Helmet } from 'react-helmet-async';
+﻿import { Helmet } from 'react-helmet-async';
 import { useState, useEffect, useCallback } from 'react';
 
 import Box from '@mui/material/Box';
@@ -39,6 +39,7 @@ import { CONFIG } from 'src/global-config';
 import axios, { endpoints } from 'src/lib/axios';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
+import { TermHelp } from 'src/aiagentflow/components/TermHelp';
 
 import { Iconify } from 'src/components/iconify';
 
@@ -430,7 +431,7 @@ export default function ChannelsPage() {
   return (
     <>
       <Helmet>
-        <title>Conectores de canal | {CONFIG.appName}</title>
+        <title>Canales de atencion | {CONFIG.appName}</title>
       </Helmet>
 
       <DashboardContent maxWidth="xl">
@@ -451,11 +452,14 @@ export default function ChannelsPage() {
               </Avatar>
               <Box>
                 <Typography variant="overline" color="text.secondary">
-                  Canales omnicanal
+                  Conversaciones e integraciones
                 </Typography>
-                <Typography variant="h3">Conectores de canal</Typography>
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <Typography variant="h3">Canales de atencion</Typography>
+                  <TermHelp title="Un canal es el medio por donde escribe o llama el cliente, por ejemplo WhatsApp, web chat, email o voz." />
+                </Stack>
                 <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                  Conecta WhatsApp, web chat, voz, call center, email y APIs para usarlos en Inbox y workflows.
+                  Conecta WhatsApp, web chat, voz, call center, email y APIs para usarlos en la bandeja, ventas y flujos automatizados.
                 </Typography>
               </Box>
             </Stack>
@@ -484,7 +488,7 @@ export default function ChannelsPage() {
                 ['Canales', channels.length, 'Configurados', 'mdi:message-processing-outline'],
                 ['Activos', activeChannels, 'Listos para operar', 'mdi:check-decagram-outline'],
                 ['WhatsApp', whatsappChannels, 'Templates y QR', 'mdi:whatsapp'],
-                ['Sesiones', sessions.length, 'Conversaciones recientes', 'mdi:inbox-outline'],
+                ['Conversaciones', sessions.length, 'Casos recientes', 'mdi:inbox-outline'],
               ].map(([label, value, helper, icon]) => (
                 <Grid item xs={12} sm={6} md={3} key={label}>
                   <Card variant="outlined" sx={{ p: 2, height: '100%' }}>
@@ -505,7 +509,7 @@ export default function ChannelsPage() {
                       <Box>
                         <Typography variant="h5">{String(value)}</Typography>
                         <Typography variant="caption" color="text.secondary">
-                          {label} Â· {helper}
+                          {label} | {helper}
                         </Typography>
                       </Box>
                     </Stack>
@@ -547,12 +551,12 @@ export default function ChannelsPage() {
             <Card variant="outlined" sx={{ p: 2 }}>
               <Typography variant="h6" sx={{ mb: 0.5 }}>Canales conectados</Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Estos conectores alimentan Inbox y aparecen como integraciones disponibles en Workflow Studio.
+                Estos canales alimentan la bandeja y aparecen como entradas disponibles en flujos automatizados.
               </Typography>
               {loading ? (
                 <Box sx={{ py: 4, textAlign: 'center' }}><CircularProgress /></Box>
               ) : channels.length === 0 ? (
-                <Alert severity="info">Aun no hay canales configurados.</Alert>
+                <Alert severity="info">Aun no hay canales de atencion configurados.</Alert>
               ) : (
                 <Table size="small">
                   <TableHead>
@@ -620,9 +624,9 @@ export default function ChannelsPage() {
 
           <Grid item xs={12} md={5}>
             <Card variant="outlined" sx={{ p: 2 }}>
-              <Typography variant="h6" sx={{ mb: 2 }}>Sesiones de canal</Typography>
+              <Typography variant="h6" sx={{ mb: 2 }}>Conversaciones del canal</Typography>
               {sessions.length === 0 ? (
-                <Alert severity="info">No hay sesiones.</Alert>
+                <Alert severity="info">No hay conversaciones.</Alert>
               ) : (
                 <>
                   <Box sx={{ overflowX: 'auto' }}>
@@ -633,8 +637,8 @@ export default function ChannelsPage() {
                           <TableCell>Canal</TableCell>
                           <TableCell>Estado</TableCell>
                           <TableCell>Ventana</TableCell>
-                          <TableCell>Msgs</TableCell>
-                          <TableCell>Ultima</TableCell>
+                          <TableCell>Mensajes</TableCell>
+                          <TableCell>Ultima actividad</TableCell>
                           <TableCell align="right">Accion</TableCell>
                         </TableRow>
                       </TableHead>
@@ -666,7 +670,7 @@ export default function ChannelsPage() {
                             <TableCell>{new Date(s.lastActivityAt).toLocaleString()}</TableCell>
                             <TableCell align="right">
                               <Button size="small" onClick={() => openSessionEvidence(s)}>
-                                Evidencia
+                                Ver detalle
                               </Button>
                             </TableCell>
                           </TableRow>
@@ -695,7 +699,7 @@ export default function ChannelsPage() {
 
       {/* Create Channel Dialog */}
       <Dialog open={openCreate} onClose={() => setOpenCreate(false)} fullWidth maxWidth="sm">
-        <DialogTitle>Crear canal</DialogTitle>
+        <DialogTitle>Agregar canal de atencion</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ pt: 1 }}>
             <TextField
@@ -759,7 +763,7 @@ export default function ChannelsPage() {
               <>
                 <Alert severity={twilioConnections.length > 0 ? 'success' : 'warning'}>
                   Este canal usa una conexion Twilio reusable. Configurala una vez en Marketplace/Integraciones y
-                  reutilizala para voz, call center, campanas y nodos de Workflow Studio.
+                  reutilizala para voz, call center, campanas y pasos de flujos automatizados.
                 </Alert>
                 <TextField
                   select
@@ -783,11 +787,11 @@ export default function ChannelsPage() {
 
             <TextField
               select
-              label="Agente por defecto"
+              label="Asistente principal"
               value={form.defaultAgentId}
               onChange={(e) => setForm((p) => ({ ...p, defaultAgentId: e.target.value }))}
               fullWidth
-              helperText={candidateAgents.length === 0 ? 'No hay agentes disponibles' : 'Agente que responde cuando no hay router configurado'}
+              helperText={candidateAgents.length === 0 ? 'No hay asistentes disponibles' : 'Asistente que responde cuando no aplica ninguna regla especial.'}
             >
               {candidateAgents.map((agent) => (
                 <MenuItem key={agent.id} value={agent.id}>
@@ -797,16 +801,16 @@ export default function ChannelsPage() {
             </TextField>
 
             <Divider textAlign="left">
-              <Typography variant="caption" color="text.secondary">Enrutamiento por carga (opcional)</Typography>
+              <Typography variant="caption" color="text.secondary">Asignacion automatica (opcional)</Typography>
             </Divider>
 
             <FormControl fullWidth>
-              <InputLabel>Agentes de enrutamiento</InputLabel>
+              <InputLabel>Asistentes alternos</InputLabel>
               <Select
                 multiple
                 value={form.routingAgentIds}
                 onChange={(e) => setForm((p) => ({ ...p, routingAgentIds: e.target.value as string[] }))}
-                input={<OutlinedInput label="Agentes de enrutamiento" />}
+                input={<OutlinedInput label="Asistentes alternos" />}
                 renderValue={(selected) => (
                   <Stack direction="row" spacing={0.5} flexWrap="wrap">
                     {(selected as string[]).map((id) => {
@@ -820,29 +824,29 @@ export default function ChannelsPage() {
                   <MenuItem key={agent.id} value={agent.id}>{agent.name}</MenuItem>
                 ))}
               </Select>
-              <FormHelperText>Asignación automática por menor carga activa. Deja vacío para usar solo el agente por defecto.</FormHelperText>
+              <FormHelperText>El sistema repartira nuevas conversaciones entre estos asistentes segun su carga actual. Dejalo vacio para usar solo el asistente principal.</FormHelperText>
             </FormControl>
 
             {form.type === 'WhatsApp' && (
               <>
                 <TextField
-                  label="Ventana de sesion (horas)"
+                  label="Ventana de conversacion (horas)"
                   type="number"
                   value={form.sessionWindowHours}
                   onChange={(e) => setForm((p) => ({ ...p, sessionWindowHours: e.target.value }))}
                   fullWidth
-                  helperText="Horas que la sesion WhatsApp permanece abierta. Default: 24"
+                  helperText="Horas en que la conversacion de WhatsApp sigue abierta para responder sin reactivar el caso. Default: 24."
                   inputProps={{ min: 1, max: 168 }}
                 />
                 <TextField
                   select
-                  label="Agente Router (intent routing)"
+                  label="Asistente clasificador"
                   value={form.routerAgentId}
                   onChange={(e) => setForm((p) => ({ ...p, routerAgentId: e.target.value }))}
                   fullWidth
-                  helperText="Agente con rol Router que clasifica intenciones antes de asignar un workflow."
+                  helperText="Asistente que interpreta la necesidad del cliente antes de decidir que flujo o responsable debe continuar."
                 >
-                  <MenuItem value="">Sin Router (usa agente por defecto)</MenuItem>
+                  <MenuItem value="">Sin clasificador (usa el asistente principal)</MenuItem>
                   {candidateAgents.map((agent) => (
                     <MenuItem key={agent.id} value={agent.id}>
                       {agent.name}
@@ -850,11 +854,11 @@ export default function ChannelsPage() {
                   ))}
                 </TextField>
                 <TextField
-                  label="Template de reapertura (WhatsApp)"
+                  label="Mensaje aprobado para reabrir (WhatsApp)"
                   value={form.reopenTemplateName}
                   onChange={(e) => setForm((p) => ({ ...p, reopenTemplateName: e.target.value }))}
                   fullWidth
-                  helperText="Nombre del template aprobado para reabrir la ventana expirada. Ejemplo: session_reopen"
+                  helperText="Nombre del mensaje aprobado por WhatsApp para retomar una conversacion vencida. Ejemplo: session_reopen"
                 />
               </>
             )}
@@ -863,40 +867,40 @@ export default function ChannelsPage() {
         <DialogActions>
           <Button onClick={() => setOpenCreate(false)}>Cancelar</Button>
           <Button variant="contained" onClick={handleCreate} disabled={saving || !form.name}>
-            {saving ? 'Creando...' : 'Crear'}
+            {saving ? 'Agregando...' : 'Agregar'}
           </Button>
         </DialogActions>
       </Dialog>
 
       <Dialog open={openRouting} onClose={() => setOpenRouting(false)} fullWidth maxWidth="sm">
-        <DialogTitle>Enrutamiento — {routingChannel?.name}</DialogTitle>
+        <DialogTitle>Asignacion automatica - {routingChannel?.name}</DialogTitle>
         <DialogContent>
           <Stack spacing={2.5} sx={{ pt: 1 }}>
             <Alert severity="info" sx={{ mb: 0 }}>
-              El <strong>agente por defecto</strong> responde cuando no hay coincidencia de intención. Los <strong>agentes de enrutamiento</strong> se asignan automáticamente por menor carga activa.
+              El <strong>asistente principal</strong> responde cuando no aplica ninguna regla especial. Los <strong>asistentes alternos</strong> reciben nuevas conversaciones segun su carga.
             </Alert>
 
             <TextField
               select
-              label="Agente por defecto"
+              label="Asistente principal"
               value={routingForm.defaultAgentId}
               onChange={(e) => setRoutingForm((prev) => ({ ...prev, defaultAgentId: e.target.value }))}
               fullWidth
-              helperText="Agente de fallback cuando ninguna intención hace match"
+              helperText="Responsable de respaldo cuando el sistema no detecta un motivo claro."
             >
-              <MenuItem value=""><em>Sin agente por defecto</em></MenuItem>
+              <MenuItem value=""><em>Sin asistente principal</em></MenuItem>
               {candidateAgents.map((agent) => (
                 <MenuItem key={agent.id} value={agent.id}>{agent.name}</MenuItem>
               ))}
             </TextField>
 
             <FormControl fullWidth>
-              <InputLabel>Agentes de enrutamiento</InputLabel>
+              <InputLabel>Asistentes alternos</InputLabel>
               <Select
                 multiple
                 value={routingForm.routingAgentIds}
                 onChange={(e) => setRoutingForm((prev) => ({ ...prev, routingAgentIds: e.target.value as string[] }))}
-                input={<OutlinedInput label="Agentes de enrutamiento" />}
+                input={<OutlinedInput label="Asistentes alternos" />}
                 renderValue={(selected) => (
                   <Stack direction="row" spacing={0.5} flexWrap="wrap">
                     {(selected as string[]).map((id) => {
@@ -910,18 +914,18 @@ export default function ChannelsPage() {
                   <MenuItem key={agent.id} value={agent.id}>{agent.name}</MenuItem>
                 ))}
               </Select>
-              <FormHelperText>Se asignarán en round-robin por menor número de sesiones activas.</FormHelperText>
+              <FormHelperText>El sistema alternara entre estos asistentes y priorizara al que tenga menos conversaciones activas.</FormHelperText>
             </FormControl>
 
             {routingPreview && (
               <Alert severity="success">
-                <strong>Próxima asignación:</strong> {candidateAgents.find(a => a.id === routingPreview.suggestedAgentId)?.name || routingPreview.suggestedAgentId || 'N/A'}
+                <strong>Proximo responsable:</strong> {candidateAgents.find(a => a.id === routingPreview.suggestedAgentId)?.name || routingPreview.suggestedAgentId || 'N/A'}
                 {Object.keys(routingPreview.activeLoadByAgent || {}).length > 0 && (
                   <Typography variant="caption" display="block" sx={{ mt: 0.5 }}>
                     Carga actual: {Object.entries(routingPreview.activeLoadByAgent || {}).map(([a, l]) => {
                       const name = candidateAgents.find(ca => ca.id === a)?.name || a;
                       return `${name}: ${l}`;
-                    }).join(' · ')}
+                    }).join(' | ')}
                   </Typography>
                 )}
               </Alert>
@@ -983,17 +987,17 @@ export default function ChannelsPage() {
 
       {/* Session Evidence Dialog */}
       <Dialog open={!!selectedSession} onClose={() => setSelectedSession(null)} fullWidth maxWidth="md">
-        <DialogTitle>Evidencia de sesion - {selectedSession?.identifier}</DialogTitle>
+        <DialogTitle>Historial tecnico de la conversacion - {selectedSession?.identifier}</DialogTitle>
         <DialogContent>
           {sessionLoading ? (
             <Box sx={{ py: 4, textAlign: 'center' }}><CircularProgress /></Box>
           ) : (
             <Stack spacing={1.5}>
               <Alert severity="info">
-                ExecutionId: {firstExecutionId || 'N/A'} | MsgIn: {messageIdIn || 'N/A'} | MsgOut: {messageIdOut || 'N/A'} | Latency: {latencyMs} ms
+                ID de ejecucion: {firstExecutionId || 'N/A'} | Mensaje entrante: {messageIdIn || 'N/A'} | Mensaje saliente: {messageIdOut || 'N/A'} | Tiempo total: {latencyMs} ms
               </Alert>
               {sessionMessages.length === 0 ? (
-                <Alert severity="warning">No se encontraron mensajes para esta sesion.</Alert>
+                <Alert severity="warning">No se encontraron mensajes para esta conversacion.</Alert>
               ) : (
                 <Table size="small">
                   <TableHead>
@@ -1032,7 +1036,7 @@ export default function ChannelsPage() {
 
       {/* Test Message Dialog */}
       <Dialog open={openTestPanel} onClose={() => setOpenTestPanel(false)} fullWidth maxWidth="sm">
-        <DialogTitle>Probar mensaje — {testPanelChannel?.name}</DialogTitle>
+        <DialogTitle>Probar mensaje â€” {testPanelChannel?.name}</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ pt: 1 }}>
             <Alert severity="info">
@@ -1093,3 +1097,4 @@ export default function ChannelsPage() {
     </>
   );
 }
+

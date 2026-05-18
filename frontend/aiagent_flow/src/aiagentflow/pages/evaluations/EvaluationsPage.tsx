@@ -13,6 +13,7 @@ import { DataGrid, GridToolbar } from '@mui/x-data-grid';
 import { CONFIG } from 'src/global-config';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
+import { TermHelp } from 'src/aiagentflow/components/TermHelp';
 
 import { Iconify } from 'src/components/iconify';
 
@@ -49,19 +50,19 @@ export default function EvaluationsPage() {
         <Grid item xs={12} sm={4}>
           <Card sx={{ p: 3, textAlign: 'center' }}>
             <Typography variant="h4" color="primary">{totalEvaluations}</Typography>
-            <Typography variant="body2" color="text.secondary">Total Evaluations</Typography>
+            <Typography variant="body2" color="text.secondary">Evaluaciones totales</Typography>
           </Card>
         </Grid>
         <Grid item xs={12} sm={4}>
           <Card sx={{ p: 3, textAlign: 'center' }}>
             <Typography variant="h4" color="success.main">{avgScore.toFixed(1)}%</Typography>
-            <Typography variant="body2" color="text.secondary">Average Score</Typography>
+            <Typography variant="body2" color="text.secondary">Puntaje promedio</Typography>
           </Card>
         </Grid>
         <Grid item xs={12} sm={4}>
           <Card sx={{ p: 3, textAlign: 'center' }}>
             <Typography variant="h4" color="info.main">{avgPassRate.toFixed(1)}%</Typography>
-            <Typography variant="body2" color="text.secondary">Average Pass Rate</Typography>
+            <Typography variant="body2" color="text.secondary">Aprobacion promedio</Typography>
           </Card>
         </Grid>
       </Grid>
@@ -71,13 +72,13 @@ export default function EvaluationsPage() {
   const renderPendingReview = () => (
     <Card sx={{ p: 2 }}>
       <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Typography variant="h6">Pending Review ({pendingReview.length})</Typography>
+        <Typography variant="h6">Pendientes de revision ({pendingReview.length})</Typography>
         <Button size="small" onClick={handleRefresh}>
-          <Iconify icon="solar:refresh-line-duotone" sx={{ mr: 0.5 }} /> Refresh
+          <Iconify icon="solar:refresh-line-duotone" sx={{ mr: 0.5 }} /> Actualizar
         </Button>
       </Box>
       {pendingReview.length === 0 ? (
-        <Alert severity="success">No evaluations pending review!</Alert>
+        <Alert severity="success">No hay evaluaciones pendientes de revision.</Alert>
       ) : (
         <Box sx={{ height: 400 }}>
           <DataGrid
@@ -101,9 +102,9 @@ export default function EvaluationsPage() {
   const renderAllEvaluations = () => (
     <Card sx={{ p: 2 }}>
       <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Typography variant="h6">All Evaluations</Typography>
+        <Typography variant="h6">Todas las evaluaciones</Typography>
         <Button size="small" onClick={handleRefresh}>
-          <Iconify icon="solar:refresh-line-duotone" sx={{ mr: 0.5 }} /> Refresh
+          <Iconify icon="solar:refresh-line-duotone" sx={{ mr: 0.5 }} /> Actualizar
         </Button>
       </Box>
       <Box sx={{ height: 600 }}>
@@ -116,7 +117,7 @@ export default function EvaluationsPage() {
           slotProps={{
             toolbar: {
               showQuickFilter: true,
-              quickFilterProps: { placeholder: 'Search evaluations...' },
+              quickFilterProps: { placeholder: 'Buscar evaluaciones...' },
             },
           }}
           initialState={{
@@ -133,14 +134,17 @@ export default function EvaluationsPage() {
   return (
     <>
       <Helmet>
-        <title>Evaluations | {CONFIG.appName}</title>
+        <title>Evaluacion de calidad | {CONFIG.appName}</title>
       </Helmet>
 
       <DashboardContent maxWidth="xl">
         <Box sx={{ mb: 4 }}>
-          <Typography variant="h4">Evaluations Dashboard</Typography>
+          <Stack direction="row" spacing={1} alignItems="center">
+            <Typography variant="h4">Evaluacion de calidad</Typography>
+            <TermHelp title="Aqui revisas como salieron las respuestas del sistema, que casos necesitan revision humana y la calidad promedio de los asistentes." />
+          </Stack>
           <Typography variant="body2" sx={{ color: 'text.secondary', mt: 1 }}>
-            Monitor agent quality, champion/challenger comparisons, and review pending evaluations.
+            Revisa la calidad de respuesta, detecta casos que necesitan revision humana y compara el desempeno general de los asistentes.
           </Typography>
         </Box>
 
@@ -159,20 +163,20 @@ export default function EvaluationsPage() {
             variant={activeTab === 'all' ? 'contained' : 'outlined'}
             onClick={() => setActiveTab('all')}
           >
-            All Evaluations
+            Todas
           </Button>
           <Button
             variant={activeTab === 'pending' ? 'contained' : 'outlined'}
             onClick={() => setActiveTab('pending')}
             startIcon={pendingReview.length > 0 && <Iconify icon="solar:bell-bing-bold-duotone" />}
           >
-            Pending Review ({pendingReview.length})
+            Pendientes ({pendingReview.length})
           </Button>
           <Button
             variant={activeTab === 'summaries' ? 'contained' : 'outlined'}
             onClick={() => setActiveTab('summaries')}
           >
-            Agent Summaries
+            Resumen por asistente
           </Button>
         </Stack>
 
@@ -180,7 +184,7 @@ export default function EvaluationsPage() {
         {activeTab === 'pending' && renderPendingReview()}
         {activeTab === 'all' && renderAllEvaluations()}
         {activeTab === 'summaries' && (
-          <Alert severity="info">Agent summaries view coming soon. Use the evaluations list to analyze individual runs.</Alert>
+          <Alert severity="info">El resumen por asistente estara disponible pronto. Mientras tanto, usa la lista para revisar casos individuales.</Alert>
         )}
       </DashboardContent>
     </>

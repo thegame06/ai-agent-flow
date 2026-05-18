@@ -192,12 +192,12 @@ export default function AgentsPage() {
                 </Avatar>
                 <Box>
                   <Typography variant="overline" color="text.secondary">
-                    Agent Studio
+                    Asistentes reutilizables
                   </Typography>
                   <Typography variant="h3">Agentes de IA</Typography>
                   <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                    Diseña bots reutilizables para canales y Workflow Studio. Cada agente puede tener modelo,
-                    memoria, tools, MCP y reglas de seguridad.
+                    Disena asistentes reutilizables para canales y flujos automatizados. Cada asistente puede tener modelo,
+                    memoria, herramientas, integraciones externas y reglas de seguridad.
                   </Typography>
                 </Box>
               </Stack>
@@ -210,7 +210,7 @@ export default function AgentsPage() {
                   variant="outlined"
                   startIcon={<Iconify icon="mdi:source-branch" />}
                 >
-                  Usar en workflow
+                  Usar en flujo
                 </Button>
                 <Button
                   component={RouterLink}
@@ -230,7 +230,7 @@ export default function AgentsPage() {
             ['Total', agents.length, 'mdi:robot-outline'],
             ['Publicados', publishedAgents, 'mdi:check-decagram-outline'],
             ['Sistema', systemAgents, 'mdi:shield-lock-outline'],
-            ['Con tools', toolReadyAgents, 'mdi:tools'],
+            ['Con herramientas', toolReadyAgents, 'mdi:tools'],
           ].map(([label, value, icon]) => (
             <Grid key={String(label)} item xs={12} sm={6} md={3}>
               <Card variant="outlined" sx={{ p: 2 }}>
@@ -259,7 +259,7 @@ export default function AgentsPage() {
               No hay agentes creados
             </Typography>
             <Typography variant="body2" color="text.disabled" sx={{ mb: 3 }}>
-              Crea tu primer agente para usarlo en canales o como nodo dentro de Workflow Studio.
+              Crea tu primer asistente para usarlo en canales o como paso dentro de flujos automatizados.
             </Typography>
             <Button
               component={RouterLink}
@@ -500,3 +500,4 @@ function AgentMenu({ agentId, isSystemAgent, systemRole, onEdit, onChat, onClone
     </>
   );
 }
+

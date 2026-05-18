@@ -16,6 +16,7 @@ import { CONFIG } from 'src/global-config';
 import axios, { endpoints } from 'src/lib/axios';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
+import { TermHelp } from 'src/aiagentflow/components/TermHelp';
 
 type Rule = {
   ruleName: string;
@@ -53,11 +54,11 @@ export default function SegmentRoutingPage() {
       setIsEnabled(!!res.data?.isEnabled);
       setRules(res.data?.rules ?? []);
       setDefaultTargetAgentId(res.data?.defaultTargetAgentId ?? '');
-      setMessage('Configuration loaded');
+      setMessage('Configuracion cargada');
     } catch {
       setRules([]);
       setDefaultTargetAgentId('');
-      setMessage('No existing config for this agent');
+      setMessage('Este asistente aun no tiene reglas guardadas');
     }
   };
 
@@ -75,7 +76,7 @@ export default function SegmentRoutingPage() {
       rules,
       defaultTargetAgentId: defaultTargetAgentId || null,
     });
-    setMessage('Segment routing saved');
+    setMessage('Reglas por segmento guardadas');
   };
 
   const runPreview = async () => {
@@ -90,12 +91,15 @@ export default function SegmentRoutingPage() {
 
   return (
     <>
-      <Helmet><title>Segment Routing | {CONFIG.appName}</title></Helmet>
+      <Helmet><title>Atencion por segmento | {CONFIG.appName}</title></Helmet>
       <DashboardContent maxWidth="xl">
         <Box sx={{ mb: 4 }}>
-          <Typography variant="h4">Segment Routing</Typography>
+          <Stack direction="row" spacing={1} alignItems="center">
+            <Typography variant="h4">Atencion por segmento</Typography>
+            <TermHelp title="Un segmento agrupa clientes con caracteristicas comunes. Aqui defines cuando otro asistente debe atenderlos de forma especial." />
+          </Stack>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-            Route users to different agents by segment rules.
+            Define reglas para que ciertos tipos de clientes sean atendidos por asistentes distintos.
           </Typography>
         </Box>
 
@@ -105,45 +109,45 @@ export default function SegmentRoutingPage() {
           <CardContent>
             <Grid container spacing={2}>
               <Grid item xs={12} md={4}>
-                <TextField select fullWidth label="Source Agent" value={agentId} onChange={(e) => setAgentId(e.target.value)}>
+                <TextField select fullWidth label="Asistente base" value={agentId} onChange={(e) => setAgentId(e.target.value)}>
                   {agents.map((a) => <MenuItem key={a.id} value={a.id}>{a.name} ({a.id})</MenuItem>)}
                 </TextField>
               </Grid>
               <Grid item xs={12} md={4}>
-                <TextField select fullWidth label="Default Target Agent" value={defaultTargetAgentId} onChange={(e) => setDefaultTargetAgentId(e.target.value)}>
-                  <MenuItem value="">(none)</MenuItem>
+                <TextField select fullWidth label="Asistente de respaldo" value={defaultTargetAgentId} onChange={(e) => setDefaultTargetAgentId(e.target.value)}>
+                  <MenuItem value="">(ninguno)</MenuItem>
                   {agents.filter((a) => a.id !== agentId).map((a) => <MenuItem key={a.id} value={a.id}>{a.name} ({a.id})</MenuItem>)}
                 </TextField>
               </Grid>
               <Grid item xs={12} md={4}>
-                <TextField select fullWidth label="Enabled" value={isEnabled ? 'yes' : 'no'} onChange={(e) => setIsEnabled(e.target.value === 'yes')}>
-                  <MenuItem value="yes">Yes</MenuItem>
+                <TextField select fullWidth label="Activo" value={isEnabled ? 'yes' : 'no'} onChange={(e) => setIsEnabled(e.target.value === 'yes')}>
+                  <MenuItem value="yes">Si</MenuItem>
                   <MenuItem value="no">No</MenuItem>
                 </TextField>
               </Grid>
             </Grid>
             <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
-              <Button variant="outlined" onClick={loadConfig}>Load</Button>
-              <Button variant="outlined" onClick={addRule}>Add Rule</Button>
-              <Button variant="contained" onClick={saveConfig}>Save</Button>
+              <Button variant="outlined" onClick={loadConfig}>Cargar</Button>
+              <Button variant="outlined" onClick={addRule}>Agregar regla</Button>
+              <Button variant="contained" onClick={saveConfig}>Guardar</Button>
             </Stack>
           </CardContent>
         </Card>
 
         <Card sx={{ mb: 3 }}>
           <CardContent>
-            <Typography variant="h6" sx={{ mb: 2 }}>Rules</Typography>
+            <Typography variant="h6" sx={{ mb: 2 }}>Reglas</Typography>
             <Stack spacing={2}>
               {rules.map((r, idx) => (
                 <Grid key={`${r.ruleName}-${idx}`} container spacing={2}>
-                  <Grid item xs={12} md={3}><TextField fullWidth label="Rule Name" value={r.ruleName} onChange={(e) => setRules((prev) => prev.map((x, i) => i === idx ? { ...x, ruleName: e.target.value } : x))} /></Grid>
-                  <Grid item xs={12} md={3}><TextField fullWidth label="Segments" value={r.matchSegments.join(',')} onChange={(e) => setRules((prev) => prev.map((x, i) => i === idx ? { ...x, matchSegments: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) } : x))} /></Grid>
+                  <Grid item xs={12} md={3}><TextField fullWidth label="Nombre de regla" value={r.ruleName} onChange={(e) => setRules((prev) => prev.map((x, i) => i === idx ? { ...x, ruleName: e.target.value } : x))} /></Grid>
+                  <Grid item xs={12} md={3}><TextField fullWidth label="Segmentos" value={r.matchSegments.join(',')} onChange={(e) => setRules((prev) => prev.map((x, i) => i === idx ? { ...x, matchSegments: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) } : x))} helperText="Separa varios segmentos con coma." /></Grid>
                   <Grid item xs={12} md={3}>
-                    <TextField select fullWidth label="Target Agent" value={r.targetAgentId} onChange={(e) => setRules((prev) => prev.map((x, i) => i === idx ? { ...x, targetAgentId: e.target.value } : x))}>
+                    <TextField select fullWidth label="Asistente asignado" value={r.targetAgentId} onChange={(e) => setRules((prev) => prev.map((x, i) => i === idx ? { ...x, targetAgentId: e.target.value } : x))}>
                       {agents.filter((a) => a.id !== agentId).map((a) => <MenuItem key={a.id} value={a.id}>{a.name} ({a.id})</MenuItem>)}
                     </TextField>
                   </Grid>
-                  <Grid item xs={12} md={3}><TextField fullWidth type="number" label="Priority" value={r.priority} onChange={(e) => setRules((prev) => prev.map((x, i) => i === idx ? { ...x, priority: Number(e.target.value || 0) } : x))} /></Grid>
+                  <Grid item xs={12} md={3}><TextField fullWidth type="number" label="Prioridad" value={r.priority} onChange={(e) => setRules((prev) => prev.map((x, i) => i === idx ? { ...x, priority: Number(e.target.value || 0) } : x))} helperText="Un numero menor se evalua primero." /></Grid>
                 </Grid>
               ))}
             </Stack>
@@ -152,14 +156,14 @@ export default function SegmentRoutingPage() {
 
         <Card>
           <CardContent>
-            <Typography variant="h6" sx={{ mb: 2 }}>Preview</Typography>
+            <Typography variant="h6" sx={{ mb: 2 }}>Simulacion</Typography>
             <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
-              <TextField fullWidth label="User Segments" value={previewSegments} onChange={(e) => setPreviewSegments(e.target.value)} />
-              <Button variant="contained" onClick={runPreview}>Run Preview</Button>
+              <TextField fullWidth label="Segmentos del cliente" value={previewSegments} onChange={(e) => setPreviewSegments(e.target.value)} helperText="Ejemplo: vip, recurrente, beta" />
+              <Button variant="contained" onClick={runPreview}>Probar</Button>
             </Stack>
             {previewResult && (
               <Alert severity={previewResult.wasRouted ? 'success' : 'info'} sx={{ mt: 2 }}>
-                Selected: <strong>{previewResult.selectedAgentId}</strong> · Reason: {previewResult.reason}
+                Responsable sugerido: <strong>{previewResult.selectedAgentId}</strong> | Motivo: {previewResult.reason}
               </Alert>
             )}
           </CardContent>
@@ -168,3 +172,4 @@ export default function SegmentRoutingPage() {
     </>
   );
 }
+

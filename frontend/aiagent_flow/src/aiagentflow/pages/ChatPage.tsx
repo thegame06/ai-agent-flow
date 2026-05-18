@@ -12,7 +12,7 @@ export default function ChatPage() {
   if (!agentId) {
     return (
       <Container>
-        <Typography color="error">Agent ID is required</Typography>
+        <Typography color="error">Se necesita el identificador del asistente.</Typography>
       </Container>
     );
   }
@@ -21,9 +21,9 @@ export default function ChatPage() {
     <Container maxWidth="lg" sx={{ py: 4 }}>
       <Breadcrumbs sx={{ mb: 3 }}>
         <Link component={RouterLink} to="/agents" underline="hover" color="inherit">
-          Agents
+          Asistentes IA
         </Link>
-        <Typography color="text.primary">Chat</Typography>
+        <Typography color="text.primary">Conversacion de prueba</Typography>
       </Breadcrumbs>
 
       <Box
@@ -32,7 +32,7 @@ export default function ChatPage() {
           minHeight: 500,
         }}
       >
-        <ChatInterface agentId={agentId} agentName="Agent" tenantId={tenantId} />
+        <ChatInterface agentId={agentId} agentName="Asistente" tenantId={tenantId} />
       </Box>
     </Container>
   );

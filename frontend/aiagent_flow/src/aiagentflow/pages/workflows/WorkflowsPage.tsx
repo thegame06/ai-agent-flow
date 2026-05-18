@@ -25,6 +25,7 @@ import { CONFIG } from 'src/global-config';
 import axios, { endpoints } from 'src/lib/axios';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
+import { TermHelp } from 'src/aiagentflow/components/TermHelp';
 
 import { Iconify } from 'src/components/iconify';
 
@@ -435,9 +436,12 @@ export default function WorkflowsPage() {
         {/* â”€â”€ Page Header â”€â”€ */}
         <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ md: 'center' }} spacing={1.5} sx={{ mb: 2 }}>
           <Box>
-            <Typography variant="h4">Workflow Studio</Typography>
+            <Stack direction="row" spacing={0.75} alignItems="center">
+              <Typography variant="h4">Flujos automatizados</Typography>
+              <TermHelp title="Workflow es el termino tecnico para un flujo automatizado: una secuencia de pasos que el sistema ejecuta para atender un caso." />
+            </Stack>
             <Typography variant="body2" color="text.secondary">
-              DiseÃ±a flujos omnicanal que combinan IA, KYC, pagos, voz y handoff humano.
+              Diseña el recorrido completo del caso: entrada del cliente, validaciones, respuestas, pagos, revisión humana y cierre.
             </Typography>
           </Box>
           <Stack direction="row" spacing={1} flexWrap="wrap">
@@ -518,7 +522,7 @@ export default function WorkflowsPage() {
               <Stack direction="row" spacing={0.8} flexWrap="wrap" alignItems="center">
                 <Chip size="small" color={selectedWorkflow?.status === 'Published' ? 'success' : 'default'} label={selectedWorkflow?.status === 'Published' ? 'Publicado' : 'Borrador'} />
                 <Chip size="small" color={readyToPublish ? 'success' : 'warning'} label={`${setupPercent}% listo`} />
-                <Chip size="small" label={`${startIntents.length} intent.`} />
+                <Chip size="small" label={`${startIntents.length} motivos`} />
                 <Chip size="small" label={workflowChannel ? workflowChannel.name : 'Sin canal'} />
                 <Chip size="small" color={hasAiAgentNode ? 'primary' : 'default'} label={hasAiAgentNode ? 'Agente OK' : 'Sin agente'} />
               </Stack>
@@ -575,13 +579,13 @@ export default function WorkflowsPage() {
                 size="small"
                 sx={{ flex: 1, minWidth: 200 }}
               />
-              <TextField
-                label="Evento que lo dispara"
-                select
-                value={editor.triggerEventName}
-                onChange={(e) => setEditorField('triggerEventName', e.target.value)}
-                size="small"
-                sx={{ minWidth: 260 }}
+                <TextField
+                  label="Que activa este flujo"
+                  select
+                  value={editor.triggerEventName}
+                  onChange={(e) => setEditorField('triggerEventName', e.target.value)}
+                  size="small"
+                  sx={{ minWidth: 260 }}
               >
                 {SYSTEM_EVENT_OPTIONS.map((opt) => (
                   <MenuItem key={opt.value} value={opt.value}>
@@ -617,12 +621,12 @@ export default function WorkflowsPage() {
               <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.2} alignItems={{ md: 'center' }}>
                 <Box sx={{ flex: 1 }}>
                   <Typography variant="caption" color="text.secondary">
-                    Canal: <strong>{workflowChannel?.name ?? 'sin canal'}</strong>
-                    {' Â· '}Agente: <strong>{firstAgentNode?.aiAgent?.agentName || firstAgentNode?.config?.agentName || firstAgentNode?.config?.agentId || 'sin agente'}</strong>
+                    Entrada principal: <strong>{workflowChannel?.name ?? 'sin canal'}</strong>
+                    {' · '}Asistente responsable: <strong>{firstAgentNode?.aiAgent?.agentName || firstAgentNode?.config?.agentName || firstAgentNode?.config?.agentId || 'sin agente'}</strong>
                   </Typography>
                 </Box>
                 <TextField
-                  label="Simular frase del cliente"
+                  label="Probar mensaje del cliente"
                   value={intentProbe}
                   onChange={(e) => setIntentProbe(e.target.value)}
                   size="small"
@@ -635,7 +639,7 @@ export default function WorkflowsPage() {
                   disabled={probingIntent}
                   startIcon={<Iconify icon="mdi:radar" />}
                 >
-                  {probingIntent ? 'Probando...' : 'Probar routing'}
+                  {probingIntent ? 'Probando...' : 'Probar decision'}
                 </Button>
                 <Button
                   variant="outlined"
@@ -644,13 +648,13 @@ export default function WorkflowsPage() {
                   disabled={syncingIntents}
                   startIcon={<Iconify icon="mdi:sync" />}
                 >
-                  {syncingIntents ? 'Sincronizando...' : 'Sincronizar'}
+                  {syncingIntents ? 'Sincronizando...' : 'Publicar motivos'}
                 </Button>
               </Stack>
               {intentProbeResult && (
                 <Alert severity={intentProbeResult?.matchedRuleId ? 'success' : 'warning'} sx={{ mt: 1 }}>
-                  Regla: {intentProbeResult?.matchedRuleId ?? 'sin match'} | Agente destino:{' '}
-                  {intentProbeResult?.selectedAgentId ?? 'N/A'} | Motivo: {intentProbeResult?.decisionReason ?? 'N/A'}
+                  Regla aplicada: {intentProbeResult?.matchedRuleId ?? 'sin coincidencia'} | Destino:{' '}
+                  {intentProbeResult?.selectedAgentId ?? 'N/A'} | Explicacion: {intentProbeResult?.decisionReason ?? 'N/A'}
                 </Alert>
               )}
             </Card>
@@ -658,8 +662,8 @@ export default function WorkflowsPage() {
             {activePanel === 'templates' && (
               <Card variant="outlined" sx={{ p: 1.5, bgcolor: 'background.neutral' }}>
                 <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} flexWrap="wrap">
-                  <Button variant="contained" onClick={handleCreateBlank}>Desde cero</Button>
-                  <Button variant="outlined" onClick={handleCreateDefault}>Base WhatsApp</Button>
+                    <Button variant="contained" onClick={handleCreateBlank}>Desde cero</Button>
+                    <Button variant="outlined" onClick={handleCreateDefault}>Base WhatsApp</Button>
                   {quickstarts.map((tpl) => (
                     <Button key={tpl.id} variant="outlined" onClick={() => handleUseTemplate(tpl)}>{tpl.name}</Button>
                   ))}
@@ -766,8 +770,8 @@ export default function WorkflowsPage() {
                       </Box>
                       <Stack direction="row" spacing={0.5} flexWrap="wrap">
                         <Chip size="small" color={readiness.percent >= 80 ? 'success' : 'warning'} label={`${readiness.percent}% listo`} />
-                        <Chip size="small" label={`${readiness.intents.length} intent.`} />
-                        <Chip size="small" color={readiness.hasAgent ? 'primary' : 'default'} label={readiness.hasAgent ? 'con agente' : 'sin agente'} />
+                        <Chip size="small" label={`${readiness.intents.length} motivos`} />
+                        <Chip size="small" color={readiness.hasAgent ? 'primary' : 'default'} label={readiness.hasAgent ? 'con asistente' : 'sin asistente'} />
                       </Stack>
                       <Typography variant="caption" color="text.secondary">
                         Actualizado: {workflow.updatedAt ? new Date(workflow.updatedAt).toLocaleString() : 'sin fecha'}
@@ -784,9 +788,9 @@ export default function WorkflowsPage() {
                     <Iconify icon="mdi:graph-outline" width={42} sx={{ color: 'primary.main', mb: 1 }} />
                     <Typography variant="h6">{workflows.length === 0 ? 'No hay workflows creados' : 'Sin resultados'}</Typography>
                     <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                      {workflows.length === 0 ? 'Crea tu primer flujo.' : 'Cambia la busqueda.'}
+                      {workflows.length === 0 ? 'Crea tu primer flujo automatizado.' : 'Cambia la búsqueda.'}
                     </Typography>
-                    <Button variant="contained" onClick={handleCreateBlank}>Crear workflow</Button>
+                    <Button variant="contained" onClick={handleCreateBlank}>Crear flujo</Button>
                   </Card>
                 </Grid>
               )}

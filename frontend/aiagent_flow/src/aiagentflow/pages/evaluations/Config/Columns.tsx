@@ -48,7 +48,7 @@ export const getScoreDisplay = (score?: number) => {
 export const evaluationsColumns: GridColDef[] = [
   {
     field: 'runId',
-    headerName: 'Run ID',
+    headerName: 'ID de corrida',
     flex: 1,
     minWidth: 120,
     renderCell: (params) => (
@@ -59,13 +59,13 @@ export const evaluationsColumns: GridColDef[] = [
   },
   {
     field: 'agentName',
-    headerName: 'Agent',
+    headerName: 'Asistente',
     flex: 1,
     minWidth: 150,
   },
   {
     field: 'executionId',
-    headerName: 'Execution',
+    headerName: 'Ejecucion',
     flex: 1,
     minWidth: 120,
     renderCell: (params) => (
@@ -76,28 +76,28 @@ export const evaluationsColumns: GridColDef[] = [
   },
   {
     field: 'status',
-    headerName: 'Status',
+    headerName: 'Estado',
     width: 120,
     renderCell: (params) => getStatusChip(params.value),
   },
   {
     field: 'overallScore',
-    headerName: 'Score',
+    headerName: 'Puntaje',
     width: 150,
     renderCell: (params) => getScoreDisplay(params.value),
   },
   {
     field: 'createdAt',
-    headerName: 'Created',
+    headerName: 'Creado',
     width: 150,
     type: 'dateTime',
     valueFormatter: (value) => value ? new Date(value).toLocaleString() : 'N/A',
   },
   {
     field: 'reviewerId',
-    headerName: 'Reviewer',
+    headerName: 'Revisor',
     width: 120,
-    renderCell: (params) => params.value || 'Pending',
+    renderCell: (params) => params.value || 'Pendiente',
   },
 ];
 
@@ -106,34 +106,35 @@ export const evaluationsColumns: GridColDef[] = [
 export const pendingReviewColumns: GridColDef[] = [
   {
     field: 'agentName',
-    headerName: 'Agent',
+    headerName: 'Asistente',
     flex: 1,
     minWidth: 150,
   },
   {
     field: 'executionId',
-    headerName: 'Execution',
+    headerName: 'Ejecucion',
     flex: 1,
     minWidth: 120,
   },
   {
     field: 'overallScore',
-    headerName: 'Score',
+    headerName: 'Puntaje',
     width: 150,
     renderCell: (params) => getScoreDisplay(params.value),
   },
   {
     field: 'createdAt',
-    headerName: 'Created',
+    headerName: 'Creado',
     width: 150,
     type: 'dateTime',
     valueFormatter: (value) => value ? new Date(value).toLocaleString() : 'N/A',
   },
   {
     field: 'notes',
-    headerName: 'Notes',
+    headerName: 'Notas',
     flex: 1,
     minWidth: 200,
-    renderCell: (params) => params.value || '—',
+    renderCell: (params) => params.value || '-',
   },
 ];
+

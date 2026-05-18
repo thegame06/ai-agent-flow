@@ -23,6 +23,7 @@ import { CONFIG } from 'src/global-config';
 import axios, { endpoints } from 'src/lib/axios';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
+import { TermHelp } from 'src/aiagentflow/components/TermHelp';
 
 import { Label } from 'src/components/label';
 
@@ -158,12 +159,35 @@ const categoryLabel: Record<string, string> = {
   routing: 'Decision',
   agent_execution: 'Agente',
   tool_usage: 'Herramientas',
-  workflow: 'Workflow',
+  workflow: 'Flujo',
   handoff: 'Transferencia',
   commerce: 'Conversion',
   error: 'Error',
   security: 'Seguridad',
 };
+
+const stageLabel: Record<string, string> = {
+  lead: 'Lead',
+  customer: 'Cliente',
+  sale_created: 'Venta creada',
+  invoiced: 'Facturado',
+  paid: 'Cobrado',
+};
+
+const sessionStatusLabel = (value?: string) => {
+  if (!value) return 'Sin estado';
+
+  const labels: Record<string, string> = {
+    Open: 'Activa',
+    Active: 'Activa',
+    Closed: 'Cerrada',
+    Expired: 'Vencida',
+  };
+
+  return labels[value] ?? value;
+};
+
+const toolNameLabel = (value: string) => value.replace(/[._]/g, ' ');
 
 export default function AuditPage() {
   const theme = useTheme();
@@ -250,9 +274,12 @@ export default function AuditPage() {
 
       <DashboardContent maxWidth="xl">
         <Box sx={{ mb: 4 }}>
-          <Typography variant="h4">Auditoria explicada</Typography>
+          <Stack direction="row" spacing={1} alignItems="center">
+            <Typography variant="h4">Auditoria explicada</Typography>
+            <TermHelp title="Aqui ves la historia completa de un caso: que escribio el cliente, como respondio el sistema, que decisiones tomo y en que termino comercialmente." />
+          </Stack>
           <Typography variant="body2" sx={{ color: 'text.secondary', mt: 1 }}>
-            Sigue el caso completo desde el primer mensaje del lead hasta el resultado comercial, sin exigir que el usuario entienda routing, intents, workflows o MCP.
+            Sigue el caso completo desde el primer mensaje del lead hasta el resultado comercial, sin exigir que el usuario entienda reglas internas, motivos detectados, flujos automatizados o herramientas tecnicas.
           </Typography>
         </Box>
 
@@ -260,21 +287,21 @@ export default function AuditPage() {
 
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 2 }}>
           <TextField
-            label="Correlation ID / Session ID"
+            label="ID de seguimiento del caso"
             value={correlationId}
             onChange={(e) => setCorrelationId(e.target.value)}
-            helperText="Usa el ID de la sesion o selecciona una traza reciente abajo."
+            helperText="Puedes pegar el ID de la conversacion o elegir un caso reciente abajo."
             fullWidth
           />
           <TextField
-            label="Action"
+            label="Tipo de evento"
             value={action}
             onChange={(e) => setAction(e.target.value)}
-            placeholder="RoutingDecision, HandoffCompleted..."
+            placeholder="Decision, Transferencia, Venta creada..."
             fullWidth
           />
           <TextField
-            label="Limit"
+            label="Maximo"
             type="number"
             value={limit}
             onChange={(e) => setLimit(Number(e.target.value || 100))}
@@ -287,15 +314,15 @@ export default function AuditPage() {
 
         <Stack direction="row" spacing={2} sx={{ mb: 3, flexWrap: 'wrap' }} useFlexGap>
           <Chip label={`${logs.length} eventos`} color="primary" variant="soft" />
-          <Chip label={`${issueCount} issues`} color="error" variant="soft" />
-          <Chip label={`${warningsCount} warnings`} color="warning" variant="soft" />
+          <Chip label={`${issueCount} errores`} color="error" variant="soft" />
+          <Chip label={`${warningsCount} alertas`} color="warning" variant="soft" />
         </Stack>
 
         <Card sx={{ mb: 3, p: 2, border: `1px solid ${alpha(theme.palette.grey[500], 0.12)}` }}>
-          <Typography variant="subtitle2" sx={{ mb: 1.5 }}>Trazas recientes</Typography>
+          <Typography variant="subtitle2" sx={{ mb: 1.5 }}>Casos recientes</Typography>
           <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
             {correlations.length === 0 ? (
-              <Chip size="small" label="Aun no hay trazas recientes" />
+              <Chip size="small" label="Aun no hay casos recientes" />
             ) : (
               correlations.map((item) => (
                 <Button
@@ -323,13 +350,13 @@ export default function AuditPage() {
                   <Box>
                     <Typography variant="h5">Historia del caso</Typography>
                     <Typography variant="body2" color="text.secondary">
-                      Correlation ID: {summary.correlationId}
+                      ID de seguimiento: {summary.correlationId}
                     </Typography>
                   </Box>
                   <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                    <Chip label={summary.currentStage} color={stageColor(summary.currentStage) as any} />
+                    <Chip label={stageLabel[summary.currentStage] ?? summary.currentStage} color={stageColor(summary.currentStage) as any} />
                     <Chip label={summary.customerBecameClient ? 'Convertido a cliente' : 'Aun es lead'} color={summary.customerBecameClient ? 'success' : 'default'} />
-                    <Chip label={summary.sessionStatus} variant="outlined" />
+                    <Chip label={sessionStatusLabel(summary.sessionStatus)} variant="outlined" />
                   </Stack>
                 </Stack>
 
@@ -353,7 +380,7 @@ export default function AuditPage() {
                   <Card variant="outlined" sx={{ p: 2, flex: 1 }}>
                     <Typography variant="overline" color="text.secondary">Proceso</Typography>
                     <Typography variant="subtitle1">
-                      {summary.agentCount} agentes, {summary.workflowCount} workflows, {summary.toolCount} tools
+                      {summary.agentCount} asistentes, {summary.workflowCount} flujos, {summary.toolCount} herramientas
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
                       {summary.messageCount} mensajes visibles en la historia del caso.
@@ -384,6 +411,65 @@ export default function AuditPage() {
                 </Stack>
 
                 <Divider sx={{ my: 2 }} />
+
+                <Typography variant="subtitle1" sx={{ mb: 1.5 }}>Ficha transversal del caso</Typography>
+                <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 2 }}>
+                  <Card variant="outlined" sx={{ p: 2, flex: 1 }}>
+                    <Typography variant="subtitle2" sx={{ mb: 1 }}>Conversacion</Typography>
+                    <Stack spacing={0.75}>
+                      <Typography variant="body2" color="text.secondary">
+                        Canal: {journey.crossCutting.session?.channelType ?? summary.channel}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Estado: {sessionStatusLabel(journey.crossCutting.session?.status ?? summary.sessionStatus)}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Ventana abierta: {journey.crossCutting.session?.windowOpen ? 'Si' : 'No'}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Inicio: {journey.crossCutting.session?.createdAt ? new Date(journey.crossCutting.session.createdAt).toLocaleString() : 'No disponible'}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Ultima actividad: {journey.crossCutting.session?.lastActivityAt ? new Date(journey.crossCutting.session.lastActivityAt).toLocaleString() : 'No disponible'}
+                      </Typography>
+                    </Stack>
+                  </Card>
+
+                  <Card variant="outlined" sx={{ p: 2, flex: 1 }}>
+                    <Typography variant="subtitle2" sx={{ mb: 1 }}>Seguimiento interno</Typography>
+                    <Stack spacing={0.75}>
+                      <Typography variant="body2" color="text.secondary">
+                        ID de conversacion: {journey.crossCutting.session?.sessionId ?? 'No disponible'}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Hilo de trabajo: {journey.crossCutting.thread?.threadId ?? journey.crossCutting.session?.threadId ?? 'No disponible'}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Turnos registrados: {journey.crossCutting.thread?.turnCount ?? 0}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Estado del hilo: {journey.crossCutting.thread?.status ?? 'No disponible'}
+                      </Typography>
+                    </Stack>
+                  </Card>
+
+                  <Card variant="outlined" sx={{ p: 2, flex: 1 }}>
+                    <Typography variant="subtitle2" sx={{ mb: 1 }}>Flujos detectados</Typography>
+                    <Stack spacing={0.75}>
+                      {journey.crossCutting.workflows.length === 0 ? (
+                        <Typography variant="body2" color="text.secondary">
+                          No se registraron flujos automatizados para este caso.
+                        </Typography>
+                      ) : (
+                        journey.crossCutting.workflows.slice(0, 5).map((item) => (
+                          <Typography key={`${item.workflowId}-${item.occurredAt}`} variant="body2" color="text.secondary">
+                            {item.action || 'Ejecucion'}: {item.workflowId} ({new Date(item.occurredAt).toLocaleString()})
+                          </Typography>
+                        ))
+                      )}
+                    </Stack>
+                  </Card>
+                </Stack>
 
                 <Typography variant="subtitle1" sx={{ mb: 1.5 }}>Timeline entendible</Typography>
                 <Stack spacing={1.25}>
@@ -439,7 +525,7 @@ export default function AuditPage() {
                         <Box key={item.agentId}>
                           <Typography variant="body2" fontWeight={600}>{item.agentName}</Typography>
                           <Typography variant="caption" color="text.secondary">
-                            {item.executionCount} ejecuciones | Roles: {item.roles.join(', ') || 'n/a'} | Estados: {item.statuses.join(', ')}
+                            {item.executionCount} ejecuciones | Rol: {item.roles.join(', ') || 'n/a'} | Estados: {item.statuses.join(', ')}
                           </Typography>
                         </Box>
                       ))}
@@ -450,13 +536,13 @@ export default function AuditPage() {
                     <Typography variant="subtitle2" sx={{ mb: 1 }}>Herramientas usadas</Typography>
                     <Stack spacing={1}>
                       {journey.crossCutting.tools.length === 0 && (
-                        <Typography variant="body2" color="text.secondary">No se detectaron tools en las ejecuciones.</Typography>
+                        <Typography variant="body2" color="text.secondary">No se detectaron herramientas usadas dentro de las ejecuciones.</Typography>
                       )}
                       {journey.crossCutting.tools.slice(0, 8).map((item) => (
                         <Box key={item.toolName}>
-                          <Typography variant="body2" fontWeight={600}>{item.toolName}</Typography>
+                          <Typography variant="body2" fontWeight={600}>{toolNameLabel(item.toolName)}</Typography>
                           <Typography variant="caption" color="text.secondary">
-                            {item.invocations} llamadas | ok {item.successCount} | fail {item.failureCount}
+                            {item.invocations} usos | exitosas {item.successCount} | con falla {item.failureCount}
                           </Typography>
                         </Box>
                       ))}
@@ -476,13 +562,13 @@ export default function AuditPage() {
               <Table>
                 <TableHead>
                   <TableRow>
-                    <TableCell sx={{ fontWeight: 700 }}>Timestamp</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Fecha y hora</TableCell>
                     <TableCell sx={{ fontWeight: 700 }}>Actor</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>Action</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>Resource</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>Correlation</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>Severity</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>Details</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Evento</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Recurso</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>ID de seguimiento</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Severidad</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Detalle tecnico</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -491,7 +577,7 @@ export default function AuditPage() {
                       <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>
                         {new Date(entry.occurredAt).toLocaleString()}
                       </TableCell>
-                      <TableCell>{entry.actor || 'System'}</TableCell>
+                      <TableCell>{entry.actor || 'Sistema'}</TableCell>
                       <TableCell><Chip label={entry.action} size="small" variant="outlined" /></TableCell>
                       <TableCell sx={{ maxWidth: 250, overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {entry.resource || '-'}
