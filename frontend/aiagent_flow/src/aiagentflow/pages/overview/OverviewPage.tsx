@@ -97,7 +97,7 @@ export default function OverviewPage() {
         if (!configAssistantId) {
           setChatMessages((prev) => [
             ...prev,
-            { role: 'assistant', content: 'El agente asistente de configuración no está disponible todavía. Verifica que el seeder haya corrido correctamente.' },
+            { role: 'assistant', content: 'El asistente de configuracion no esta disponible todavia. Verifica que la configuracion inicial se haya creado correctamente.' },
           ]);
           setChatLoading(false);
           return;
@@ -136,10 +136,10 @@ export default function OverviewPage() {
   const isReady = workflowCount > 0 && channelCount > 0;
 
   const quickLinks = [
-    { label: 'Workflow Studio', icon: 'mdi:source-branch', href: paths.dashboard.workflows },
+    { label: 'Flujos automatizados', icon: 'mdi:source-branch', href: paths.dashboard.workflows },
     { label: 'Canales', icon: 'mdi:message-processing-outline', href: paths.dashboard.system.channels },
-    { label: 'Marketplace', icon: 'mdi:connection', href: paths.dashboard.marketplace },
-    { label: 'Agentes', icon: 'mdi:robot-outline', href: paths.dashboard.agents },
+    { label: 'Integraciones', icon: 'mdi:connection', href: paths.dashboard.marketplace },
+    { label: 'Asistentes IA', icon: 'mdi:robot-outline', href: paths.dashboard.agents },
   ];
 
   return (
@@ -167,7 +167,7 @@ export default function OverviewPage() {
           <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 2.5 }}>
             <Avatar
               src="/logo/logo-single.svg"
-              alt="AgentFlow"
+              alt="Annonai"
               sx={{ width: 52, height: 52, bgcolor: 'transparent', boxShadow: `0 12px 32px ${alpha(theme.palette.primary.main, 0.22)}` }}
             />
             <Box sx={{ flex: 1 }}>
@@ -190,10 +190,10 @@ export default function OverviewPage() {
           {/* Status row */}
           <Stack direction="row" spacing={1} sx={{ mb: 3 }} flexWrap="wrap">
             {[
-              { label: `${workflowCount} workflow${workflowCount !== 1 ? 's' : ''}`, icon: 'mdi:source-branch' },
+              { label: `${workflowCount} flujo${workflowCount !== 1 ? 's' : ''}`, icon: 'mdi:source-branch' },
               { label: `${channelCount} canal${channelCount !== 1 ? 'es' : ''}`, icon: 'mdi:chat-processing-outline' },
               { label: `${readyConnections} integración${readyConnections !== 1 ? 'es' : ''}`, icon: 'mdi:connection' },
-              { label: `${metrics.publishedAgents} agente${metrics.publishedAgents !== 1 ? 's' : ''} publicados`, icon: 'mdi:robot-outline' },
+              { label: `${metrics.publishedAgents} asistente${metrics.publishedAgents !== 1 ? 's' : ''} activos`, icon: 'mdi:robot-outline' },
             ].map((item) => (
               <Chip
                 key={item.label}
@@ -268,7 +268,7 @@ export default function OverviewPage() {
 
           {!configAssistantId && (
             <Typography variant="caption" color="text.disabled" sx={{ mt: 1, display: 'block' }}>
-              Asistente no disponible — el seeder debe haber creado el agente ConfigAssistant.
+              Asistente no disponible. La configuracion inicial todavia no creo el asistente base.
             </Typography>
           )}
         </Paper>

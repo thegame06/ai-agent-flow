@@ -1,0 +1,73 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="annonaiSingleGradient" x1="292" y1="118" x2="748" y2="852" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#A7F34D"/>
+      <stop offset="0.43" stop-color="#54D79C"/>
+      <stop offset="1" stop-color="#10B7EB"/>
+    </linearGradient>
+    <filter id="annonaiSingleGlow" x="208" y="72" width="616" height="836" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="10" stdDeviation="10" flood-color="#02191C" flood-opacity="0.22"/>
+    </filter>
+  </defs>
+
+  <g filter="url(#annonaiSingleGlow)">
+    <path
+      d="M514 252C565 252 621 287 668 352C725 432 759 541 742 637C720 760 631 832 514 832C397 832 308 760 286 637C269 541 303 432 360 352C407 287 463 252 514 252Z"
+      stroke="url(#annonaiSingleGradient)"
+      stroke-width="26"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+
+    <path d="M514 244C510 196 528 156 565 123" stroke="url(#annonaiSingleGradient)" stroke-width="16" stroke-linecap="round"/>
+
+    <path
+      d="M496 206C436 132 357 132 319 156C347 220 420 243 496 227"
+      fill="url(#annonaiSingleGradient)"
+      stroke="#112F29"
+      stroke-width="3"
+      stroke-linejoin="round"
+    />
+    <path
+      d="M526 211C581 148 649 146 690 171C663 226 600 244 526 229"
+      fill="url(#annonaiSingleGradient)"
+      stroke="#112F29"
+      stroke-width="3"
+      stroke-linejoin="round"
+    />
+    <path d="M495 209C451 183 409 169 356 162" stroke="#14382F" stroke-width="8" stroke-linecap="round" opacity="0.62"/>
+    <path d="M527 214C572 193 612 181 661 173" stroke="#14382F" stroke-width="7" stroke-linecap="round" opacity="0.56"/>
+
+    <g fill="url(#annonaiSingleGradient)">
+      <path
+        d="M446 430C446 405 466 385 491 385C516 385 536 405 536 430V531C536 541 528 549 518 549H507C497 549 489 541 489 531V523C479 537 462 546 440 546C405 546 378 520 378 485C378 449 407 424 443 424C462 424 478 431 489 444V430C489 416 477 404 462 404C447 404 434 414 431 430H446Z"
+      />
+      <rect x="548" y="429" width="37" height="121" rx="18.5"/>
+      <circle cx="566.5" cy="387.5" r="19.5"/>
+    </g>
+
+    <g stroke="url(#annonaiSingleGradient)" stroke-width="11" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M514 574V664"/>
+      <path d="M514 574L416 655"/>
+      <path d="M514 574L612 655"/>
+      <path d="M514 626L462 740"/>
+      <path d="M514 626L566 740"/>
+      <path d="M462 740L514 805"/>
+      <path d="M566 740L514 805"/>
+    </g>
+
+    <g fill="url(#annonaiSingleGradient)">
+      <circle cx="514" cy="574" r="19"/>
+      <circle cx="416" cy="655" r="19"/>
+      <circle cx="612" cy="655" r="19"/>
+      <circle cx="462" cy="740" r="19"/>
+      <circle cx="566" cy="740" r="19"/>
+      <circle cx="514" cy="805" r="19"/>
+    </g>
+
+    <g fill="#061C20" stroke="url(#annonaiSingleGradient)" stroke-width="9">
+      <circle cx="469" cy="858" r="24"/>
+      <circle cx="559" cy="858" r="24"/>
+    </g>
+  </g>
+</svg>

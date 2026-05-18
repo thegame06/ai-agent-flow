@@ -1,4 +1,4 @@
-import { Helmet } from 'react-helmet-async';
+﻿import { Helmet } from 'react-helmet-async';
 import { useState, useEffect, useCallback } from 'react';
 
 import Box from '@mui/material/Box';
@@ -1036,7 +1036,7 @@ export default function ChannelsPage() {
 
       {/* Test Message Dialog */}
       <Dialog open={openTestPanel} onClose={() => setOpenTestPanel(false)} fullWidth maxWidth="sm">
-        <DialogTitle>Probar mensaje â€” {testPanelChannel?.name}</DialogTitle>
+        <DialogTitle>Probar mensaje” {testPanelChannel?.name}</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ pt: 1 }}>
             <Alert severity="info">

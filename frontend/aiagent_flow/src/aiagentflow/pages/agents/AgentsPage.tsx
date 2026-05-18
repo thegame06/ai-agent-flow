@@ -163,14 +163,13 @@ export default function AgentsPage() {
   };
 
   const publishedAgents = agents.filter((agent) => agent.status === 'Published').length;
-  const draftAgents = agents.filter((agent) => agent.status === 'Draft').length;
   const toolReadyAgents = agents.filter((agent) => (agent.availableTools?.length ?? agent.tools?.length ?? 0) > 0).length;
   const systemAgents = agents.filter((agent) => agent.isSystemAgent).length;
 
   return (
     <>
       <Helmet>
-        <title>Agentes | {CONFIG.appName}</title>
+        <title>Asistentes IA | {CONFIG.appName}</title>
       </Helmet>
 
       <DashboardContent maxWidth="xl">
@@ -194,7 +193,7 @@ export default function AgentsPage() {
                   <Typography variant="overline" color="text.secondary">
                     Asistentes reutilizables
                   </Typography>
-                  <Typography variant="h3">Agentes de IA</Typography>
+                  <Typography variant="h3">Asistentes IA</Typography>
                   <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
                     Disena asistentes reutilizables para canales y flujos automatizados. Cada asistente puede tener modelo,
                     memoria, herramientas, integraciones externas y reglas de seguridad.
@@ -218,7 +217,7 @@ export default function AgentsPage() {
                   variant="contained"
                   startIcon={<Iconify icon="mingcute:add-line" />}
                 >
-                  Nuevo agente
+                  Nuevo asistente
                 </Button>
               </Stack>
             </Grid>
@@ -256,7 +255,7 @@ export default function AgentsPage() {
           <Card sx={{ p: 5, textAlign: 'center' }}>
             <Iconify icon="mdi:robot-outline" width={80} sx={{ color: 'text.disabled', mb: 2 }} />
             <Typography variant="h6" color="text.secondary">
-              No hay agentes creados
+              No hay asistentes creados
             </Typography>
             <Typography variant="body2" color="text.disabled" sx={{ mb: 3 }}>
               Crea tu primer asistente para usarlo en canales o como paso dentro de flujos automatizados.
@@ -267,7 +266,7 @@ export default function AgentsPage() {
               variant="contained"
               startIcon={<Iconify icon="mingcute:add-line" />}
             >
-              Crear agente
+              Crear asistente
             </Button>
           </Card>
         ) : (

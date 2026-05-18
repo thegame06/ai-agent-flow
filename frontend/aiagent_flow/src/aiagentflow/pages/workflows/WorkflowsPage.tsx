@@ -303,7 +303,7 @@ export default function WorkflowsPage() {
 
     if (!sourceAgentId || !targetAgentId) {
       setSyncMessage(null);
-      setError('No se pudieron sincronizar intenciones: configura un canal con agente asignado y un nodo Agente de IA.');
+      setError('No se pudieron sincronizar motivos: configura un canal con asistente asignado y un nodo de asistente.');
       return;
     }
 
@@ -340,7 +340,7 @@ export default function WorkflowsPage() {
       setSyncMessage(`${startIntents.length} intencion(es) sincronizadas con el enrutamiento del canal.`);
     } catch (err: any) {
       setSyncMessage(null);
-      setError(err?.message || 'No se pudieron sincronizar las intenciones con intent-routing.');
+      setError(err?.message || 'No se pudieron sincronizar los motivos con las reglas de enrutamiento.');
     } finally {
       setSyncingIntents(false);
     }
@@ -350,7 +350,7 @@ export default function WorkflowsPage() {
     const sourceAgentId = workflowChannel?.defaultAgentId || workflowChannel?.routingAgents?.[0] || '';
 
     if (!sourceAgentId) {
-      setError('No se puede probar la intencion: selecciona un canal con agente por defecto o agente de enrutamiento.');
+      setError('No se puede probar el motivo: selecciona un canal con asistente principal o asistente de enrutamiento.');
       return;
     }
 
@@ -365,7 +365,7 @@ export default function WorkflowsPage() {
       setError(null);
     } catch (err: any) {
       setIntentProbeResult(null);
-      setError(err?.message || 'No se pudo simular el enrutamiento de intencion.');
+      setError(err?.message || 'No se pudo simular la decision de enrutamiento.');
     } finally {
       setProbingIntent(false);
     }
@@ -374,7 +374,7 @@ export default function WorkflowsPage() {
   return (
     <>
       <Helmet>
-        <title>Workflow Studio | {CONFIG.appName}</title>
+        <title>Flujos automatizados | {CONFIG.appName}</title>
       </Helmet>
 
       <DashboardContent maxWidth="xl">
@@ -384,12 +384,12 @@ export default function WorkflowsPage() {
           </Alert>
         )}
 
-        {/* â”€â”€ Page Header â”€â”€ */}
+
         <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ md: 'center' }} spacing={1.5} sx={{ mb: 2 }}>
           <Box>
             <Stack direction="row" spacing={0.75} alignItems="center">
               <Typography variant="h4">Flujos automatizados</Typography>
-              <TermHelp title="Workflow es el termino tecnico para un flujo automatizado: una secuencia de pasos que el sistema ejecuta para atender un caso." />
+              <TermHelp title="Flujo automatizado es la secuencia de pasos que el sistema ejecuta para atender un caso de principio a fin." />
             </Stack>
             <Typography variant="body2" color="text.secondary">
               Diseña el recorrido completo del caso: entrada del cliente, validaciones, respuestas, pagos, revisión humana y cierre.
@@ -405,14 +405,13 @@ export default function WorkflowsPage() {
           </Stack>
         </Stack>
 
-        {/* â”€â”€ Tab Bar â”€â”€ */}
         <Tabs
           value={mainTab}
           onChange={(_, v) => setMainTab(v)}
           sx={{ mb: 2.5, borderBottom: 1, borderColor: 'divider' }}
         >
           <Tab
-            label="Editor"
+            label="Diseno"
             icon={<Iconify icon="mdi:pencil-ruler" width={18} />}
             iconPosition="start"
           />
@@ -428,7 +427,8 @@ export default function WorkflowsPage() {
           <Tab
             label={
               <Badge badgeContent={failedExecutions || undefined} color="error" max={9}>
-                <Box sx={{ pr: failedExecutions ? 1.5 : 0 }}>Monitor</Box>
+                <Box sx={{ pr: failedExecutions ? 1.5 : 0 }}>Seguimiento</Box>
+                
               </Badge>
             }
             icon={<Iconify icon="mdi:chart-box-outline" width={18} />}
@@ -436,13 +436,12 @@ export default function WorkflowsPage() {
           />
         </Tabs>
 
-        {/* â”€â”€ Tab 0: Editor â”€â”€ */}
         {mainTab === 0 && (
           <>
             {!hasSelection && (
               <Card variant="outlined" sx={{ p: 4, textAlign: 'center', mb: 2, borderRadius: 3 }}>
                 <Iconify icon="mdi:graph-outline" width={48} sx={{ color: 'primary.main', mb: 1.5 }} />
-                <Typography variant="h5" sx={{ mb: 0.5 }}>Sin workflow activo</Typography>
+                <Typography variant="h5" sx={{ mb: 0.5 }}>Sin flujo activo</Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5, maxWidth: 480, mx: 'auto' }}>
                   Selecciona un flujo existente en &quot;Mis flujos&quot; o crea uno nuevo desde cero.
                 </Typography>
@@ -468,14 +467,13 @@ export default function WorkflowsPage() {
             {hasSelection && (
         <Card variant="outlined" sx={{ p: 2, mb: 2, borderRadius: 2 }}>
           <Stack spacing={2}>
-            {/* â”€â”€ Editor toolbar â”€â”€ */}
             <Stack direction={{ xs: 'column', lg: 'row' }} justifyContent="space-between" spacing={1.5} alignItems={{ lg: 'center' }}>
               <Stack direction="row" spacing={0.8} flexWrap="wrap" alignItems="center">
                 <Chip size="small" color={selectedWorkflow?.status === 'Published' ? 'success' : 'default'} label={selectedWorkflow?.status === 'Published' ? 'Publicado' : 'Borrador'} />
                 <Chip size="small" color={readyToPublish ? 'success' : 'warning'} label={`${setupPercent}% listo`} />
                 <Chip size="small" label={`${startIntents.length} motivos`} />
                 <Chip size="small" label={workflowChannel ? workflowChannel.name : 'Sin canal'} />
-                <Chip size="small" color={hasAiAgentNode ? 'primary' : 'default'} label={hasAiAgentNode ? 'Agente OK' : 'Sin agente'} />
+                <Chip size="small" color={hasAiAgentNode ? 'primary' : 'default'} label={hasAiAgentNode ? 'Asistente listo' : 'Sin asistente'} />
               </Stack>
               <Stack direction="row" spacing={1} flexWrap="wrap">
                 <Button
@@ -521,7 +519,6 @@ export default function WorkflowsPage() {
               <Alert severity="success" onClose={() => setSyncMessage(null)}>{syncMessage}</Alert>
             )}
 
-            {/* â”€â”€ Workflow metadata row â”€â”€ */}
             <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.2} alignItems={{ md: 'center' }}>
               <TextField
                 label="Nombre del flujo"
@@ -553,7 +550,7 @@ export default function WorkflowsPage() {
                 size="small"
                 onChange={(_, v) => { if (v) setDesignType(v); }}
               >
-                <ToggleButton value="workflow">Workflow</ToggleButton>
+                <ToggleButton value="workflow">Flujo</ToggleButton>
                 <ToggleButton value="tool">Tool</ToggleButton>
               </ToggleButtonGroup>
               <ToggleButtonGroup
@@ -567,13 +564,12 @@ export default function WorkflowsPage() {
               </ToggleButtonGroup>
             </Stack>
 
-            {/* â”€â”€ Intent probe bar â”€â”€ */}
             <Card variant="outlined" sx={{ p: 1.5, bgcolor: 'background.neutral' }}>
               <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.2} alignItems={{ md: 'center' }}>
                 <Box sx={{ flex: 1 }}>
                   <Typography variant="caption" color="text.secondary">
                     Entrada principal: <strong>{workflowChannel?.name ?? 'sin canal'}</strong>
-                    {' · '}Asistente responsable: <strong>{firstAgentNode?.aiAgent?.agentName || firstAgentNode?.config?.agentName || firstAgentNode?.config?.agentId || 'sin agente'}</strong>
+                    {' � '}Asistente responsable: <strong>{firstAgentNode?.aiAgent?.agentName || firstAgentNode?.config?.agentName || firstAgentNode?.config?.agentId || 'sin asistente'}</strong>
                   </Typography>
                 </Box>
                 <TextField
@@ -666,7 +662,6 @@ export default function WorkflowsPage() {
           </>
         )}
 
-        {/* â”€â”€ Tab 1: Mis Flujos â”€â”€ */}
         {mainTab === 1 && (
           <Stack spacing={2.5}>
             <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.2} alignItems={{ md: 'center' }}>
@@ -678,7 +673,7 @@ export default function WorkflowsPage() {
                 sx={{ maxWidth: 440 }}
                 fullWidth
               />
-              <Chip size="small" label={`${filteredWorkflows.length} de ${workflows.length} workflows`} />
+              <Chip size="small" label={`${filteredWorkflows.length} de ${workflows.length} flujos`} />
               <Stack direction="row" spacing={1} sx={{ ml: { md: 'auto' } }}>
                 <Button variant="contained" startIcon={<Iconify icon="mingcute:add-line" />} onClick={handleCreateBlank}>
                   Crear desde cero
@@ -727,7 +722,7 @@ export default function WorkflowsPage() {
                       <Typography variant="caption" color="text.secondary">
                         Actualizado: {workflow.updatedAt ? new Date(workflow.updatedAt).toLocaleString() : 'sin fecha'}
                       </Typography>
-                      <Button size="small" variant="outlined">Abrir Studio</Button>
+                      <Button size="small" variant="outlined">Abrir flujo</Button>
                     </Stack>
                   </Card>
                 </Grid>
@@ -737,7 +732,7 @@ export default function WorkflowsPage() {
                 <Grid item xs={12}>
                   <Card variant="outlined" sx={{ p: 4, textAlign: 'center', borderRadius: 3 }}>
                     <Iconify icon="mdi:graph-outline" width={42} sx={{ color: 'primary.main', mb: 1 }} />
-                    <Typography variant="h6">{workflows.length === 0 ? 'No hay workflows creados' : 'Sin resultados'}</Typography>
+                    <Typography variant="h6">{workflows.length === 0 ? 'No hay flujos creados' : 'Sin resultados'}</Typography>
                     <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                       {workflows.length === 0 ? 'Crea tu primer flujo automatizado.' : 'Cambia la búsqueda.'}
                     </Typography>
@@ -749,15 +744,14 @@ export default function WorkflowsPage() {
           </Stack>
         )}
 
-        {/* â”€â”€ Tab 2: Monitor â”€â”€ */}
         {mainTab === 2 && (
           <Stack spacing={2.5}>
             <Grid container spacing={2}>
               {[
                 { label: 'Flujos', value: workflows.length, helper: `${publishedCount} publicados`, icon: 'mdi:source-branch' },
                 { label: 'Ejecuciones', value: executions.length, helper: `${failedExecutions} fallidas`, icon: 'mdi:play-circle-outline' },
-                { label: 'Nodos activos', value: activities.length, helper: hasSelection ? 'en el editor' : 'sin workflow activo', icon: 'mdi:graph-outline' },
-                { label: 'Agentes en uso', value: availableAgents.filter((a) => !a.isSystemAgent).length, helper: 'agentes personalizados', icon: 'mdi:robot-outline' },
+                { label: 'Nodos activos', value: activities.length, helper: hasSelection ? 'en diseno' : 'sin flujo activo', icon: 'mdi:graph-outline' },
+                { label: 'Asistentes en uso', value: availableAgents.filter((a) => !a.isSystemAgent).length, helper: 'asistentes personalizados', icon: 'mdi:robot-outline' },
               ].map((stat) => (
                 <Grid item xs={6} md={3} key={stat.label}>
                   <Card variant="outlined" sx={{ p: 2 }}>
@@ -767,7 +761,7 @@ export default function WorkflowsPage() {
                       </Box>
                       <Box>
                         <Typography variant="h5">{stat.value}</Typography>
-                        <Typography variant="caption" color="text.secondary">{stat.label} Â· {stat.helper}</Typography>
+                        <Typography variant="caption" color="text.secondary">{stat.label}· {stat.helper}</Typography>
                       </Box>
                     </Stack>
                   </Card>
@@ -796,3 +790,4 @@ export default function WorkflowsPage() {
     </>
   );
 }
+

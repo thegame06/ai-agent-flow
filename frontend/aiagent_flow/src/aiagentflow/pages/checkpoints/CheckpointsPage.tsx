@@ -34,7 +34,7 @@ import { fetchCheckpoints, decideCheckpoint } from './checkpointSlice';
 
 import type { Checkpoint } from './checkpointSlice';
 
-// â”€â”€â”€ Checkpoint Card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
 function CheckpointCard({
   checkpoint,
   onApprove,
@@ -221,7 +221,6 @@ function CheckpointCard({
   );
 }
 
-// â”€â”€ Helpers â”€â”€
 
 function getTimeSince(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -241,9 +240,6 @@ function formatJson(str: string): string {
   }
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// CHECKPOINTS PAGE
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 export default function CheckpointsPage() {
   const dispatch = useDispatch<AppDispatch>();
