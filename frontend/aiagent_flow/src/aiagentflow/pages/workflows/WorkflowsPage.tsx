@@ -1,5 +1,5 @@
-﻿import { Helmet } from 'react-helmet-async';
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState } from 'react';
+import { Helmet } from 'react-helmet-async';
 
 import Box from '@mui/material/Box';
 import Tab from '@mui/material/Tab';
@@ -11,21 +11,17 @@ import Alert from '@mui/material/Alert';
 import Stack from '@mui/material/Stack';
 import Badge from '@mui/material/Badge';
 import Button from '@mui/material/Button';
-import Divider from '@mui/material/Divider';
 import MenuItem from '@mui/material/MenuItem';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import ToggleButton from '@mui/material/ToggleButton';
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 
-import { paths } from 'src/routes/paths';
-import { RouterLink } from 'src/routes/components';
-
 import { CONFIG } from 'src/global-config';
 import axios, { endpoints } from 'src/lib/axios';
 import { DashboardContent } from 'src/layouts/dashboard';
-import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
 import { TermHelp } from 'src/aiagentflow/components/TermHelp';
+import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
 
 import { Iconify } from 'src/components/iconify';
 
@@ -36,29 +32,11 @@ import { ExecutionStepsDialog } from './components/ExecutionStepsDialog';
 import { useWorkflowStudioRuntime } from './hooks/useWorkflowStudioRuntime';
 import { WorkflowExecutionsCard } from './components/WorkflowExecutionsCard';
 import { WorkflowVisualDesigner } from './components/WorkflowVisualDesigner';
-import { WorkflowDefinitionsCard } from './components/WorkflowDefinitionsCard';
 import { TOOL_ACTIVITY_TYPES, WORKFLOW_QUICKSTARTS, type WorkflowDesignType } from './constants';
 
 import type { WorkflowDefinition, WorkflowStartIntent } from './types';
 
 type ActivePanel = 'none' | 'flows' | 'templates' | 'metrics' | 'executions';
-
-type SystemOrchestratorStatus = {
-  systemAgent: {
-    id: string;
-    name: string;
-    description: string;
-    locked: boolean;
-    configurableBy: string;
-    capabilities: string[];
-  };
-  events: Array<{ eventName: string; displayName: string; entity: string; description: string }>;
-  workflows: Array<{ id: string; name: string; readiness: string; intentLabels: string[]; syncedRoutingRules: number }>;
-  channels: Array<{ id: string; name: string; type: string; status: string; systemEvent: string; defaultAgentId?: string | null }>;
-  connections: Array<{ id: string; name: string; type: string; connectorId: string; ready: boolean; capabilities: string[] }>;
-  agentRegistry: Array<{ agentId: string; agentType: string; enabled: boolean }>;
-  gaps: string[];
-};
 
 const SYSTEM_EVENT_OPTIONS = [
   {
@@ -130,10 +108,8 @@ export default function WorkflowsPage() {
   const [syncingIntents, setSyncingIntents] = useState(false);
   const [probingIntent, setProbingIntent] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
-  const [orchestratorStatus, setOrchestratorStatus] = useState<SystemOrchestratorStatus | null>(null);
   const tenantId = useTenantId();
   const {
-    loading,
     saving,
     running,
     error,
@@ -164,7 +140,6 @@ export default function WorkflowsPage() {
     editor,
     activities,
     selectedWorkflowId,
-    isDirty,
     hasSelection,
     allowedTypes,
     requiredConfigByType,
@@ -207,13 +182,6 @@ export default function WorkflowsPage() {
   const publishedCount = workflows.filter((wf) => wf.status === 'Published').length;
   const failedExecutions = executions.filter((execution) => execution.status === 'Failed').length;
   const readyToPublish = hasSelection && designValidationErrors.length === 0;
-  const latestWorkflow = useMemo(
-    () =>
-      [...workflows].sort(
-        (a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime()
-      )[0],
-    [workflows]
-  );
   const selectedWorkflow = useMemo(
     () => workflows.find((wf) => wf.id === selectedWorkflowId) ?? null,
     [selectedWorkflowId, workflows]
@@ -261,7 +229,6 @@ export default function WorkflowsPage() {
     designValidationErrors.length === 0,
   ].filter(Boolean).length;
   const setupPercent = Math.round((completedSetupSteps / 6) * 100);
-  const showWorkflowLibrary = !editor.id && !selectedWorkflowId && !isDirty;
 
   const workflowReadiness = (workflow: WorkflowDefinition) => {
     const intents = readStartIntents(workflow.definitionJson, workflow.triggerEventName);
@@ -286,22 +253,6 @@ export default function WorkflowsPage() {
       percent: Math.round((score / 5) * 100),
     };
   };
-
-  useEffect(() => {
-    let active = true;
-    axios
-      .get(endpoints.agentflow.systemOrchestrator.status(tenantId))
-      .then((res) => {
-        if (active) setOrchestratorStatus(res.data as SystemOrchestratorStatus);
-      })
-      .catch(() => {
-        if (active) setOrchestratorStatus(null);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [tenantId, workflows.length, availableChannels.length, integrations.length]);
 
   const handleSelectWorkflow = (wf: WorkflowDefinition) => {
     selectWorkflow(wf);

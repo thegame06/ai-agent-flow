@@ -32,7 +32,6 @@ const ModelsPage = lazy(() => import('src/aiagentflow/pages/models/ModelsPage'))
 const AuthProfilesPage = lazy(() => import('src/aiagentflow/pages/system/AuthProfilesPage'));
 const McpPage = lazy(() => import('src/aiagentflow/pages/system/McpPage'));
 const ChannelsPage = lazy(() => import('src/aiagentflow/pages/channels/ChannelsPage'));
-const SegmentRoutingPage = lazy(() => import('src/aiagentflow/pages/system/SegmentRoutingPage'));
 const FeatureFlagsPage = lazy(() => import('src/aiagentflow/pages/system/FeatureFlagsPage'));
 const SettingsPage = lazy(() => import('src/aiagentflow/pages/settings/SettingsPage'));
 const ManagerOrchestrationPage = lazy(() => import('src/aiagentflow/pages/orchestration/ManagerOrchestrationPage'));
@@ -98,7 +97,6 @@ export const dashboardRoutes: RouteObject[] = [
           { path: 'auth-profiles', element: <AuthProfilesPage /> },
           { path: 'mcp', element: <McpPage /> },
           { path: 'channels', element: <ChannelsPage /> },
-          { path: 'segment-routing', element: <SegmentRoutingPage /> },
           { path: 'feature-flags', element: <FeatureFlagsPage /> },
           { path: 'settings', element: <SettingsPage /> },
         ],

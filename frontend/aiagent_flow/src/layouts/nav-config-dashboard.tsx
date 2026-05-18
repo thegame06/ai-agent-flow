@@ -128,7 +128,6 @@ export const navData: NavSectionProps['data'] = [
         children: [
           { title: 'Modelos IA', path: paths.dashboard.system.models, caption: 'Motores de IA disponibles y su prioridad de uso.' },
           { title: 'Credenciales', path: paths.dashboard.system.authProfiles, caption: 'Perfiles de acceso para proveedores y servicios.' },
-          { title: 'Segmentos', path: paths.dashboard.system.segmentRouting, caption: 'Reglas para adaptar la experiencia segun tipo de cliente o caso.' },
           { title: 'Funciones beta', path: paths.dashboard.system.featureFlags, caption: 'Activa o pausa capacidades en prueba.' },
           { title: 'Politicas', path: paths.dashboard.governance.policies, caption: 'Reglas de seguridad, aprobacion y limites operativos.' },
           { title: 'Auditoria', path: paths.dashboard.governance.audit, caption: 'Historia completa y trazable de cada caso.' },

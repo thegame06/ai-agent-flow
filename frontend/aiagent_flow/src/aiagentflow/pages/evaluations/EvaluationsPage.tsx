@@ -12,8 +12,8 @@ import { DataGrid, GridToolbar } from '@mui/x-data-grid';
 
 import { CONFIG } from 'src/global-config';
 import { DashboardContent } from 'src/layouts/dashboard';
-import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
 import { TermHelp } from 'src/aiagentflow/components/TermHelp';
+import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
 
 import { Iconify } from 'src/components/iconify';
 

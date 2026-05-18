@@ -15,8 +15,8 @@ import CardContent from '@mui/material/CardContent';
 import { CONFIG } from 'src/global-config';
 import axios, { endpoints } from 'src/lib/axios';
 import { DashboardContent } from 'src/layouts/dashboard';
-import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
 import { TermHelp } from 'src/aiagentflow/components/TermHelp';
+import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
 
 type Rule = {
   ruleName: string;
