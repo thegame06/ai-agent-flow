@@ -709,7 +709,7 @@ Nunca expongas detalles tecnicos internos al cliente."
         var existingDefinition = await workflowStore.GetDefinitionAsync(tenantId, workflowId, CancellationToken.None);
         if (existingDefinition is null)
         {
-            var definitionJson = $$"""
+            var definitionJson = $$$"""
             {
               "start": {
                 "intents": [
@@ -733,7 +733,7 @@ Nunca expongas detalles tecnicos internos al cliente."
                   "id": "sales-agent",
                   "type": "ai.agent",
                   "config": {
-                    "agentId": "{{salesAssistant.Id}}",
+                    "agentId": "{{{salesAssistant.Id}}}",
                     "agentName": "Asistente de ventas",
                     "input": "{{payload.content}}",
                     "context": "{{payload.channel}}"
