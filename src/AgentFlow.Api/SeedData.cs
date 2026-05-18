@@ -2,6 +2,8 @@ using AgentFlow.Domain.Aggregates;
 using AgentFlow.Domain.Enums;
 using AgentFlow.Domain.ValueObjects;
 using AgentFlow.Domain.Repositories;
+using AgentFlow.Abstractions.Workflow;
+using AgentFlow.Api.Workflow;
 
 namespace AgentFlow.Api;
 
@@ -572,6 +574,207 @@ Always be concrete: tell the user EXACTLY what to click or configure."
             }
         }
 
+        await SeedSalesHappyPathAsync(scope.ServiceProvider, tenantId, systemUser);
+
         Console.WriteLine("✅ [Seed] System agents seed complete.");
+    }
+
+    private static async Task SeedSalesHappyPathAsync(IServiceProvider services, string tenantId, string ownerUser)
+    {
+        var agentRepo = services.GetRequiredService<IAgentDefinitionRepository>();
+        var workflowStore = services.GetRequiredService<IWorkflowStudioStore>();
+
+        var existingAgents = await agentRepo.GetAllAsync(tenantId, 0, 500);
+        var salesAssistant = existingAgents.FirstOrDefault(a => string.Equals(a.Name, "Asistente de ventas", StringComparison.OrdinalIgnoreCase));
+
+        if (salesAssistant is null)
+        {
+            var brain = new BrainConfiguration
+            {
+                ModelId = "gpt-4o-mini",
+                Provider = "OpenAI",
+                Temperature = 0.2f,
+                MaxResponseTokens = 1200,
+                RequiresToolExecution = true,
+                SystemPromptTemplate = @"Eres el asistente de ventas de Annonai.
+
+Objetivo:
+- atender leads que escriben por un canal
+- identificar que producto quieren
+- buscar productos en inventario
+- confirmar cantidades y datos del cliente
+- crear la venta
+- emitir factura
+- si aplica, enviarla por WhatsApp
+
+Reglas:
+- responde en el idioma del cliente
+- haz preguntas cortas y una por turno
+- no inventes productos, precios ni stock; usa herramientas
+- antes de vender, resuelve o crea el cliente en CRM
+- antes de facturar, confirma el total con el cliente
+- si falta un dato, dilo claramente
+- cuando no haya match comercial, explica que no encontraste coincidencia y pide aclaracion
+
+Herramientas a usar cuando aplique:
+- af_commerce_resolve_party
+- af_commerce_assert_active_session
+- af_commerce_search_inventory
+- af_commerce_calculate_sale
+- af_commerce_create_sale
+- af_commerce_create_invoice
+- af_commerce_send_invoice_whatsapp
+- af_commerce_send_conversation_message
+
+Nunca expongas detalles tecnicos internos al cliente."
+            };
+
+            var loop = new AgentLoopConfig
+            {
+                MaxIterations = 12,
+                MaxExecutionTime = TimeSpan.FromMinutes(3),
+                ToolCallTimeout = TimeSpan.FromSeconds(25),
+                MaxRetries = 2,
+                AllowParallelToolCalls = false,
+                HitlConfig = new HumanInTheLoopConfig { Enabled = false }
+            };
+
+            var memory = new MemoryConfig
+            {
+                EnableWorkingMemory = true,
+                WorkingMemoryTtlSeconds = 3600,
+                EnableLongTermMemory = false,
+                EnableVectorMemory = false
+            };
+
+            var session = new SessionConfig
+            {
+                EnableThreads = true,
+                DefaultThreadTtl = TimeSpan.FromHours(24),
+                MaxTurnsPerThread = 60,
+                ContextWindowSize = 12,
+                AutoCreateThread = true,
+                EnableSummarization = true
+            };
+
+            var create = AgentDefinition.Create(
+                tenantId,
+                "Asistente de ventas",
+                "Asistente comercial preconfigurado para calificar leads, cotizar, crear ventas y emitir facturas.",
+                brain,
+                loop,
+                memory,
+                session,
+                null,
+                ownerUser);
+
+            if (create.IsSuccess)
+            {
+                salesAssistant = create.Value!;
+                salesAssistant.SetTags(new[] { "sales", "commerce", "seed", "happy-path" }.ToList().AsReadOnly());
+
+                foreach (var toolName in new[]
+                {
+                    "af_commerce_resolve_party",
+                    "af_commerce_assert_active_session",
+                    "af_commerce_search_inventory",
+                    "af_commerce_calculate_sale",
+                    "af_commerce_create_sale",
+                    "af_commerce_create_invoice",
+                    "af_commerce_send_invoice_whatsapp",
+                    "af_commerce_send_conversation_message"
+                })
+                {
+                    salesAssistant.AddTool(new ToolBinding
+                    {
+                        ToolId = $"mcp:agentflow-mcp-server:{toolName}",
+                        ToolName = toolName,
+                        ToolVersion = "1.0",
+                        IsEnabled = true,
+                        MaxCallsPerExecution = 6,
+                        GrantedPermissions = new[] { "tool:execute:low" }.ToList().AsReadOnly()
+                    });
+                }
+
+                var publish = salesAssistant.Publish(ownerUser);
+                if (publish.IsSuccess)
+                    await agentRepo.InsertAsync(salesAssistant);
+            }
+        }
+
+        if (salesAssistant is null)
+            return;
+
+        const string workflowId = "wf-sales-happy-path";
+        var existingDefinition = await workflowStore.GetDefinitionAsync(tenantId, workflowId, CancellationToken.None);
+        if (existingDefinition is null)
+        {
+            var definitionJson = $$"""
+            {
+              "start": {
+                "intents": [
+                  {
+                    "id": "buy-product",
+                    "label": "comprar producto",
+                    "description": "Cliente quiere comprar, cotizar o pedir precio de un producto.",
+                    "examples": [
+                      "quiero comprar",
+                      "necesito una cotizacion",
+                      "que precio tiene",
+                      "quiero factura"
+                    ],
+                    "triggerSource": "message",
+                    "confidenceThreshold": 0.7
+                  }
+                ]
+              },
+              "activities": [
+                {
+                  "id": "sales-agent",
+                  "type": "ai.agent",
+                  "config": {
+                    "agentId": "{{salesAssistant.Id}}",
+                    "agentName": "Asistente de ventas",
+                    "input": "{{payload.content}}",
+                    "context": "{{payload.channel}}"
+                  }
+                }
+              ]
+            }
+            """;
+
+            await workflowStore.UpsertTemplateAsync(new WorkflowTemplateContract
+            {
+                Id = "tpl-sales-happy-path",
+                TenantId = tenantId,
+                Name = "Base ventas por canal",
+                Description = "Plantilla inicial para atender leads, cotizar y facturar desde una conversacion.",
+                TriggerEventName = "connect.message.received",
+                DefinitionJson = definitionJson,
+                CreatedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow,
+                UpdatedBy = ownerUser
+            }, CancellationToken.None);
+
+            await workflowStore.UpsertDefinitionAsync(new WorkflowDefinitionContract
+            {
+                Id = workflowId,
+                TenantId = tenantId,
+                Name = "Ventas desde canal",
+                TriggerEventName = "connect.message.received",
+                Version = 1,
+                Status = WorkflowDefinitionStatus.Published,
+                DefinitionJson = definitionJson,
+                Metadata = new Dictionary<string, string>
+                {
+                    ["seed"] = "true",
+                    ["category"] = "sales",
+                    ["designType"] = "workflow"
+                },
+                CreatedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow,
+                UpdatedBy = ownerUser
+            }, CancellationToken.None);
+        }
     }
 }

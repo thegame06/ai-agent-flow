@@ -66,7 +66,7 @@ public sealed class ApiChannelHandler : IChannelHandler
         message.Metadata.TryAdd("api_version", apiMessage.ApiVersion ?? "1.0");
         message.Metadata.TryAdd("correlation_id", apiMessage.CorrelationId ?? Guid.NewGuid().ToString("N"));
 
-        session.RecordMessage();
+        session.RecordIncomingMessage(apiMessage.Content);
         await _sessionRepo.UpdateAsync(session, ct);
         return message;
     }
@@ -188,6 +188,9 @@ public sealed class ApiChannelHandler : IChannelHandler
     private async Task<string?> SelectAgentForSessionAsync(ChannelDefinition definition, CancellationToken ct)
     {
         var routingAgentsRaw = definition.Config.GetValueOrDefault("RoutingAgents");
+        if (!string.IsNullOrWhiteSpace(definition.RouterAgentId))
+            return definition.RouterAgentId;
+
         if (string.IsNullOrWhiteSpace(routingAgentsRaw))
             return definition.Config.GetValueOrDefault("DefaultAgentId");
 

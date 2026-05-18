@@ -135,6 +135,12 @@ public sealed class ChannelSessionsController : ControllerBase
         LastActivityAt = session.LastActivityAt,
         ExpiresAt = session.ExpiresAt,
         WindowOpen = !session.IsExpired(),
+        UnreadCount = session.Metadata.TryGetValue("unread_count", out var unread) && int.TryParse(unread, out var u) ? u : 0,
+        ReplyPending = string.Equals(session.Metadata.GetValueOrDefault("reply_pending"), "true", StringComparison.OrdinalIgnoreCase),
+        LastCustomerMessage = session.Metadata.GetValueOrDefault("last_customer_message"),
+        LastAgentMessage = session.Metadata.GetValueOrDefault("last_agent_message"),
+        LastError = session.Metadata.GetValueOrDefault("last_error"),
+        LastFailureLevel = session.Metadata.GetValueOrDefault("last_failure_level"),
         CustomerKind = session.Metadata.GetValueOrDefault("customer_kind") ?? "unknown",
         DisplayName = session.Metadata.GetValueOrDefault("display_name")
     };
@@ -278,6 +284,12 @@ public sealed record ChannelSessionDto
     public DateTimeOffset LastActivityAt { get; init; }
     public DateTimeOffset? ExpiresAt { get; init; }
     public bool WindowOpen { get; init; }
+    public int UnreadCount { get; init; }
+    public bool ReplyPending { get; init; }
+    public string? LastCustomerMessage { get; init; }
+    public string? LastAgentMessage { get; init; }
+    public string? LastError { get; init; }
+    public string? LastFailureLevel { get; init; }
     public string CustomerKind { get; init; } = "unknown";
     public string? DisplayName { get; init; }
 }

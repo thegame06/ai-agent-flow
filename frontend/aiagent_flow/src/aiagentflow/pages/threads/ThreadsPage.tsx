@@ -55,6 +55,12 @@ type SessionRow = {
   windowOpen?: boolean;
   displayName?: string;
   customerKind?: string;
+  unreadCount?: number;
+  replyPending?: boolean;
+  lastCustomerMessage?: string;
+  lastAgentMessage?: string;
+  lastError?: string;
+  lastFailureLevel?: string;
 };
 
 type SessionMessage = {
@@ -64,6 +70,7 @@ type SessionMessage = {
   createdAt: string;
   actor?: string;
   deliveryState?: string;
+  errorMessage?: string;
 };
 
 type CommerceIdentityLink = {
@@ -631,6 +638,33 @@ export default function ThreadsPage() {
                     { field: 'displayName', headerName: 'Cliente', flex: 1, minWidth: 150, valueGetter: (_, row) => row.displayName || row.identifier },
                     { field: 'identifier', headerName: 'Identificador', flex: 1, minWidth: 180 },
                     { field: 'channelType', headerName: 'Canal', width: 110 },
+                    {
+                      field: 'unreadCount',
+                      headerName: 'No leidos',
+                      width: 105,
+                      renderCell: (params) => (
+                        <Chip
+                          size="small"
+                          label={String(params.row.unreadCount ?? 0)}
+                          color={(params.row.unreadCount ?? 0) > 0 ? 'warning' : 'default'}
+                          variant={(params.row.unreadCount ?? 0) > 0 ? 'filled' : 'outlined'}
+                        />
+                      ),
+                    },
+                    {
+                      field: 'replyPending',
+                      headerName: 'Seguimiento',
+                      width: 160,
+                      renderCell: (params) => {
+                        if (params.row.lastError) {
+                          return <Chip size="small" color="error" label="Con error" />;
+                        }
+                        if (params.row.replyPending || (params.row.unreadCount ?? 0) > 0) {
+                          return <Chip size="small" color="warning" label="Por responder" />;
+                        }
+                        return <Chip size="small" color="success" variant="outlined" label="Atendido" />;
+                      },
+                    },
                     { field: 'status', headerName: 'Estado', width: 110, renderCell: (params) => <Chip size="small" label={params.value} color={params.value === 'Active' ? 'success' : 'default'} /> },
                     { field: 'lastActivityAt', headerName: 'Ult. actividad', width: 170, valueFormatter: (value) => new Date(value as string).toLocaleString() },
                   ]}
@@ -672,6 +706,11 @@ export default function ThreadsPage() {
                         ? `${context.channelType} - ${context.identifier} - unread ${context.unread ?? 0}${context.isExpired ? ' - ventana expirada (24h)' : ''}`
                         : 'Cargando contexto...'}
                     </Typography>
+                    {!!rows.find((row) => row.id === selectedSessionId)?.lastError && (
+                      <Typography variant="caption" color="error.main" sx={{ display: 'block', mt: 0.5 }}>
+                        Ultimo error: {rows.find((row) => row.id === selectedSessionId)?.lastError}
+                      </Typography>
+                    )}
                   </Box>
 
                   <Stack direction="row" spacing={1}>

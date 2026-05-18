@@ -157,21 +157,21 @@ public sealed class WhatsAppWebhookController : ControllerBase
             if (activeChannel == null)
                 return BadRequest(new { error = "No active QR WhatsApp channel" });
 
-            // --- Resolve or create session for this sender ---
-            var existingSession = await _sessionRepo.GetByChannelAndIdentifierAsync(activeChannel.Id, message.From, tenantId, ct);
-            ChannelSession session;
-            if (existingSession != null && !existingSession.IsExpired())
+            var waMessage = new WhatsAppIncomingMessage
             {
-                session = existingSession;
-            }
-            else
-            {
-                session = ChannelSession.Create(tenantId, activeChannel.Id, activeChannel.Type, message.From);
-                var defaultAgentId = activeChannel.Config.GetValueOrDefault("DefaultAgentId");
-                if (!string.IsNullOrWhiteSpace(defaultAgentId))
-                    session.LinkAgent(defaultAgentId);
-                await _sessionRepo.InsertAsync(session, ct);
-            }
+                Id = message.Id,
+                From = message.From,
+                Timestamp = message.Timestamp,
+                Text = new WhatsAppTextMessage { Body = message.Content },
+                Profile = new WhatsAppProfile { Name = message.PushName ?? "Unknown" }
+            };
+            var channelMessage = await ProcessWhatsAppMessage(waMessage, activeChannel, ct);
+            if (channelMessage is null)
+                return BadRequest(new { error = "Could not normalize incoming WhatsApp message." });
+
+            var session = await _sessionRepo.GetByIdAsync(channelMessage.SessionId, tenantId, ct);
+            if (session is null)
+                return BadRequest(new { error = "Could not resolve WhatsApp session." });
 
             // --- Store inbox message for traceability ---
             var inboxMessage = await _connectStore.CreateInboxMessageAsync(new ConnectInboxMessageContract
@@ -235,21 +235,13 @@ public sealed class WhatsAppWebhookController : ControllerBase
             string? agentExecutionId = null;
             if (workflowExecution is null)
             {
-                var waMessage = new WhatsAppIncomingMessage
-                {
-                    Id = message.Id,
-                    From = message.From,
-                    Timestamp = message.Timestamp,
-                    Text = new WhatsAppTextMessage { Body = message.Content },
-                    Profile = new WhatsAppProfile { Name = message.PushName ?? "Unknown" }
-                };
-                var channelMessage = await ProcessWhatsAppMessage(waMessage, activeChannel, ct);
-                if (channelMessage != null)
-                {
-                    var response = await _gateway.ProcessMessageAsync(channelMessage, ct);
-                    agentResponse = response.Content;
-                    agentExecutionId = response.AgentExecutionId;
-                }
+                var response = await _gateway.ProcessMessageAsync(channelMessage, ct);
+                agentResponse = response.Content;
+                agentExecutionId = response.AgentExecutionId;
+            }
+            else
+            {
+                await _messageRepo.InsertAsync(channelMessage, ct);
             }
 
             return Ok(new

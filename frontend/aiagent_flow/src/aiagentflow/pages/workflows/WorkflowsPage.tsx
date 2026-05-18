@@ -297,7 +297,7 @@ export default function WorkflowsPage() {
   };
 
   const syncIntentsToRouting = async () => {
-    const sourceAgentId = workflowChannel?.defaultAgentId || workflowChannel?.routingAgents?.[0] || '';
+    const sourceAgentId = workflowChannel?.routerAgentId || workflowChannel?.defaultAgentId || workflowChannel?.routingAgents?.[0] || '';
     const targetAgentId = firstAgentNode?.config?.agentId || firstAgentNode?.aiAgent?.agentId || sourceAgentId;
     const channel = workflowChannel?.type?.toLowerCase();
 
@@ -347,7 +347,7 @@ export default function WorkflowsPage() {
   };
 
   const simulateCurrentIntent = async () => {
-    const sourceAgentId = workflowChannel?.defaultAgentId || workflowChannel?.routingAgents?.[0] || '';
+    const sourceAgentId = workflowChannel?.routerAgentId || workflowChannel?.defaultAgentId || workflowChannel?.routingAgents?.[0] || '';
 
     if (!sourceAgentId) {
       setError('No se puede probar el motivo: selecciona un canal con asistente principal o asistente de enrutamiento.');
@@ -790,4 +790,6 @@ export default function WorkflowsPage() {
     </>
   );
 }
+
+
 

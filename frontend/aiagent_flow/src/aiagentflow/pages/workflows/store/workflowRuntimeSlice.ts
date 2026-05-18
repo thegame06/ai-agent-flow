@@ -107,6 +107,7 @@ const workflowRuntimeSlice = createSlice({
               type: channel.type,
               status: channel.status,
               config,
+              routerAgentId: config.RouterAgentId ?? config.routerAgentId ?? '',
               defaultAgentId: config.DefaultAgentId ?? config.defaultAgentId ?? '',
               routingAgents,
             } as ChannelOption;

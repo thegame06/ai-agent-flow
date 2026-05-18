@@ -15,6 +15,7 @@ public sealed class GenericWebhooksController : ControllerBase
     private readonly IConnectStore _connectStore;
     private readonly IChannelDefinitionRepository _channelRepo;
     private readonly IChannelSessionRepository _sessionRepo;
+    private readonly IChannelMessageRepository _messageRepo;
     private readonly IWorkflowTriggerService _triggerService;
     private readonly IWorkflowAuditService _audit;
     private readonly ILogger<GenericWebhooksController> _logger;
@@ -23,6 +24,7 @@ public sealed class GenericWebhooksController : ControllerBase
         IConnectStore connectStore,
         IChannelDefinitionRepository channelRepo,
         IChannelSessionRepository sessionRepo,
+        IChannelMessageRepository messageRepo,
         IWorkflowTriggerService triggerService,
         IWorkflowAuditService audit,
         ILogger<GenericWebhooksController> logger)
@@ -30,6 +32,7 @@ public sealed class GenericWebhooksController : ControllerBase
         _connectStore = connectStore;
         _channelRepo = channelRepo;
         _sessionRepo = sessionRepo;
+        _messageRepo = messageRepo;
         _triggerService = triggerService;
         _audit = audit;
         _logger = logger;
@@ -70,6 +73,15 @@ public sealed class GenericWebhooksController : ControllerBase
 
         var channelSession = await ResolveOrCreateSessionAsync(tenantId, channel, recipient, ct);
         var assignedTo = channelSession?.AgentId;
+        ChannelMessage? incomingMessage = null;
+        if (channelSession is not null)
+        {
+            incomingMessage = ChannelMessage.CreateIncoming(tenantId, channelSession.ChannelId, channelSession.Id, recipient, content);
+            incomingMessage.Metadata["actor"] = "customer";
+            incomingMessage.Metadata["source"] = "generic-webhook";
+            channelSession.RecordIncomingMessage(content);
+            await _sessionRepo.UpdateAsync(channelSession, ct);
+        }
 
         var inboxMessage = await _connectStore.CreateInboxMessageAsync(new ConnectInboxMessageContract
         {
@@ -128,6 +140,9 @@ public sealed class GenericWebhooksController : ControllerBase
         {
             _logger.LogInformation("No published workflow for connect.message.received in tenant {TenantId}", tenantId);
         }
+
+        if (incomingMessage is not null)
+            await _messageRepo.InsertAsync(incomingMessage, ct);
 
         return Ok(new
         {
@@ -190,6 +205,9 @@ public sealed class GenericWebhooksController : ControllerBase
     private async Task<string?> SelectAgentForSessionAsync(ChannelDefinition channel, CancellationToken ct)
     {
         var routingAgentsRaw = channel.Config.GetValueOrDefault("RoutingAgents");
+        if (!string.IsNullOrWhiteSpace(channel.RouterAgentId))
+            return channel.RouterAgentId;
+
         if (string.IsNullOrWhiteSpace(routingAgentsRaw))
             return channel.Config.GetValueOrDefault("DefaultAgentId");
 

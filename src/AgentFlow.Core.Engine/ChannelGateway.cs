@@ -176,6 +176,11 @@ public sealed class ChannelGateway : IChannelGateway
 
             var executionResult = await _agentExecutor.ExecuteAsync(executionRequest, ct);
             incomingMessage.LinkExecution(executionResult.ExecutionId);
+            if (session != null)
+            {
+                session.LinkThreadIfMissing(executionResult.ThreadId);
+                await _sessionRepo.UpdateAsync(session, ct);
+            }
 
             if (executionResult.Status == ExecutionStatus.Failed ||
                 string.IsNullOrWhiteSpace(executionResult.FinalResponse))
@@ -338,6 +343,12 @@ public sealed class ChannelGateway : IChannelGateway
             incomingMessage.Metadata["agentflow.failure_level"] = "channel";
             incomingMessage.Metadata["agentflow.error"] = ex.Message;
             await _messageRepo.UpdateAsync(incomingMessage, ct);
+            var session = await _sessionRepo.GetByIdAsync(incomingMessage.SessionId, incomingMessage.TenantId, ct);
+            if (session != null)
+            {
+                session.MarkReplyFailure(ex.Message, "channel", "Failed");
+                await _sessionRepo.UpdateAsync(session, ct);
+            }
             throw;
         }
     }
@@ -360,6 +371,13 @@ public sealed class ChannelGateway : IChannelGateway
         incomingMessage.Metadata["agentflow.execution_status"] = executionResult.Status.ToString();
 
         await _messageRepo.UpdateAsync(incomingMessage, ct);
+        var session = await _sessionRepo.GetByIdAsync(incomingMessage.SessionId, incomingMessage.TenantId, ct);
+        if (session != null)
+        {
+            session.MarkReplyFailure(error, failureLevel, executionResult.Status.ToString());
+            session.LinkThreadIfMissing(executionResult.ThreadId);
+            await _sessionRepo.UpdateAsync(session, ct);
+        }
         await _auditMemory.RecordAsync(new AuditEntry
         {
             ExecutionId = executionResult.ExecutionId,
@@ -406,7 +424,20 @@ public sealed class ChannelGateway : IChannelGateway
             return SendResult.Fail($"No handler for channel type {channel.Type}");
 
         await _messageRepo.InsertAsync(message, ct);
-        return await handler.SendReplyAsync(message, channel, ct);
+        var result = await handler.SendReplyAsync(message, channel, ct);
+
+        var session = await _sessionRepo.GetByIdAsync(message.SessionId, message.TenantId, ct);
+        if (session != null)
+        {
+            if (result.Success)
+                session.RecordOutgoingMessage(message.Content);
+            else
+                session.MarkReplyFailure(result.Error ?? "Failed to send message.", "channel_send_failed", "Failed");
+
+            await _sessionRepo.UpdateAsync(session, ct);
+        }
+
+        return result;
     }
 
     public async Task<IReadOnlyList<ChannelSession>> GetActiveSessionsAsync(string channelId, string tenantId, CancellationToken ct = default)
@@ -552,7 +583,12 @@ public sealed class ChannelGateway : IChannelGateway
         if (!string.IsNullOrWhiteSpace(session?.AgentId))
             return session.AgentId!;
 
-        return channel.Metadata?.GetValueOrDefault("DefaultAgentId") ?? "default-agent";
+        if (!string.IsNullOrWhiteSpace(channel.RouterAgentId))
+            return channel.RouterAgentId!;
+
+        return channel.Config.GetValueOrDefault("DefaultAgentId")
+            ?? channel.Metadata?.GetValueOrDefault("DefaultAgentId")
+            ?? "default-agent";
     }
 
 }

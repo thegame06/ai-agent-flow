@@ -157,6 +157,7 @@ export type ChannelOption = {
   type: string;
   status: string;
   config: Record<string, string>;
+  routerAgentId?: string;
   defaultAgentId?: string;
   routingAgents?: string[];
 };

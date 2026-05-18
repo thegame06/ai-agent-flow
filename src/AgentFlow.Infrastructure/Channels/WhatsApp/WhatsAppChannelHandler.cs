@@ -108,7 +108,7 @@ public sealed class WhatsAppChannelHandler : IChannelHandler, IChannelQrProvider
         message.Metadata.TryAdd("wa_message_id", waMessage.Id);
         message.Metadata.TryAdd("wa_timestamp", waMessage.Timestamp.ToString());
 
-        session.RecordMessage();
+        session.RecordIncomingMessage(content);
         await _sessionRepo.UpdateAsync(session, ct);
 
         return message;
@@ -196,14 +196,15 @@ public sealed class WhatsAppChannelHandler : IChannelHandler, IChannelQrProvider
 
         if (existing != null && !existing.IsExpired())
         {
-            existing.RecordMessage();
             if (string.IsNullOrWhiteSpace(existing.AgentId))
             {
                 var selectedAgent = await SelectAgentForSessionAsync(definition, ct);
                 if (!string.IsNullOrWhiteSpace(selectedAgent))
+                {
                     existing.LinkAgent(selectedAgent);
+                    await _sessionRepo.UpdateAsync(existing, ct);
+                }
             }
-            await _sessionRepo.UpdateAsync(existing, ct);
             return existing;
         }
 
@@ -244,6 +245,9 @@ public sealed class WhatsAppChannelHandler : IChannelHandler, IChannelQrProvider
     private async Task<string?> SelectAgentForSessionAsync(ChannelDefinition definition, CancellationToken ct)
     {
         var routingAgentsRaw = definition.Config.GetValueOrDefault("RoutingAgents");
+        if (!string.IsNullOrWhiteSpace(definition.RouterAgentId))
+            return definition.RouterAgentId;
+
         if (string.IsNullOrWhiteSpace(routingAgentsRaw))
         {
             return definition.Config.GetValueOrDefault("DefaultAgentId");

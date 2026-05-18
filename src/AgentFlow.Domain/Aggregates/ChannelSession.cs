@@ -55,6 +55,55 @@ public sealed class ChannelSession
         LastActivityAt = DateTimeOffset.UtcNow;
     }
 
+    public void RecordIncomingMessage(string? preview = null)
+    {
+        RecordMessage();
+
+        var unread = 0;
+        if (Metadata.TryGetValue("unread_count", out var rawUnread))
+            int.TryParse(rawUnread, out unread);
+
+        Metadata["unread_count"] = (unread + 1).ToString();
+        Metadata["last_incoming_at"] = LastActivityAt.ToString("O");
+        Metadata["last_message_direction"] = "incoming";
+        Metadata["reply_pending"] = "true";
+
+        if (!string.IsNullOrWhiteSpace(preview))
+            Metadata["last_customer_message"] = preview.Length > 240 ? preview[..240] : preview;
+    }
+
+    public void RecordOutgoingMessage(string? preview = null)
+    {
+        RecordMessage();
+        Metadata["unread_count"] = "0";
+        Metadata["last_outgoing_at"] = LastActivityAt.ToString("O");
+        Metadata["last_message_direction"] = "outgoing";
+        Metadata["reply_pending"] = "false";
+        Metadata.Remove("last_error");
+        Metadata.Remove("last_failure_level");
+        Metadata.Remove("last_execution_status");
+
+        if (!string.IsNullOrWhiteSpace(preview))
+            Metadata["last_agent_message"] = preview.Length > 240 ? preview[..240] : preview;
+    }
+
+    public void MarkReplyFailure(string error, string? failureLevel = null, string? executionStatus = null)
+    {
+        LastActivityAt = DateTimeOffset.UtcNow;
+        Metadata["reply_pending"] = "true";
+        Metadata["last_error"] = error;
+        if (!string.IsNullOrWhiteSpace(failureLevel))
+            Metadata["last_failure_level"] = failureLevel;
+        if (!string.IsNullOrWhiteSpace(executionStatus))
+            Metadata["last_execution_status"] = executionStatus;
+    }
+
+    public void LinkThreadIfMissing(string? threadId)
+    {
+        if (!string.IsNullOrWhiteSpace(threadId) && string.IsNullOrWhiteSpace(ThreadId))
+            ThreadId = threadId;
+    }
+
     public void Close()
     {
         Status = SessionStatus.Closed;

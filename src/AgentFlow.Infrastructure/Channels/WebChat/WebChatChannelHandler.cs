@@ -61,7 +61,7 @@ public sealed class WebChatChannelHandler : IChannelHandler
         message.Metadata.TryAdd("browser", webMessage.Browser ?? "unknown");
         message.Metadata.TryAdd("page_url", webMessage.PageUrl ?? "unknown");
 
-        session.RecordMessage();
+        session.RecordIncomingMessage(webMessage.Content);
         await _sessionRepo.UpdateAsync(session, ct);
 
         return message;
@@ -144,6 +144,9 @@ public sealed class WebChatChannelHandler : IChannelHandler
     private async Task<string?> SelectAgentForSessionAsync(ChannelDefinition definition, CancellationToken ct)
     {
         var routingAgentsRaw = definition.Config.GetValueOrDefault("RoutingAgents");
+        if (!string.IsNullOrWhiteSpace(definition.RouterAgentId))
+            return definition.RouterAgentId;
+
         if (string.IsNullOrWhiteSpace(routingAgentsRaw))
             return definition.Config.GetValueOrDefault("DefaultAgentId");
 

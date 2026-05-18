@@ -13,6 +13,7 @@ type SessionMessage = {
   createdAt: string;
   actor?: string;
   deliveryState?: string;
+  errorMessage?: string;
 };
 
 type Props = {
@@ -54,14 +55,24 @@ export function MessageTimeline({ messages, loading, hasMore, onLoadMore }: Prop
               const isIncoming = message.direction === 'Incoming';
               const actor = message.actor || (isIncoming ? 'customer' : 'agent');
               const isSystem = actor === 'billing' || actor === 'system';
+              const hasFailure = message.deliveryState === 'not_sent' || Boolean(message.errorMessage);
               const bubbleBg = isIncoming
                 ? 'background.paper'
                 : isSystem
                   ? 'warning.lighter'
-                  : actor === 'bot'
-                    ? 'primary.main'
-                    : 'success.main';
-              const bubbleColor = isIncoming ? 'text.primary' : isSystem ? 'warning.darker' : 'common.white';
+                  : hasFailure
+                    ? 'error.lighter'
+                    : actor === 'bot'
+                      ? 'primary.main'
+                      : 'success.main';
+              const bubbleColor = isIncoming
+                ? 'text.primary'
+                : isSystem
+                  ? 'warning.darker'
+                  : hasFailure
+                    ? 'error.darker'
+                    : 'common.white';
+
               return (
                 <Stack key={message.id} alignItems={isIncoming ? 'flex-start' : 'flex-end'}>
                   <Box
@@ -83,8 +94,13 @@ export function MessageTimeline({ messages, loading, hasMore, onLoadMore }: Prop
                     </Typography>
                     <Typography variant="caption" sx={{ display: 'block', mt: 0.75, opacity: 0.72 }}>
                       {new Date(message.createdAt).toLocaleTimeString()}
-                      {message.deliveryState ? ` · ${message.deliveryState}` : ''}
+                      {message.deliveryState ? ` | ${message.deliveryState}` : ''}
                     </Typography>
+                    {message.errorMessage && (
+                      <Typography variant="caption" sx={{ display: 'block', mt: 0.4, color: 'error.main', opacity: 0.92 }}>
+                        {message.errorMessage}
+                      </Typography>
+                    )}
                   </Box>
                 </Stack>
               );
