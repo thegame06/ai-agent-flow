@@ -133,7 +133,6 @@ public sealed class MongoIntentRoutingStore : IIntentRoutingStore
         var rules = await _rules.Find(x =>
                 x.TenantId == tenantId &&
                 x.SourceAgentId == sourceAgentId &&
-                x.IntentKey == intent &&
                 x.Enabled &&
                 (x.Channel == null || x.Channel == "" || x.Channel == channel))
             .SortBy(x => x.Priority)
@@ -152,15 +151,97 @@ public sealed class MongoIntentRoutingStore : IIntentRoutingStore
             };
         }
 
-        var selected = rules[0];
+        var exact = rules.FirstOrDefault(x => string.Equals(x.IntentKey, intent, StringComparison.OrdinalIgnoreCase));
+        if (exact is not null)
+        {
+            return new IntentRuleSimulationResult
+            {
+                IntentDetected = intent,
+                MatchedRuleId = exact.Id,
+                SelectedAgentId = exact.TargetAgentId,
+                FallbackUsed = false,
+                DecisionReason = "rule_selected_by_priority"
+            };
+        }
+
+        var probe = NormalizeText(intent);
+        var selected = rules
+            .Select(x => new { Rule = x, Score = ScoreRule(x, probe) })
+            .Where(x => x.Score > 0)
+            .OrderByDescending(x => x.Score)
+            .ThenBy(x => x.Rule.Priority)
+            .ThenByDescending(x => x.Rule.UpdatedAt)
+            .FirstOrDefault();
+
+        if (selected is null)
+        {
+            return new IntentRuleSimulationResult
+            {
+                IntentDetected = intent,
+                MatchedRuleId = null,
+                SelectedAgentId = sourceAgentId,
+                FallbackUsed = true,
+                DecisionReason = "no_matching_rule"
+            };
+        }
+
         return new IntentRuleSimulationResult
         {
             IntentDetected = intent,
-            MatchedRuleId = selected.Id,
-            SelectedAgentId = selected.TargetAgentId,
+            MatchedRuleId = selected.Rule.Id,
+            SelectedAgentId = selected.Rule.TargetAgentId,
             FallbackUsed = false,
-            DecisionReason = "rule_selected_by_priority"
+            DecisionReason = "rule_matched_by_examples"
         };
+    }
+
+    private static int ScoreRule(IntentRoutingRuleDocument rule, string probe)
+    {
+        if (string.IsNullOrWhiteSpace(probe))
+            return 0;
+
+        var best = 0;
+        best = Math.Max(best, ScoreText(rule.IntentKey, probe, 100));
+        best = Math.Max(best, ScoreText(rule.IntentDescription, probe, 60));
+        foreach (var example in rule.ExamplePhrases)
+            best = Math.Max(best, ScoreText(example, probe, 80));
+        return best;
+    }
+
+    private static int ScoreText(string? candidate, string probe, int exactWeight)
+    {
+        if (string.IsNullOrWhiteSpace(candidate))
+            return 0;
+
+        var normalized = NormalizeText(candidate);
+        if (string.IsNullOrWhiteSpace(normalized))
+            return 0;
+        if (string.Equals(normalized, probe, StringComparison.Ordinal))
+            return exactWeight;
+        if (normalized.Contains(probe, StringComparison.Ordinal) || probe.Contains(normalized, StringComparison.Ordinal))
+            return Math.Max(1, exactWeight / 2);
+
+        var probeTokens = probe.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var candidateTokens = normalized.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (probeTokens.Length == 0 || candidateTokens.Length == 0)
+            return 0;
+
+        var overlap = probeTokens.Intersect(candidateTokens, StringComparer.Ordinal).Count();
+        return overlap == 0 ? 0 : overlap * 10;
+    }
+
+    private static string NormalizeText(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+
+        var chars = value
+            .Trim()
+            .ToLowerInvariant()
+            .Select(c => char.IsLetterOrDigit(c) || char.IsWhiteSpace(c) ? c : ' ')
+            .ToArray();
+        return string.Join(' ', new string(chars)
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
     }
 
     private static IntentRoutingRule ToModel(IntentRoutingRuleDocument x) => new()

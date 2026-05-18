@@ -124,6 +124,70 @@ public sealed class CommerceControllerTests
     }
 
     [Fact]
+    public async Task UpsertInventory_SavesItemTypeUnitAndTracking()
+    {
+        var sessionRepo = new StubChannelSessionRepository(null);
+        var store = new InMemoryCommerceStore();
+        var controller = BuildController(sessionRepo, store);
+
+        var result = await controller.UpsertInventoryItem(TenantId, "SRV-HORA", new UpsertInventoryRequest
+        {
+            Name = "Consultoria por hora",
+            ItemType = "service",
+            UnitOfMeasure = "hour",
+            TracksInventory = false,
+            UnitPrice = 25,
+            OnHand = 99,
+            Active = true
+        }, CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(result);
+        var payload = ToJson(ok.Value);
+        Assert.Equal("service", payload.GetProperty("itemType").GetString());
+        Assert.Equal("hour", payload.GetProperty("unitOfMeasure").GetString());
+        Assert.False(payload.GetProperty("tracksInventory").GetBoolean());
+        Assert.Equal(0, payload.GetProperty("onHand").GetInt32());
+    }
+
+    [Fact]
+    public async Task CreateSale_ForService_DoesNotRequireStock()
+    {
+        var session = ChannelSession.Create(TenantId, "ch-wa", ChannelType.WhatsApp, "+50589991111");
+        var sessionRepo = new StubChannelSessionRepository(session);
+        var store = new InMemoryCommerceStore();
+        store.SeedInventory(TenantId, "SRV-DAY", "Soporte diario", 40, 0, itemType: "service", unitOfMeasure: "day", tracksInventory: false);
+        var controller = BuildController(sessionRepo, store);
+
+        var partyResult = await controller.ResolveParty(TenantId, new ResolvePartyRequest
+        {
+            Channel = "WhatsApp",
+            Identifier = "+50589991111",
+            Kind = "customer",
+            Phone = "+50589991111",
+            SessionId = session.Id
+        }, CancellationToken.None);
+        var partyId = ToJson(Assert.IsType<OkObjectResult>(partyResult).Value).GetProperty("id").GetString()!;
+
+        var saleResult = await controller.CreateSale(TenantId, new CreateSaleRequest
+        {
+            PartyId = partyId,
+            SessionId = session.Id,
+            Items =
+            [
+                new CommerceLineItemRequest { Sku = "SRV-DAY", Name = "Soporte diario", UnitPrice = 40, Quantity = 2 }
+            ]
+        }, CancellationToken.None);
+
+        var saleOk = Assert.IsType<OkObjectResult>(saleResult);
+        var sale = ToJson(saleOk.Value);
+        Assert.Equal(80m, sale.GetProperty("total").GetDecimal());
+
+        var stock = await store.GetInventoryBySkuAsync(TenantId, "SRV-DAY", CancellationToken.None);
+        Assert.NotNull(stock);
+        Assert.Equal(0, stock!.OnHand);
+    }
+
+    [Fact]
     public async Task UpdateSale_RecalculatesAndAdjustsInventory()
     {
         var session = ChannelSession.Create(TenantId, "ch-wa", ChannelType.WhatsApp, "+50589990000");
@@ -283,13 +347,16 @@ public sealed class CommerceControllerTests
         private readonly List<CommerceInvoiceDocument> _invoices = [];
         private readonly List<CommerceInventoryItemDocument> _inventory = [];
 
-        public void SeedInventory(string tenantId, string sku, string name, decimal unitPrice, int onHand)
+        public void SeedInventory(string tenantId, string sku, string name, decimal unitPrice, int onHand, string itemType = "physical", string unitOfMeasure = "unit", bool tracksInventory = true)
         {
             _inventory.Add(new CommerceInventoryItemDocument
             {
                 TenantId = tenantId,
                 Sku = sku,
                 Name = name,
+                ItemType = itemType,
+                UnitOfMeasure = unitOfMeasure,
+                TracksInventory = tracksInventory,
                 UnitPrice = unitPrice,
                 OnHand = onHand
             });
@@ -372,19 +439,25 @@ public sealed class CommerceControllerTests
         public Task<CommerceInventoryItemDocument?> GetInventoryBySkuAsync(string tenantId, string sku, CancellationToken ct)
             => Task.FromResult(_inventory.SingleOrDefault(x => x.TenantId == tenantId && x.Sku == sku));
 
-        public Task<CommerceInventoryItemDocument> UpsertInventoryItemAsync(string tenantId, string sku, string name, decimal unitPrice, int onHand, bool active, CancellationToken ct)
+        public Task<CommerceInventoryItemDocument> UpsertInventoryItemAsync(string tenantId, string sku, string name, decimal unitPrice, int onHand, bool active, string? itemType, string? unitOfMeasure, bool? tracksInventory, CancellationToken ct)
         {
             var current = _inventory.SingleOrDefault(x => x.TenantId == tenantId && x.Sku == sku);
+            var normalizedType = string.IsNullOrWhiteSpace(itemType) ? "physical" : itemType.Trim().ToLowerInvariant();
+            var normalizedUnit = string.IsNullOrWhiteSpace(unitOfMeasure) ? "unit" : unitOfMeasure.Trim().ToLowerInvariant();
+            var resolvedTracks = tracksInventory ?? (normalizedType is "physical" or "combo" or "kit");
             if (current is null)
             {
-                current = new CommerceInventoryItemDocument { TenantId = tenantId, Sku = sku, Name = name, UnitPrice = unitPrice, OnHand = onHand, Active = active };
+                current = new CommerceInventoryItemDocument { TenantId = tenantId, Sku = sku, Name = name, ItemType = normalizedType, UnitOfMeasure = normalizedUnit, TracksInventory = resolvedTracks, UnitPrice = unitPrice, OnHand = resolvedTracks ? onHand : 0, Active = active };
                 _inventory.Add(current);
             }
             else
             {
                 current.Name = name;
+                current.ItemType = normalizedType;
+                current.UnitOfMeasure = normalizedUnit;
+                current.TracksInventory = resolvedTracks;
                 current.UnitPrice = unitPrice;
-                current.OnHand = onHand;
+                current.OnHand = resolvedTracks ? onHand : 0;
                 current.Active = active;
             }
             return Task.FromResult(current);
@@ -393,7 +466,8 @@ public sealed class CommerceControllerTests
         public Task<CommerceInventoryItemDocument> AdjustInventoryAsync(string tenantId, string sku, int delta, string reason, string? referenceId, CancellationToken ct)
         {
             var current = _inventory.Single(x => x.TenantId == tenantId && x.Sku == sku);
-            current.OnHand += delta;
+            if (current.TracksInventory)
+                current.OnHand += delta;
             return Task.FromResult(current);
         }
 

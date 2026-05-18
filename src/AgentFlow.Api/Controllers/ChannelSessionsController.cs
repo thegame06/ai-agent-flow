@@ -1,8 +1,11 @@
+using AgentFlow.Api.Commerce;
 using AgentFlow.Application.Channels;
+using AgentFlow.Domain.Aggregates;
 using AgentFlow.Domain.Repositories;
 using AgentFlow.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace AgentFlow.Api.Controllers;
 
@@ -39,9 +42,14 @@ public sealed class ChannelSessionsController : ControllerBase
         if (context.TenantId != tenantId && !context.IsPlatformAdmin) return Forbid();
 
         var result = await _sessionRepo.SearchAsync(tenantId, channelId, status, query, page, pageSize, ct);
+        var commerce = HttpContext.RequestServices.GetService<ICommerceStore>();
+        var items = new List<ChannelSessionDto>(result.Items.Count);
+        foreach (var session in result.Items)
+            items.Add(await MapSessionAsync(session, commerce, ct));
+
         return Ok(new PagedResponse<ChannelSessionDto>
         {
-            Items = result.Items.Select(MapSession).ToList(),
+            Items = items,
             Total = result.Total,
             Page = Math.Max(0, page),
             PageSize = Math.Clamp(pageSize, 1, 100)
@@ -57,7 +65,8 @@ public sealed class ChannelSessionsController : ControllerBase
         var session = await _sessionRepo.GetByIdAsync(sessionId, tenantId, ct);
         if (session == null) return NotFound();
 
-        return Ok(MapSession(session));
+        var commerce = HttpContext.RequestServices.GetService<ICommerceStore>();
+        return Ok(await MapSessionAsync(session, commerce, ct));
     }
 
     [HttpPost("{sessionId}/close")]
@@ -84,19 +93,22 @@ public sealed class ChannelSessionsController : ControllerBase
         var context = _tenantContext.Current!;
         if (context.TenantId != tenantId && !context.IsPlatformAdmin) return Forbid();
 
+        var session = await _sessionRepo.GetByIdAsync(sessionId, tenantId, ct);
+        if (session == null) return NotFound();
+
         var messageRepo = HttpContext.RequestServices.GetRequiredService<IChannelMessageRepository>();
+        var threadRepo = HttpContext.RequestServices.GetService<IConversationThreadRepository>();
         var paged = Request.Query.ContainsKey("page") || Request.Query.ContainsKey("pageSize");
         if (paged || !string.IsNullOrWhiteSpace(cursor))
         {
             if (!string.IsNullOrWhiteSpace(cursor) && int.TryParse(cursor, out var cursorPage) && cursorPage >= 0)
-            {
                 page = cursorPage;
-            }
+
             var result = await messageRepo.GetBySessionPagedAsync(sessionId, tenantId, page, pageSize, ct);
             var hasMore = ((page + 1) * Math.Clamp(pageSize, 1, 100)) < result.Total;
             return Ok(new PagedResponse<ChannelMessageDto>
             {
-                Items = result.Items.Select(MapMessage).ToList(),
+                Items = await BuildUnifiedMessagesAsync(session, result.Items, threadRepo, ct),
                 Total = result.Total,
                 Page = Math.Max(0, page),
                 PageSize = Math.Clamp(pageSize, 1, 100),
@@ -106,47 +118,140 @@ public sealed class ChannelSessionsController : ControllerBase
         }
 
         var messages = await messageRepo.GetBySessionAsync(sessionId, tenantId, limit, ct);
-        return Ok(messages.Select(MapMessage));
+        return Ok(await BuildUnifiedMessagesAsync(session, messages, threadRepo, ct));
     }
 
-    private static ChannelSessionDto MapSession(Domain.Aggregates.ChannelSession s) => new()
+    private static ChannelSessionDto MapSession(ChannelSession session) => new()
     {
-        Id = s.Id,
-        ChannelId = s.ChannelId,
-        ChannelType = s.ChannelType,
-        Identifier = s.Identifier,
-        AgentId = s.AgentId,
-        ThreadId = s.ThreadId,
-        Status = s.Status.ToString(),
-        MessageCount = s.MessageCount,
-        CreatedAt = s.CreatedAt,
-        LastActivityAt = s.LastActivityAt,
-        ExpiresAt = s.ExpiresAt,
-        WindowOpen = !s.IsExpired(),
-        CustomerKind = s.Metadata.GetValueOrDefault("customer_kind") ?? "unknown",
-        DisplayName = s.Metadata.GetValueOrDefault("display_name")
+        Id = session.Id,
+        ChannelId = session.ChannelId,
+        ChannelType = session.ChannelType,
+        Identifier = session.Identifier,
+        AgentId = session.AgentId,
+        ThreadId = session.ThreadId,
+        Status = session.Status.ToString(),
+        MessageCount = session.MessageCount,
+        CreatedAt = session.CreatedAt,
+        LastActivityAt = session.LastActivityAt,
+        ExpiresAt = session.ExpiresAt,
+        WindowOpen = !session.IsExpired(),
+        CustomerKind = session.Metadata.GetValueOrDefault("customer_kind") ?? "unknown",
+        DisplayName = session.Metadata.GetValueOrDefault("display_name")
     };
 
-    private static ChannelMessageDto MapMessage(Domain.Aggregates.ChannelMessage m) => new()
+    private static async Task<ChannelSessionDto> MapSessionAsync(ChannelSession session, ICommerceStore? commerce, CancellationToken ct)
     {
-        Id = m.Id,
-        Direction = m.Direction.ToString(),
-        Type = m.Type.ToString(),
-        From = m.From,
-        To = m.To,
-        Content = m.Content,
-        CreatedAt = m.CreatedAt,
-        Status = m.Status.ToString(),
-        AgentExecutionId = m.AgentExecutionId,
-        ChannelMessageIdIn = m.Metadata.GetValueOrDefault("wa_message_id"),
-        ChannelMessageIdOut = m.Metadata.GetValueOrDefault("wa_message_id_out"),
-        Metadata = m.Metadata,
-        ErrorMessage = m.ErrorMessage,
-        Actor = m.Metadata.GetValueOrDefault("actor") ??
-            (m.Direction == Domain.Aggregates.MessageDirection.Incoming ? "customer" : m.From),
-        DeliveryState = m.Metadata.GetValueOrDefault("agentflow.delivery") ??
-            (m.Direction == Domain.Aggregates.MessageDirection.Outgoing ? "sent" : "received")
+        if (commerce is null)
+            return MapSession(session);
+
+        var dto = MapSession(session);
+        var party = await commerce.GetPartyByIdentityAsync(session.TenantId, session.ChannelType, session.Identifier, ct);
+        if (party is null)
+            return dto;
+
+        return dto with
+        {
+            DisplayName = party.DisplayName ?? party.FullName ?? dto.DisplayName ?? session.Identifier,
+            CustomerKind = party.Kind
+        };
+    }
+
+    private static ChannelMessageDto MapMessage(ChannelMessage message) => new()
+    {
+        Id = message.Id,
+        Direction = message.Direction.ToString(),
+        Type = message.Type.ToString(),
+        From = message.From,
+        To = message.To,
+        Content = message.Content,
+        CreatedAt = message.CreatedAt,
+        Status = message.Status.ToString(),
+        AgentExecutionId = message.AgentExecutionId,
+        ChannelMessageIdIn = message.Metadata.GetValueOrDefault("wa_message_id"),
+        ChannelMessageIdOut = message.Metadata.GetValueOrDefault("wa_message_id_out"),
+        Metadata = message.Metadata,
+        ErrorMessage = message.ErrorMessage,
+        Actor = message.Metadata.GetValueOrDefault("actor") ??
+            (message.Direction == MessageDirection.Incoming ? "customer" : message.From),
+        DeliveryState = message.Metadata.GetValueOrDefault("agentflow.delivery") ??
+            (message.Direction == MessageDirection.Outgoing ? "sent" : "received")
     };
+
+    private static async Task<IReadOnlyList<ChannelMessageDto>> BuildUnifiedMessagesAsync(
+        ChannelSession session,
+        IReadOnlyList<ChannelMessage> channelMessages,
+        IConversationThreadRepository? threadRepo,
+        CancellationToken ct)
+    {
+        var items = channelMessages.Select(MapMessage).ToList();
+        if (threadRepo is null || string.IsNullOrWhiteSpace(session.ThreadId))
+            return items.OrderBy(x => x.CreatedAt).ToList();
+
+        var thread = await threadRepo.GetByIdAsync(session.ThreadId, session.TenantId, ct);
+        if (thread is null)
+            return items.OrderBy(x => x.CreatedAt).ToList();
+
+        var seen = new HashSet<string>(items.Select(BuildDedupKey), StringComparer.Ordinal);
+
+        for (var index = 0; index < thread.Context.Turns.Count; index++)
+        {
+            var turn = thread.Context.Turns[index];
+            if (!string.IsNullOrWhiteSpace(turn.UserMessage))
+            {
+                var inbound = new ChannelMessageDto
+                {
+                    Id = $"thread-{thread.Id}-u-{index}",
+                    Direction = MessageDirection.Incoming.ToString(),
+                    Type = MessageType.Text.ToString(),
+                    From = session.Identifier,
+                    To = null,
+                    Content = turn.UserMessage,
+                    CreatedAt = turn.Timestamp,
+                    Status = "Merged",
+                    Actor = "customer",
+                    DeliveryState = "received",
+                    Metadata = new Dictionary<string, string> { ["source"] = "thread" }
+                };
+                if (seen.Add(BuildDedupKey(inbound)))
+                    items.Add(inbound);
+            }
+
+            if (!string.IsNullOrWhiteSpace(turn.AssistantResponse))
+            {
+                var outbound = new ChannelMessageDto
+                {
+                    Id = $"thread-{thread.Id}-a-{index}",
+                    Direction = MessageDirection.Outgoing.ToString(),
+                    Type = MessageType.Text.ToString(),
+                    From = "bot",
+                    To = session.Identifier,
+                    Content = turn.AssistantResponse!,
+                    CreatedAt = turn.Timestamp.AddMilliseconds(1),
+                    Status = "Merged",
+                    Actor = "bot",
+                    DeliveryState = "sent",
+                    Metadata = new Dictionary<string, string> { ["source"] = "thread" }
+                };
+                if (seen.Add(BuildDedupKey(outbound)))
+                    items.Add(outbound);
+            }
+        }
+
+        return items.OrderBy(x => x.CreatedAt).ToList();
+    }
+
+    private static string BuildDedupKey(ChannelMessageDto message)
+        => $"{message.Direction}|{message.Actor}|{NormalizeForKey(message.Content)}|{message.CreatedAt:yyyyMMddHHmm}";
+
+    private static string NormalizeForKey(string value)
+    {
+        var normalized = new string(value
+            .Trim()
+            .ToLowerInvariant()
+            .Select(c => char.IsLetterOrDigit(c) || char.IsWhiteSpace(c) ? c : ' ')
+            .ToArray());
+        return string.Join(' ', normalized.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+    }
 }
 
 public sealed record PagedResponse<T>

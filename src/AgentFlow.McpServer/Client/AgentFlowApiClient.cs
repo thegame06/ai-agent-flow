@@ -224,7 +224,7 @@ public sealed record CommerceConversationContext(
     DateTimeOffset? ExpiresAt, bool IsExpired, CommerceParty? Party);
 
 public sealed record CommerceInventoryItem(
-    string Id, string Sku, string Name, decimal UnitPrice, int OnHand, bool Active);
+    string Id, string Sku, string Name, string ItemType, string UnitOfMeasure, bool TracksInventory, decimal UnitPrice, int OnHand, bool Active);
 
 public sealed record CommerceLineItemPayload(
     string Sku, string Name, decimal UnitPrice, decimal Quantity);

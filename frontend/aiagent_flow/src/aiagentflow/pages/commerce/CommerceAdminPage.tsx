@@ -46,6 +46,9 @@ type InventoryRow = {
   id: string;
   sku: string;
   name: string;
+  itemType: string;
+  unitOfMeasure: string;
+  tracksInventory: boolean;
   unitPrice: number;
   onHand: number;
   active: boolean;
@@ -98,6 +101,9 @@ type CustomerDraft = {
 type InventoryDraft = {
   sku: string;
   name: string;
+  itemType: string;
+  unitOfMeasure: string;
+  tracksInventory: boolean;
   unitPrice: string;
   onHand: string;
   active: boolean;
@@ -129,6 +135,9 @@ const EMPTY_CUSTOMER: CustomerDraft = {
 const EMPTY_INVENTORY: InventoryDraft = {
   sku: '',
   name: '',
+  itemType: 'physical',
+  unitOfMeasure: 'unit',
+  tracksInventory: true,
   unitPrice: '',
   onHand: '',
   active: true,
@@ -341,6 +350,9 @@ export default function CommerceAdminPage() {
       setInventoryDraft({
         sku: row.sku,
         name: row.name,
+        itemType: row.itemType ?? 'physical',
+        unitOfMeasure: row.unitOfMeasure ?? 'unit',
+        tracksInventory: row.tracksInventory ?? true,
         unitPrice: String(row.unitPrice),
         onHand: String(row.onHand),
         active: row.active,
@@ -355,8 +367,11 @@ export default function CommerceAdminPage() {
     try {
       await axios.put(endpoints.agentflow.commerce.inventoryItemBySku(tenantId, inventoryDraft.sku), {
         name: inventoryDraft.name,
+        itemType: inventoryDraft.itemType,
+        unitOfMeasure: inventoryDraft.unitOfMeasure,
+        tracksInventory: inventoryDraft.tracksInventory,
         unitPrice: Number(inventoryDraft.unitPrice || 0),
-        onHand: Number(inventoryDraft.onHand || 0),
+        onHand: inventoryDraft.tracksInventory ? Number(inventoryDraft.onHand || 0) : 0,
         active: inventoryDraft.active,
       });
       setActionOk('Producto guardado.');
@@ -540,8 +555,11 @@ export default function CommerceAdminPage() {
                   columns={[
                     { field: 'sku', headerName: 'SKU', width: 150 },
                     { field: 'name', headerName: 'Producto', flex: 1, minWidth: 240 },
+                    { field: 'itemType', headerName: 'Tipo', width: 120, renderCell: (params) => <Chip size="small" label={params.value} variant="outlined" /> },
+                    { field: 'unitOfMeasure', headerName: 'Unidad', width: 110 },
                     { field: 'unitPrice', headerName: 'Precio', width: 120 },
-                    { field: 'onHand', headerName: 'Stock', width: 110 },
+                    { field: 'onHand', headerName: 'Stock', width: 110, valueGetter: (_, row) => row.tracksInventory ? row.onHand : '-' },
+                    { field: 'tracksInventory', headerName: 'Controla stock', width: 130, renderCell: (params) => <Chip size="small" label={params.value ? 'Si' : 'No'} color={params.value ? 'success' : 'default'} /> },
                     { field: 'active', headerName: 'Activo', width: 100, renderCell: (params) => <Chip size="small" label={params.value ? 'Si' : 'No'} color={params.value ? 'success' : 'default'} /> },
                     {
                       field: 'actions',
@@ -713,13 +731,52 @@ export default function CommerceAdminPage() {
             <TextField label="Nombre" value={inventoryDraft.name} onChange={(e) => setInventoryDraft((prev) => ({ ...prev, name: e.target.value }))} />
             <Grid container spacing={2}>
               <Grid item xs={12} md={6}>
+                <TextField select label="Tipo" fullWidth value={inventoryDraft.itemType} onChange={(e) => setInventoryDraft((prev) => ({
+                  ...prev,
+                  itemType: e.target.value,
+                  tracksInventory: ['physical', 'combo', 'kit'].includes(e.target.value) ? prev.tracksInventory : false,
+                  unitOfMeasure: e.target.value === 'service' && prev.unitOfMeasure === 'unit' ? 'hour' : prev.unitOfMeasure,
+                }))}>
+                  <MenuItem value="physical">Fisico</MenuItem>
+                  <MenuItem value="intangible">Intangible</MenuItem>
+                  <MenuItem value="service">Servicio</MenuItem>
+                  <MenuItem value="combo">Combo</MenuItem>
+                  <MenuItem value="kit">Kit</MenuItem>
+                </TextField>
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <TextField select label="Unidad" fullWidth value={inventoryDraft.unitOfMeasure} onChange={(e) => setInventoryDraft((prev) => ({ ...prev, unitOfMeasure: e.target.value }))}>
+                  <MenuItem value="unit">Unidad</MenuItem>
+                  <MenuItem value="set">Set</MenuItem>
+                  <MenuItem value="pack">Pack</MenuItem>
+                  <MenuItem value="box">Caja</MenuItem>
+                  <MenuItem value="hour">Hora</MenuItem>
+                  <MenuItem value="day">Dia</MenuItem>
+                  <MenuItem value="week">Semana</MenuItem>
+                  <MenuItem value="month">Mes</MenuItem>
+                  <MenuItem value="minute">Minuto</MenuItem>
+                  <MenuItem value="kg">Kilogramo</MenuItem>
+                  <MenuItem value="g">Gramo</MenuItem>
+                  <MenuItem value="lb">Libra</MenuItem>
+                  <MenuItem value="liter">Litro</MenuItem>
+                  <MenuItem value="ml">Mililitro</MenuItem>
+                  <MenuItem value="meter">Metro</MenuItem>
+                  <MenuItem value="cm">Centimetro</MenuItem>
+                </TextField>
+              </Grid>
+            </Grid>
+            <Grid container spacing={2}>
+              <Grid item xs={12} md={6}>
                 <TextField label="Precio" fullWidth value={inventoryDraft.unitPrice} onChange={(e) => setInventoryDraft((prev) => ({ ...prev, unitPrice: e.target.value }))} />
               </Grid>
               <Grid item xs={12} md={6}>
-                <TextField label="Stock" fullWidth value={inventoryDraft.onHand} onChange={(e) => setInventoryDraft((prev) => ({ ...prev, onHand: e.target.value }))} />
+                <TextField label="Stock" fullWidth value={inventoryDraft.onHand} disabled={!inventoryDraft.tracksInventory} helperText={inventoryDraft.tracksInventory ? 'Disponible para venta.' : 'No aplica para servicios o intangibles.'} onChange={(e) => setInventoryDraft((prev) => ({ ...prev, onHand: e.target.value }))} />
               </Grid>
             </Grid>
             <Divider />
+            <Button variant={inventoryDraft.tracksInventory ? 'contained' : 'outlined'} onClick={() => setInventoryDraft((prev) => ({ ...prev, tracksInventory: !prev.tracksInventory, onHand: !prev.tracksInventory ? prev.onHand : '0' }))} sx={{ alignSelf: 'flex-start' }}>
+              {inventoryDraft.tracksInventory ? 'Controla inventario' : 'Sin control de inventario'}
+            </Button>
             <Button variant={inventoryDraft.active ? 'contained' : 'outlined'} onClick={() => setInventoryDraft((prev) => ({ ...prev, active: !prev.active }))} sx={{ alignSelf: 'flex-start' }}>
               {inventoryDraft.active ? 'Activo' : 'Inactivo'}
             </Button>

@@ -63,11 +63,28 @@ public sealed class AgentExecutionsController : ControllerBase
         var context = _tenantContext.Current!;
         if (context.TenantId != tenantId && !context.IsPlatformAdmin) return Forbid();
 
-        // Assuming the repository has a way to get all (we might need to add it or use GetByAgentId with null/empty)
-        // For now let's say we filter by running or just get recent.
-        var history = await _executionRepository.GetRunningAsync(tenantId, ct); 
-        // NOTE: In a real scenario we'd have a GetRecentAsync(tenantId, limit)
-        return Ok(history);
+        var boundedLimit = Math.Clamp(limit, 1, 200);
+        var history = await _executionRepository.GetAllAsync(tenantId, 0, boundedLimit, ct);
+        var executions = history
+            .OrderByDescending(e => e.CreatedAt)
+            .Take(boundedLimit)
+            .Select(e => new
+            {
+                e.Id,
+                AgentVersion = e.AgentDefinitionId,
+                Status = e.Status.ToString(),
+                e.CreatedAt,
+                DurationMs = e.GetDuration()?.TotalMilliseconds,
+                TotalSteps = e.Steps.Count,
+                TotalTokensUsed = e.Output?.TotalTokensUsed ?? 0,
+                e.AgentDefinitionId,
+                e.CorrelationId,
+                e.SessionId,
+                e.ChannelMessageId
+            })
+            .ToList();
+
+        return Ok(executions);
     }
 
     /// <summary>

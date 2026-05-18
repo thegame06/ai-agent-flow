@@ -1,6 +1,7 @@
 using AgentFlow.Abstractions.Workflow;
 using AgentFlow.Api.Connect;
 using AgentFlow.Api.Workflow;
+using AgentFlow.Domain.Aggregates;
 using AgentFlow.Domain.Repositories;
 using AgentFlow.Extensions;
 using AgentFlow.Security;
@@ -24,6 +25,7 @@ public sealed class WorkflowStudioController : ControllerBase
     private readonly IExtensionRegistry _extensionRegistry;
     private readonly ITenantContextAccessor _tenantContext;
     private readonly IAgentDefinitionRepository _agentRepo;
+    private readonly IIntentRoutingStore _intentRoutingStore;
 
     public WorkflowStudioController(
         IWorkflowStudioStore store,
@@ -34,7 +36,8 @@ public sealed class WorkflowStudioController : ControllerBase
         ITenantConnectionStore connectionStore,
         IExtensionRegistry extensionRegistry,
         ITenantContextAccessor tenantContext,
-        IAgentDefinitionRepository agentRepo)
+        IAgentDefinitionRepository agentRepo,
+        IIntentRoutingStore intentRoutingStore)
     {
         _store = store;
         _triggerService = triggerService;
@@ -45,6 +48,7 @@ public sealed class WorkflowStudioController : ControllerBase
         _extensionRegistry = extensionRegistry;
         _tenantContext = tenantContext;
         _agentRepo = agentRepo;
+        _intentRoutingStore = intentRoutingStore;
     }
 
     [HttpGet("catalog/activities")]
@@ -302,6 +306,7 @@ public sealed class WorkflowStudioController : ControllerBase
             UpdatedAt = DateTimeOffset.UtcNow,
             UpdatedBy = _tenantContext.Current!.UserId
         }, ct);
+        await SyncWorkflowIntentsToRoutingAsync(saved, ct);
         await _audit.RecordStudioActionAsync(tenantId, _tenantContext.Current!.UserId, "workflow.definition.publish", workflowId, new
         {
             saved.Version
@@ -471,7 +476,166 @@ public sealed class WorkflowStudioController : ControllerBase
 
         return null;
     }
+
+    private async Task SyncWorkflowIntentsToRoutingAsync(WorkflowDefinitionContract definition, CancellationToken ct)
+    {
+        var startIntents = ReadStartIntents(definition.DefinitionJson, definition.TriggerEventName);
+        if (startIntents.Count == 0)
+            return;
+
+        var targetAgentId = ReadFirstWorkflowAgentId(definition.DefinitionJson);
+        if (string.IsNullOrWhiteSpace(targetAgentId))
+            return;
+
+        var channels = await _channelRepo.GetAllAsync(definition.TenantId, ct);
+        var matchingChannels = channels
+            .Where(channel => string.Equals(EventForChannel(channel.Type), definition.TriggerEventName, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        foreach (var channel in matchingChannels)
+        {
+            var sourceAgentId = channel.Config.GetValueOrDefault("DefaultAgentId");
+            if (string.IsNullOrWhiteSpace(sourceAgentId))
+            {
+                sourceAgentId = (channel.Config.GetValueOrDefault("RoutingAgents") ?? string.Empty)
+                    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .FirstOrDefault();
+            }
+
+            if (string.IsNullOrWhiteSpace(sourceAgentId))
+                continue;
+
+            for (var index = 0; index < startIntents.Count; index++)
+            {
+                var intent = startIntents[index];
+                var intentKey = !string.IsNullOrWhiteSpace(intent.Label) ? intent.Label! : intent.Id;
+                if (string.IsNullOrWhiteSpace(intentKey))
+                    continue;
+
+                await _intentRoutingStore.UpsertRuleAsync(new IntentRoutingRule
+                {
+                    Id = $"brain-{definition.Id}-{channel.Type.ToString().ToLowerInvariant()}-{intent.Id}",
+                    TenantId = definition.TenantId,
+                    IntentKey = intentKey,
+                    IntentDescription = intent.Description ?? string.Empty,
+                    ExamplePhrases = intent.Examples,
+                    SourceAgentId = sourceAgentId,
+                    TargetAgentId = targetAgentId,
+                    WorkflowDefinitionId = definition.Id,
+                    WorkflowName = definition.Name,
+                    Priority = 100 + index,
+                    Enabled = true,
+                    Channel = channel.Type.ToString().ToLowerInvariant(),
+                    ConditionsJson = JsonSerializer.Serialize(new
+                    {
+                        workflowId = definition.Id,
+                        workflowName = definition.Name,
+                        eventName = definition.TriggerEventName,
+                        examples = intent.Examples,
+                        description = intent.Description ?? string.Empty,
+                        triggerSource = intent.TriggerSource ?? "message",
+                        confidenceThreshold = intent.ConfidenceThreshold ?? 0.7
+                    }),
+                    HandoffPolicyJson = JsonSerializer.Serialize(new { source = "workflow-publish-auto-sync" }),
+                    Version = 1,
+                    CreatedAt = DateTimeOffset.UtcNow,
+                    UpdatedAt = DateTimeOffset.UtcNow
+                }, ct);
+            }
+        }
+    }
+
+    private static IReadOnlyList<WorkflowStartIntentSnapshot> ReadStartIntents(string definitionJson, string eventName)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(definitionJson);
+            if (doc.RootElement.TryGetProperty("start", out var start) &&
+                start.TryGetProperty("intents", out var intentsEl) &&
+                intentsEl.ValueKind == JsonValueKind.Array)
+            {
+                var items = new List<WorkflowStartIntentSnapshot>();
+                foreach (var item in intentsEl.EnumerateArray())
+                {
+                    items.Add(new WorkflowStartIntentSnapshot(
+                        item.TryGetProperty("id", out var idEl) ? idEl.GetString() ?? Guid.NewGuid().ToString("N") : Guid.NewGuid().ToString("N"),
+                        item.TryGetProperty("label", out var labelEl) ? labelEl.GetString() : null,
+                        item.TryGetProperty("description", out var descEl) ? descEl.GetString() : null,
+                        item.TryGetProperty("examples", out var exEl) && exEl.ValueKind == JsonValueKind.Array
+                            ? exEl.EnumerateArray().Where(x => x.ValueKind == JsonValueKind.String).Select(x => x.GetString()!).ToArray()
+                            : Array.Empty<string>(),
+                        item.TryGetProperty("triggerSource", out var sourceEl) ? sourceEl.GetString() : "message",
+                        item.TryGetProperty("confidenceThreshold", out var confEl) && confEl.ValueKind == JsonValueKind.Number
+                            ? confEl.GetDouble()
+                            : 0.7));
+                }
+
+                if (items.Count > 0)
+                    return items;
+            }
+        }
+        catch
+        {
+            // Ignore malformed definitions and fall back to a synthetic intent.
+        }
+
+        return new[]
+        {
+            new WorkflowStartIntentSnapshot("intent-main", "Intencion principal", $"Inicio para {eventName}", Array.Empty<string>(), "message", 0.7)
+        };
+    }
+
+    private static string? ReadFirstWorkflowAgentId(string definitionJson)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(definitionJson);
+            if (!doc.RootElement.TryGetProperty("activities", out var activities) || activities.ValueKind != JsonValueKind.Array)
+                return null;
+
+            foreach (var activity in activities.EnumerateArray())
+            {
+                if (!activity.TryGetProperty("type", out var typeEl) ||
+                    !string.Equals(typeEl.GetString(), "ai.agent", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                if (activity.TryGetProperty("config", out var configEl) &&
+                    configEl.ValueKind == JsonValueKind.Object &&
+                    configEl.TryGetProperty("agentId", out var agentIdEl) &&
+                    !string.IsNullOrWhiteSpace(agentIdEl.GetString()))
+                    return agentIdEl.GetString();
+
+                if (activity.TryGetProperty("aiAgent", out var aiAgentEl) &&
+                    aiAgentEl.ValueKind == JsonValueKind.Object &&
+                    aiAgentEl.TryGetProperty("agentId", out var aiAgentIdEl) &&
+                    !string.IsNullOrWhiteSpace(aiAgentIdEl.GetString()))
+                    return aiAgentIdEl.GetString();
+            }
+        }
+        catch
+        {
+            return null;
+        }
+
+        return null;
+    }
+
+    private static string EventForChannel(ChannelType type) => type switch
+    {
+        ChannelType.Voice or ChannelType.CallCenter => "connect.call.received",
+        ChannelType.Email => "connect.message.received",
+        ChannelType.WhatsApp or ChannelType.WebChat or ChannelType.Telegram or ChannelType.Slack => "connect.message.received",
+        _ => "connect.message.received"
+    };
 }
+
+internal sealed record WorkflowStartIntentSnapshot(
+    string Id,
+    string? Label,
+    string? Description,
+    IReadOnlyList<string> Examples,
+    string? TriggerSource,
+    double? ConfidenceThreshold);
 
 public sealed record UpsertWorkflowActivityRequest
 {

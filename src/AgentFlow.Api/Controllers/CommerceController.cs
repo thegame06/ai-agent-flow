@@ -1,5 +1,6 @@
 using AgentFlow.Api.Commerce;
 using AgentFlow.Application.Channels;
+using AgentFlow.Domain.Aggregates;
 using AgentFlow.Domain.Repositories;
 using AgentFlow.Extensions;
 using AgentFlow.Security;
@@ -65,6 +66,7 @@ public sealed class CommerceController : ControllerBase
             request.Email,
             request.FullName,
             ct);
+        await SyncSessionPartyMetadataAsync(tenantId, request.SessionId, request.Channel, request.Identifier, party, ct);
 
         return Ok(ToPartyDto(party));
     }
@@ -125,7 +127,9 @@ public sealed class CommerceController : ControllerBase
         try
         {
             var updated = await _commerce.UpdatePartyAsync(tenantId, partyId, request.FullName, request.Email, request.Phone, request.DisplayName, request.Kind, ct);
-            return updated is null ? NotFound() : Ok(ToPartyDto(updated));
+            if (updated is null) return NotFound();
+            await SyncSessionPartyMetadataAsync(tenantId, updated.LastSessionId, updated.Channel, updated.Identifier, updated, ct);
+            return Ok(ToPartyDto(updated));
         }
         catch (InvalidOperationException ex)
         {
@@ -251,7 +255,7 @@ public sealed class CommerceController : ControllerBase
         var moduleCheck = await EnsureModuleEnabledAsync(tenantId, CommerceModules.Inventory, ct);
         if (moduleCheck is not null) return moduleCheck;
         var rows = await _commerce.SearchInventoryAsync(tenantId, query, limit, ct);
-        return Ok(rows.Select(x => new { x.Id, x.Sku, x.Name, x.UnitPrice, x.OnHand, x.Active }));
+        return Ok(rows.Select(x => new { x.Id, x.Sku, x.Name, x.ItemType, x.UnitOfMeasure, x.TracksInventory, x.UnitPrice, x.OnHand, x.Active }));
     }
 
     [HttpPut("inventory/items/{sku}")]
@@ -264,8 +268,8 @@ public sealed class CommerceController : ControllerBase
         if (!CanAccess(tenantId)) return Forbid();
         var moduleCheck = await EnsureModuleEnabledAsync(tenantId, CommerceModules.Inventory, ct);
         if (moduleCheck is not null) return moduleCheck;
-        var saved = await _commerce.UpsertInventoryItemAsync(tenantId, sku, request.Name, request.UnitPrice, request.OnHand, request.Active, ct);
-        return Ok(new { saved.Id, saved.Sku, saved.Name, saved.UnitPrice, saved.OnHand, saved.Active });
+        var saved = await _commerce.UpsertInventoryItemAsync(tenantId, sku, request.Name, request.UnitPrice, request.OnHand, request.Active, request.ItemType, request.UnitOfMeasure, request.TracksInventory, ct);
+        return Ok(new { saved.Id, saved.Sku, saved.Name, saved.ItemType, saved.UnitOfMeasure, saved.TracksInventory, saved.UnitPrice, saved.OnHand, saved.Active });
     }
 
     [HttpPost("inventory/items/{sku}/adjust")]
@@ -281,7 +285,7 @@ public sealed class CommerceController : ControllerBase
         try
         {
             var saved = await _commerce.AdjustInventoryAsync(tenantId, sku, request.Delta, request.Reason, request.ReferenceId, ct);
-            return Ok(new { saved.Id, saved.Sku, saved.Name, saved.UnitPrice, saved.OnHand, saved.Active });
+            return Ok(new { saved.Id, saved.Sku, saved.Name, saved.ItemType, saved.UnitOfMeasure, saved.TracksInventory, saved.UnitPrice, saved.OnHand, saved.Active });
         }
         catch (InvalidOperationException ex)
         {
@@ -332,7 +336,7 @@ public sealed class CommerceController : ControllerBase
             var stock = await _commerce.GetInventoryBySkuAsync(tenantId, item.Sku, ct);
             if (stock is null) return NotFound($"Inventory SKU '{item.Sku}' not found.");
             if (!stock.Active) return BadRequest($"Inventory SKU '{item.Sku}' is inactive.");
-            if (stock.OnHand < (int)Math.Ceiling(item.Quantity))
+            if (stock.TracksInventory && stock.OnHand < (int)Math.Ceiling(item.Quantity))
                 return Conflict(new { message = $"Insufficient stock for SKU '{item.Sku}'.", sku = item.Sku, onHand = stock.OnHand, requested = item.Quantity });
         }
 
@@ -369,7 +373,11 @@ public sealed class CommerceController : ControllerBase
 
         var saved = await _commerce.CreateSaleAsync(doc, ct);
         foreach (var item in request.Items)
-            await _commerce.AdjustInventoryAsync(tenantId, item.Sku, -(int)Math.Ceiling(item.Quantity), "sale_created", saved.Id, ct);
+        {
+            var stock = await _commerce.GetInventoryBySkuAsync(tenantId, item.Sku, ct);
+            if (stock?.TracksInventory == true)
+                await _commerce.AdjustInventoryAsync(tenantId, item.Sku, -(int)Math.Ceiling(item.Quantity), "sale_created", saved.Id, ct);
+        }
         return Ok(new { saved.Id, saved.PartyId, saved.Total, saved.Currency, saved.CreatedAt });
     }
 
@@ -457,7 +465,7 @@ public sealed class CommerceController : ControllerBase
             var stock = await _commerce.GetInventoryBySkuAsync(tenantId, entry.Key, ct);
             if (stock is null) return NotFound($"Inventory SKU '{entry.Key}' not found.");
             if (!stock.Active) return BadRequest($"Inventory SKU '{entry.Key}' is inactive.");
-            if (stock.OnHand < delta)
+            if (stock.TracksInventory && stock.OnHand < delta)
                 return Conflict(new { message = $"Insufficient stock for SKU '{entry.Key}'.", sku = entry.Key, onHand = stock.OnHand, requested = entry.Value });
         }
 
@@ -476,7 +484,11 @@ public sealed class CommerceController : ControllerBase
             var next = nextQuantities.TryGetValue(sku, out var newQty) ? newQty : 0;
             var delta = next - previous;
             if (delta != 0)
-                await _commerce.AdjustInventoryAsync(tenantId, sku, -delta, "sale_updated", sale.Id, ct);
+            {
+                var stock = await _commerce.GetInventoryBySkuAsync(tenantId, sku, ct);
+                if (stock?.TracksInventory == true)
+                    await _commerce.AdjustInventoryAsync(tenantId, sku, -delta, "sale_updated", sale.Id, ct);
+            }
         }
 
         sale.Items = requestedItems;
@@ -776,6 +788,34 @@ public sealed class CommerceController : ControllerBase
         return null;
     }
 
+    private async Task SyncSessionPartyMetadataAsync(
+        string tenantId,
+        string? sessionId,
+        string channel,
+        string identifier,
+        CommercePartyDocument party,
+        CancellationToken ct)
+    {
+        ChannelSession? session = null;
+        if (!string.IsNullOrWhiteSpace(sessionId))
+            session = await _sessionRepo.GetByIdAsync(sessionId, tenantId, ct);
+
+        if (session is null)
+        {
+            var sessions = await _sessionRepo.GetActiveByUserAsync(identifier, tenantId, ct);
+            session = sessions.FirstOrDefault(x =>
+                string.Equals(x.ChannelType, channel, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(x.Identifier, identifier, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (session is null)
+            return;
+
+        session.Metadata["display_name"] = party.DisplayName ?? party.FullName ?? party.Phone ?? party.Identifier;
+        session.Metadata["customer_kind"] = party.Kind;
+        await _sessionRepo.UpdateAsync(session, ct);
+    }
+
     private static object ToPartyDto(CommercePartyDocument party) => new
     {
         party.Id,
@@ -886,6 +926,9 @@ public sealed record SendConversationMessageRequest
 public sealed record UpsertInventoryRequest
 {
     public required string Name { get; init; }
+    public string? ItemType { get; init; }
+    public string? UnitOfMeasure { get; init; }
+    public bool? TracksInventory { get; init; }
     public required decimal UnitPrice { get; init; }
     public required int OnHand { get; init; }
     public bool Active { get; init; } = true;

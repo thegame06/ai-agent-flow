@@ -104,6 +104,7 @@ export const endpoints = {
     audit: {
       list: (tenantId: string) => `/api/v1/tenants/${tenantId}/audit`,
       correlations: (tenantId: string) => `/api/v1/tenants/${tenantId}/audit/correlations`,
+      journey: (tenantId: string, correlationId: string) => `/api/v1/tenants/${tenantId}/audit/journey/${encodeURIComponent(correlationId)}`,
     },
     // Evaluations
     evaluations: {

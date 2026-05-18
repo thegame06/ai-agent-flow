@@ -42,8 +42,12 @@ public sealed class IntentRoutingController : ControllerBase
             Id = string.IsNullOrWhiteSpace(body.Id) ? Guid.NewGuid().ToString("N") : body.Id,
             TenantId = tenantId,
             IntentKey = body.IntentKey,
+            IntentDescription = body.IntentDescription ?? string.Empty,
+            ExamplePhrases = body.ExamplePhrases ?? Array.Empty<string>(),
             SourceAgentId = body.SourceAgentId,
             TargetAgentId = body.TargetAgentId,
+            WorkflowDefinitionId = body.WorkflowDefinitionId,
+            WorkflowName = body.WorkflowName,
             Priority = body.Priority,
             Enabled = body.Enabled,
             Channel = body.Channel,
@@ -69,8 +73,12 @@ public sealed class IntentRoutingController : ControllerBase
         var saved = await _store.UpsertRuleAsync(existing with
         {
             IntentKey = body.IntentKey,
+            IntentDescription = body.IntentDescription ?? existing.IntentDescription,
+            ExamplePhrases = body.ExamplePhrases ?? existing.ExamplePhrases,
             SourceAgentId = body.SourceAgentId,
             TargetAgentId = body.TargetAgentId,
+            WorkflowDefinitionId = body.WorkflowDefinitionId ?? existing.WorkflowDefinitionId,
+            WorkflowName = body.WorkflowName ?? existing.WorkflowName,
             Priority = body.Priority,
             Enabled = body.Enabled,
             Channel = body.Channel,
@@ -163,8 +171,12 @@ public sealed record UpsertIntentRuleRequest
 {
     public string? Id { get; init; }
     public required string IntentKey { get; init; }
+    public string? IntentDescription { get; init; }
+    public IReadOnlyList<string>? ExamplePhrases { get; init; }
     public required string SourceAgentId { get; init; }
     public required string TargetAgentId { get; init; }
+    public string? WorkflowDefinitionId { get; init; }
+    public string? WorkflowName { get; init; }
     public required int Priority { get; init; }
     public bool Enabled { get; init; } = true;
     public string? Channel { get; init; }

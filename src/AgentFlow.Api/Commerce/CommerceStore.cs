@@ -25,7 +25,7 @@ public interface ICommerceStore
     Task<bool> DeletePartyAsync(string tenantId, string partyId, CancellationToken ct);
     Task<IReadOnlyList<CommerceInventoryItemDocument>> SearchInventoryAsync(string tenantId, string? query, int limit, CancellationToken ct);
     Task<CommerceInventoryItemDocument?> GetInventoryBySkuAsync(string tenantId, string sku, CancellationToken ct);
-    Task<CommerceInventoryItemDocument> UpsertInventoryItemAsync(string tenantId, string sku, string name, decimal unitPrice, int onHand, bool active, CancellationToken ct);
+    Task<CommerceInventoryItemDocument> UpsertInventoryItemAsync(string tenantId, string sku, string name, decimal unitPrice, int onHand, bool active, string? itemType, string? unitOfMeasure, bool? tracksInventory, CancellationToken ct);
     Task<CommerceInventoryItemDocument> AdjustInventoryAsync(string tenantId, string sku, int delta, string reason, string? referenceId, CancellationToken ct);
     Task<IReadOnlyList<CommerceInventoryMovementDocument>> SearchInventoryMovementsAsync(string tenantId, string? sku, int page, int pageSize, CancellationToken ct);
     Task<long> CountInventoryMovementsAsync(string tenantId, string? sku, CancellationToken ct);
@@ -245,8 +245,14 @@ public sealed class CommerceStore : ICommerceStore
         decimal unitPrice,
         int onHand,
         bool active,
+        string? itemType,
+        string? unitOfMeasure,
+        bool? tracksInventory,
         CancellationToken ct)
     {
+        var normalizedType = NormalizeInventoryItemType(itemType);
+        var normalizedUnit = NormalizeUnitOfMeasure(unitOfMeasure);
+        var resolvedTracksInventory = ResolveTracksInventory(normalizedType, tracksInventory);
         var current = await _inventory.Find(x => x.TenantId == tenantId && x.Sku == sku).FirstOrDefaultAsync(ct);
         if (current is null)
         {
@@ -256,8 +262,11 @@ public sealed class CommerceStore : ICommerceStore
                 Sku = sku,
                 Name = name,
                 UnitPrice = unitPrice,
-                OnHand = onHand,
-                Active = active
+                OnHand = resolvedTracksInventory ? onHand : 0,
+                Active = active,
+                ItemType = normalizedType,
+                UnitOfMeasure = normalizedUnit,
+                TracksInventory = resolvedTracksInventory
             };
             await _inventory.InsertOneAsync(created, cancellationToken: ct);
             return created;
@@ -265,8 +274,11 @@ public sealed class CommerceStore : ICommerceStore
 
         current.Name = name;
         current.UnitPrice = unitPrice;
-        current.OnHand = onHand;
+        current.OnHand = resolvedTracksInventory ? onHand : 0;
         current.Active = active;
+        current.ItemType = normalizedType;
+        current.UnitOfMeasure = normalizedUnit;
+        current.TracksInventory = resolvedTracksInventory;
         await _inventory.ReplaceOneAsync(x => x.TenantId == tenantId && x.Sku == sku, current, cancellationToken: ct);
         return current;
     }
@@ -479,6 +491,36 @@ public sealed class CommerceStore : ICommerceStore
             Identifier = identifier
         });
     }
+
+    private static string NormalizeInventoryItemType(string? itemType)
+    {
+        var candidate = itemType?.Trim().ToLowerInvariant();
+        return candidate switch
+        {
+            "physical" or "intangible" or "service" or "combo" or "kit" => candidate,
+            _ => "physical"
+        };
+    }
+
+    private static string NormalizeUnitOfMeasure(string? unitOfMeasure)
+    {
+        var candidate = unitOfMeasure?.Trim().ToLowerInvariant();
+        return candidate switch
+        {
+            "unit" or "hour" or "day" or "week" or "month" or "minute" or
+            "kg" or "g" or "lb" or "liter" or "ml" or "meter" or "cm" or
+            "box" or "pack" or "set" => candidate,
+            _ => "unit"
+        };
+    }
+
+    private static bool ResolveTracksInventory(string itemType, bool? tracksInventory)
+    {
+        if (tracksInventory.HasValue)
+            return tracksInventory.Value;
+
+        return itemType is "physical" or "combo" or "kit";
+    }
 }
 
 public sealed class CommercePartyDocument
@@ -560,6 +602,9 @@ public sealed class CommerceInventoryItemDocument
     public string TenantId { get; set; } = string.Empty;
     public string Sku { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
+    public string ItemType { get; set; } = "physical";
+    public string UnitOfMeasure { get; set; } = "unit";
+    public bool TracksInventory { get; set; } = true;
     public decimal UnitPrice { get; set; }
     public int OnHand { get; set; }
     public bool Active { get; set; } = true;

@@ -145,6 +145,22 @@ public sealed class AgentExecutionRepository : MongoRepositoryBase<AgentExecutio
         return results.AsReadOnly();
     }
 
+    public async Task<IReadOnlyList<AgentExecution>> GetByCorrelationIdAsync(
+        string correlationId, string tenantId, int limit = 100, CancellationToken ct = default)
+    {
+        var boundedLimit = Math.Clamp(limit, 1, 500);
+        var filter = F.And(
+            F.Eq(e => e.TenantId, tenantId),
+            F.Eq(e => e.CorrelationId, correlationId));
+
+        var results = await Collection.Find(filter)
+            .SortBy(e => e.CreatedAt)
+            .Limit(boundedLimit)
+            .ToListAsync(ct);
+
+        return results.AsReadOnly();
+    }
+
     public async Task<IReadOnlyList<AgentExecution>> GetByStatusAsync(
         ExecutionStatus status, string tenantId, CancellationToken ct = default)
     {

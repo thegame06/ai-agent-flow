@@ -362,8 +362,12 @@ export default function WorkflowsPage() {
           axios.post(endpoints.agentflow.intentRouting.rules(tenantId), {
             id: `brain-${editor.id || 'draft'}-${intent.id}`,
             intentKey: intent.label || intent.id,
+            intentDescription: intent.description ?? '',
+            examplePhrases: intent.examples ?? [],
             sourceAgentId,
             targetAgentId,
+            workflowDefinitionId: editor.id,
+            workflowName: editor.name,
             priority: 100 + index,
             enabled: true,
             channel,

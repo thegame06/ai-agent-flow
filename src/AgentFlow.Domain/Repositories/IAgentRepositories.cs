@@ -15,6 +15,7 @@ public interface IAgentDefinitionRepository : IRepository<AgentDefinition>
 public interface IAgentExecutionRepository : IRepository<AgentExecution>
 {
     Task<IReadOnlyList<AgentExecution>> GetByAgentIdAsync(string agentId, string tenantId, int limit = 20, CancellationToken ct = default);
+    Task<IReadOnlyList<AgentExecution>> GetByCorrelationIdAsync(string correlationId, string tenantId, int limit = 100, CancellationToken ct = default);
     Task<IReadOnlyList<AgentExecution>> GetByStatusAsync(ExecutionStatus status, string tenantId, CancellationToken ct = default);
     Task<IReadOnlyList<AgentExecution>> GetRunningAsync(string tenantId, CancellationToken ct = default);
     Task<long> GetExecutionCountForDayAsync(string tenantId, DateTimeOffset date, CancellationToken ct = default);

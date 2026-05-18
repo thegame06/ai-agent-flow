@@ -1,5 +1,5 @@
 import { Helmet } from 'react-helmet-async';
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -8,17 +8,14 @@ import Stack from '@mui/material/Stack';
 import Table from '@mui/material/Table';
 import Alert from '@mui/material/Alert';
 import Button from '@mui/material/Button';
-import Dialog from '@mui/material/Dialog';
+import Divider from '@mui/material/Divider';
 import TableRow from '@mui/material/TableRow';
-import Snackbar from '@mui/material/Snackbar';
 import TableBody from '@mui/material/TableBody';
 import TableCell from '@mui/material/TableCell';
 import TableHead from '@mui/material/TableHead';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
-import DialogTitle from '@mui/material/DialogTitle';
 import { alpha, useTheme } from '@mui/material/styles';
-import DialogContent from '@mui/material/DialogContent';
 import LinearProgress from '@mui/material/LinearProgress';
 import TableContainer from '@mui/material/TableContainer';
 
@@ -29,116 +26,244 @@ import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
 
 import { Label } from 'src/components/label';
 
+type AuditLogEntry = {
+  id: string;
+  occurredAt: string;
+  actor: string;
+  action: string;
+  resource: string;
+  severity: string;
+  correlationId: string;
+  executionId: string;
+  eventJson: string;
+};
+
+type JourneyResponse = {
+  summary: {
+    correlationId: string;
+    startedAt?: string;
+    lastUpdatedAt?: string;
+    currentStage: string;
+    customerBecameClient: boolean;
+    sessionStatus: string;
+    channel: string;
+    customer: {
+      identifier: string;
+      displayName?: string;
+      kind: string;
+    };
+    firstCustomerMessage?: string;
+    lastVisibleReply?: string;
+    agentCount: number;
+    workflowCount: number;
+    toolCount: number;
+    messageCount: number;
+    salesCount: number;
+    invoicesCount: number;
+    paidInvoicesCount: number;
+    salesTotal: number;
+    invoicedTotal: number;
+    paidTotal: number;
+  };
+  crossCutting: {
+    session?: {
+      sessionId: string;
+      threadId?: string;
+      channelId: string;
+      channelType: string;
+      status: string;
+      windowOpen: boolean;
+      createdAt: string;
+      lastActivityAt: string;
+      expiresAt?: string;
+    };
+    thread?: {
+      threadId: string;
+      status: string;
+      turnCount: number;
+      createdAt: string;
+      lastActivityAt?: string;
+    };
+    agents: Array<{
+      agentId: string;
+      agentName: string;
+      executionCount: number;
+      statuses: string[];
+      roles: string[];
+    }>;
+    tools: Array<{
+      toolName: string;
+      invocations: number;
+      successCount: number;
+      failureCount: number;
+      firstUsedAt: string;
+      lastUsedAt: string;
+    }>;
+    workflows: Array<{
+      workflowId: string;
+      action: string;
+      occurredAt: string;
+    }>;
+    decisions: Array<{
+      kind: string;
+      title: string;
+      explanation: string;
+      source: string;
+      occurredAt: string;
+    }>;
+  };
+  timeline: Array<{
+    id: string;
+    occurredAt: string;
+    category: string;
+    title: string;
+    description: string;
+    detail?: string;
+  }>;
+};
+
 const severityColor = (severity: string) => {
   switch (severity) {
-    case 'critical': return 'error';
-    case 'error': return 'error';
-    case 'warning': return 'warning';
-    case 'success': return 'success';
-    default: return 'info';
+    case 'critical':
+    case 'error':
+      return 'error';
+    case 'warning':
+      return 'warning';
+    case 'success':
+      return 'success';
+    default:
+      return 'info';
   }
+};
+
+const stageColor = (stage: string) => {
+  switch (stage) {
+    case 'paid':
+      return 'success';
+    case 'invoiced':
+      return 'secondary';
+    case 'sale_created':
+      return 'warning';
+    case 'customer':
+      return 'info';
+    default:
+      return 'default';
+  }
+};
+
+const categoryLabel: Record<string, string> = {
+  session: 'Sesion',
+  customer_message: 'Mensaje del cliente',
+  reply: 'Respuesta',
+  routing: 'Decision',
+  agent_execution: 'Agente',
+  tool_usage: 'Herramientas',
+  workflow: 'Workflow',
+  handoff: 'Transferencia',
+  commerce: 'Conversion',
+  error: 'Error',
+  security: 'Seguridad',
 };
 
 export default function AuditPage() {
   const theme = useTheme();
   const tenantId = useTenantId();
-  const [logs, setLogs] = useState<any[]>([]);
+  const [logs, setLogs] = useState<AuditLogEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [journeyLoading, setJourneyLoading] = useState(false);
+  const [error, setError] = useState('');
   const [correlationId, setCorrelationId] = useState('');
   const [action, setAction] = useState('');
   const [limit, setLimit] = useState(150);
   const [correlations, setCorrelations] = useState<any[]>([]);
-  const [selectedCorrelation, setSelectedCorrelation] = useState<string | null>(null);
-  const [copied, setCopied] = useState<string | null>(null);
+  const [journey, setJourney] = useState<JourneyResponse | null>(null);
 
-  const selectedTimeline = logs
-    .filter((x) => x.correlationId === selectedCorrelation)
-    .slice()
-    .sort((a, b) => new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime());
-
-  const parseJson = (raw: string | null | undefined) => {
-    if (!raw) return null;
-    try {
-      return JSON.parse(raw) as Record<string, unknown>;
-    } catch {
-      return null;
+  const fetchJourney = useCallback(async (targetCorrelationId: string) => {
+    if (!targetCorrelationId.trim()) {
+      setJourney(null);
+      return;
     }
-  };
 
-  const formatJson = (raw: string | null | undefined) => {
-    if (!raw) return '-';
     try {
-      return JSON.stringify(JSON.parse(raw), null, 2);
-    } catch {
-      return raw;
+      setJourneyLoading(true);
+      const response = await axios.get(endpoints.agentflow.audit.journey(tenantId, targetCorrelationId.trim()));
+      setJourney(response.data);
+    } catch (e: any) {
+      setJourney(null);
+      setError(e?.message ?? 'No se pudo construir la historia del caso.');
+    } finally {
+      setJourneyLoading(false);
     }
-  };
+  }, [tenantId]);
 
-  const computeDiff = (prevRaw: string | null | undefined, nextRaw: string | null | undefined) => {
-    const prev = parseJson(prevRaw) ?? {};
-    const next = parseJson(nextRaw) ?? {};
-
-    const keys = Array.from(new Set([...Object.keys(prev), ...Object.keys(next)])).sort();
-    const changes = keys
-      .filter((k) => JSON.stringify(prev[k]) !== JSON.stringify(next[k]))
-      .map((k) => {
-        const hasPrev = Object.prototype.hasOwnProperty.call(prev, k);
-        const hasNext = Object.prototype.hasOwnProperty.call(next, k);
-        const changeType = !hasPrev && hasNext ? 'added' : hasPrev && !hasNext ? 'removed' : 'changed';
-
-        return { key: k, from: prev[k], to: next[k], changeType };
-      });
-
-    return changes;
-  };
-
-  const copyToClipboard = async (text: string, label: string) => {
-    await navigator.clipboard.writeText(text);
-    setCopied(label);
-  };
-
-  const fetchLogs = useCallback(async () => {
+  const fetchLogs = useCallback(async (targetCorrelationId?: string) => {
     try {
       setLoading(true);
+      setError('');
+      const activeCorrelation = (targetCorrelationId ?? correlationId).trim();
       const params = new URLSearchParams();
       params.set('limit', String(limit));
-      if (correlationId.trim()) params.set('correlationId', correlationId.trim());
+      if (activeCorrelation) params.set('correlationId', activeCorrelation);
       if (action.trim()) params.set('action', action.trim());
 
       const [response, corrResponse] = await Promise.all([
         axios.get(`${endpoints.agentflow.audit.list(tenantId)}?${params.toString()}`),
         axios.get(`${endpoints.agentflow.audit.correlations(tenantId)}?limit=30`),
       ]);
-      setLogs(response.data);
+
+      setLogs(response.data ?? []);
       setCorrelations(corrResponse.data ?? []);
+
+      if (activeCorrelation) {
+        await fetchJourney(activeCorrelation);
+      } else {
+        setJourney(null);
+      }
+    } catch (e: any) {
+      setError(e?.message ?? 'No se pudo cargar la auditoria.');
     } finally {
       setLoading(false);
     }
-  }, [tenantId, limit, correlationId, action]);
+  }, [tenantId, limit, correlationId, action, fetchJourney]);
 
   useEffect(() => {
     void fetchLogs();
   }, [fetchLogs]);
 
+  const issueCount = useMemo(
+    () => logs.filter((e) => e.severity === 'critical' || e.severity === 'error').length,
+    [logs]
+  );
+
+  const warningsCount = useMemo(
+    () => logs.filter((e) => e.severity === 'warning').length,
+    [logs]
+  );
+
+  const summary = journey?.summary;
+
   return (
     <>
       <Helmet>
-        <title>Audit Trail | {CONFIG.appName}</title>
+        <title>Auditoria | {CONFIG.appName}</title>
       </Helmet>
 
       <DashboardContent maxWidth="xl">
-        <Box sx={{ mb: 5 }}>
-          <Typography variant="h4">Audit Trail</Typography>
+        <Box sx={{ mb: 4 }}>
+          <Typography variant="h4">Auditoria explicada</Typography>
           <Typography variant="body2" sx={{ color: 'text.secondary', mt: 1 }}>
-            Immutable log of platform actions. Filter by correlationId to inspect routing decisions end-to-end.
+            Sigue el caso completo desde el primer mensaje del lead hasta el resultado comercial, sin exigir que el usuario entienda routing, intents, workflows o MCP.
           </Typography>
         </Box>
 
+        {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 2 }}>
           <TextField
-            label="Correlation ID"
+            label="Correlation ID / Session ID"
             value={correlationId}
             onChange={(e) => setCorrelationId(e.target.value)}
+            helperText="Usa el ID de la sesion o selecciona una traza reciente abajo."
             fullWidth
           />
           <TextField
@@ -155,36 +280,193 @@ export default function AuditPage() {
             onChange={(e) => setLimit(Number(e.target.value || 100))}
             sx={{ minWidth: 120 }}
           />
-          <Button variant="contained" onClick={() => void fetchLogs()}>Apply</Button>
+          <Button variant="contained" onClick={() => void fetchLogs()}>
+            Aplicar
+          </Button>
         </Stack>
 
-        <Stack direction="row" spacing={2} sx={{ mb: 3 }}>
-          <Chip label={`${logs.length} events`} color="primary" variant="soft" />
-          <Chip label={`${logs.filter((e) => e.severity === 'critical' || e.severity === 'error').length} issues`} color="error" variant="soft" />
-          <Chip label={`${logs.filter((e) => e.severity === 'warning').length} warnings`} color="warning" variant="soft" />
+        <Stack direction="row" spacing={2} sx={{ mb: 3, flexWrap: 'wrap' }} useFlexGap>
+          <Chip label={`${logs.length} eventos`} color="primary" variant="soft" />
+          <Chip label={`${issueCount} issues`} color="error" variant="soft" />
+          <Chip label={`${warningsCount} warnings`} color="warning" variant="soft" />
         </Stack>
 
         <Card sx={{ mb: 3, p: 2, border: `1px solid ${alpha(theme.palette.grey[500], 0.12)}` }}>
-          <Typography variant="subtitle2" sx={{ mb: 1.5 }}>Routing Timeline (recent correlation IDs)</Typography>
+          <Typography variant="subtitle2" sx={{ mb: 1.5 }}>Trazas recientes</Typography>
           <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
             {correlations.length === 0 ? (
-              <Chip size="small" label="No correlation traces yet" />
+              <Chip size="small" label="Aun no hay trazas recientes" />
             ) : (
-              correlations.map((c) => (
-                <Stack key={c.correlationId} direction="row" spacing={0.5} alignItems="center">
-                  <Chip
-                    size="small"
-                    color={correlationId === c.correlationId ? 'primary' : 'default'}
-                    label={`${c.correlationId} · ${c.eventCount}`}
-                    onClick={() => setCorrelationId(c.correlationId)}
-                    variant={correlationId === c.correlationId ? 'filled' : 'outlined'}
-                  />
-                  <Button size="small" variant="text" onClick={() => setSelectedCorrelation(c.correlationId)}>View</Button>
-                </Stack>
+              correlations.map((item) => (
+                <Button
+                  key={item.correlationId}
+                  size="small"
+                  variant={correlationId === item.correlationId ? 'contained' : 'outlined'}
+                  onClick={() => {
+                    setCorrelationId(item.correlationId);
+                    void fetchLogs(item.correlationId);
+                  }}
+                >
+                  {item.correlationId} ({item.eventCount})
+                </Button>
               ))
             )}
           </Stack>
         </Card>
+
+        {(journeyLoading || summary) && (
+          <Card sx={{ mb: 3, overflow: 'hidden', border: `1px solid ${alpha(theme.palette.grey[500], 0.12)}` }}>
+            {journeyLoading && <LinearProgress />}
+            {summary && (
+              <Box sx={{ p: 2.5 }}>
+                <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={2} sx={{ mb: 2 }}>
+                  <Box>
+                    <Typography variant="h5">Historia del caso</Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Correlation ID: {summary.correlationId}
+                    </Typography>
+                  </Box>
+                  <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                    <Chip label={summary.currentStage} color={stageColor(summary.currentStage) as any} />
+                    <Chip label={summary.customerBecameClient ? 'Convertido a cliente' : 'Aun es lead'} color={summary.customerBecameClient ? 'success' : 'default'} />
+                    <Chip label={summary.sessionStatus} variant="outlined" />
+                  </Stack>
+                </Stack>
+
+                <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 2 }}>
+                  <Card variant="outlined" sx={{ p: 2, flex: 1 }}>
+                    <Typography variant="overline" color="text.secondary">Cliente</Typography>
+                    <Typography variant="subtitle1">
+                      {summary.customer.displayName || summary.customer.identifier || 'Sin nombre'}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Tipo: {summary.customer.kind} | Canal: {summary.channel}
+                    </Typography>
+                    <Typography variant="body2" sx={{ mt: 1 }}>
+                      Primer mensaje:
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {summary.firstCustomerMessage || 'No hay mensaje visible.'}
+                    </Typography>
+                  </Card>
+
+                  <Card variant="outlined" sx={{ p: 2, flex: 1 }}>
+                    <Typography variant="overline" color="text.secondary">Proceso</Typography>
+                    <Typography variant="subtitle1">
+                      {summary.agentCount} agentes, {summary.workflowCount} workflows, {summary.toolCount} tools
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {summary.messageCount} mensajes visibles en la historia del caso.
+                    </Typography>
+                    <Typography variant="body2" sx={{ mt: 1 }}>
+                      Ultima respuesta visible:
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {summary.lastVisibleReply || 'No se encontro respuesta final visible.'}
+                    </Typography>
+                  </Card>
+
+                  <Card variant="outlined" sx={{ p: 2, flex: 1 }}>
+                    <Typography variant="overline" color="text.secondary">Resultado</Typography>
+                    <Typography variant="subtitle1">
+                      Ventas: {summary.salesCount} | Facturas: {summary.invoicesCount} | Pagadas: {summary.paidInvoicesCount}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Monto vendido: ${Number(summary.salesTotal || 0).toFixed(2)}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Monto facturado: ${Number(summary.invoicedTotal || 0).toFixed(2)}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Monto cobrado: ${Number(summary.paidTotal || 0).toFixed(2)}
+                    </Typography>
+                  </Card>
+                </Stack>
+
+                <Divider sx={{ my: 2 }} />
+
+                <Typography variant="subtitle1" sx={{ mb: 1.5 }}>Timeline entendible</Typography>
+                <Stack spacing={1.25}>
+                  {journey.timeline.map((item, index) => (
+                    <Card key={item.id} variant="outlined" sx={{ p: 1.5 }}>
+                      <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={1} sx={{ mb: 0.75 }}>
+                        <Stack direction="row" spacing={1} alignItems="center">
+                          <Chip size="small" label={`${index + 1}`} />
+                          <Chip size="small" variant="outlined" label={categoryLabel[item.category] ?? item.category} />
+                          <Typography variant="subtitle2">{item.title}</Typography>
+                        </Stack>
+                        <Typography variant="caption" color="text.secondary">
+                          {new Date(item.occurredAt).toLocaleString()}
+                        </Typography>
+                      </Stack>
+                      <Typography variant="body2">{item.description}</Typography>
+                      {item.detail && (
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.75 }}>
+                          {item.detail}
+                        </Typography>
+                      )}
+                    </Card>
+                  ))}
+                </Stack>
+
+                <Divider sx={{ my: 2 }} />
+
+                <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+                  <Card variant="outlined" sx={{ p: 2, flex: 1 }}>
+                    <Typography variant="subtitle2" sx={{ mb: 1 }}>Decisiones clave</Typography>
+                    <Stack spacing={1}>
+                      {journey.crossCutting.decisions.length === 0 && (
+                        <Typography variant="body2" color="text.secondary">No se registraron decisiones relevantes.</Typography>
+                      )}
+                      {journey.crossCutting.decisions.slice(0, 6).map((item) => (
+                        <Box key={`${item.kind}-${item.occurredAt}`}>
+                          <Typography variant="body2" fontWeight={600}>{item.title}</Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {item.explanation} Fuente: {item.source}. {new Date(item.occurredAt).toLocaleString()}
+                          </Typography>
+                        </Box>
+                      ))}
+                    </Stack>
+                  </Card>
+
+                  <Card variant="outlined" sx={{ p: 2, flex: 1 }}>
+                    <Typography variant="subtitle2" sx={{ mb: 1 }}>Agentes involucrados</Typography>
+                    <Stack spacing={1}>
+                      {journey.crossCutting.agents.length === 0 && (
+                        <Typography variant="body2" color="text.secondary">No se encontraron ejecuciones asociadas.</Typography>
+                      )}
+                      {journey.crossCutting.agents.map((item) => (
+                        <Box key={item.agentId}>
+                          <Typography variant="body2" fontWeight={600}>{item.agentName}</Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {item.executionCount} ejecuciones | Roles: {item.roles.join(', ') || 'n/a'} | Estados: {item.statuses.join(', ')}
+                          </Typography>
+                        </Box>
+                      ))}
+                    </Stack>
+                  </Card>
+
+                  <Card variant="outlined" sx={{ p: 2, flex: 1 }}>
+                    <Typography variant="subtitle2" sx={{ mb: 1 }}>Herramientas usadas</Typography>
+                    <Stack spacing={1}>
+                      {journey.crossCutting.tools.length === 0 && (
+                        <Typography variant="body2" color="text.secondary">No se detectaron tools en las ejecuciones.</Typography>
+                      )}
+                      {journey.crossCutting.tools.slice(0, 8).map((item) => (
+                        <Box key={item.toolName}>
+                          <Typography variant="body2" fontWeight={600}>{item.toolName}</Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {item.invocations} llamadas | ok {item.successCount} | fail {item.failureCount}
+                          </Typography>
+                        </Box>
+                      ))}
+                    </Stack>
+                  </Card>
+                </Stack>
+              </Box>
+            )}
+          </Card>
+        )}
 
         <Card sx={{ overflow: 'hidden', border: `1px solid ${alpha(theme.palette.grey[500], 0.12)}` }}>
           {loading ? (
@@ -206,13 +488,21 @@ export default function AuditPage() {
                 <TableBody>
                   {logs.map((entry) => (
                     <TableRow key={entry.id} hover>
-                      <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{new Date(entry.occurredAt).toLocaleString()}</TableCell>
+                      <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>
+                        {new Date(entry.occurredAt).toLocaleString()}
+                      </TableCell>
                       <TableCell>{entry.actor || 'System'}</TableCell>
                       <TableCell><Chip label={entry.action} size="small" variant="outlined" /></TableCell>
-                      <TableCell sx={{ maxWidth: 250, overflow: 'hidden', textOverflow: 'ellipsis' }}>{entry.resource || '-'}</TableCell>
-                      <TableCell sx={{ maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', fontFamily: 'monospace', fontSize: '0.75rem' }}>{entry.correlationId || '-'}</TableCell>
+                      <TableCell sx={{ maxWidth: 250, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {entry.resource || '-'}
+                      </TableCell>
+                      <TableCell sx={{ maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                        {entry.correlationId || '-'}
+                      </TableCell>
                       <TableCell><Label color={severityColor(entry.severity)}>{entry.severity}</Label></TableCell>
-                      <TableCell sx={{ maxWidth: 340, overflow: 'hidden', textOverflow: 'ellipsis', fontFamily: 'monospace', fontSize: '0.75rem' }}>{entry.eventJson || '-'}</TableCell>
+                      <TableCell sx={{ maxWidth: 340, overflow: 'hidden', textOverflow: 'ellipsis', fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                        {entry.eventJson || '-'}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -220,94 +510,6 @@ export default function AuditPage() {
             </TableContainer>
           )}
         </Card>
-
-        <Dialog open={!!selectedCorrelation} onClose={() => setSelectedCorrelation(null)} fullWidth maxWidth="md">
-          <DialogTitle>
-            <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1}>
-              <Typography variant="subtitle1">Routing Timeline · {selectedCorrelation}</Typography>
-              <Stack direction="row" spacing={1}>
-                <Button
-                  size="small"
-                  variant="outlined"
-                  onClick={() => void copyToClipboard(JSON.stringify(selectedTimeline, null, 2), 'timeline JSON copied')}
-                  disabled={selectedTimeline.length === 0}
-                >
-                  Export JSON
-                </Button>
-              </Stack>
-            </Stack>
-          </DialogTitle>
-          <DialogContent dividers>
-            <Stack spacing={1.5}>
-              {selectedTimeline.length === 0 ? (
-                <Typography variant="body2" color="text.secondary">No events loaded for this correlation in current filter range.</Typography>
-              ) : (
-                selectedTimeline.map((e, idx) => {
-                  const prev = idx > 0 ? selectedTimeline[idx - 1] : null;
-                  const changes = prev ? computeDiff(prev.eventJson, e.eventJson) : [];
-                  const diffText = changes.map((c) => `${c.changeType} ${c.key}: ${JSON.stringify(c.from)} -> ${JSON.stringify(c.to)}`).join('\n');
-
-                  return (
-                    <Card key={e.id} variant="outlined" sx={{ p: 1.5 }}>
-                      <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
-                        <Chip size="small" label={e.action} variant="outlined" />
-                        <Label color={severityColor(e.severity)}>{e.severity}</Label>
-                        <Typography variant="caption" color="text.secondary">{new Date(e.occurredAt).toLocaleString()}</Typography>
-                        <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>{e.resource || '-'}</Typography>
-                        <Button size="small" variant="text" onClick={() => void copyToClipboard(formatJson(e.eventJson), 'event JSON copied')}>Copy JSON</Button>
-                      </Stack>
-
-                      {prev && (
-                        <Box sx={{ mb: 1 }}>
-                          <Stack direction="row" justifyContent="space-between" alignItems="center">
-                            <Typography variant="caption" color="text.secondary">Diff vs previous event:</Typography>
-                            <Button
-                              size="small"
-                              variant="text"
-                              onClick={() => void copyToClipboard(diffText || 'No JSON field changes', 'event diff copied')}
-                            >
-                              Copy Diff
-                            </Button>
-                          </Stack>
-                          {changes.length === 0 ? (
-                            <Typography variant="caption" sx={{ display: 'block' }}>No JSON field changes</Typography>
-                          ) : (
-                            <Stack spacing={0.5} sx={{ mt: 0.5 }}>
-                              {changes.slice(0, 8).map((c) => (
-                                <Stack key={c.key} direction="row" spacing={0.75} alignItems="center">
-                                  <Chip
-                                    size="small"
-                                    label={c.changeType}
-                                    color={c.changeType === 'added' ? 'success' : c.changeType === 'removed' ? 'error' : 'warning'}
-                                    variant="outlined"
-                                  />
-                                  <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
-                                    {c.key}: {JSON.stringify(c.from)} → {JSON.stringify(c.to)}
-                                  </Typography>
-                                </Stack>
-                              ))}
-                              {changes.length > 8 && (
-                                <Typography variant="caption" color="text.secondary">+{changes.length - 8} more changes...</Typography>
-                              )}
-                            </Stack>
-                          )}
-                        </Box>
-                      )}
-
-                      <Box component="pre" sx={{ m: 0, fontSize: '0.72rem', overflowX: 'auto', whiteSpace: 'pre-wrap' }}>
-                        {formatJson(e.eventJson)}
-                      </Box>
-                    </Card>
-                  );
-                })
-              )}
-            </Stack>
-          </DialogContent>
-        </Dialog>
-
-        <Snackbar open={!!copied} autoHideDuration={1800} onClose={() => setCopied(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}>
-          <Alert severity="success" onClose={() => setCopied(null)} sx={{ width: '100%' }}>{copied}</Alert>
-        </Snackbar>
       </DashboardContent>
     </>
   );

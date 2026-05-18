@@ -62,6 +62,8 @@ type SessionMessage = {
   direction: string;
   content: string;
   createdAt: string;
+  actor?: string;
+  deliveryState?: string;
 };
 
 type CommerceIdentityLink = {
@@ -98,6 +100,9 @@ type InventoryItem = {
   id: string;
   sku: string;
   name: string;
+  itemType?: string;
+  unitOfMeasure?: string;
+  tracksInventory?: boolean;
   unitPrice: number;
   onHand: number;
   active: boolean;
@@ -663,7 +668,9 @@ export default function ThreadsPage() {
                       </Stack>
                     </Stack>
                     <Typography variant="caption" color={context?.isExpired ? 'error.main' : 'text.secondary'}>
-                      {context ? `${context.channelType} - ${context.identifier} - unread ${context.unread ?? 0}` : 'Cargando contexto...'}
+                      {context
+                        ? `${context.channelType} - ${context.identifier} - unread ${context.unread ?? 0}${context.isExpired ? ' - ventana expirada (24h)' : ''}`
+                        : 'Cargando contexto...'}
                     </Typography>
                   </Box>
 
@@ -671,7 +678,7 @@ export default function ThreadsPage() {
                     <Button size="small" variant="outlined" onClick={saveCustomer} disabled={!inboxEnabled}>
                       {context?.party?.id ? 'Guardar cliente' : 'Crear cliente'}
                     </Button>
-                    <Button size="small" variant="outlined" color="warning" onClick={closeConversation} disabled={!inboxEnabled || context?.status !== 'Active'}>
+                    <Button size="small" variant="outlined" color="warning" onClick={closeConversation} disabled={!inboxEnabled || context?.status === 'Closed'}>
                       Cerrar chat
                     </Button>
                   </Stack>
@@ -736,7 +743,7 @@ export default function ThreadsPage() {
                   <Divider />
 
                   <Box>
-                    <Typography variant="subtitle2" sx={{ mb: 1 }}>Chat reciente</Typography>
+                    <Typography variant="subtitle2" sx={{ mb: 1 }}>Inbox global de la conversacion</Typography>
                     <MessageTimeline
                       messages={messages}
                       loading={loadingMessages}
@@ -782,7 +789,10 @@ export default function ThreadsPage() {
                         <List dense sx={{ maxHeight: 140, overflow: 'auto', border: '1px solid', borderColor: 'divider', borderRadius: 1, mt: 1 }}>
                           {inventory.map((item) => (
                             <ListItem key={item.id} secondaryAction={<Button size="small" onClick={() => addToCart(item)} disabled={!inventoryEnabled || !salesEnabled}>Agregar</Button>}>
-                              <ListItemText primary={`${item.sku} - ${item.name}`} secondary={`$${item.unitPrice} - stock ${item.onHand}`} />
+                              <ListItemText
+                                primary={`${item.sku} - ${item.name}`}
+                                secondary={`$${item.unitPrice} - ${item.itemType || 'physical'} / ${item.unitOfMeasure || 'unit'}${item.tracksInventory === false ? ' - sin stock' : ` - stock ${item.onHand}`}`}
+                              />
                             </ListItem>
                           ))}
                         </List>

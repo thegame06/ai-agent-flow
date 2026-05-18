@@ -66,7 +66,7 @@ export const navData: NavSectionProps['data'] = [
         icon: ICONS.inbox,
       },
       {
-        title: 'Commerce',
+        title: 'Comercio',
         path: paths.dashboard.commerce,
         icon: ICONS.commerce,
       },

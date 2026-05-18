@@ -11,6 +11,8 @@ type SessionMessage = {
   direction: string;
   content: string;
   createdAt: string;
+  actor?: string;
+  deliveryState?: string;
 };
 
 type Props = {
@@ -50,6 +52,16 @@ export function MessageTimeline({ messages, loading, hasMore, onLoadMore }: Prop
           <Stack spacing={1.25}>
             {visibleMessages.map((message) => {
               const isIncoming = message.direction === 'Incoming';
+              const actor = message.actor || (isIncoming ? 'customer' : 'agent');
+              const isSystem = actor === 'billing' || actor === 'system';
+              const bubbleBg = isIncoming
+                ? 'background.paper'
+                : isSystem
+                  ? 'warning.lighter'
+                  : actor === 'bot'
+                    ? 'primary.main'
+                    : 'success.main';
+              const bubbleColor = isIncoming ? 'text.primary' : isSystem ? 'warning.darker' : 'common.white';
               return (
                 <Stack key={message.id} alignItems={isIncoming ? 'flex-start' : 'flex-end'}>
                   <Box
@@ -58,16 +70,20 @@ export function MessageTimeline({ messages, loading, hasMore, onLoadMore }: Prop
                       px: 1.5,
                       py: 1.1,
                       borderRadius: 2,
-                      bgcolor: isIncoming ? 'background.paper' : 'primary.main',
-                      color: isIncoming ? 'text.primary' : 'primary.contrastText',
+                      bgcolor: bubbleBg,
+                      color: bubbleColor,
                       boxShadow: 1,
                     }}
                   >
+                    <Typography variant="caption" sx={{ display: 'block', mb: 0.5, opacity: 0.72, textTransform: 'capitalize' }}>
+                      {actor}
+                    </Typography>
                     <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
                       {message.content}
                     </Typography>
                     <Typography variant="caption" sx={{ display: 'block', mt: 0.75, opacity: 0.72 }}>
                       {new Date(message.createdAt).toLocaleTimeString()}
+                      {message.deliveryState ? ` · ${message.deliveryState}` : ''}
                     </Typography>
                   </Box>
                 </Stack>
