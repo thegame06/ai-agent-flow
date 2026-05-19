@@ -34,12 +34,12 @@ const McpPage = lazy(() => import('src/aiagentflow/pages/system/McpPage'));
 const ChannelsPage = lazy(() => import('src/aiagentflow/pages/channels/ChannelsPage'));
 const FeatureFlagsPage = lazy(() => import('src/aiagentflow/pages/system/FeatureFlagsPage'));
 const SettingsPage = lazy(() => import('src/aiagentflow/pages/settings/SettingsPage'));
-const ManagerOrchestrationPage = lazy(() => import('src/aiagentflow/pages/orchestration/ManagerOrchestrationPage'));
 const ThreadsPage = lazy(() => import('src/aiagentflow/pages/threads/ThreadsPage'));
 const CommerceAdminPage = lazy(() => import('src/aiagentflow/pages/commerce/CommerceAdminPage'));
 const EvaluationsPage = lazy(() => import('src/aiagentflow/pages/evaluations/EvaluationsPage'));
 const KycPaymentsPage = lazy(() => import('src/aiagentflow/pages/kyc/KycPaymentsPage'));
 const WorkflowsPage = lazy(() => import('src/aiagentflow/pages/workflows/WorkflowsPage'));
+const AutomationWizardPage = lazy(() => import('src/aiagentflow/pages/automation/AutomationWizardPage'));
 
 // Intent Routing Pages
 const IntentsPage = lazy(() => import('src/aiagentflow/pages/intents/IntentsPage'));
@@ -86,6 +86,7 @@ export const dashboardRoutes: RouteObject[] = [
       { path: 'evaluations', element: <EvaluationsPage /> },
       { path: 'kyc-payments', element: <KycPaymentsPage /> },
       { path: 'studio/workflows', element: <WorkflowsPage /> },
+      { path: 'automation/new', element: <AutomationWizardPage /> },
       // Intent Routing
       { path: 'intents', element: <IntentsPage /> },
       { path: 'intents/playground', element: <PlaygroundPage /> },

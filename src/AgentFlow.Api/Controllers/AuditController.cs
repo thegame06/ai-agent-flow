@@ -1,4 +1,6 @@
 using System.Text.Json;
+using System.Text;
+using System.Globalization;
 using AgentFlow.Abstractions;
 using AgentFlow.Api.Commerce;
 using AgentFlow.Application.Memory;
@@ -55,6 +57,8 @@ public sealed class AuditController : ControllerBase
         [FromQuery] int limit = 100,
         [FromQuery] string? correlationId = null,
         [FromQuery] string? action = null,
+        [FromQuery] DateTimeOffset? from = null,
+        [FromQuery] DateTimeOffset? to = null,
         CancellationToken ct = default)
     {
         if (!CanAccess(tenantId)) return Forbid();
@@ -71,6 +75,10 @@ public sealed class AuditController : ControllerBase
                 .Where(x => string.Equals(x.EventType.ToString(), action, StringComparison.OrdinalIgnoreCase))
                 .ToList();
         }
+        if (from.HasValue)
+            logs = logs.Where(x => x.OccurredAt >= from.Value).ToList();
+        if (to.HasValue)
+            logs = logs.Where(x => x.OccurredAt <= to.Value).ToList();
 
         return Ok(logs.Select(l => new
         {
@@ -85,6 +93,79 @@ public sealed class AuditController : ControllerBase
             l.EventJson,
             Ip = "internal"
         }));
+    }
+
+    [HttpGet("export")]
+    public async Task<IActionResult> ExportAuditLogs(
+        [FromRoute] string tenantId,
+        [FromQuery] int limit = 100,
+        [FromQuery] string? correlationId = null,
+        [FromQuery] string? action = null,
+        [FromQuery] DateTimeOffset? from = null,
+        [FromQuery] DateTimeOffset? to = null,
+        [FromQuery] string format = "csv",
+        CancellationToken ct = default)
+    {
+        if (!CanAccess(tenantId)) return Forbid();
+
+        var boundedLimit = Math.Clamp(limit, 1, 5000);
+        IReadOnlyList<AuditEntry> logs = !string.IsNullOrWhiteSpace(correlationId)
+            ? await _auditMemory.GetByCorrelationAsync(tenantId, correlationId, boundedLimit, ct)
+            : await _auditMemory.GetRecentAsync(tenantId, boundedLimit, ct);
+
+        if (!string.IsNullOrWhiteSpace(action))
+            logs = logs.Where(x => string.Equals(x.EventType.ToString(), action, StringComparison.OrdinalIgnoreCase)).ToList();
+        if (from.HasValue)
+            logs = logs.Where(x => x.OccurredAt >= from.Value).ToList();
+        if (to.HasValue)
+            logs = logs.Where(x => x.OccurredAt <= to.Value).ToList();
+
+        var ordered = logs.OrderByDescending(x => x.OccurredAt).ToList();
+        var stamp = DateTimeOffset.UtcNow.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture);
+
+        if (string.Equals(format, "json", StringComparison.OrdinalIgnoreCase))
+        {
+            var payload = ordered.Select(l => new
+            {
+                l.Id,
+                l.OccurredAt,
+                Actor = l.UserId,
+                Action = l.EventType.ToString(),
+                Resource = l.AgentId,
+                Severity = GetSeverity(l.EventType),
+                l.CorrelationId,
+                l.ExecutionId,
+                l.EventJson
+            });
+
+            return File(
+                Encoding.UTF8.GetBytes(JsonSerializer.Serialize(payload)),
+                "application/json",
+                $"audit-{tenantId}-{stamp}.json");
+        }
+
+        var sb = new StringBuilder();
+        sb.AppendLine("FechaHoraUtc,Actor,Evento,Recurso,CorrelationId,ExecutionId,Severidad,DetalleTecnico");
+        foreach (var row in ordered)
+        {
+            var columns = new[]
+            {
+                row.OccurredAt.UtcDateTime.ToString("O", CultureInfo.InvariantCulture),
+                row.UserId ?? string.Empty,
+                row.EventType.ToString(),
+                row.AgentId ?? string.Empty,
+                row.CorrelationId ?? string.Empty,
+                row.ExecutionId ?? string.Empty,
+                GetSeverity(row.EventType),
+                row.EventJson ?? string.Empty
+            };
+            sb.AppendLine(string.Join(",", columns.Select(EscapeCsv)));
+        }
+
+        return File(
+            Encoding.UTF8.GetBytes(sb.ToString()),
+            "text/csv; charset=utf-8",
+            $"audit-{tenantId}-{stamp}.csv");
     }
 
     [HttpGet("correlations")]
@@ -678,6 +759,15 @@ public sealed class AuditController : ControllerBase
         AuditEventType.ExecutionCancelled => "warning",
         _ => "info"
     };
+
+    private static string EscapeCsv(string? value)
+    {
+        if (string.IsNullOrEmpty(value)) return string.Empty;
+        var normalized = value.Replace("\r", " ").Replace("\n", " ");
+        var mustQuote = normalized.Contains(',') || normalized.Contains('"');
+        if (!mustQuote) return normalized;
+        return $"\"{normalized.Replace("\"", "\"\"")}\"";
+    }
 }
 
 public sealed record JourneyResponseDto

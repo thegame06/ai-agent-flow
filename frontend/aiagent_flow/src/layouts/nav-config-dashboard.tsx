@@ -11,6 +11,7 @@ const icon = (name: string) => <Iconify icon={name} width={24} />;
 const ICONS = {
   dashboard: icon('mdi:view-dashboard-outline'),
   workflow: icon('mdi:source-branch'),
+  automation: icon('mdi:auto-fix'),
   agent: icon('mdi:robot-happy-outline'),
   intent: icon('mdi:target-variant'),
   inbox: icon('mdi:inbox-outline'),
@@ -40,6 +41,11 @@ export const navData: NavSectionProps['data'] = [
   {
     subheader: 'Construccion',
     items: [
+      {
+        title: 'Crear automatizacion',
+        path: paths.dashboard.automationNew,
+        icon: ICONS.automation,
+      },
       {
         title: 'Flujos automatizados',
         path: paths.dashboard.workflows,

@@ -199,6 +199,8 @@ export default function AuditPage() {
   const [correlationId, setCorrelationId] = useState('');
   const [action, setAction] = useState('');
   const [limit, setLimit] = useState(150);
+  const [fromAt, setFromAt] = useState('');
+  const [toAt, setToAt] = useState('');
   const [correlations, setCorrelations] = useState<any[]>([]);
   const [journey, setJourney] = useState<JourneyResponse | null>(null);
 
@@ -229,6 +231,8 @@ export default function AuditPage() {
       params.set('limit', String(limit));
       if (activeCorrelation) params.set('correlationId', activeCorrelation);
       if (action.trim()) params.set('action', action.trim());
+      if (fromAt) params.set('from', new Date(fromAt).toISOString());
+      if (toAt) params.set('to', new Date(toAt).toISOString());
 
       const [response, corrResponse] = await Promise.all([
         axios.get(`${endpoints.agentflow.audit.list(tenantId)}?${params.toString()}`),
@@ -248,7 +252,36 @@ export default function AuditPage() {
     } finally {
       setLoading(false);
     }
-  }, [tenantId, limit, correlationId, action, fetchJourney]);
+  }, [tenantId, limit, correlationId, action, fromAt, toAt, fetchJourney]);
+
+  const downloadAudit = useCallback(async (format: 'csv' | 'json') => {
+    try {
+      const activeCorrelation = correlationId.trim();
+      const params = new URLSearchParams();
+      params.set('limit', String(limit));
+      params.set('format', format);
+      if (activeCorrelation) params.set('correlationId', activeCorrelation);
+      if (action.trim()) params.set('action', action.trim());
+      if (fromAt) params.set('from', new Date(fromAt).toISOString());
+      if (toAt) params.set('to', new Date(toAt).toISOString());
+
+      const response = await axios.get(`${endpoints.agentflow.audit.list(tenantId)}/export?${params.toString()}`, {
+        responseType: 'blob',
+      });
+
+      const blob = new Blob([response.data], { type: format === 'csv' ? 'text/csv;charset=utf-8;' : 'application/json' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `audit-${tenantId}.${format}`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (e: any) {
+      setError(e?.message ?? 'No se pudo descargar el archivo de auditoria.');
+    }
+  }, [tenantId, correlationId, limit, action, fromAt, toAt]);
 
   useEffect(() => {
     void fetchLogs();
@@ -307,8 +340,30 @@ export default function AuditPage() {
             onChange={(e) => setLimit(Number(e.target.value || 100))}
             sx={{ minWidth: 120 }}
           />
+          <TextField
+            label="Desde"
+            type="datetime-local"
+            value={fromAt}
+            onChange={(e) => setFromAt(e.target.value)}
+            InputLabelProps={{ shrink: true }}
+            sx={{ minWidth: 220 }}
+          />
+          <TextField
+            label="Hasta"
+            type="datetime-local"
+            value={toAt}
+            onChange={(e) => setToAt(e.target.value)}
+            InputLabelProps={{ shrink: true }}
+            sx={{ minWidth: 220 }}
+          />
           <Button variant="contained" onClick={() => void fetchLogs()}>
             Aplicar
+          </Button>
+          <Button variant="outlined" onClick={() => void downloadAudit('csv')}>
+            Descargar CSV
+          </Button>
+          <Button variant="outlined" onClick={() => void downloadAudit('json')}>
+            Descargar JSON
           </Button>
         </Stack>
 

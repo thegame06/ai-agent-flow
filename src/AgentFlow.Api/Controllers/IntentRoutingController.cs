@@ -48,6 +48,13 @@ public sealed class IntentRoutingController : ControllerBase
     {
         var context = _tenantContext.Current!;
         if (context.TenantId != tenantId && !context.IsPlatformAdmin) return Forbid();
+        if (string.Equals(body.SourceAgentId, body.TargetAgentId, StringComparison.OrdinalIgnoreCase))
+        {
+            return BadRequest(new
+            {
+                message = "sourceAgentId y targetAgentId no pueden ser el mismo agente. Configure un destino distinto para ejecutar la intencion."
+            });
+        }
 
         var saved = await _store.UpsertRuleAsync(new IntentRoutingRule
         {
@@ -78,6 +85,13 @@ public sealed class IntentRoutingController : ControllerBase
     {
         var context = _tenantContext.Current!;
         if (context.TenantId != tenantId && !context.IsPlatformAdmin) return Forbid();
+        if (string.Equals(body.SourceAgentId, body.TargetAgentId, StringComparison.OrdinalIgnoreCase))
+        {
+            return BadRequest(new
+            {
+                message = "sourceAgentId y targetAgentId no pueden ser el mismo agente. Configure un destino distinto para ejecutar la intencion."
+            });
+        }
 
         var existing = await _store.GetRuleByIdAsync(tenantId, ruleId, ct);
         if (existing is null) return NotFound();

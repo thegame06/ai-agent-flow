@@ -52,6 +52,7 @@ export const paths = {
     checkpoints: `${ROOTS.DASHBOARD}/checkpoints`,
     tools: `${ROOTS.DASHBOARD}/tools`,
     marketplace: `${ROOTS.DASHBOARD}/marketplace`,
+    automationNew: `${ROOTS.DASHBOARD}/automation/new`,
     orchestration: `${ROOTS.DASHBOARD}/orchestration`,
     intentMap: `${ROOTS.DASHBOARD}/orchestration`,
     threads: `${ROOTS.DASHBOARD}/threads`,

@@ -414,6 +414,13 @@ public sealed class ChannelsController : ControllerBase
             ? channel.RouterAgentId
             : channel.Config.GetValueOrDefault("DefaultAgentId") ?? "router";
         var targetAgentId = channel.Config.GetValueOrDefault("DefaultAgentId") ?? sourceAgentId;
+        if (string.Equals(sourceAgentId, targetAgentId, StringComparison.OrdinalIgnoreCase))
+        {
+            return BadRequest(new
+            {
+                message = "No se puede cargar intenciones: el canal tiene el mismo agente como origen y destino. Configure un DefaultAgentId distinto al RouterAgentId."
+            });
+        }
         var channelKey = channel.Type.ToString().ToLowerInvariant();
 
         var baseIntents = await _intentCatalog.GetBaseIntentsAsync(ct);

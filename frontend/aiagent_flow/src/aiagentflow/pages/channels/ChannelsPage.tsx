@@ -106,6 +106,9 @@ interface ChannelIntentCatalogItem {
   selected: boolean;
 }
 
+const getErrorMessage = (err: any, fallback: string) =>
+  err?.response?.data?.message || err?.response?.data?.error || err?.message || fallback;
+
 export default function ChannelsPage() {
   const TENANT_ID = useTenantId();
   const [channels, setChannels] = useState<Channel[]>([]);
@@ -311,7 +314,7 @@ export default function ChannelsPage() {
       setSelectedIntentKeys([]);
       await fetchAll();
     } catch (err: any) {
-      alert(err?.message || 'Error aplicando intenciones al canal');
+      alert(getErrorMessage(err, 'Error aplicando intenciones al canal'));
     } finally {
       setSaving(false);
     }
@@ -518,6 +521,14 @@ export default function ChannelsPage() {
               <Button
                 variant="outlined"
                 component={RouterLink}
+                href={paths.dashboard.automationNew}
+                startIcon={<Iconify icon="mdi:auto-fix" />}
+              >
+                Crear automatizacion
+              </Button>
+              <Button
+                variant="outlined"
+                component={RouterLink}
                 href={paths.dashboard.marketplace}
                 startIcon={<Iconify icon="mdi:connection" />}
               >
@@ -656,6 +667,14 @@ export default function ChannelsPage() {
                             </IconButton>
                             <IconButton size="small" title="Cargar intenciones" onClick={() => openIntentsDialog(c)}>
                               <Iconify icon="mdi:playlist-check" />
+                            </IconButton>
+                            <IconButton
+                              size="small"
+                              title="Crear automatizacion"
+                              component={RouterLink}
+                              href={`${paths.dashboard.automationNew}?channelId=${encodeURIComponent(c.id)}`}
+                            >
+                              <Iconify icon="mdi:auto-fix" />
                             </IconButton>
                             <IconButton size="small" title="Probar mensajes" onClick={() => { setTestPanelChannel(c); setTestResult(null); setTestMsg({ content: '', from: '', callbackUrl: '', asyncMode: false }); setOpenTestPanel(true); }}>
                               <Iconify icon="mdi:message-flash-outline" />

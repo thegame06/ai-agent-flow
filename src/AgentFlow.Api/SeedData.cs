@@ -229,6 +229,98 @@ Always be precise and thorough in your responses.",
             ("af_list_integrations",  "List available MCP servers and integrations"),
         };
 
+        IReadOnlyList<WorkflowStep> BuildRouterSubflow() => new List<WorkflowStep>
+        {
+            new()
+            {
+                Id = "router-think-intent",
+                Type = "think",
+                Label = "Detect intent",
+                Description = "Analyze incoming message and map it to the closest configured intent.",
+                Config = new Dictionary<string, object> { ["mode"] = "intent_classification" }
+            },
+            new()
+            {
+                Id = "router-tool-list-workflows",
+                Type = "tool_call",
+                Label = "List workflows",
+                Description = "Fetch available workflows and trigger contracts.",
+                Config = new Dictionary<string, object> { ["tool"] = "af_list_workflows" }
+            },
+            new()
+            {
+                Id = "router-decide-route",
+                Type = "decide",
+                Label = "Decide routing",
+                Description = "Select workflow/agent target or fallback clarification path.",
+                Config = new Dictionary<string, object> { ["output"] = "routing_handoff" }
+            }
+        }.AsReadOnly();
+
+        IReadOnlyList<WorkflowStep> BuildWorkflowBrainSubflow() => new List<WorkflowStep>
+        {
+            new()
+            {
+                Id = "brain-think-goal",
+                Type = "think",
+                Label = "Understand goal",
+                Description = "Understand workflow goal and missing business data.",
+                Config = new Dictionary<string, object> { ["mode"] = "data_collection" }
+            },
+            new()
+            {
+                Id = "brain-act-customer",
+                Type = "act",
+                Label = "Collect data",
+                Description = "Ask customer for missing fields and validate values step-by-step.",
+                Config = new Dictionary<string, object> { ["style"] = "guided_dialog" }
+            },
+            new()
+            {
+                Id = "brain-aggregate-output",
+                Type = "aggregate",
+                Label = "Build structured output",
+                Description = "Return normalized structured output for downstream workflow nodes.",
+                Config = new Dictionary<string, object> { ["output"] = "structured_json" }
+            }
+        }.AsReadOnly();
+
+        IReadOnlyList<WorkflowStep> BuildConfigAssistantSubflow() => new List<WorkflowStep>
+        {
+            new()
+            {
+                Id = "config-assistant-discover",
+                Type = "tool_call",
+                Label = "Inspect tenant state",
+                Description = "Inspect agents/workflows/channels before giving recommendations.",
+                Config = new Dictionary<string, object> { ["tools"] = new[] { "af_list_agents", "af_list_workflows" } }
+            },
+            new()
+            {
+                Id = "config-assistant-diagnose",
+                Type = "decide",
+                Label = "Diagnose gaps",
+                Description = "Diagnose missing pieces and prioritize actionable fixes.",
+                Config = new Dictionary<string, object> { ["mode"] = "diagnostic" }
+            },
+            new()
+            {
+                Id = "config-assistant-guide",
+                Type = "act",
+                Label = "Guide user actions",
+                Description = "Produce explicit step-by-step instructions and optional scaffold guidance.",
+                Config = new Dictionary<string, object> { ["output"] = "guided_steps" }
+            }
+        }.AsReadOnly();
+
+        IReadOnlyList<WorkflowStep> SubflowFor(AgentSystemRole role) => role switch
+        {
+            AgentSystemRole.Router => BuildRouterSubflow(),
+            AgentSystemRole.WorkflowBrain => BuildWorkflowBrainSubflow(),
+            AgentSystemRole.ConfigAssistant => BuildConfigAssistantSubflow(),
+            _ => Array.Empty<WorkflowStep>()
+        };
+
         // ── Helper: bind a list of MCP tools to an agent ──
         // ToolId convention: "mcp:{serverName}:{toolName}"
         void BindMcpTools(AgentDefinition agent, string serverName, IEnumerable<(string name, string description)> tools)
@@ -278,6 +370,43 @@ Always be precise and thorough in your responses.",
                 : $"❌ [Seed] Failed to wire tools to '{agent.Name}': {fix.Error?.Message}");
         }
 
+        // ── DATA MIGRATION: ensure sub-flow steps exist on system agents ──
+        var subflowRoles = new[] { AgentSystemRole.Router, AgentSystemRole.WorkflowBrain, AgentSystemRole.ConfigAssistant };
+        var needsSubflowWiring = existing
+            .Where(a => subflowRoles.Contains(a.SystemRole) && (a.WorkflowSteps == null || a.WorkflowSteps.Count == 0))
+            .ToList();
+        foreach (var agent in needsSubflowWiring)
+        {
+            var subflow = SubflowFor(agent.SystemRole);
+            if (subflow.Count == 0) continue;
+
+            var update = agent.Update(
+                name: agent.Name,
+                description: agent.Description,
+                brain: agent.Brain,
+                loopConfig: agent.LoopConfig,
+                memory: agent.Memory,
+                session: agent.Session,
+                workflowSteps: subflow,
+                tools: agent.AuthorizedTools,
+                tags: agent.Tags,
+                updatedBy: systemUser,
+                shadowAgentId: agent.ShadowAgentId,
+                canaryAgentId: agent.CanaryAgentId,
+                canaryWeight: agent.CanaryWeight);
+
+            if (!update.IsSuccess)
+            {
+                Console.WriteLine($"❌ [Seed] Failed to attach sub-flow to '{agent.Name}': {update.Error?.Message}");
+                continue;
+            }
+
+            var saved = await agentRepo.UpdateAsync(agent);
+            Console.WriteLine(saved.IsSuccess
+                ? $"🔧 [Seed] Attached sub-flow to '{agent.Name}' ({agent.SystemRole})"
+                : $"❌ [Seed] Failed to persist sub-flow for '{agent.Name}': {saved.Error?.Message}");
+        }
+
         // ── GUARD: only create agents that are missing ──
         var hasRouter = existing.Any(a => a.SystemRole == AgentSystemRole.Router);
         var hasBrain  = existing.Any(a => a.SystemRole == AgentSystemRole.WorkflowBrain);
@@ -285,8 +414,8 @@ Always be precise and thorough in your responses.",
 
         if (hasRouter && hasBrain && hasConfig)
         {
-            if (needsFix.Count > 0)
-                Console.WriteLine($"✅ [Seed] System agents present. {needsFix.Count} agent(s) fixed.");
+            if (needsFix.Count > 0 || needsSubflowWiring.Count > 0)
+                Console.WriteLine($"✅ [Seed] System agents present. {needsFix.Count} role fix(es), {needsSubflowWiring.Count} sub-flow fix(es).");
             else
                 Console.WriteLine("✅ [Seed] System agents already seeded correctly. Skipping.");
             return;
@@ -383,7 +512,7 @@ Tool usage sequence:
             var routerResult = AgentDefinition.Create(
                 tenantId, "AgentFlow Router",
                 "Platform-managed Router agent. Receives all incoming channel messages, detects customer intent, and triggers the appropriate workflow via the AgentFlow MCP Server.",
-                routerBrain, routerLoop, routerMemory, routerSession, null, systemUser);
+                routerBrain, routerLoop, routerMemory, routerSession, BuildRouterSubflow(), systemUser);
 
             if (!routerResult.IsSuccess) { Console.WriteLine($"❌ [Seed] Router Create failed: {routerResult.Error!.Message}"); }
             else
@@ -470,7 +599,7 @@ Communication rules:
             var brainResult = AgentDefinition.Create(
                 tenantId, "Workflow Brain - Default",
                 "Default WorkflowBrain agent for business logic execution. Assign this agent to ai.agent nodes in your workflows, or clone it to create specialized versions per workflow.",
-                brainBrain, brainLoop, brainMemory, brainSession, null, systemUser);
+                brainBrain, brainLoop, brainMemory, brainSession, BuildWorkflowBrainSubflow(), systemUser);
 
             if (!brainResult.IsSuccess) { Console.WriteLine($"❌ [Seed] WorkflowBrain Create failed: {brainResult.Error!.Message}"); }
             else
@@ -563,7 +692,7 @@ Always be concrete: tell the user EXACTLY what to click or configure."
             var configResult = AgentDefinition.Create(
                 tenantId, "AgentFlow Config Assistant",
                 "Platform-managed Config Assistant. Guides users in building and configuring workflows, agents, and channels via natural language. Uses the AgentFlow MCP Server to inspect and diagnose the tenant configuration.",
-                configBrain, configLoop, configMemory, configSession, null, systemUser);
+                configBrain, configLoop, configMemory, configSession, BuildConfigAssistantSubflow(), systemUser);
 
             if (!configResult.IsSuccess) { Console.WriteLine($"❌ [Seed] ConfigAssistant Create failed: {configResult.Error!.Message}"); }
             else
