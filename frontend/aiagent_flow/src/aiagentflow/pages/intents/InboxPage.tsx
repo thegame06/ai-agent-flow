@@ -1,9 +1,9 @@
 import { Helmet } from 'react-helmet-async';
-import { useCallback, useEffect, useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 import Alert from '@mui/material/Alert';
-import Button from '@mui/material/Button';
 import Stack from '@mui/material/Stack';
+import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
 
 import axios, { endpoints } from 'src/lib/axios';
@@ -12,11 +12,11 @@ import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
 
 import { Iconify } from 'src/components/iconify';
 
+import { InboxTable } from './InboxTable';
 import { InboxFilters } from './InboxFilters';
 import { InboxStatsCards } from './InboxStatsCards';
-import { InboxTable } from './InboxTable';
 
-import type { InboxConversation, InboxFilter, InboxStats } from './types';
+import type { InboxStats, InboxFilter, InboxConversation } from './types';
 
 // ----------------------------------------------------------------------
 

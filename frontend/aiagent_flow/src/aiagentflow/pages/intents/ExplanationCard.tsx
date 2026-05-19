@@ -1,11 +1,11 @@
-import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
-import CardContent from '@mui/material/CardContent';
-import CardHeader from '@mui/material/CardHeader';
-import LinearProgress from '@mui/material/LinearProgress';
+import Alert from '@mui/material/Alert';
 import Stack from '@mui/material/Stack';
+import CardHeader from '@mui/material/CardHeader';
 import Typography from '@mui/material/Typography';
+import CardContent from '@mui/material/CardContent';
+import LinearProgress from '@mui/material/LinearProgress';
 
 import type { ExplanationData } from './types';
 

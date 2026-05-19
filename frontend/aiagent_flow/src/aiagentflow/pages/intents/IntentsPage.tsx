@@ -1,9 +1,9 @@
 import { Helmet } from 'react-helmet-async';
-import { useCallback, useEffect, useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 import Alert from '@mui/material/Alert';
-import Button from '@mui/material/Button';
 import Stack from '@mui/material/Stack';
+import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
 
 import axios, { endpoints } from 'src/lib/axios';
@@ -12,12 +12,12 @@ import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
 
 import { Iconify } from 'src/components/iconify';
 
-import { CreateIntentDialog } from './CreateIntentDialog';
-import { IntentFilters } from './IntentFilters';
 import { IntentsList } from './IntentsList';
+import { IntentFilters } from './IntentFilters';
 import { IntentSearchBar } from './IntentSearchBar';
+import { CreateIntentDialog } from './CreateIntentDialog';
 
-import type { Agent, Intent, IntentFilter, IntentFormData, Workflow } from './types';
+import type { Agent, Intent, Workflow, IntentFilter, IntentFormData } from './types';
 
 // ----------------------------------------------------------------------
 

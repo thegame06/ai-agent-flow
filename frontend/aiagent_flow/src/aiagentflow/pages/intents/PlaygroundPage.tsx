@@ -1,15 +1,14 @@
-import { Helmet } from 'react-helmet-async';
 import { useState } from 'react';
+import { Helmet } from 'react-helmet-async';
 
-import Alert from '@mui/material/Alert';
-import Box from '@mui/material/Box';
-import Button from '@mui/material/Button';
 import Card from '@mui/material/Card';
-import CardContent from '@mui/material/CardContent';
-import CircularProgress from '@mui/material/CircularProgress';
+import Alert from '@mui/material/Alert';
 import Stack from '@mui/material/Stack';
+import Button from '@mui/material/Button';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
+import CardContent from '@mui/material/CardContent';
+import CircularProgress from '@mui/material/CircularProgress';
 
 import axios, { endpoints } from 'src/lib/axios';
 import { DashboardContent } from 'src/layouts/dashboard';
@@ -18,10 +17,10 @@ import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
 import { Iconify } from 'src/components/iconify';
 
 import { BestMatchCard } from './BestMatchCard';
-import { CandidatesListCard } from './CandidatesListCard';
 import { ExplanationCard } from './ExplanationCard';
+import { CandidatesListCard } from './CandidatesListCard';
 
-import type { ClassificationResult, ExplanationData } from './types';
+import type { ExplanationData, ClassificationResult } from './types';
 
 // ----------------------------------------------------------------------
 
