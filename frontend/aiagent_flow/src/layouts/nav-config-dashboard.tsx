@@ -66,14 +66,14 @@ export const navData: NavSectionProps['data'] = [
     subheader: 'Operacion',
     items: [
       {
-        title: 'Bandeja de conversaciones',
-        path: paths.dashboard.inbox,
-        icon: ICONS.inbox,
-      },
-      {
-        title: 'Hilos de chat',
+        title: 'Conversaciones activas',
         path: paths.dashboard.threads,
         icon: icon('mdi:forum-outline'),
+      },
+      {
+        title: 'Casos sin clasificar',
+        path: paths.dashboard.inbox,
+        icon: ICONS.inbox,
       },
       {
         title: 'Ventas y cobros',

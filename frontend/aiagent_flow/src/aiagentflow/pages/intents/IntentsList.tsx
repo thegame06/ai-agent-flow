@@ -1,21 +1,21 @@
-import type { Intent } from './types';
-
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import Chip from '@mui/material/Chip';
+import CircularProgress from '@mui/material/CircularProgress';
+import IconButton from '@mui/material/IconButton';
 import Stack from '@mui/material/Stack';
-import Table from '@mui/material/Table';
 import Switch from '@mui/material/Switch';
-import TableRow from '@mui/material/TableRow';
+import Table from '@mui/material/Table';
 import TableBody from '@mui/material/TableBody';
 import TableCell from '@mui/material/TableCell';
-import TableHead from '@mui/material/TableHead';
-import IconButton from '@mui/material/IconButton';
-import Typography from '@mui/material/Typography';
 import TableContainer from '@mui/material/TableContainer';
-import CircularProgress from '@mui/material/CircularProgress';
+import TableHead from '@mui/material/TableHead';
+import TableRow from '@mui/material/TableRow';
+import Typography from '@mui/material/Typography';
 
 import { Iconify } from 'src/components/iconify';
+
+import type { Intent } from './types';
 
 // ----------------------------------------------------------------------
 

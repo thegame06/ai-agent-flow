@@ -1,7 +1,5 @@
-import type { Intent, IntentFilter, IntentFormData } from './types';
-
-import { useCallback, useEffect, useState } from 'react';
 import { Helmet } from 'react-helmet-async';
+import { useState, useEffect, useCallback } from 'react';
 
 import Alert from '@mui/material/Alert';
 import Button from '@mui/material/Button';
@@ -14,10 +12,12 @@ import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
 
 import { Iconify } from 'src/components/iconify';
 
-import { IntentsList } from './IntentsList';
-import { IntentFilters } from './IntentFilters';
-import { IntentSearchBar } from './IntentSearchBar';
 import { CreateIntentDialog } from './CreateIntentDialog';
+import { IntentFilters } from './IntentFilters';
+import { IntentsList } from './IntentsList';
+import { IntentSearchBar } from './IntentSearchBar';
+
+import type { Intent, IntentFilter, IntentFormData } from './types';
 
 // ----------------------------------------------------------------------
 

@@ -106,7 +106,7 @@ export default function InboxPage() {
   return (
     <>
       <Helmet>
-        <title>Bandeja de Conversaciones | AgentFlow</title>
+        <title>Casos sin clasificar | AgentFlow</title>
       </Helmet>
 
       <DashboardContent maxWidth="xl">
@@ -114,9 +114,9 @@ export default function InboxPage() {
           {/* Header */}
           <Stack direction="row" justifyContent="space-between" alignItems="center">
             <Stack spacing={1}>
-              <Typography variant="h4">Bandeja de Conversaciones</Typography>
+              <Typography variant="h4">Casos sin clasificar</Typography>
               <Typography variant="body2" color="text.secondary">
-                Revisa conversaciones que requieren clasificación manual o atención humana
+                Revisa conversaciones que el sistema no pudo clasificar automáticamente
               </Typography>
             </Stack>
             <Stack direction="row" spacing={2}>
