@@ -1,19 +1,18 @@
-blad@nautilus-01:~/labs/ai-agent-flow$ sudo make refresh-local-full
+sudo make refresh-local-full
+[sudo] password for blad: 
 [clean] stopping known PID files
 [clean] killing known process patterns
-[clean] killing processes matching: vite --strictPort --port 3039
 [clean] killing listeners on managed ports
-[clean] port 3401 is busy; killing listener(s): 453768
-[clean] port 3501 is busy; killing listener(s): 453291
-453298
 [clean] docker compose down with volume wipe
-[+] Running 6/6
- ✔ Container agentflow-mcp-test      Removed                                                          0.7s 
- ✔ Container agentflow-mongo-local   Removed                                                          0.1s 
- ✔ Container agentflow-redis-local   Removed                                                          0.1s 
- ✔ Volume aiagents_redis_local_data  Removed                                                          0.0s 
- ✔ Volume aiagents_mongo_local_data  Removed                                                          0.0s 
- ✔ Network aiagents_default          Removed                                                          0.1s 
+[+] Running 8/8
+ ✔ Container agentflow-mcp-test       Removed                                                         0.0s 
+ ✔ Container agentflow-qdrant-local   Removed                                                         0.1s 
+ ✔ Container agentflow-mongo-local    Removed                                                         0.2s 
+ ✔ Container agentflow-redis-local    Removed                                                         0.2s 
+ ✔ Volume aiagents_mongo_local_data   Removed                                                         0.0s 
+ ✔ Network aiagents_default           Removed                                                         0.1s 
+ ✔ Volume aiagents_qdrant_local_data  Removed                                                         0.0s 
+ ✔ Volume aiagents_redis_local_data   Removed                                                         0.0s 
 [clean] final port check
 [clean] OK: port 3039 free
 [clean] OK: port 5000 free
@@ -22,18 +21,14 @@ blad@nautilus-01:~/labs/ai-agent-flow$ sudo make refresh-local-full
 [clean] OK: port 3502 free
 [clean] done
 [full-up] Starting infra (mongo_local_data + redis_local_data + mcp-test) via docker-compose.local.yml
-[+] Running 6/6
- ✔ Network aiagents_default            Created                                                        0.0s 
- ✔ Volume "aiagents_redis_local_data"  Created                                                        0.0s 
- ✔ Volume "aiagents_mongo_local_data"  Created                                                        0.0s 
- ✔ Container agentflow-redis-local     Healthy                                                        6.4s 
- ✔ Container agentflow-mongo-local     Healthy                                                        6.4s 
- ✔ Container agentflow-mcp-test        Healthy                                                       11.4s 
-[full-up] Ensuring ports are free...
-[full-up] Starting API...
-[full-up] Starting Frontend...
-[full-up] Starting WhatsApp QR bridge...
-[full-up] Starting AgentFlow MCP Server (sidecar)...
-[full-up] AgentFlow MCP Server exited before port 3502 was ready. Last log lines:
-Unhandled exception: An error occurred trying to start process '/home/blad/labs/ai-agent-flow/src/AgentFlow.McpServer/bin/Debug/net9.0/AgentFlow.McpServer' with working directory '/home/blad/labs/ai-agent-flow/src/AgentFlow.McpServer'. No such file or directory
+[+] Running 8/8
+ ✔ Network aiagents_default             Created                                                       0.1s 
+ ✔ Volume "aiagents_qdrant_local_data"  Created                                                       0.0s 
+ ✔ Volume "aiagents_mongo_local_data"   Created                                                       0.0s 
+ ✔ Volume "aiagents_redis_local_data"   Created                                                       0.0s 
+ ✘ Container agentflow-qdrant-local     Error                                                       107.6s 
+ ✔ Container agentflow-redis-local      Healthy                                                       6.1s 
+ ✔ Container agentflow-mongo-local      Healthy                                                       7.1s 
+ ✔ Container agentflow-mcp-test         Created                                                       0.0s 
+dependency failed to start: container agentflow-qdrant-local is unhealthy
 make: *** [Makefile:82: refresh-local-full] Error 1
