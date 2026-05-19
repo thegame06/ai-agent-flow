@@ -328,14 +328,14 @@ export default function CommerceAdminPage() {
   }, [availableTabs, tab]);
 
   useEffect(() => {
-    if (!customersEnabled) return;
+    if (!customersEnabled) return undefined;
     const timeout = setTimeout(() => { loadCustomers(); }, 250);
     return () => clearTimeout(timeout);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId, customerQuery, customerPage, customerPageSize, customersEnabled]);
 
   useEffect(() => {
-    if (!inventoryEnabled) return;
+    if (!inventoryEnabled) return undefined;
     const timeout = setTimeout(() => { loadInventory(); }, 250);
     return () => clearTimeout(timeout);
     // eslint-disable-next-line react-hooks/exhaustive-deps
