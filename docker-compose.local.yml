@@ -28,6 +28,23 @@ services:
       timeout: 3s
       retries: 20
 
+  qdrant-local:
+    image: qdrant/qdrant:v1.9.2
+    container_name: agentflow-qdrant-local
+    restart: unless-stopped
+    ports:
+      - "6333:6333"  # REST API
+      - "6334:6334"  # gRPC API
+    volumes:
+      - qdrant_local_data:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__GRPC_PORT=6334
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:6333/readyz"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
   mcp-test:
     image: node:22-alpine
     container_name: agentflow-mcp-test
@@ -44,6 +61,8 @@ services:
         condition: service_healthy
       redis-local:
         condition: service_healthy
+      qdrant-local:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3501/health"]
       interval: 5s
@@ -53,3 +72,4 @@ services:
 volumes:
   mongo_local_data:
   redis_local_data:
+  qdrant_local_data:

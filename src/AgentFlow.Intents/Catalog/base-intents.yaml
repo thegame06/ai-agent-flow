@@ -1,0 +1,739 @@
+# AgentFlow Base Intent Catalog
+# Catálogo oficial de intenciones preconfiguradas y calibradas
+# Version: 1.0
+# Last Updated: 2026-05-18
+
+version: "1.0"
+metadata:
+  name: "AgentFlow Base Intents"
+  description: "Catálogo oficial de intenciones enterprise-grade para AgentFlow"
+  license: "Proprietary"
+  maintainer: "AgentFlow Platform Team"
+
+categories:
+  - id: general
+    name: "General"
+    description: "Intenciones conversacionales básicas"
+  
+  - id: verification
+    name: "Verificación de Identidad"
+    description: "Procesos de KYC y validación de documentos"
+  
+  - id: payments
+    name: "Pagos y Transacciones"
+    description: "Consultas y gestión de pagos"
+  
+  - id: support
+    name: "Soporte al Cliente"
+    description: "Atención y resolución de problemas"
+  
+  - id: sales
+    name: "Ventas y Lead Management"
+    description: "Seguimiento de leads y oportunidades"
+  
+  - id: scheduling
+    name: "Agendamiento"
+    description: "Citas, recordatorios y reagendamiento"
+  
+  - id: complaints
+    name: "Quejas y Escalaciones"
+    description: "Gestión de quejas y reclamos"
+  
+  - id: information
+    name: "Información y Consultas"
+    description: "Solicitudes de información general"
+
+# ============================================================================
+# INTENCIONES BASE
+# ============================================================================
+
+intents:
+  # --------------------------------------------------------------------------
+  # GENERAL
+  # --------------------------------------------------------------------------
+  
+  - key: greeting
+    name: "Saludo"
+    description: "Cliente inicia conversación con un saludo o introducción"
+    category: general
+    examples:
+      - "Hola"
+      - "Buenos días"
+      - "Buenas tardes"
+      - "Buenas noches"
+      - "Hey"
+      - "Qué tal"
+      - "Hola, necesito ayuda"
+      - "Hi"
+      - "Hello"
+      - "Good morning"
+    synonyms:
+      - "saludo"
+      - "hola"
+      - "hi"
+      - "hello"
+      - "buenas"
+      - "saludos"
+    confidence_threshold: 0.85
+    priority: 100
+    suggested_workflow: null
+    metadata:
+      requires_agent: false
+      auto_respond: true
+      response_template: "greeting_response"
+  
+  - key: farewell
+    name: "Despedida"
+    description: "Cliente finaliza conversación o se despide"
+    category: general
+    examples:
+      - "Adiós"
+      - "Gracias, eso es todo"
+      - "Nos vemos"
+      - "Chao"
+      - "Hasta luego"
+      - "Bye"
+      - "Thank you, goodbye"
+      - "Eso es todo, gracias"
+    synonyms:
+      - "despedida"
+      - "adios"
+      - "chao"
+      - "bye"
+      - "hasta luego"
+    confidence_threshold: 0.87
+    priority: 100
+    suggested_workflow: null
+    metadata:
+      requires_agent: false
+      auto_respond: true
+      close_conversation: true
+  
+  - key: human_agent_request
+    name: "Solicitud de Agente Humano"
+    description: "Cliente solicita hablar con un humano o representante"
+    category: general
+    examples:
+      - "Quiero hablar con un humano"
+      - "Déjame hablar con una persona"
+      - "Me puedes conectar con alguien"
+      - "Necesito hablar con un agente"
+      - "Quiero un representante"
+      - "I want to speak to a human"
+      - "Connect me to an agent"
+      - "Transfer me to a person"
+    synonyms:
+      - "agente humano"
+      - "persona"
+      - "representante"
+      - "operador"
+      - "humano"
+    confidence_threshold: 0.92
+    priority: 500
+    suggested_workflow: "escalation.transfer_to_human"
+    metadata:
+      requires_agent: true
+      escalate_immediately: true
+      sla_minutes: 5
+  
+  # --------------------------------------------------------------------------
+  # VERIFICATION (KYC / Identity)
+  # --------------------------------------------------------------------------
+  
+  - key: document_rejected
+    name: "Documento Rechazado"
+    description: "Cliente consulta por qué su documento fue rechazado durante verificación"
+    category: verification
+    examples:
+      - "Por qué rechazaron mi documento"
+      - "Mi ID no fue aprobada"
+      - "Dice que la foto está borrosa"
+      - "No aceptaron mi identificación"
+      - "Mi documento salió rechazado"
+      - "Why was my document rejected"
+      - "My ID was not approved"
+      - "The photo is blurry"
+    synonyms:
+      - "documento rechazado"
+      - "ID rechazado"
+      - "foto rechazada"
+      - "identificación rechazada"
+      - "rechazo de documento"
+    confidence_threshold: 0.90
+    priority: 300
+    suggested_workflow: "verification.document_review"
+    metadata:
+      requires_agent: true
+      urgency: high
+      sla_minutes: 15
+  
+  - key: upload_document
+    name: "Subir Documento"
+    description: "Cliente desea subir o reenviar documentos de verificación"
+    category: verification
+    examples:
+      - "Quiero subir mi documento"
+      - "Cómo envío mi ID"
+      - "Necesito reenviar la foto"
+      - "Dónde subo mi identificación"
+      - "Cómo verifico mi identidad"
+      - "I want to upload my document"
+      - "How do I send my ID"
+    synonyms:
+      - "subir documento"
+      - "enviar documento"
+      - "cargar ID"
+      - "upload document"
+    confidence_threshold: 0.88
+    priority: 250
+    suggested_workflow: "verification.upload_document"
+    metadata:
+      requires_agent: true
+      urgency: medium
+  
+  - key: verification_status
+    name: "Estado de Verificación"
+    description: "Cliente pregunta por el estado de su proceso de verificación"
+    category: verification
+    examples:
+      - "Cuál es el estado de mi verificación"
+      - "Ya aprobaron mis documentos"
+      - "Cuánto falta para verificarme"
+      - "Sigue pendiente mi verificación"
+      - "What's the status of my verification"
+      - "Are my documents approved yet"
+    synonyms:
+      - "estado verificación"
+      - "status KYC"
+      - "aprobación documentos"
+    confidence_threshold: 0.89
+    priority: 200
+    suggested_workflow: "verification.check_status"
+    metadata:
+      requires_agent: true
+      urgency: medium
+  
+  # --------------------------------------------------------------------------
+  # PAYMENTS
+  # --------------------------------------------------------------------------
+  
+  - key: payment_status
+    name: "Consulta de Pago"
+    description: "Cliente pregunta por el estado de un pago o transacción"
+    category: payments
+    examples:
+      - "Cuándo se procesará mi pago"
+      - "Mi pago no aparece"
+      - "Ya pagué pero no se refleja"
+      - "Dónde está mi pago"
+      - "El pago no se ha aplicado"
+      - "When will my payment be processed"
+      - "My payment is not showing"
+      - "Payment not reflected"
+    synonyms:
+      - "estado de pago"
+      - "consulta pago"
+      - "payment status"
+      - "transacción pendiente"
+    confidence_threshold: 0.88
+    priority: 300
+    suggested_workflow: "payments.status_check"
+    metadata:
+      requires_agent: true
+      urgency: high
+      sla_minutes: 10
+  
+  - key: payment_method
+    name: "Métodos de Pago"
+    description: "Cliente pregunta sobre formas de pago disponibles"
+    category: payments
+    examples:
+      - "Cómo puedo pagar"
+      - "Qué métodos de pago aceptan"
+      - "Puedo pagar con tarjeta"
+      - "Aceptan transferencia"
+      - "What payment methods do you accept"
+      - "How can I pay"
+    synonyms:
+      - "métodos de pago"
+      - "formas de pago"
+      - "payment methods"
+    confidence_threshold: 0.86
+    priority: 150
+    suggested_workflow: "payments.info_methods"
+    metadata:
+      requires_agent: false
+      auto_respond: true
+  
+  - key: payment_confirmation
+    name: "Confirmación de Pago"
+    description: "Cliente informa que realizó un pago o solicita confirmación"
+    category: payments
+    examples:
+      - "Ya realicé el pago"
+      - "Les envié la transferencia"
+      - "Acabo de pagar"
+      - "Hice el depósito"
+      - "I just made the payment"
+      - "Payment sent"
+      - "Transfer completed"
+    synonyms:
+      - "pago realizado"
+      - "payment done"
+      - "transferencia enviada"
+    confidence_threshold: 0.89
+    priority: 350
+    suggested_workflow: "payments.confirm_payment"
+    metadata:
+      requires_agent: true
+      urgency: high
+  
+  - key: payment_failure
+    name: "Pago Rechazado o Fallido"
+    description: "Cliente reporta que su pago fue rechazado o no pudo completarse"
+    category: payments
+    examples:
+      - "Mi pago fue rechazado"
+      - "No pude completar el pago"
+      - "La transacción falló"
+      - "Mi tarjeta no pasó"
+      - "My payment was declined"
+      - "Transaction failed"
+      - "Card was rejected"
+    synonyms:
+      - "pago rechazado"
+      - "payment declined"
+      - "transacción fallida"
+    confidence_threshold: 0.91
+    priority: 400
+    suggested_workflow: "payments.failed_payment"
+    metadata:
+      requires_agent: true
+      urgency: high
+      sla_minutes: 10
+  
+  # --------------------------------------------------------------------------
+  # SUPPORT
+  # --------------------------------------------------------------------------
+  
+  - key: technical_issue
+    name: "Problema Técnico"
+    description: "Cliente reporta un error técnico o problema con la plataforma"
+    category: support
+    examples:
+      - "La aplicación no funciona"
+      - "No puedo entrar"
+      - "Me sale un error"
+      - "No carga la página"
+      - "The app is not working"
+      - "I'm getting an error"
+      - "Can't log in"
+    synonyms:
+      - "problema técnico"
+      - "error"
+      - "technical issue"
+      - "bug"
+    confidence_threshold: 0.88
+    priority: 350
+    suggested_workflow: "support.technical_support"
+    metadata:
+      requires_agent: true
+      urgency: high
+      sla_minutes: 15
+  
+  - key: account_access
+    name: "Acceso a Cuenta"
+    description: "Cliente no puede acceder a su cuenta o olvidó credenciales"
+    category: support
+    examples:
+      - "Olvidé mi contraseña"
+      - "No puedo entrar a mi cuenta"
+      - "Necesito recuperar mi acceso"
+      - "Cómo reseteo mi clave"
+      - "I forgot my password"
+      - "Can't access my account"
+      - "Need to reset password"
+    synonyms:
+      - "contraseña olvidada"
+      - "forgot password"
+      - "reset password"
+      - "acceso cuenta"
+    confidence_threshold: 0.90
+    priority: 300
+    suggested_workflow: "support.password_reset"
+    metadata:
+      requires_agent: false
+      auto_respond: true
+      self_service: true
+  
+  - key: general_support
+    name: "Soporte General"
+    description: "Cliente solicita ayuda o soporte sin especificar el problema"
+    category: support
+    examples:
+      - "Necesito ayuda"
+      - "Tengo un problema"
+      - "Pueden ayudarme"
+      - "No entiendo cómo funciona"
+      - "I need help"
+      - "Can you help me"
+      - "I have a question"
+    synonyms:
+      - "ayuda"
+      - "soporte"
+      - "help"
+      - "support"
+    confidence_threshold: 0.82
+    priority: 100
+    suggested_workflow: "support.general_inquiry"
+    metadata:
+      requires_agent: true
+      urgency: medium
+  
+  # --------------------------------------------------------------------------
+  # SALES / LEADS
+  # --------------------------------------------------------------------------
+  
+  - key: loan_application
+    name: "Solicitud de Préstamo"
+    description: "Cliente desea solicitar un préstamo o crédito"
+    category: sales
+    examples:
+      - "Quiero solicitar un préstamo"
+      - "Necesito un crédito"
+      - "Cómo puedo pedir un préstamo"
+      - "Me interesa un financiamiento"
+      - "I want to apply for a loan"
+      - "I need credit"
+      - "How can I get a loan"
+    synonyms:
+      - "préstamo"
+      - "crédito"
+      - "loan"
+      - "financing"
+      - "financiamiento"
+    confidence_threshold: 0.92
+    priority: 500
+    suggested_workflow: "sales.loan_application"
+    metadata:
+      requires_agent: true
+      urgency: high
+      lead_score: 90
+      sla_minutes: 5
+  
+  - key: product_inquiry
+    name: "Consulta de Producto"
+    description: "Cliente pregunta sobre características o detalles de un producto"
+    category: sales
+    examples:
+      - "Qué productos ofrecen"
+      - "Cuáles son las tasas de interés"
+      - "Qué beneficios tiene"
+      - "Información sobre sus servicios"
+      - "What products do you offer"
+      - "What are the interest rates"
+      - "Tell me about your services"
+    synonyms:
+      - "producto"
+      - "servicio"
+      - "product info"
+      - "información"
+    confidence_threshold: 0.84
+    priority: 200
+    suggested_workflow: "sales.product_info"
+    metadata:
+      requires_agent: true
+      urgency: medium
+      lead_score: 60
+  
+  - key: lead_followup
+    name: "Seguimiento de Lead"
+    description: "Cliente responde a un contacto previo o solicita seguimiento"
+    category: sales
+    examples:
+      - "Me llamaron ayer"
+      - "Quiero dar seguimiento a mi solicitud"
+      - "Estoy interesado en lo que me ofrecieron"
+      - "Recibí su mensaje"
+      - "You called me yesterday"
+      - "Following up on my application"
+      - "I'm interested in your offer"
+    synonyms:
+      - "seguimiento"
+      - "follow up"
+      - "llamada previa"
+    confidence_threshold: 0.87
+    priority: 400
+    suggested_workflow: "sales.lead_followup"
+    metadata:
+      requires_agent: true
+      urgency: high
+      lead_score: 85
+  
+  # --------------------------------------------------------------------------
+  # SCHEDULING
+  # --------------------------------------------------------------------------
+  
+  - key: schedule_appointment
+    name: "Agendar Cita"
+    description: "Cliente desea programar una cita o reunión"
+    category: scheduling
+    examples:
+      - "Quiero agendar una cita"
+      - "Necesito una reunión"
+      - "Puedo programar una visita"
+      - "Cuándo puedo ir"
+      - "I want to schedule an appointment"
+      - "I need to book a meeting"
+      - "When can I visit"
+    synonyms:
+      - "agendar"
+      - "cita"
+      - "appointment"
+      - "meeting"
+      - "reunión"
+    confidence_threshold: 0.89
+    priority: 300
+    suggested_workflow: "scheduling.book_appointment"
+    metadata:
+      requires_agent: true
+      urgency: medium
+  
+  - key: reschedule_appointment
+    name: "Reagendar Cita"
+    description: "Cliente desea cambiar una cita ya agendada"
+    category: scheduling
+    examples:
+      - "Necesito cambiar mi cita"
+      - "Puedo reagendar"
+      - "No puedo ir ese día"
+      - "Quiero mover mi reunión"
+      - "I need to reschedule"
+      - "Can I change my appointment"
+      - "I can't make it that day"
+    synonyms:
+      - "reagendar"
+      - "cambiar cita"
+      - "reschedule"
+      - "mover cita"
+    confidence_threshold: 0.91
+    priority: 350
+    suggested_workflow: "scheduling.reschedule"
+    metadata:
+      requires_agent: true
+      urgency: high
+      sla_minutes: 15
+  
+  - key: cancel_appointment
+    name: "Cancelar Cita"
+    description: "Cliente desea cancelar una cita agendada"
+    category: scheduling
+    examples:
+      - "Quiero cancelar mi cita"
+      - "No podré asistir"
+      - "Necesito cancelar la reunión"
+      - "Ya no puedo ir"
+      - "I want to cancel my appointment"
+      - "I won't be able to attend"
+      - "Need to cancel"
+    synonyms:
+      - "cancelar"
+      - "cancel"
+      - "anular cita"
+    confidence_threshold: 0.90
+    priority: 300
+    suggested_workflow: "scheduling.cancel_appointment"
+    metadata:
+      requires_agent: true
+      urgency: medium
+  
+  # --------------------------------------------------------------------------
+  # COMPLAINTS
+  # --------------------------------------------------------------------------
+  
+  - key: complaint
+    name: "Queja o Reclamo"
+    description: "Cliente presenta una queja formal o reclamo"
+    category: complaints
+    examples:
+      - "Quiero presentar una queja"
+      - "Estoy molesto con el servicio"
+      - "Esto es inaceptable"
+      - "Quiero hablar con un supervisor"
+      - "I want to file a complaint"
+      - "I'm not satisfied with the service"
+      - "This is unacceptable"
+    synonyms:
+      - "queja"
+      - "reclamo"
+      - "complaint"
+      - "insatisfacción"
+    confidence_threshold: 0.93
+    priority: 600
+    suggested_workflow: "complaints.formal_complaint"
+    metadata:
+      requires_agent: true
+      urgency: critical
+      escalate_immediately: true
+      sla_minutes: 5
+      supervisor_required: true
+  
+  - key: service_feedback
+    name: "Retroalimentación de Servicio"
+    description: "Cliente proporciona feedback sobre el servicio recibido"
+    category: complaints
+    examples:
+      - "El servicio fue excelente"
+      - "Tuve una mala experiencia"
+      - "Quiero dar mi opinión"
+      - "El agente fue muy amable"
+      - "The service was excellent"
+      - "I had a bad experience"
+      - "I want to provide feedback"
+    synonyms:
+      - "feedback"
+      - "retroalimentación"
+      - "opinión"
+      - "comentario"
+    confidence_threshold: 0.85
+    priority: 150
+    suggested_workflow: "feedback.capture"
+    metadata:
+      requires_agent: false
+      auto_respond: true
+  
+  # --------------------------------------------------------------------------
+  # INFORMATION
+  # --------------------------------------------------------------------------
+  
+  - key: business_hours
+    name: "Horarios de Atención"
+    description: "Cliente pregunta sobre horarios de atención"
+    category: information
+    examples:
+      - "Cuál es su horario"
+      - "A qué hora abren"
+      - "Cuándo atienden"
+      - "Están abiertos los fines de semana"
+      - "What are your business hours"
+      - "When do you open"
+      - "Are you open on weekends"
+    synonyms:
+      - "horario"
+      - "business hours"
+      - "opening hours"
+    confidence_threshold: 0.87
+    priority: 100
+    suggested_workflow: null
+    metadata:
+      requires_agent: false
+      auto_respond: true
+      response_template: "business_hours_info"
+  
+  - key: contact_information
+    name: "Información de Contacto"
+    description: "Cliente solicita formas de contacto (teléfono, email, dirección)"
+    category: information
+    examples:
+      - "Cuál es su teléfono"
+      - "Cómo puedo contactarlos"
+      - "Dónde están ubicados"
+      - "Cuál es su dirección"
+      - "What's your phone number"
+      - "How can I contact you"
+      - "Where are you located"
+    synonyms:
+      - "contacto"
+      - "teléfono"
+      - "contact info"
+      - "ubicación"
+    confidence_threshold: 0.86
+    priority: 100
+    suggested_workflow: null
+    metadata:
+      requires_agent: false
+      auto_respond: true
+      response_template: "contact_info"
+  
+  - key: faq
+    name: "Pregunta Frecuente"
+    description: "Cliente hace una pregunta que está en el FAQ"
+    category: information
+    examples:
+      - "Cuánto tarda el proceso"
+      - "Qué documentos necesito"
+      - "Hay algún costo"
+      - "Es seguro"
+      - "How long does it take"
+      - "What documents do I need"
+      - "Is there a fee"
+      - "Is it secure"
+    synonyms:
+      - "pregunta"
+      - "question"
+      - "información"
+      - "FAQ"
+    confidence_threshold: 0.80
+    priority: 100
+    suggested_workflow: "information.faq_lookup"
+    metadata:
+      requires_agent: false
+      auto_respond: true
+      kb_search: true
+  
+  # --------------------------------------------------------------------------
+  # SPECIAL / EDGE CASES
+  # --------------------------------------------------------------------------
+  
+  - key: out_of_scope
+    name: "Fuera de Alcance"
+    description: "Mensaje no relacionado con los servicios (spam, off-topic)"
+    category: general
+    examples:
+      - "Cuál es la capital de Francia"
+      - "Cuéntame un chiste"
+      - "asdfghjkl"
+      - "12345"
+      - "Tell me a joke"
+      - "Random nonsense"
+    synonyms:
+      - "spam"
+      - "off-topic"
+      - "irrelevant"
+    confidence_threshold: 0.70
+    priority: 10
+    suggested_workflow: null
+    metadata:
+      requires_agent: false
+      auto_respond: true
+      response_template: "out_of_scope"
+      mark_as_spam: true
+  
+  - key: emergency
+    name: "Emergencia"
+    description: "Cliente reporta una emergencia o situación urgente crítica"
+    category: support
+    examples:
+      - "Es una emergencia"
+      - "Urgente por favor"
+      - "Necesito ayuda inmediata"
+      - "Esto es crítico"
+      - "Emergency"
+      - "Urgent please"
+      - "I need immediate help"
+    synonyms:
+      - "emergencia"
+      - "emergency"
+      - "urgente"
+      - "urgent"
+      - "crítico"
+    confidence_threshold: 0.94
+    priority: 1000
+    suggested_workflow: "support.emergency_escalation"
+    metadata:
+      requires_agent: true
+      urgency: critical
+      escalate_immediately: true
+      sla_minutes: 2
+      supervisor_required: true
+      alert_ops: true

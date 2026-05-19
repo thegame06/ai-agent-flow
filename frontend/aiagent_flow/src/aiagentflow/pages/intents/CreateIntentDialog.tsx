@@ -1,0 +1,305 @@
+import type { Intent, IntentFormData } from './types';
+
+import { useState, useEffect } from 'react';
+
+import Box from '@mui/material/Box';
+import Chip from '@mui/material/Chip';
+import Stack from '@mui/material/Stack';
+import Button from '@mui/material/Button';
+import Dialog from '@mui/material/Dialog';
+import Select from '@mui/material/Select';
+import Divider from '@mui/material/Divider';
+import MenuItem from '@mui/material/MenuItem';
+import TextField from '@mui/material/TextField';
+import InputLabel from '@mui/material/InputLabel';
+import Typography from '@mui/material/Typography';
+import FormControl from '@mui/material/FormControl';
+import DialogTitle from '@mui/material/DialogTitle';
+import OutlinedInput from '@mui/material/OutlinedInput';
+import DialogActions from '@mui/material/DialogActions';
+import DialogContent from '@mui/material/DialogContent';
+import FormControlLabel from '@mui/material/FormControlLabel';
+import Switch from '@mui/material/Switch';
+import Slider from '@mui/material/Slider';
+
+// ----------------------------------------------------------------------
+
+interface CreateIntentDialogProps {
+  open: boolean;
+  intent: Intent | null;
+  onClose: () => void;
+  onSave: (data: IntentFormData) => Promise<void>;
+}
+
+const CATEGORIES = [
+  'Customer Service',
+  'Sales',
+  'Support',
+  'Information',
+  'Transaction',
+  'Other',
+];
+
+export function CreateIntentDialog({ open, intent, onClose, onSave }: CreateIntentDialogProps) {
+  const [formData, setFormData] = useState<IntentFormData>({
+    key: '',
+    name: '',
+    description: '',
+    category: 'Customer Service',
+    examples: [],
+    synonyms: [],
+    confidence_threshold: 0.7,
+    priority: 5,
+    suggested_workflow: '',
+    enabled: true,
+  });
+
+  const [exampleInput, setExampleInput] = useState('');
+  const [synonymInput, setSynonymInput] = useState('');
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (intent) {
+      setFormData({
+        key: intent.key,
+        name: intent.name,
+        description: intent.description,
+        category: intent.category,
+        examples: intent.examples,
+        synonyms: intent.synonyms,
+        confidence_threshold: intent.confidence_threshold,
+        priority: intent.priority,
+        suggested_workflow: intent.suggested_workflow || '',
+        enabled: intent.enabled,
+      });
+    } else {
+      setFormData({
+        key: '',
+        name: '',
+        description: '',
+        category: 'Customer Service',
+        examples: [],
+        synonyms: [],
+        confidence_threshold: 0.7,
+        priority: 5,
+        suggested_workflow: '',
+        enabled: true,
+      });
+    }
+    setErrors({});
+  }, [intent, open]);
+
+  const validate = (): boolean => {
+    const newErrors: Record<string, string> = {};
+    
+    if (!formData.key.trim()) newErrors.key = 'Key is required';
+    if (!formData.name.trim()) newErrors.name = 'Name is required';
+    if (!formData.description.trim()) newErrors.description = 'Description is required';
+    if (formData.examples.length === 0) newErrors.examples = 'At least one example is required';
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handleSave = async () => {
+    if (!validate()) return;
+    
+    await onSave(formData);
+    onClose();
+  };
+
+  const addExample = () => {
+    if (exampleInput.trim()) {
+      setFormData({ ...formData, examples: [...formData.examples, exampleInput.trim()] });
+      setExampleInput('');
+      setErrors({ ...errors, examples: '' });
+    }
+  };
+
+  const removeExample = (index: number) => {
+    setFormData({ ...formData, examples: formData.examples.filter((_, i) => i !== index) });
+  };
+
+  const addSynonym = () => {
+    if (synonymInput.trim()) {
+      setFormData({ ...formData, synonyms: [...formData.synonyms, synonymInput.trim()] });
+      setSynonymInput('');
+    }
+  };
+
+  const removeSynonym = (index: number) => {
+    setFormData({ ...formData, synonyms: formData.synonyms.filter((_, i) => i !== index) });
+  };
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+      <DialogTitle>{intent ? 'Edit Intent' : 'Create New Intent'}</DialogTitle>
+      <Divider />
+      
+      <DialogContent>
+        <Stack spacing={3} sx={{ pt: 2 }}>
+          {/* Basic Information */}
+          <TextField
+            fullWidth
+            label="Intent Key"
+            value={formData.key}
+            onChange={(e) => setFormData({ ...formData, key: e.target.value })}
+            error={!!errors.key}
+            helperText={errors.key || 'Unique identifier (e.g., loan_application)'}
+            disabled={!!intent}
+          />
+
+          <TextField
+            fullWidth
+            label="Intent Name"
+            value={formData.name}
+            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+            error={!!errors.name}
+            helperText={errors.name || 'Display name for the intent'}
+          />
+
+          <TextField
+            fullWidth
+            multiline
+            rows={2}
+            label="Description"
+            value={formData.description}
+            onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+            error={!!errors.description}
+            helperText={errors.description || 'What does this intent represent?'}
+          />
+
+          <FormControl fullWidth>
+            <InputLabel>Category</InputLabel>
+            <Select
+              value={formData.category}
+              label="Category"
+              onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+            >
+              {CATEGORIES.map((cat) => (
+                <MenuItem key={cat} value={cat}>{cat}</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+
+          {/* Examples */}
+          <Box>
+            <Typography variant="subtitle2" sx={{ mb: 1 }}>
+              Examples {errors.examples && <Typography component="span" color="error" variant="caption">({errors.examples})</Typography>}
+            </Typography>
+            <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
+              <TextField
+                fullWidth
+                size="small"
+                placeholder="Add an example phrase..."
+                value={exampleInput}
+                onChange={(e) => setExampleInput(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && addExample()}
+              />
+              <Button variant="outlined" onClick={addExample}>Add</Button>
+            </Stack>
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+              {formData.examples.map((example, index) => (
+                <Chip
+                  key={index}
+                  label={example}
+                  onDelete={() => removeExample(index)}
+                  size="small"
+                />
+              ))}
+            </Stack>
+          </Box>
+
+          {/* Synonyms */}
+          <Box>
+            <Typography variant="subtitle2" sx={{ mb: 1 }}>Synonyms (Optional)</Typography>
+            <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
+              <TextField
+                fullWidth
+                size="small"
+                placeholder="Add a synonym..."
+                value={synonymInput}
+                onChange={(e) => setSynonymInput(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && addSynonym()}
+              />
+              <Button variant="outlined" onClick={addSynonym}>Add</Button>
+            </Stack>
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+              {formData.synonyms.map((synonym, index) => (
+                <Chip
+                  key={index}
+                  label={synonym}
+                  onDelete={() => removeSynonym(index)}
+                  size="small"
+                  variant="outlined"
+                />
+              ))}
+            </Stack>
+          </Box>
+
+          {/* Advanced Settings */}
+          <Box>
+            <Typography variant="subtitle2" sx={{ mb: 2 }}>Priority (1 = Highest)</Typography>
+            <Slider
+              value={formData.priority}
+              onChange={(_, value) => setFormData({ ...formData, priority: value as number })}
+              min={1}
+              max={10}
+              step={1}
+              marks
+              valueLabelDisplay="auto"
+            />
+          </Box>
+
+          <Box>
+            <Typography variant="subtitle2" sx={{ mb: 2 }}>
+              Confidence Threshold: {(formData.confidence_threshold * 100).toFixed(0)}%
+            </Typography>
+            <Slider
+              value={formData.confidence_threshold}
+              onChange={(_, value) => setFormData({ ...formData, confidence_threshold: value as number })}
+              min={0.5}
+              max={1.0}
+              step={0.05}
+              marks={[
+                { value: 0.5, label: '50%' },
+                { value: 0.7, label: '70%' },
+                { value: 0.9, label: '90%' },
+              ]}
+              valueLabelDisplay="auto"
+              valueLabelFormat={(value) => `${(value * 100).toFixed(0)}%`}
+            />
+          </Box>
+
+          <TextField
+            fullWidth
+            label="Suggested Workflow (Optional)"
+            value={formData.suggested_workflow}
+            onChange={(e) => setFormData({ ...formData, suggested_workflow: e.target.value })}
+            helperText="Workflow key to trigger when this intent is detected"
+          />
+
+          <FormControlLabel
+            control={
+              <Switch
+                checked={formData.enabled}
+                onChange={(e) => setFormData({ ...formData, enabled: e.target.checked })}
+              />
+            }
+            label="Enabled"
+          />
+        </Stack>
+      </DialogContent>
+
+      <Divider />
+      <DialogActions>
+        <Button onClick={onClose} color="inherit">
+          Cancel
+        </Button>
+        <Button onClick={handleSave} variant="contained">
+          {intent ? 'Save Changes' : 'Create Intent'}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}

@@ -59,6 +59,10 @@ export const paths = {
     evaluations: `${ROOTS.DASHBOARD}/evaluations`,
     kycPayments: `${ROOTS.DASHBOARD}/kyc-payments`,
     workflows: `${ROOTS.DASHBOARD}/studio/workflows`,
+    // Intent Routing
+    intents: `${ROOTS.DASHBOARD}/intents`,
+    intentsPlayground: `${ROOTS.DASHBOARD}/intents/playground`,
+    inbox: `${ROOTS.DASHBOARD}/inbox`,
     governance: {
       root: `${ROOTS.DASHBOARD}/governance`,
       policies: `${ROOTS.DASHBOARD}/governance/policies`,

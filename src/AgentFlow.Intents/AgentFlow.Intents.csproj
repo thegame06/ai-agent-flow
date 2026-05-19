@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <Description>Intent Routing and Semantic Classification Engine. Provides AI-powered intent matching, conversational ownership, and intelligent traffic control for AgentFlow.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AgentFlow.Abstractions\AgentFlow.Abstractions.csproj" />
+    <ProjectReference Include="..\AgentFlow.Application\AgentFlow.Application.csproj" />
+    <ProjectReference Include="..\AgentFlow.Caching.Redis\AgentFlow.Caching.Redis.csproj" />
+    <ProjectReference Include="..\AgentFlow.Security\AgentFlow.Security.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.2" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.2" />
+    <PackageReference Include="MongoDB.Driver" Version="2.31.0" />
+    <PackageReference Include="StackExchange.Redis" Version="2.8.31" />
+    <PackageReference Include="YamlDotNet" Version="16.2.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Embed base-intents.yaml as a resource so it's compiled into the assembly -->
+    <EmbeddedResource Include="Catalog\base-intents.yaml" />
+  </ItemGroup>
+
+</Project>

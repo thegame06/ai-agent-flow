@@ -51,6 +51,11 @@ export const navData: NavSectionProps['data'] = [
         icon: ICONS.agent,
       },
       {
+        title: 'Intenciones del cliente',
+        path: paths.dashboard.intents,
+        icon: ICONS.intent,
+      },
+      {
         title: 'Motivos del cliente',
         path: paths.dashboard.intentMap,
         icon: ICONS.intent,
@@ -60,6 +65,11 @@ export const navData: NavSectionProps['data'] = [
   {
     subheader: 'Operacion',
     items: [
+      {
+        title: 'Conversaciones',
+        path: paths.dashboard.inbox,
+        icon: ICONS.inbox,
+      },
       {
         title: 'Bandeja de entrada',
         path: paths.dashboard.threads,

@@ -41,6 +41,11 @@ const EvaluationsPage = lazy(() => import('src/aiagentflow/pages/evaluations/Eva
 const KycPaymentsPage = lazy(() => import('src/aiagentflow/pages/kyc/KycPaymentsPage'));
 const WorkflowsPage = lazy(() => import('src/aiagentflow/pages/workflows/WorkflowsPage'));
 
+// Intent Routing Pages
+const IntentsPage = lazy(() => import('src/aiagentflow/pages/intents/IntentsPage'));
+const PlaygroundPage = lazy(() => import('src/aiagentflow/pages/intents/PlaygroundPage'));
+const InboxPage = lazy(() => import('src/aiagentflow/pages/intents/InboxPage'));
+
 // ----------------------------------------------------------------------
 
 function SuspenseOutlet() {
@@ -81,6 +86,10 @@ export const dashboardRoutes: RouteObject[] = [
       { path: 'evaluations', element: <EvaluationsPage /> },
       { path: 'kyc-payments', element: <KycPaymentsPage /> },
       { path: 'studio/workflows', element: <WorkflowsPage /> },
+      // Intent Routing
+      { path: 'intents', element: <IntentsPage /> },
+      { path: 'intents/playground', element: <PlaygroundPage /> },
+      { path: 'inbox', element: <InboxPage /> },
       {
         path: 'governance',
         children: [

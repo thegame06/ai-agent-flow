@@ -6,11 +6,65 @@ import { CONFIG } from 'src/global-config';
 
 // ----------------------------------------------------------------------
 
-const axiosInstance = axios.create({ baseURL: CONFIG.serverUrl });
+const axiosInstance = axios.create({ 
+  baseURL: CONFIG.serverUrl,
+  timeout: 30000, // 30 segundos timeout
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
 
+// Request interceptor - para agregar auth token si existe
+axiosInstance.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('auth_token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => {
+    console.error('Request error:', error);
+    return Promise.reject(error);
+  }
+);
+
+// Response interceptor - para manejar errores globalmente
 axiosInstance.interceptors.response.use(
   (response) => response,
-  (error) => Promise.reject((error.response && error.response.data) || 'Something went wrong!')
+  (error) => {
+    // Logging detallado para debugging
+    console.error('API Error:', {
+      url: error.config?.url,
+      method: error.config?.method,
+      status: error.response?.status,
+      data: error.response?.data,
+      message: error.message,
+    });
+
+    // Manejo de errores por código HTTP
+    if (error.response?.status === 401) {
+      // Opcional: Redirect a login si es necesario
+      console.warn('Unauthorized - Consider implementing auth redirect');
+    } else if (error.response?.status === 404) {
+      console.warn('Resource not found:', error.config?.url);
+    } else if (error.response?.status >= 500) {
+      console.error('Server error - Backend may be down');
+    }
+
+    // Retornar error con información estructurada
+    const errorMessage = error.response?.data?.message 
+      || error.response?.data?.error 
+      || error.message 
+      || 'Something went wrong!';
+
+    return Promise.reject({
+      ...error,
+      message: errorMessage,
+      statusCode: error.response?.status,
+      data: error.response?.data,
+    });
+  }
 );
 
 export default axiosInstance;
@@ -203,9 +257,16 @@ export const endpoints = {
       rules: (tenantId: string) => `/api/v1/tenants/${tenantId}/intent-routing/rules`,
       ruleEnable: (tenantId: string, ruleId: string) => `/api/v1/tenants/${tenantId}/intent-routing/rules/${ruleId}/enable`,
       ruleById: (tenantId: string, ruleId: string) => `/api/v1/tenants/${tenantId}/intent-routing/rules/${ruleId}`,
+      classify: (tenantId: string) => `/api/v1/tenants/${tenantId}/intent-routing/classify`,
       simulate: (tenantId: string) => `/api/v1/tenants/${tenantId}/intent-routing/simulate`,
       agents: (tenantId: string) => `/api/v1/tenants/${tenantId}/intent-routing/agents`,
       agentById: (tenantId: string, agentId: string) => `/api/v1/tenants/${tenantId}/intent-routing/agents/${agentId}`,
+      // Conversation Inbox
+      conversations: (tenantId: string) => `/api/v1/tenants/${tenantId}/intent-routing/conversations`,
+      conversationById: (tenantId: string, conversationId: string) => `/api/v1/tenants/${tenantId}/intent-routing/conversations/${conversationId}`,
+      conversationReassign: (tenantId: string, conversationId: string) => `/api/v1/tenants/${tenantId}/intent-routing/conversations/${conversationId}/reassign`,
+      conversationResolve: (tenantId: string, conversationId: string) => `/api/v1/tenants/${tenantId}/intent-routing/conversations/${conversationId}/resolve`,
+      stats: (tenantId: string) => `/api/v1/tenants/${tenantId}/intent-routing/stats`,
     },
     systemOrchestrator: {
       status: (tenantId: string) => `/api/v1/tenants/${tenantId}/system-orchestrator/status`,

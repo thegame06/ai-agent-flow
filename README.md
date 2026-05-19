@@ -2,6 +2,29 @@
 
 Framework modular para construir, operar y gobernar agentes de IA empresariales en .NET, organizado por suites de producto: **Studio**, **Connect** y **Control**.
 
+## 🚀 Quick Start
+
+¿Primer día con AgentFlow? Empieza aquí:
+
+- **[QUICK-START-LOCAL.md](QUICK-START-LOCAL.md)** → Levanta el stack completo en 2 minutos con `make up-local-full`
+- **[INFRASTRUCTURE-SETUP.md](docs/INFRASTRUCTURE-SETUP.md)** → Guía completa de infraestructura (Local, Staging, Producción)
+- **[QUICK-START-E2E.md](QUICK-START-E2E.md)** → Testing end-to-end del Intent Routing
+
+**Comandos básicos:**
+
+```bash
+# Iniciar todo (Docker + API + Frontend)
+make up-local-full
+
+# Ver comandos disponibles
+make help
+
+# Detener (preserva datos)
+make down-local-full
+```
+
+---
+
 ## ¿Qué hace este proyecto?
 
 AgentFlow permite definir agentes como configuración (JSON/DSL), ejecutar ciclos de razonamiento con herramientas, aplicar guardrails/políticas, y observar resultados con trazabilidad.
