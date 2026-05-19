@@ -2,8 +2,10 @@ using AgentFlow.Domain.Aggregates;
 using AgentFlow.Domain.Enums;
 using AgentFlow.Domain.ValueObjects;
 using AgentFlow.Domain.Repositories;
+using AgentFlow.Abstractions;
 using AgentFlow.Abstractions.Workflow;
 using AgentFlow.Api.Workflow;
+using Microsoft.Extensions.Configuration;
 
 namespace AgentFlow.Api;
 
@@ -574,9 +576,50 @@ Always be concrete: tell the user EXACTLY what to click or configure."
             }
         }
 
+        await SeedTenantMcpDefaultsAsync(scope.ServiceProvider, tenantId, systemUser);
         await SeedSalesHappyPathAsync(scope.ServiceProvider, tenantId, systemUser);
 
         Console.WriteLine("✅ [Seed] System agents seed complete.");
+    }
+
+    private static async Task SeedTenantMcpDefaultsAsync(IServiceProvider services, string tenantId, string updatedBy)
+    {
+        var store = services.GetRequiredService<ITenantMcpSettingsStore>();
+        var configuration = services.GetRequiredService<IConfiguration>();
+
+        var configuredServers = configuration
+            .GetSection("Mcp:Servers")
+            .GetChildren()
+            .Select(x => x["Name"])
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Cast<string>()
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        if (configuredServers.Length == 0)
+            return;
+
+        var current = await store.GetAsync(tenantId);
+        var requiredServers = configuredServers
+            .Where(name => string.Equals(name, "agentflow-mcp-server", StringComparison.OrdinalIgnoreCase));
+        var mergedAllowedServers = current.AllowedServers
+            .Concat(requiredServers)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        if (current.Enabled &&
+            mergedAllowedServers.SequenceEqual(current.AllowedServers, StringComparer.OrdinalIgnoreCase))
+            return;
+
+        await store.SaveAsync(current with
+        {
+            TenantId = tenantId,
+            Enabled = true,
+            Runtime = "MicrosoftAgentFramework",
+            AllowedServers = mergedAllowedServers,
+            UpdatedAt = DateTimeOffset.UtcNow,
+            UpdatedBy = updatedBy
+        });
     }
 
     private static async Task SeedSalesHappyPathAsync(IServiceProvider services, string tenantId, string ownerUser)

@@ -1,5 +1,7 @@
 using AgentFlow.Abstractions;
+using AgentFlow.Abstractions.Workflow;
 using AgentFlow.Application.Memory;
+using AgentFlow.Api.Workflow;
 using AgentFlow.Domain.Repositories;
 using AgentFlow.Evaluation;
 using AgentFlow.Security;
@@ -22,6 +24,7 @@ public sealed class AgentExecutionsController : ControllerBase
     private readonly IAgentHandoffExecutor _handoffExecutor;
     private readonly IManagerHandoffPolicy _handoffPolicy;
     private readonly IAuditMemory _auditMemory;
+    private readonly IWorkflowStudioStore _workflowStore;
     private readonly ITenantContextAccessor _tenantContext;
     private readonly ILogger<AgentExecutionsController> _logger;
 
@@ -35,6 +38,7 @@ public sealed class AgentExecutionsController : ControllerBase
         IAgentHandoffExecutor handoffExecutor,
         IManagerHandoffPolicy handoffPolicy,
         IAuditMemory auditMemory,
+        IWorkflowStudioStore workflowStore,
         ITenantContextAccessor tenantContext,
         ILogger<AgentExecutionsController> logger)
     {
@@ -47,6 +51,7 @@ public sealed class AgentExecutionsController : ControllerBase
         _handoffExecutor = handoffExecutor;
         _handoffPolicy = handoffPolicy;
         _auditMemory = auditMemory;
+        _workflowStore = workflowStore;
         _tenantContext = tenantContext;
         _logger = logger;
     }
@@ -65,23 +70,56 @@ public sealed class AgentExecutionsController : ControllerBase
 
         var boundedLimit = Math.Clamp(limit, 1, 200);
         var history = await _executionRepository.GetAllAsync(tenantId, 0, boundedLimit, ct);
-        var executions = history
+        var agentExecutions = history
             .OrderByDescending(e => e.CreatedAt)
             .Take(boundedLimit)
-            .Select(e => new
+            .Select(e => new SystemExecutionListItemDto
             {
-                e.Id,
+                Kind = "agent",
+                Id = e.Id,
+                Name = e.AgentDefinitionId,
                 AgentVersion = e.AgentDefinitionId,
                 Status = e.Status.ToString(),
-                e.CreatedAt,
+                CreatedAt = e.CreatedAt,
                 DurationMs = e.GetDuration()?.TotalMilliseconds,
                 TotalSteps = e.Steps.Count,
                 TotalTokensUsed = e.Output?.TotalTokensUsed ?? 0,
-                e.AgentDefinitionId,
-                e.CorrelationId,
-                e.SessionId,
-                e.ChannelMessageId
+                AgentDefinitionId = e.AgentDefinitionId,
+                WorkflowDefinitionId = null,
+                CorrelationId = e.CorrelationId,
+                SessionId = e.SessionId,
+                ChannelMessageId = e.ChannelMessageId,
+                Error = e.ErrorMessage
             })
+            .ToList();
+
+        var workflowExecutions = (await _workflowStore.GetExecutionsAsync(tenantId, boundedLimit, ct))
+            .OrderByDescending(e => e.CreatedAt)
+            .Take(boundedLimit)
+            .Select(e => new SystemExecutionListItemDto
+            {
+                Kind = "workflow",
+                Id = e.Id,
+                Name = e.WorkflowDefinitionId,
+                AgentVersion = null,
+                Status = e.Status.ToString(),
+                CreatedAt = e.CreatedAt,
+                DurationMs = (e.UpdatedAt - e.CreatedAt).TotalMilliseconds,
+                TotalSteps = 0,
+                TotalTokensUsed = 0,
+                AgentDefinitionId = null,
+                WorkflowDefinitionId = e.WorkflowDefinitionId,
+                CorrelationId = e.CorrelationId,
+                SessionId = string.Empty,
+                ChannelMessageId = string.Empty,
+                Error = e.Error
+            })
+            .ToList();
+
+        var executions = agentExecutions
+            .Concat(workflowExecutions)
+            .OrderByDescending(x => x.CreatedAt)
+            .Take(boundedLimit)
             .ToList();
 
         return Ok(executions);
@@ -676,6 +714,25 @@ public sealed class AgentExecutionsController : ControllerBase
             }
         });
     }
+}
+
+public sealed record SystemExecutionListItemDto
+{
+    public string Kind { get; init; } = "agent";
+    public string Id { get; init; } = string.Empty;
+    public string? Name { get; init; }
+    public string? AgentVersion { get; init; }
+    public string Status { get; init; } = string.Empty;
+    public DateTimeOffset CreatedAt { get; init; }
+    public double? DurationMs { get; init; }
+    public int TotalSteps { get; init; }
+    public int TotalTokensUsed { get; init; }
+    public string? AgentDefinitionId { get; init; }
+    public string? WorkflowDefinitionId { get; init; }
+    public string? CorrelationId { get; init; }
+    public string? SessionId { get; init; }
+    public string? ChannelMessageId { get; init; }
+    public string? Error { get; init; }
 }
 
 // --- DTOs ---

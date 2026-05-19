@@ -4,7 +4,9 @@ import { Label } from 'src/components/label';
 
 export const EXECUTION_COLUMNS: GridColDef[] = [
   { field: 'id', headerName: 'Execution ID', width: 220 },
-  { field: 'agentVersion', headerName: 'Agent Ver.', width: 120 },
+  { field: 'kind', headerName: 'Tipo', width: 110 },
+  { field: 'name', headerName: 'Origen', width: 180 },
+  { field: 'agentVersion', headerName: 'Agente', width: 140 },
   {
     field: 'status',
     headerName: 'Status',
@@ -22,6 +24,7 @@ export const EXECUTION_COLUMNS: GridColDef[] = [
   },
   { field: 'durationMs', headerName: 'Duration (ms)', width: 130 },
   { field: 'totalTokensUsed', headerName: 'Tokens', width: 100 },
+  { field: 'error', headerName: 'Error', width: 220 },
   {
     field: 'createdAt',
     headerName: 'Started At',

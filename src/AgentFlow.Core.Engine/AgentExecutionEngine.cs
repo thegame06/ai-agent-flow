@@ -747,6 +747,23 @@ if (!preResponsePolicy.IsSuccess) return Result<string?>.Failure(preResponsePoli
                     goalAchieved = true; // Break loop, but status is HumanReviewPending
                     break;
 
+                case ThinkDecision.RequestMoreContext:
+                    var clarification = thinkResult.FinalAnswer
+                        ?? thinkResult.Rationale
+                        ?? "Necesito un poco mas de contexto para continuar.";
+
+                    execution.Complete(new ExecutionOutput
+                    {
+                        FinalResponse = clarification,
+                        TotalTokensUsed = execution.Steps.Sum(s => s.TokensUsed ?? 0),
+                        TotalToolCalls = execution.Steps.Count(s => s.StepType == StepType.Act),
+                        TotalIterations = execution.CurrentIteration
+                    });
+
+                    await _executionRepo.UpdateAsync(execution, CancellationToken.None);
+                    goalAchieved = true;
+                    break;
+
                 default:
                     return Result<string?>.Failure(Error.EngineError($"Unknown think decision: {thinkResult.Decision}"));
             }

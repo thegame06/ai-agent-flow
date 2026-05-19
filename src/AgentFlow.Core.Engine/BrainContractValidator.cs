@@ -7,6 +7,8 @@ internal static class BrainContractValidator
 {
     internal static ThinkResult NormalizeThinkResult(ThinkResult candidate, string brainName)
     {
+        candidate = CoerceCommonThinkResultVariants(candidate);
+
         var errors = ValidateThinkResult(candidate);
         if (errors.Count == 0)
             return candidate;
@@ -18,6 +20,43 @@ internal static class BrainContractValidator
             FinalAnswer = SerializeContractErrors(brainName, "ThinkResult", errors),
             TokensUsed = candidate.TokensUsed
         };
+    }
+
+    private static ThinkResult CoerceCommonThinkResultVariants(ThinkResult candidate)
+    {
+        if (candidate.Decision == ThinkDecision.RequestMoreContext &&
+            !string.IsNullOrWhiteSpace(candidate.FinalAnswer) &&
+            string.IsNullOrWhiteSpace(candidate.NextToolName) &&
+            string.IsNullOrWhiteSpace(candidate.NextToolInputJson))
+        {
+            return candidate with
+            {
+                Decision = ThinkDecision.ProvideFinalAnswer
+            };
+        }
+
+        if (candidate.Decision == ThinkDecision.ProvideFinalAnswer &&
+            string.IsNullOrWhiteSpace(candidate.FinalAnswer) &&
+            !string.IsNullOrWhiteSpace(candidate.Rationale))
+        {
+            return candidate with
+            {
+                FinalAnswer = candidate.Rationale
+            };
+        }
+
+        if (candidate.Decision == ThinkDecision.UseTool &&
+            !string.IsNullOrWhiteSpace(candidate.NextToolName) &&
+            !string.IsNullOrWhiteSpace(candidate.NextToolInputJson) &&
+            !string.IsNullOrWhiteSpace(candidate.FinalAnswer))
+        {
+            return candidate with
+            {
+                FinalAnswer = null
+            };
+        }
+
+        return candidate;
     }
 
     internal static ObserveResult NormalizeObserveResult(ObserveResult candidate, string brainName)

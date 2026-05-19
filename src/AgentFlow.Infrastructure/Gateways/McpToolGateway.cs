@@ -49,18 +49,34 @@ public sealed class McpToolGateway : IMcpToolGateway
         if (!string.Equals(tenantMcp.Runtime, "MicrosoftAgentFramework", StringComparison.OrdinalIgnoreCase))
             return ToolResult.Failure("MCP_RUNTIME_UNSUPPORTED", "MCP runtime must be MicrosoftAgentFramework.");
 
-        if (tenantMcp.AllowedServers.Count > 0 &&
-            !tenantMcp.AllowedServers.Any(x => string.Equals(x, serverName, StringComparison.OrdinalIgnoreCase)))
-            return ToolResult.Failure("MCP_SERVER_NOT_ALLOWED", $"Server {serverName} is not enabled for this tenant.");
-
         // 1. Resolve Server config
         var servers = _configuration.GetSection("Mcp:Servers").Get<List<McpServerConfig>>() ?? new List<McpServerConfig>();
-        var server = servers.FirstOrDefault(s => s.Name == serverName);
+        var server = servers.FirstOrDefault(s => string.Equals(s.Name, serverName, StringComparison.OrdinalIgnoreCase));
 
         if (server == null)
         {
             _logger.LogWarning("SECURITY ALERT: MCP Server {ServerName} not found in configuration.", serverName);
             return ToolResult.Failure("MCP_SECURITY", $"Server {serverName} is not a trusted MCP endpoint.");
+        }
+
+        if (tenantMcp.AllowedServers.Count > 0 &&
+            !tenantMcp.AllowedServers.Any(x => string.Equals(x, serverName, StringComparison.OrdinalIgnoreCase)))
+        {
+            if (IsPlatformManagedServer(serverName))
+            {
+                tenantMcp = await AutoAllowPlatformManagedServerAsync(tenantMcp, serverName, context, ct);
+            }
+
+            if (!tenantMcp.AllowedServers.Any(x => string.Equals(x, serverName, StringComparison.OrdinalIgnoreCase)))
+            {
+                var allowed = tenantMcp.AllowedServers.Count == 0
+                    ? "none"
+                    : string.Join(", ", tenantMcp.AllowedServers);
+
+                return ToolResult.Failure(
+                    "MCP_SERVER_NOT_ALLOWED",
+                    $"Server {serverName} is not enabled for this tenant. Allowed servers: {allowed}.");
+            }
         }
 
         // 2. Multi-tenancy Isolation Check
@@ -174,6 +190,47 @@ public sealed class McpToolGateway : IMcpToolGateway
 
         return ToolResult.Failure("MCP_ERROR", $"Remote execution failed: {lastException?.Message ?? "unknown error"}");
     }
+
+    private async Task<TenantMcpSettings> AutoAllowPlatformManagedServerAsync(
+        TenantMcpSettings tenantMcp,
+        string serverName,
+        ToolExecutionContext context,
+        CancellationToken ct)
+    {
+        try
+        {
+            var updated = tenantMcp with
+            {
+                AllowedServers = tenantMcp.AllowedServers
+                    .Append(serverName)
+                    .Where(x => !string.IsNullOrWhiteSpace(x))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToArray(),
+                UpdatedAt = DateTimeOffset.UtcNow,
+                UpdatedBy = string.IsNullOrWhiteSpace(context.UserId) ? "system:mcp-autofix" : context.UserId
+            };
+
+            await _tenantMcpSettingsStore.SaveAsync(updated, ct);
+            _logger.LogWarning(
+                "MCP_AUTOFIX: Added platform-managed server {ServerName} to tenant {TenantId} allowlist.",
+                serverName,
+                context.TenantId);
+
+            return updated;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "MCP_AUTOFIX_FAILED: Could not add platform-managed server {ServerName} to tenant {TenantId}.",
+                serverName,
+                context.TenantId);
+            return tenantMcp;
+        }
+    }
+
+    private static bool IsPlatformManagedServer(string serverName)
+        => string.Equals(serverName, "agentflow-mcp-server", StringComparison.OrdinalIgnoreCase);
 
     private McpToolPolicyContract EvaluatePolicy(string serverName, string toolName, ToolExecutionContext context)
     {

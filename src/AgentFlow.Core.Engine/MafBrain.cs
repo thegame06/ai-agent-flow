@@ -197,6 +197,8 @@ public sealed class MafBrain : IAgentBrain
 
             If you need current external data, call the matching tool through Microsoft Agent Framework.
             Tool input must be a JSON string. After a tool call, still return the strict JSON decision contract.
+            If you need to ask the user a clarifying question, use ProvideFinalAnswer and place the question in finalAnswer.
+            Use RequestMoreContext only when the system should pause without sending a normal customer-facing reply.
             """;
     }
 

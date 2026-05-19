@@ -71,11 +71,15 @@ export default function ExecutionsPage() {
             loading={loading}
             getRowId={(row) => row.id}
             pageSizeOptions={[10, 25, 50]}
-            onRowClick={(params) => navigate(paths.dashboard.executionDetail(params.row.id))}
+            onRowClick={(params) => {
+              if (params.row.kind === 'agent') navigate(paths.dashboard.executionDetail(params.row.id));
+            }}
             sx={{
               border: 0,
-              '& .MuiDataGrid-row': { cursor: 'pointer' },
+              '& .MuiDataGrid-row': { cursor: 'default' },
+              '& .execution-row-agent': { cursor: 'pointer' },
             }}
+            getRowClassName={(params) => `execution-row-${params.row.kind}`}
           />
         </Card>
       </DashboardContent>
