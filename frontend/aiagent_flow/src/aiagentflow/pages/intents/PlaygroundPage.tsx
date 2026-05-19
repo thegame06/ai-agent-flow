@@ -1,21 +1,17 @@
-import type { ClassificationResult, ExplanationData } from './types';
-
-import { useState } from 'react';
 import { Helmet } from 'react-helmet-async';
+import { useState } from 'react';
 
-import Card from '@mui/material/Card';
-import Stack from '@mui/material/Stack';
 import Alert from '@mui/material/Alert';
+import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
-import Container from '@mui/material/Container';
-import TextField from '@mui/material/TextField';
+import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
 import CircularProgress from '@mui/material/CircularProgress';
-import IconButton from '@mui/material/IconButton';
+import Stack from '@mui/material/Stack';
+import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 
-import axios from 'src/lib/axios';
-import { endpoints } from 'src/lib/axios';
+import axios, { endpoints } from 'src/lib/axios';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
 
@@ -24,6 +20,8 @@ import { Iconify } from 'src/components/iconify';
 import { BestMatchCard } from './BestMatchCard';
 import { CandidatesListCard } from './CandidatesListCard';
 import { ExplanationCard } from './ExplanationCard';
+
+import type { ClassificationResult, ExplanationData } from './types';
 
 // ----------------------------------------------------------------------
 
@@ -58,7 +56,7 @@ export default function PlaygroundPage() {
     } catch (err: any) {
       console.error('Classification failed:', err);
       const errorMsg = err?.response?.data?.message || err?.message || 'Error al clasificar mensaje';
-      setError(`${errorMsg}. Verifica que el backend esté corriendo en http://localhost:5183 y que existan intenciones configuradas.`);
+      setError(`${errorMsg}. Verifica que el backend esté corriendo en http://localhost:5000 y que existan intenciones configuradas.`);
     } finally {
       setLoading(false);
     }

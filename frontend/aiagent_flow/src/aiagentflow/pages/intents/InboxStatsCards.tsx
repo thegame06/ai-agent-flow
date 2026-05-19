@@ -1,8 +1,3 @@
-// Types for Inbox are already defined in types.ts
-// This file contains the stats cards component
-
-import type { InboxStats } from './types';
-
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import Grid from '@mui/material/Grid';
@@ -10,6 +5,8 @@ import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 
 import { Iconify } from 'src/components/iconify';
+
+import type { InboxStats } from './types';
 
 // ----------------------------------------------------------------------
 

@@ -1,5 +1,5 @@
 import { Helmet } from 'react-helmet-async';
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import Alert from '@mui/material/Alert';
 import Button from '@mui/material/Button';
@@ -17,7 +17,7 @@ import { IntentFilters } from './IntentFilters';
 import { IntentsList } from './IntentsList';
 import { IntentSearchBar } from './IntentSearchBar';
 
-import type { Intent, IntentFilter, IntentFormData, Workflow, Agent } from './types';
+import type { Agent, Intent, IntentFilter, IntentFormData, Workflow } from './types';
 
 // ----------------------------------------------------------------------
 
@@ -49,7 +49,7 @@ export default function IntentsPage() {
       setAgents(agentsRes.data || []);
     } catch (err) {
       console.error('Failed to load intents:', err);
-      setError('Error al cargar intenciones. Verifica que el backend esté corriendo en http://localhost:5183');
+      setError('Error al cargar intenciones. Verifica que el backend esté corriendo en http://localhost:5000');
       setIntents([]);
     } finally {
       setLoading(false);

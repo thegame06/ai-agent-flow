@@ -1,24 +1,22 @@
-import type { InboxConversation, InboxStats, InboxFilter } from './types';
-
-import { useCallback, useEffect, useState } from 'react';
 import { Helmet } from 'react-helmet-async';
+import { useCallback, useEffect, useState } from 'react';
 
 import Alert from '@mui/material/Alert';
 import Button from '@mui/material/Button';
-import Container from '@mui/material/Container';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 
-import axios from 'src/lib/axios';
-import { endpoints } from 'src/lib/axios';
+import axios, { endpoints } from 'src/lib/axios';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
 
 import { Iconify } from 'src/components/iconify';
 
-import { InboxTable } from './InboxTable';
 import { InboxFilters } from './InboxFilters';
 import { InboxStatsCards } from './InboxStatsCards';
+import { InboxTable } from './InboxTable';
+
+import type { InboxConversation, InboxFilter, InboxStats } from './types';
 
 // ----------------------------------------------------------------------
 
@@ -42,7 +40,7 @@ export default function InboxPage() {
       setStats(statsRes.data || null);
     } catch (err) {
       console.error('Failed to load inbox data:', err);
-      setError('Error al cargar inbox. Verifica que el backend esté corriendo en http://localhost:5183');
+      setError('Error al cargar inbox. Verifica que el backend esté corriendo en http://localhost:5000');
       setConversations([]);
       setStats(null);
     } finally {
