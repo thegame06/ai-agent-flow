@@ -9,10 +9,10 @@ import Alert from '@mui/material/Alert';
 import Button from '@mui/material/Button';
 import Container from '@mui/material/Container';
 import TextField from '@mui/material/TextField';
-import Typography from '@mui/material/Typography';
 import CardContent from '@mui/material/CardContent';
-import IconButton from '@mui/material/IconButton';
 import CircularProgress from '@mui/material/CircularProgress';
+import IconButton from '@mui/material/IconButton';
+import Typography from '@mui/material/Typography';
 
 import axios from 'src/lib/axios';
 import { endpoints } from 'src/lib/axios';
@@ -77,7 +77,7 @@ export default function PlaygroundPage() {
   return (
     <>
       <Helmet>
-        <title>Intent Playground | AgentFlow</title>
+        <title>Prueba de Clasificación | AgentFlow</title>
       </Helmet>
 
       <DashboardContent maxWidth="lg">
@@ -85,9 +85,9 @@ export default function PlaygroundPage() {
           {/* Header */}
           <Stack direction="row" justifyContent="space-between" alignItems="center">
             <Stack spacing={1}>
-              <Typography variant="h4">Intent Classification Playground</Typography>
+              <Typography variant="h4">Prueba de Clasificación</Typography>
               <Typography variant="body2" color="text.secondary">
-                Test intent classification in real-time
+                Prueba cómo el sistema clasifica mensajes en tiempo real
               </Typography>
             </Stack>
             <Button
@@ -95,7 +95,7 @@ export default function PlaygroundPage() {
               startIcon={<Iconify icon="eva:arrow-back-outline" />}
               href="/dashboard/intents"
             >
-              Back to Intents
+              Volver a reglas
             </Button>
           </Stack>
 
@@ -114,10 +114,10 @@ export default function PlaygroundPage() {
                   fullWidth
                   multiline
                   rows={4}
-                  label="Test Message"
+                  label="Mensaje de prueba"
                   value={testMessage}
                   onChange={(e) => setTestMessage(e.target.value)}
-                  placeholder="Type a message to classify... (e.g., 'Quiero solicitar un préstamo')"
+                  placeholder="Escribe un mensaje para clasificar (ej: 'Quiero solicitar un préstamo')"
                   onKeyPress={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault();
@@ -129,7 +129,7 @@ export default function PlaygroundPage() {
                 <Stack direction="row" justifyContent="space-between" alignItems="center">
                   <Stack direction="row" spacing={1}>
                     <Typography variant="caption" color="text.disabled">
-                      Try:
+                      Prueba con:
                     </Typography>
                     {SAMPLE_MESSAGES.slice(0, 3).map((msg, index) => (
                       <Button
@@ -139,7 +139,7 @@ export default function PlaygroundPage() {
                         onClick={() => loadSample(msg)}
                         sx={{ fontSize: '0.75rem' }}
                       >
-                        "{msg}"
+                        &quot;{msg}&quot;
                       </Button>
                     ))}
                   </Stack>
@@ -150,7 +150,7 @@ export default function PlaygroundPage() {
                     disabled={!testMessage.trim() || loading}
                     startIcon={loading ? <CircularProgress size={20} /> : <Iconify icon="eva:flash-fill" />}
                   >
-                    {loading ? 'Classifying...' : 'Classify Intent'}
+                    {loading ? 'Clasificando...' : 'Clasificar mensaje'}
                   </Button>
                 </Stack>
               </Stack>
@@ -173,9 +173,9 @@ export default function PlaygroundPage() {
           {result && (
             <Stack spacing={3}>
               <Stack direction="row" justifyContent="space-between" alignItems="center">
-                <Typography variant="h6">Classification Results</Typography>
+                <Typography variant="h6">Resultados de clasificación</Typography>
                 <Typography variant="caption" color="text.disabled">
-                  Processed in {result.processing_time_ms}ms
+                  Procesado en {result.processing_time_ms}ms
                 </Typography>
               </Stack>
 
@@ -198,16 +198,16 @@ export default function PlaygroundPage() {
                 <Stack spacing={2}>
                   <Stack direction="row" spacing={1} alignItems="center">
                     <Iconify icon="eva:bulb-outline" width={24} />
-                    <Typography variant="subtitle2">How to use the Playground</Typography>
+                    <Typography variant="subtitle2">Cómo usar esta herramienta</Typography>
                   </Stack>
                   <Typography variant="body2" color="text.secondary">
-                    1. Type or select a sample message above
+                    1. Escribe o selecciona un mensaje de prueba arriba
                     <br />
-                    2. Click "Classify Intent" to see how the system categorizes it
+                    2. Haz clic en &quot;Clasificar mensaje&quot; para ver cómo lo categoriza el sistema
                     <br />
-                    3. Review the best match, all candidates, and explanation for the decision
+                    3. Revisa la mejor coincidencia, todos los candidatos y la explicación de la decisión
                     <br />
-                    4. Use this to test and refine your intent definitions
+                    4. Usa esto para probar y refinar tus reglas de intención
                   </Typography>
                 </Stack>
               </CardContent>

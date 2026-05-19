@@ -1,13 +1,13 @@
 import type { ExplanationData } from './types';
 
-import Card from '@mui/material/Card';
-import Stack from '@mui/material/Stack';
-import CardHeader from '@mui/material/CardHeader';
-import Typography from '@mui/material/Typography';
-import CardContent from '@mui/material/CardContent';
-import LinearProgress from '@mui/material/LinearProgress';
-import Box from '@mui/material/Box';
 import Alert from '@mui/material/Alert';
+import Box from '@mui/material/Box';
+import Card from '@mui/material/Card';
+import CardContent from '@mui/material/CardContent';
+import CardHeader from '@mui/material/CardHeader';
+import LinearProgress from '@mui/material/LinearProgress';
+import Stack from '@mui/material/Stack';
+import Typography from '@mui/material/Typography';
 
 // ----------------------------------------------------------------------
 
@@ -19,8 +19,8 @@ export function ExplanationCard({ explanation }: ExplanationCardProps) {
   return (
     <Card>
       <CardHeader 
-        title="Decision Explanation" 
-        subheader="Why this intent was selected"
+        title="Explicación de la decisión" 
+        subheader="Por qué se seleccionó esta intención"
       />
       <CardContent>
         <Stack spacing={3}>
@@ -32,7 +32,7 @@ export function ExplanationCard({ explanation }: ExplanationCardProps) {
 
           <Box>
             <Typography variant="subtitle2" sx={{ mb: 2 }}>
-              Contributing Factors
+              Factores contribuyentes
             </Typography>
             <Stack spacing={2}>
               {explanation.factors.map((factor, index) => (
@@ -59,7 +59,7 @@ export function ExplanationCard({ explanation }: ExplanationCardProps) {
           </Box>
 
           <Typography variant="caption" color="text.disabled">
-            {explanation.alternatives_considered} alternative intents were considered
+            {explanation.alternatives_considered} intenciones alternativas fueron consideradas
           </Typography>
         </Stack>
       </CardContent>

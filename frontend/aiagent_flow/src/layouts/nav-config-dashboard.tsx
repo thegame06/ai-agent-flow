@@ -51,14 +51,14 @@ export const navData: NavSectionProps['data'] = [
         icon: ICONS.agent,
       },
       {
-        title: 'Intenciones del cliente',
+        title: 'Reglas de intención',
         path: paths.dashboard.intents,
         icon: ICONS.intent,
       },
       {
-        title: 'Motivos del cliente',
+        title: 'Orquestación de managers',
         path: paths.dashboard.intentMap,
-        icon: ICONS.intent,
+        icon: icon('mdi:sitemap-outline'),
       },
     ],
   },
@@ -66,14 +66,14 @@ export const navData: NavSectionProps['data'] = [
     subheader: 'Operacion',
     items: [
       {
-        title: 'Conversaciones',
+        title: 'Bandeja de conversaciones',
         path: paths.dashboard.inbox,
         icon: ICONS.inbox,
       },
       {
-        title: 'Bandeja de entrada',
+        title: 'Hilos de chat',
         path: paths.dashboard.threads,
-        icon: ICONS.inbox,
+        icon: icon('mdi:forum-outline'),
       },
       {
         title: 'Ventas y cobros',

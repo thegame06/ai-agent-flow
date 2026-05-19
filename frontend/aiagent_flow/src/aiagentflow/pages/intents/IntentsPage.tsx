@@ -1,18 +1,14 @@
-import type { Intent, IntentFormData, IntentFilter } from './types';
+import type { Intent, IntentFilter, IntentFormData } from './types';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Helmet } from 'react-helmet-async';
 
-import Stack from '@mui/material/Stack';
 import Alert from '@mui/material/Alert';
 import Button from '@mui/material/Button';
-import Container from '@mui/material/Container';
+import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
-import CircularProgress from '@mui/material/CircularProgress';
-import Box from '@mui/material/Box';
 
-import axios from 'src/lib/axios';
-import { endpoints } from 'src/lib/axios';
+import axios, { endpoints } from 'src/lib/axios';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
 
@@ -41,8 +37,8 @@ export default function IntentsPage() {
       setError(null);
       const res = await axios.get(endpoints.agentflow.intentRouting.rules(tenantId));
       setIntents(res.data || []);
-    } catch (error) {
-      console.error('Failed to load intents:', error);
+    } catch (err) {
+      console.error('Failed to load intents:', err);
       setError('Error al cargar intenciones. Verifica que el backend esté corriendo en http://localhost:5183');
       setIntents([]);
     } finally {
@@ -68,8 +64,8 @@ export default function IntentsPage() {
         prev.map((i) => (i.id === intentId ? { ...i, enabled } : i))
       );
       setError(null);
-    } catch (error) {
-      console.error('Failed to toggle intent:', error);
+    } catch (err) {
+      console.error('Failed to toggle intent:', err);
       setError(`Error al ${enabled ? 'activar' : 'desactivar'} intención. Verifica la conexión con el backend.`);
     }
   };
@@ -81,8 +77,8 @@ export default function IntentsPage() {
       await axios.delete(endpoints.agentflow.intentRouting.ruleById(tenantId, intentId));
       setIntents((prev) => prev.filter((i) => i.id !== intentId));
       setError(null);
-    } catch (error) {
-      console.error('Failed to delete intent:', error);
+    } catch (err) {
+      console.error('Failed to delete intent:', err);
       setError('Error al eliminar intención. Verifica la conexión con el backend.');
     }
   };
@@ -103,8 +99,8 @@ export default function IntentsPage() {
       setOpenDialog(false);
       setSelectedIntent(null);
       setError(null);
-    } catch (error) {
-      console.error('Failed to save intent:', error);
+    } catch (err) {
+      console.error('Failed to save intent:', err);
       setError(`Error al ${selectedIntent ? 'actualizar' : 'crear'} intención. Verifica los datos y la conexión con el backend.`);
     }
   };
@@ -136,7 +132,7 @@ export default function IntentsPage() {
   return (
     <>
       <Helmet>
-        <title>Intent Management | AgentFlow</title>
+        <title>Reglas de Intención | AgentFlow</title>
       </Helmet>
 
       <DashboardContent maxWidth="xl">
@@ -144,9 +140,9 @@ export default function IntentsPage() {
           {/* Header */}
           <Stack direction="row" justifyContent="space-between" alignItems="center">
             <Stack spacing={1}>
-              <Typography variant="h4">Intent Management</Typography>
+              <Typography variant="h4">Reglas de Intención</Typography>
               <Typography variant="body2" color="text.secondary">
-                Manage and configure intent routing rules for conversations
+                Configura las reglas de routing para clasificar automáticamente los mensajes entrantes
               </Typography>
             </Stack>
             <Stack direction="row" spacing={2}>
@@ -155,7 +151,7 @@ export default function IntentsPage() {
                 startIcon={<Iconify icon="eva:play-circle-outline" />}
                 href="/dashboard/intents/playground"
               >
-                Playground
+                Probar clasificación
               </Button>
               <Button
                 variant="contained"
@@ -165,7 +161,7 @@ export default function IntentsPage() {
                   setOpenDialog(true);
                 }}
               >
-                Create Intent
+                Nueva regla
               </Button>
             </Stack>
           </Stack>

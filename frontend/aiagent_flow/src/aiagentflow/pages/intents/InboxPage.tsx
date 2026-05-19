@@ -1,12 +1,12 @@
 import type { InboxConversation, InboxStats, InboxFilter } from './types';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Helmet } from 'react-helmet-async';
 
-import Stack from '@mui/material/Stack';
 import Alert from '@mui/material/Alert';
 import Button from '@mui/material/Button';
 import Container from '@mui/material/Container';
+import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 
 import axios from 'src/lib/axios';
@@ -40,8 +40,8 @@ export default function InboxPage() {
       ]);
       setConversations(conversationsRes.data || []);
       setStats(statsRes.data || null);
-    } catch (error) {
-      console.error('Failed to load inbox data:', error);
+    } catch (err) {
+      console.error('Failed to load inbox data:', err);
       setError('Error al cargar inbox. Verifica que el backend esté corriendo en http://localhost:5183');
       setConversations([]);
       setStats(null);
@@ -67,8 +67,8 @@ export default function InboxPage() {
       );
       await loadData();
       setError(null);
-    } catch (error) {
-      console.error('Failed to reassign conversation:', error);
+    } catch (err) {
+      console.error('Failed to reassign conversation:', err);
       setError('Error al reasignar conversación. Verifica la conexión con el backend.');
     }
   };
@@ -82,8 +82,8 @@ export default function InboxPage() {
       );
       await loadData();
       setError(null);
-    } catch (error) {
-      console.error('Failed to resolve conversation:', error);
+    } catch (err) {
+      console.error('Failed to resolve conversation:', err);
       setError('Error al resolver conversación. Verifica la conexión con el backend.');
     }
   };
@@ -106,7 +106,7 @@ export default function InboxPage() {
   return (
     <>
       <Helmet>
-        <title>Conversation Inbox | AgentFlow</title>
+        <title>Bandeja de Conversaciones | AgentFlow</title>
       </Helmet>
 
       <DashboardContent maxWidth="xl">
@@ -114,9 +114,9 @@ export default function InboxPage() {
           {/* Header */}
           <Stack direction="row" justifyContent="space-between" alignItems="center">
             <Stack spacing={1}>
-              <Typography variant="h4">Conversation Inbox</Typography>
+              <Typography variant="h4">Bandeja de Conversaciones</Typography>
               <Typography variant="body2" color="text.secondary">
-                Monitor and manage conversations requiring classification or review
+                Revisa conversaciones que requieren clasificación manual o atención humana
               </Typography>
             </Stack>
             <Stack direction="row" spacing={2}>
@@ -125,13 +125,13 @@ export default function InboxPage() {
                 startIcon={<Iconify icon="eva:refresh-outline" />}
                 onClick={loadData}
               >
-                Refresh
+                Actualizar
               </Button>
               <Button
                 variant="outlined"
                 startIcon={<Iconify icon="eva:settings-2-outline" />}
               >
-                Settings
+                Configuración
               </Button>
             </Stack>
           </Stack>

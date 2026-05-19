@@ -41,10 +41,10 @@ export function IntentsList({ intents, loading, onEdit, onToggle, onDelete }: In
       <Card sx={{ p: 5, textAlign: 'center' }}>
         <Iconify icon="eva:inbox-outline" width={64} sx={{ mx: 'auto', mb: 2, color: 'text.disabled' }} />
         <Typography variant="h6" color="text.secondary">
-          No intents found
+          No hay reglas configuradas
         </Typography>
         <Typography variant="body2" color="text.disabled" sx={{ mt: 1 }}>
-          Create your first intent to get started
+          Crea tu primera regla de intención para comenzar
         </Typography>
       </Card>
     );
@@ -56,13 +56,13 @@ export function IntentsList({ intents, loading, onEdit, onToggle, onDelete }: In
         <Table>
           <TableHead>
             <TableRow>
-              <TableCell>Intent</TableCell>
-              <TableCell>Category</TableCell>
-              <TableCell>Examples</TableCell>
-              <TableCell>Priority</TableCell>
-              <TableCell>Confidence</TableCell>
-              <TableCell>Enabled</TableCell>
-              <TableCell align="right">Actions</TableCell>
+              <TableCell>Intención</TableCell>
+              <TableCell>Categoría</TableCell>
+              <TableCell>Ejemplos</TableCell>
+              <TableCell>Prioridad</TableCell>
+              <TableCell>Confianza</TableCell>
+              <TableCell>Activo</TableCell>
+              <TableCell align="right">Acciones</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -80,7 +80,7 @@ export function IntentsList({ intents, loading, onEdit, onToggle, onDelete }: In
                       {intent.description}
                     </Typography>
                     <Typography variant="caption" color="text.disabled">
-                      Key: {intent.key}
+                      Clave: {intent.key}
                     </Typography>
                   </Stack>
                 </TableCell>
@@ -94,7 +94,7 @@ export function IntentsList({ intents, loading, onEdit, onToggle, onDelete }: In
                 </TableCell>
                 <TableCell>
                   <Typography variant="body2" color="text.secondary">
-                    {intent.examples.length} examples
+                    {intent.examples.length} ejemplos
                   </Typography>
                 </TableCell>
                 <TableCell>

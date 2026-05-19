@@ -1,6 +1,6 @@
 import type { Intent, IntentFormData } from './types';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 import Box from '@mui/material/Box';
 import Chip from '@mui/material/Chip';
@@ -19,8 +19,8 @@ import OutlinedInput from '@mui/material/OutlinedInput';
 import DialogActions from '@mui/material/DialogActions';
 import DialogContent from '@mui/material/DialogContent';
 import FormControlLabel from '@mui/material/FormControlLabel';
-import Switch from '@mui/material/Switch';
 import Slider from '@mui/material/Slider';
+import Switch from '@mui/material/Switch';
 
 // ----------------------------------------------------------------------
 
@@ -32,12 +32,12 @@ interface CreateIntentDialogProps {
 }
 
 const CATEGORIES = [
-  'Customer Service',
-  'Sales',
-  'Support',
-  'Information',
-  'Transaction',
-  'Other',
+  'Atención al cliente',
+  'Ventas',
+  'Soporte técnico',
+  'Información',
+  'Transacciones',
+  'Otros',
 ];
 
 export function CreateIntentDialog({ open, intent, onClose, onSave }: CreateIntentDialogProps) {
@@ -92,10 +92,10 @@ export function CreateIntentDialog({ open, intent, onClose, onSave }: CreateInte
   const validate = (): boolean => {
     const newErrors: Record<string, string> = {};
     
-    if (!formData.key.trim()) newErrors.key = 'Key is required';
-    if (!formData.name.trim()) newErrors.name = 'Name is required';
-    if (!formData.description.trim()) newErrors.description = 'Description is required';
-    if (formData.examples.length === 0) newErrors.examples = 'At least one example is required';
+    if (!formData.key.trim()) newErrors.key = 'La clave es obligatoria';
+    if (!formData.name.trim()) newErrors.name = 'El nombre es obligatorio';
+    if (!formData.description.trim()) newErrors.description = 'La descripción es obligatoria';
+    if (formData.examples.length === 0) newErrors.examples = 'Se requiere al menos un ejemplo';
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -133,7 +133,7 @@ export function CreateIntentDialog({ open, intent, onClose, onSave }: CreateInte
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-      <DialogTitle>{intent ? 'Edit Intent' : 'Create New Intent'}</DialogTitle>
+      <DialogTitle>{intent ? 'Editar regla de intención' : 'Nueva regla de intención'}</DialogTitle>
       <Divider />
       
       <DialogContent>
@@ -141,39 +141,39 @@ export function CreateIntentDialog({ open, intent, onClose, onSave }: CreateInte
           {/* Basic Information */}
           <TextField
             fullWidth
-            label="Intent Key"
+            label="Clave única"
             value={formData.key}
             onChange={(e) => setFormData({ ...formData, key: e.target.value })}
             error={!!errors.key}
-            helperText={errors.key || 'Unique identifier (e.g., loan_application)'}
+            helperText={errors.key || 'Identificador único (ej: solicitud_prestamo)'}
             disabled={!!intent}
           />
 
           <TextField
             fullWidth
-            label="Intent Name"
+            label="Nombre"
             value={formData.name}
             onChange={(e) => setFormData({ ...formData, name: e.target.value })}
             error={!!errors.name}
-            helperText={errors.name || 'Display name for the intent'}
+            helperText={errors.name || 'Nombre descriptivo de la intención'}
           />
 
           <TextField
             fullWidth
             multiline
             rows={2}
-            label="Description"
+            label="Descripción"
             value={formData.description}
             onChange={(e) => setFormData({ ...formData, description: e.target.value })}
             error={!!errors.description}
-            helperText={errors.description || 'What does this intent represent?'}
+            helperText={errors.description || '¿Qué representa esta intención?'}
           />
 
           <FormControl fullWidth>
-            <InputLabel>Category</InputLabel>
+            <InputLabel>Categoría</InputLabel>
             <Select
               value={formData.category}
-              label="Category"
+              label="Categoría"
               onChange={(e) => setFormData({ ...formData, category: e.target.value })}
             >
               {CATEGORIES.map((cat) => (
@@ -185,18 +185,18 @@ export function CreateIntentDialog({ open, intent, onClose, onSave }: CreateInte
           {/* Examples */}
           <Box>
             <Typography variant="subtitle2" sx={{ mb: 1 }}>
-              Examples {errors.examples && <Typography component="span" color="error" variant="caption">({errors.examples})</Typography>}
+              Ejemplos {errors.examples && <Typography component="span" color="error" variant="caption">({errors.examples})</Typography>}
             </Typography>
             <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
               <TextField
                 fullWidth
                 size="small"
-                placeholder="Add an example phrase..."
+                placeholder="Agrega una frase de ejemplo..."
                 value={exampleInput}
                 onChange={(e) => setExampleInput(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && addExample()}
               />
-              <Button variant="outlined" onClick={addExample}>Add</Button>
+              <Button variant="outlined" onClick={addExample}>Agregar</Button>
             </Stack>
             <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
               {formData.examples.map((example, index) => (
@@ -212,17 +212,17 @@ export function CreateIntentDialog({ open, intent, onClose, onSave }: CreateInte
 
           {/* Synonyms */}
           <Box>
-            <Typography variant="subtitle2" sx={{ mb: 1 }}>Synonyms (Optional)</Typography>
+            <Typography variant="subtitle2" sx={{ mb: 1 }}>Sinónimos (opcional)</Typography>
             <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
               <TextField
                 fullWidth
                 size="small"
-                placeholder="Add a synonym..."
+                placeholder="Agrega un sinónimo..."
                 value={synonymInput}
                 onChange={(e) => setSynonymInput(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && addSynonym()}
               />
-              <Button variant="outlined" onClick={addSynonym}>Add</Button>
+              <Button variant="outlined" onClick={addSynonym}>Agregar</Button>
             </Stack>
             <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
               {formData.synonyms.map((synonym, index) => (
@@ -239,7 +239,7 @@ export function CreateIntentDialog({ open, intent, onClose, onSave }: CreateInte
 
           {/* Advanced Settings */}
           <Box>
-            <Typography variant="subtitle2" sx={{ mb: 2 }}>Priority (1 = Highest)</Typography>
+            <Typography variant="subtitle2" sx={{ mb: 2 }}>Prioridad (1 = Más alta)</Typography>
             <Slider
               value={formData.priority}
               onChange={(_, value) => setFormData({ ...formData, priority: value as number })}

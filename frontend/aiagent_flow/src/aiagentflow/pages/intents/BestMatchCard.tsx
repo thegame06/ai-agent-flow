@@ -1,10 +1,10 @@
 import Card from '@mui/material/Card';
-import Chip from '@mui/material/Chip';
-import Stack from '@mui/material/Stack';
-import CardContent from '@mui/material/CardContent';
-import Typography from '@mui/material/Typography';
-import LinearProgress from '@mui/material/LinearProgress';
 import Box from '@mui/material/Box';
+import CardContent from '@mui/material/CardContent';
+import Chip from '@mui/material/Chip';
+import LinearProgress from '@mui/material/LinearProgress';
+import Stack from '@mui/material/Stack';
+import Typography from '@mui/material/Typography';
 
 import { Iconify } from 'src/components/iconify';
 
@@ -37,7 +37,7 @@ export function BestMatchCard({ match, confidence, confidenceLevel }: BestMatchC
           <Stack direction="row" alignItems="center" justifyContent="space-between">
             <Stack direction="row" alignItems="center" spacing={1}>
               <Iconify icon="eva:checkmark-circle-2-fill" width={24} color="success.main" />
-              <Typography variant="h6">Best Match</Typography>
+              <Typography variant="h6">Mejor coincidencia</Typography>
             </Stack>
             <Chip 
               label={confidenceLevel} 
@@ -62,7 +62,7 @@ export function BestMatchCard({ match, confidence, confidenceLevel }: BestMatchC
           <Box>
             <Stack direction="row" justifyContent="space-between" sx={{ mb: 1 }}>
               <Typography variant="body2" color="text.secondary">
-                Confidence Score
+                Puntuación de confianza
               </Typography>
               <Typography variant="body2" fontWeight="bold">
                 {(confidence * 100).toFixed(1)}%

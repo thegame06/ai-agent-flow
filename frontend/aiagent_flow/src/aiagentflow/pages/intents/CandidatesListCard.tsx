@@ -1,18 +1,18 @@
 import type { IntentCandidate } from './types';
 
+import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
-import Stack from '@mui/material/Stack';
+import CardHeader from '@mui/material/CardHeader';
 import Chip from '@mui/material/Chip';
+import LinearProgress from '@mui/material/LinearProgress';
+import Stack from '@mui/material/Stack';
 import Table from '@mui/material/Table';
-import TableRow from '@mui/material/TableRow';
 import TableBody from '@mui/material/TableBody';
 import TableCell from '@mui/material/TableCell';
-import TableHead from '@mui/material/TableHead';
-import CardHeader from '@mui/material/CardHeader';
-import Typography from '@mui/material/Typography';
 import TableContainer from '@mui/material/TableContainer';
-import LinearProgress from '@mui/material/LinearProgress';
-import Box from '@mui/material/Box';
+import TableHead from '@mui/material/TableHead';
+import TableRow from '@mui/material/TableRow';
+import Typography from '@mui/material/Typography';
 
 // ----------------------------------------------------------------------
 
@@ -23,14 +23,14 @@ interface CandidatesListCardProps {
 export function CandidatesListCard({ candidates }: CandidatesListCardProps) {
   return (
     <Card>
-      <CardHeader title="All Candidates" subheader={`${candidates.length} intents evaluated`} />
+      <CardHeader title="Todos los candidatos" subheader={`${candidates.length} intenciones evaluadas`} />
       <TableContainer>
         <Table size="small">
           <TableHead>
             <TableRow>
-              <TableCell>Intent</TableCell>
-              <TableCell>Score</TableCell>
-              <TableCell>Matched Features</TableCell>
+              <TableCell>Intención</TableCell>
+              <TableCell>Puntuación</TableCell>
+              <TableCell>Características coincidentes</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
