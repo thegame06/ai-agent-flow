@@ -1,4 +1,4 @@
-import type { Intent, IntentFormData } from './types';
+import type { Intent, IntentFormData, Workflow, Agent } from './types';
 
 import { useEffect, useState } from 'react';
 
@@ -27,6 +27,8 @@ import Switch from '@mui/material/Switch';
 interface CreateIntentDialogProps {
   open: boolean;
   intent: Intent | null;
+  workflows: Workflow[];
+  agents: Agent[];
   onClose: () => void;
   onSave: (data: IntentFormData) => Promise<void>;
 }
@@ -40,17 +42,18 @@ const CATEGORIES = [
   'Otros',
 ];
 
-export function CreateIntentDialog({ open, intent, onClose, onSave }: CreateIntentDialogProps) {
+export function CreateIntentDialog({ open, intent, workflows, agents, onClose, onSave }: CreateIntentDialogProps) {
   const [formData, setFormData] = useState<IntentFormData>({
     key: '',
     name: '',
     description: '',
-    category: 'Customer Service',
+    category: 'Atención al cliente',
     examples: [],
     synonyms: [],
     confidence_threshold: 0.7,
     priority: 5,
-    suggested_workflow: '',
+    workflow_id: '',
+    target_agent_id: '',
     enabled: true,
   });
 
@@ -69,7 +72,8 @@ export function CreateIntentDialog({ open, intent, onClose, onSave }: CreateInte
         synonyms: intent.synonyms,
         confidence_threshold: intent.confidence_threshold,
         priority: intent.priority,
-        suggested_workflow: intent.suggested_workflow || '',
+        workflow_id: intent.workflow_id || '',
+        target_agent_id: intent.target_agent_id || '',
         enabled: intent.enabled,
       });
     } else {
@@ -77,12 +81,13 @@ export function CreateIntentDialog({ open, intent, onClose, onSave }: CreateInte
         key: '',
         name: '',
         description: '',
-        category: 'Customer Service',
+        category: 'Atención al cliente',
         examples: [],
         synonyms: [],
         confidence_threshold: 0.7,
         priority: 5,
-        suggested_workflow: '',
+        workflow_id: '',
+        target_agent_id: '',
         enabled: true,
       });
     }
@@ -253,7 +258,7 @@ export function CreateIntentDialog({ open, intent, onClose, onSave }: CreateInte
 
           <Box>
             <Typography variant="subtitle2" sx={{ mb: 2 }}>
-              Confidence Threshold: {(formData.confidence_threshold * 100).toFixed(0)}%
+              Umbral de confianza: {(formData.confidence_threshold * 100).toFixed(0)}%
             </Typography>
             <Slider
               value={formData.confidence_threshold}
@@ -271,13 +276,39 @@ export function CreateIntentDialog({ open, intent, onClose, onSave }: CreateInte
             />
           </Box>
 
-          <TextField
-            fullWidth
-            label="Suggested Workflow (Optional)"
-            value={formData.suggested_workflow}
-            onChange={(e) => setFormData({ ...formData, suggested_workflow: e.target.value })}
-            helperText="Workflow key to trigger when this intent is detected"
-          />
+          {/* Workflow Selector */}
+          <FormControl fullWidth>
+            <InputLabel>Workflow (opcional)</InputLabel>
+            <Select
+              value={formData.workflow_id || ''}
+              label="Workflow (opcional)"
+              onChange={(e) => setFormData({ ...formData, workflow_id: e.target.value })}
+            >
+              <MenuItem value="">Sin workflow</MenuItem>
+              {workflows.map((workflow) => (
+                <MenuItem key={workflow.id} value={workflow.id}>
+                  {workflow.name || workflow.id}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+
+          {/* Agent Selector */}
+          <FormControl fullWidth>
+            <InputLabel>Agente destino (opcional)</InputLabel>
+            <Select
+              value={formData.target_agent_id || ''}
+              label="Agente destino (opcional)"
+              onChange={(e) => setFormData({ ...formData, target_agent_id: e.target.value })}
+            >
+              <MenuItem value="">Sin agente</MenuItem>
+              {agents.map((agent) => (
+                <MenuItem key={agent.id} value={agent.id}>
+                  {agent.name || agent.id}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
 
           <FormControlLabel
             control={
@@ -286,7 +317,7 @@ export function CreateIntentDialog({ open, intent, onClose, onSave }: CreateInte
                 onChange={(e) => setFormData({ ...formData, enabled: e.target.checked })}
               />
             }
-            label="Enabled"
+            label="Activado"
           />
         </Stack>
       </DialogContent>
@@ -294,10 +325,10 @@ export function CreateIntentDialog({ open, intent, onClose, onSave }: CreateInte
       <Divider />
       <DialogActions>
         <Button onClick={onClose} color="inherit">
-          Cancel
+          Cancelar
         </Button>
         <Button onClick={handleSave} variant="contained">
-          {intent ? 'Save Changes' : 'Create Intent'}
+          {intent ? 'Guardar cambios' : 'Crear regla'}
         </Button>
       </DialogActions>
     </Dialog>

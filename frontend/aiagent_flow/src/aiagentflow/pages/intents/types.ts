@@ -12,7 +12,9 @@ export interface Intent {
   synonyms: string[];
   confidence_threshold: number;
   priority: number;
-  suggested_workflow?: string;
+  workflow_id?: string;
+  workflow_name?: string;
+  target_agent_id?: string;
   enabled: boolean;
   is_base_intent: boolean;
   created_at: string;
@@ -34,13 +36,31 @@ export interface IntentFormData {
   synonyms: string[];
   confidence_threshold: number;
   priority: number;
-  suggested_workflow?: string;
+  workflow_id?: string;
+  target_agent_id?: string;
   enabled: boolean;
 }
 
 export interface IntentFilter {
   category: string;
   enabled: string;
+}
+
+// ----------------------------------------------------------------------
+// Workflow and Agent Types
+// ----------------------------------------------------------------------
+
+export interface Workflow {
+  id: string;
+  name: string;
+  description?: string;
+  status?: string;
+}
+
+export interface Agent {
+  id: string;
+  name: string;
+  status?: string;
 }
 
 // ----------------------------------------------------------------------

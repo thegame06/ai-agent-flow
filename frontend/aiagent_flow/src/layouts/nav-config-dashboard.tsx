@@ -55,11 +55,6 @@ export const navData: NavSectionProps['data'] = [
         path: paths.dashboard.intents,
         icon: ICONS.intent,
       },
-      {
-        title: 'Orquestación de managers',
-        path: paths.dashboard.intentMap,
-        icon: icon('mdi:sitemap-outline'),
-      },
     ],
   },
   {

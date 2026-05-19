@@ -1,6 +1,6 @@
 import type { RouteObject } from 'react-router';
 
-import { Outlet } from 'react-router';
+import { Navigate, Outlet } from 'react-router';
 import { lazy, Suspense } from 'react';
 
 import { CONFIG } from 'src/global-config';
@@ -80,7 +80,7 @@ export const dashboardRoutes: RouteObject[] = [
       { path: 'checkpoints', element: <CheckpointsPage /> },
       { path: 'tools', element: <ToolsPage /> },
       { path: 'marketplace', element: <MarketplacePage /> },
-      { path: 'orchestration', element: <ManagerOrchestrationPage /> },
+      { path: 'orchestration', element: <Navigate to="/dashboard/intents" replace /> },
       { path: 'threads', element: <ThreadsPage /> },
       { path: 'commerce', element: <CommerceAdminPage /> },
       { path: 'evaluations', element: <EvaluationsPage /> },

@@ -58,6 +58,8 @@ export function IntentsList({ intents, loading, onEdit, onToggle, onDelete }: In
             <TableRow>
               <TableCell>Intención</TableCell>
               <TableCell>Categoría</TableCell>
+              <TableCell>Workflow</TableCell>
+              <TableCell>Agente destino</TableCell>
               <TableCell>Ejemplos</TableCell>
               <TableCell>Prioridad</TableCell>
               <TableCell>Confianza</TableCell>
@@ -91,6 +93,33 @@ export function IntentsList({ intents, loading, onEdit, onToggle, onDelete }: In
                     color="default"
                     variant="outlined"
                   />
+                </TableCell>
+                <TableCell>
+                  <Stack spacing={0.5}>
+                    {intent.workflow_name ? (
+                      <>
+                        <Typography variant="body2">{intent.workflow_name}</Typography>
+                        <Typography variant="caption" color="text.disabled">
+                          {intent.workflow_id}
+                        </Typography>
+                      </>
+                    ) : (
+                      <Typography variant="caption" color="text.disabled">
+                        Sin workflow
+                      </Typography>
+                    )}
+                  </Stack>
+                </TableCell>
+                <TableCell>
+                  {intent.target_agent_id ? (
+                    <Typography variant="body2" color="text.secondary">
+                      {intent.target_agent_id}
+                    </Typography>
+                  ) : (
+                    <Typography variant="caption" color="text.disabled">
+                      Sin agente
+                    </Typography>
+                  )}
                 </TableCell>
                 <TableCell>
                   <Typography variant="body2" color="text.secondary">

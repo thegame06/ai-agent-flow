@@ -17,13 +17,15 @@ import { IntentFilters } from './IntentFilters';
 import { IntentsList } from './IntentsList';
 import { IntentSearchBar } from './IntentSearchBar';
 
-import type { Intent, IntentFilter, IntentFormData } from './types';
+import type { Intent, IntentFilter, IntentFormData, Workflow, Agent } from './types';
 
 // ----------------------------------------------------------------------
 
 export default function IntentsPage() {
   const tenantId = useTenantId();
   const [intents, setIntents] = useState<Intent[]>([]);
+  const [workflows, setWorkflows] = useState<Workflow[]>([]);
+  const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<IntentFilter>({ category: 'all', enabled: 'all' });
@@ -35,8 +37,16 @@ export default function IntentsPage() {
     try {
       setLoading(true);
       setError(null);
-      const res = await axios.get(endpoints.agentflow.intentRouting.rules(tenantId));
-      setIntents(res.data || []);
+      
+      const [intentsRes, workflowsRes, agentsRes] = await Promise.all([
+        axios.get(endpoints.agentflow.intentRouting.rules(tenantId)),
+        axios.get(`/api/v1/tenants/${tenantId}/workflows`).catch(() => ({ data: [] })),
+        axios.get(endpoints.agentflow.agents.list(tenantId)).catch(() => ({ data: [] })),
+      ]);
+      
+      setIntents(intentsRes.data || []);
+      setWorkflows(workflowsRes.data || []);
+      setAgents(agentsRes.data || []);
     } catch (err) {
       console.error('Failed to load intents:', err);
       setError('Error al cargar intenciones. Verifica que el backend esté corriendo en http://localhost:5183');
@@ -193,6 +203,8 @@ export default function IntentsPage() {
         <CreateIntentDialog
           open={openDialog}
           intent={selectedIntent}
+          workflows={workflows}
+          agents={agents}
           onClose={() => {
             setOpenDialog(false);
             setSelectedIntent(null);
