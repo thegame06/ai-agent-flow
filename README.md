@@ -8,11 +8,21 @@ Framework modular para construir, operar y gobernar agentes de IA empresariales 
 
 - **[QUICK-START-LOCAL.md](QUICK-START-LOCAL.md)** → Levanta el stack completo en 2 minutos con `make up-local-full`
 - **[INFRASTRUCTURE-SETUP.md](docs/INFRASTRUCTURE-SETUP.md)** → Guía completa de infraestructura (Local, Staging, Producción)
-- **[QUICK-START-E2E.md](QUICK-START-E2E.md)** → Testing end-to-end del Intent Routing
+- **[TROUBLESHOOTING-DOCKER.md](docs/TROUBLESHOOTING-DOCKER.md)** → Solución a problemas comunes con Docker (Windows)
+- **[TROUBLESHOOTING-LINUX.md](docs/TROUBLESHOOTING-LINUX.md)** → Solución a problemas comunes con Docker (Linux) **← NUEVO**
+- **[LINUX-QUICK-FIX.md](docs/LINUX-QUICK-FIX.md)** → Fix rápido para Linux (2 minutos) **← NUEVO**
+- **[STATUS-DOCKER-TESTS.md](STATUS-DOCKER-TESTS.md)** → Estado actual del proyecto y próximos pasos
 
 **Comandos básicos:**
 
 ```bash
+# Prerequisito: Docker debe estar corriendo
+# Windows: Docker Desktop
+# Linux: sudo systemctl start docker
+
+# Verificar Docker
+docker ps
+
 # Iniciar todo (Docker + API + Frontend)
 make up-local-full
 

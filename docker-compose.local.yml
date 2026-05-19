@@ -40,10 +40,11 @@ services:
     environment:
       - QDRANT__SERVICE__GRPC_PORT=6334
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:6333/readyz"]
+      test: ["CMD-SHELL", "curl -f http://localhost:6333/readyz || exit 1"]
       interval: 5s
       timeout: 5s
       retries: 20
+      start_period: 10s
 
   mcp-test:
     image: node:22-alpine
@@ -64,10 +65,11 @@ services:
       qdrant-local:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3501/health"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3501/health || exit 1"]
       interval: 5s
       timeout: 5s
       retries: 20
+      start_period: 15s
 
 volumes:
   mongo_local_data:
