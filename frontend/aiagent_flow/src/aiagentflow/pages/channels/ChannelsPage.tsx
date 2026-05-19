@@ -7,6 +7,7 @@ import Chip from '@mui/material/Chip';
 import Grid from '@mui/material/Grid';
 import Alert from '@mui/material/Alert';
 import Stack from '@mui/material/Stack';
+import Checkbox from '@mui/material/Checkbox';
 import Table from '@mui/material/Table';
 import Paper from '@mui/material/Paper';
 import Avatar from '@mui/material/Avatar';
@@ -95,6 +96,16 @@ interface SessionMessageEvidence {
   deliveryState?: string;
 }
 
+interface ChannelIntentCatalogItem {
+  key: string;
+  name: string;
+  description: string;
+  category: string;
+  priority: number;
+  examples: string[];
+  selected: boolean;
+}
+
 export default function ChannelsPage() {
   const TENANT_ID = useTenantId();
   const [channels, setChannels] = useState<Channel[]>([]);
@@ -119,6 +130,11 @@ export default function ChannelsPage() {
   const [routingChannel, setRoutingChannel] = useState<Channel | null>(null);
   const [routingForm, setRoutingForm] = useState({ defaultAgentId: '', routingAgentIds: [] as string[] });
   const [routingPreview, setRoutingPreview] = useState<{ suggestedAgentId?: string; activeLoadByAgent?: Record<string, number> } | null>(null);
+  const [openIntentsModal, setOpenIntentsModal] = useState(false);
+  const [intentsChannel, setIntentsChannel] = useState<Channel | null>(null);
+  const [intentCatalog, setIntentCatalog] = useState<ChannelIntentCatalogItem[]>([]);
+  const [selectedIntentKeys, setSelectedIntentKeys] = useState<string[]>([]);
+  const [loadingIntents, setLoadingIntents] = useState(false);
   const [openTestPanel, setOpenTestPanel] = useState(false);
   const [testPanelChannel, setTestPanelChannel] = useState<Channel | null>(null);
   const [testMsg, setTestMsg] = useState({ content: '', from: '', callbackUrl: '', asyncMode: false });
@@ -263,6 +279,41 @@ export default function ChannelsPage() {
       });
     } catch (err: any) {
       alert(err?.message || 'Error ejecutando vista previa de enrutamiento');
+    }
+  };
+
+  const openIntentsDialog = async (channel: Channel) => {
+    try {
+      setLoadingIntents(true);
+      const res = await axios.get(endpoints.agentflow.channels.intentsCatalog(TENANT_ID, channel.id));
+      const items = (res.data?.items ?? []) as ChannelIntentCatalogItem[];
+      setIntentCatalog(items);
+      setSelectedIntentKeys(items.filter((item) => item.selected).map((item) => item.key));
+      setIntentsChannel(channel);
+      setOpenIntentsModal(true);
+    } catch (err: any) {
+      alert(err?.message || 'Error cargando el catalogo de intenciones');
+    } finally {
+      setLoadingIntents(false);
+    }
+  };
+
+  const saveChannelIntents = async () => {
+    if (!intentsChannel) return;
+    try {
+      setSaving(true);
+      await axios.post(endpoints.agentflow.channels.intentsApply(TENANT_ID, intentsChannel.id), {
+        intentKeys: selectedIntentKeys,
+      });
+      setOpenIntentsModal(false);
+      setIntentsChannel(null);
+      setIntentCatalog([]);
+      setSelectedIntentKeys([]);
+      await fetchAll();
+    } catch (err: any) {
+      alert(err?.message || 'Error aplicando intenciones al canal');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -603,6 +654,9 @@ export default function ChannelsPage() {
                             <IconButton size="small" onClick={() => handleCheckHealth(c)}>
                               <Iconify icon="mdi:heart-pulse" />
                             </IconButton>
+                            <IconButton size="small" title="Cargar intenciones" onClick={() => openIntentsDialog(c)}>
+                              <Iconify icon="mdi:playlist-check" />
+                            </IconButton>
                             <IconButton size="small" title="Probar mensajes" onClick={() => { setTestPanelChannel(c); setTestResult(null); setTestMsg({ content: '', from: '', callbackUrl: '', asyncMode: false }); setOpenTestPanel(true); }}>
                               <Iconify icon="mdi:message-flash-outline" />
                             </IconButton>
@@ -941,6 +995,99 @@ export default function ChannelsPage() {
         </DialogActions>
       </Dialog>
 
+      <Dialog open={openIntentsModal} onClose={() => setOpenIntentsModal(false)} fullWidth maxWidth="md">
+        <DialogTitle>Cargar intenciones - {intentsChannel?.name}</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ pt: 1 }}>
+            <Alert severity="info">
+              Selecciona las intenciones que este canal debe usar para clasificar y enrutar mensajes. Puedes quitar o agregar antes de cargar.
+            </Alert>
+            {loadingIntents ? (
+              <Box sx={{ py: 4, textAlign: 'center' }}>
+                <CircularProgress size={24} />
+              </Box>
+            ) : (
+              <>
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={() => setSelectedIntentKeys(intentCatalog.map((item) => item.key))}
+                  >
+                    Seleccionar todo
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="text"
+                    onClick={() => setSelectedIntentKeys([])}
+                  >
+                    Limpiar
+                  </Button>
+                  <Chip size="small" label={`${selectedIntentKeys.length} seleccionadas`} />
+                </Stack>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell padding="checkbox" />
+                      <TableCell>Intencion</TableCell>
+                      <TableCell>Categoria</TableCell>
+                      <TableCell>Descripcion</TableCell>
+                      <TableCell>Prioridad</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {intentCatalog.map((item) => {
+                      const checked = selectedIntentKeys.includes(item.key);
+                      return (
+                        <TableRow
+                          key={item.key}
+                          hover
+                          onClick={() => {
+                            setSelectedIntentKeys((prev) =>
+                              prev.includes(item.key) ? prev.filter((key) => key !== item.key) : [...prev, item.key]
+                            );
+                          }}
+                          sx={{ cursor: 'pointer' }}
+                        >
+                          <TableCell padding="checkbox">
+                            <Checkbox
+                              checked={checked}
+                              onClick={(e) => e.stopPropagation()}
+                              onChange={() => {
+                                setSelectedIntentKeys((prev) =>
+                                  prev.includes(item.key) ? prev.filter((key) => key !== item.key) : [...prev, item.key]
+                                );
+                              }}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Stack spacing={0.25}>
+                              <Typography variant="body2">{item.name}</Typography>
+                              <Typography variant="caption" color="text.secondary">{item.key}</Typography>
+                            </Stack>
+                          </TableCell>
+                          <TableCell>{item.category}</TableCell>
+                          <TableCell sx={{ maxWidth: 420 }}>
+                            <Typography variant="body2" noWrap>{item.description}</Typography>
+                          </TableCell>
+                          <TableCell>{item.priority}</TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </>
+            )}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenIntentsModal(false)}>Cancelar</Button>
+          <Button variant="contained" onClick={saveChannelIntents} disabled={saving || loadingIntents}>
+            {saving ? 'Cargando...' : 'Cargar intenciones'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       {/* QR Code Dialog */}
       <Dialog open={!!qrCode} onClose={() => setQrCode(null)} maxWidth="sm">
         <DialogTitle>Escanear codigo QR - {selectedChannel?.name}</DialogTitle>
@@ -1097,4 +1244,3 @@ export default function ChannelsPage() {
     </>
   );
 }
-

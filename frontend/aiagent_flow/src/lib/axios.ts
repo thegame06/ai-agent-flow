@@ -102,6 +102,8 @@ export const endpoints = {
       routingGet: (tenantId: string, channelId: string) => `/api/v1/tenants/${tenantId}/channels/${channelId}/routing`,
       routingUpdate: (tenantId: string, channelId: string) => `/api/v1/tenants/${tenantId}/channels/${channelId}/routing`,
       routingPreview: (tenantId: string, channelId: string) => `/api/v1/tenants/${tenantId}/channels/${channelId}/routing/preview`,
+      intentsCatalog: (tenantId: string, channelId: string) => `/api/v1/tenants/${tenantId}/channels/${channelId}/intents/catalog`,
+      intentsApply: (tenantId: string, channelId: string) => `/api/v1/tenants/${tenantId}/channels/${channelId}/intents/apply`,
     },
     connections: {
       list: (tenantId: string) => `/api/v1/tenants/${tenantId}/connections`,

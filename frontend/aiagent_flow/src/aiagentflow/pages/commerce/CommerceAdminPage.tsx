@@ -158,6 +158,13 @@ const EMPTY_INVOICE: InvoiceDraft = {
   issuedAt: '',
 };
 
+const MODULE_IDS = {
+  communicationInbox: 'communication-inbox',
+  inventory: 'inventory',
+  salesPos: 'sales-pos',
+  billing: 'billing',
+} as const;
+
 export default function CommerceAdminPage() {
   const tenantId = useTenantId();
 
@@ -203,9 +210,30 @@ export default function CommerceAdminPage() {
   const [invoiceDialogOpen, setInvoiceDialogOpen] = useState(false);
   const [invoicePreviewOpen, setInvoicePreviewOpen] = useState(false);
   const [invoicePreviewUrl, setInvoicePreviewUrl] = useState('');
+  const [enabledModules, setEnabledModules] = useState<Record<string, boolean>>({});
+
+  const customersEnabled = Boolean(enabledModules[MODULE_IDS.communicationInbox]);
+  const inventoryEnabled = Boolean(enabledModules[MODULE_IDS.inventory]);
+  const salesEnabled = Boolean(enabledModules[MODULE_IDS.salesPos]);
+  const billingEnabled = Boolean(enabledModules[MODULE_IDS.billing]);
+
+  const availableTabs = useMemo(() => {
+    const tabs: Array<{ value: 'customers' | 'inventory' | 'movements' | 'sales' | 'invoices'; label: string }> = [];
+    if (customersEnabled) tabs.push({ value: 'customers', label: 'Clientes' });
+    if (inventoryEnabled) tabs.push({ value: 'inventory', label: 'Inventario' });
+    if (inventoryEnabled) tabs.push({ value: 'movements', label: 'Movimientos' });
+    if (salesEnabled) tabs.push({ value: 'sales', label: 'Ventas' });
+    if (billingEnabled) tabs.push({ value: 'invoices', label: 'Facturas' });
+    return tabs;
+  }, [billingEnabled, customersEnabled, inventoryEnabled, salesEnabled]);
 
   const refreshAll = async () => {
-    await Promise.all([loadCustomers(), loadInventory(), loadMovements(), loadSales(), loadInvoices()]);
+    const tasks: Array<Promise<void>> = [];
+    if (customersEnabled) tasks.push(loadCustomers());
+    if (inventoryEnabled) tasks.push(loadInventory(), loadMovements());
+    if (salesEnabled) tasks.push(loadSales());
+    if (billingEnabled) tasks.push(loadInvoices());
+    await Promise.all(tasks);
   };
 
   const loadCustomers = async () => {
@@ -281,31 +309,55 @@ export default function CommerceAdminPage() {
   };
 
   useEffect(() => {
+    const loadModuleStates = async () => {
+      try {
+        const res = await axios.get(`/api/v1/extensions/tenants/${tenantId}/states`);
+        setEnabledModules(res.data ?? {});
+      } catch {
+        setEnabledModules({});
+      }
+    };
+    loadModuleStates();
+  }, [tenantId]);
+
+  useEffect(() => {
+    if (availableTabs.length === 0) return;
+    if (!availableTabs.some((entry) => entry.value === tab)) {
+      setTab(availableTabs[0].value);
+    }
+  }, [availableTabs, tab]);
+
+  useEffect(() => {
+    if (!customersEnabled) return;
     const timeout = setTimeout(() => { loadCustomers(); }, 250);
     return () => clearTimeout(timeout);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tenantId, customerQuery, customerPage, customerPageSize]);
+  }, [tenantId, customerQuery, customerPage, customerPageSize, customersEnabled]);
 
   useEffect(() => {
+    if (!inventoryEnabled) return;
     const timeout = setTimeout(() => { loadInventory(); }, 250);
     return () => clearTimeout(timeout);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tenantId, inventoryQuery]);
+  }, [tenantId, inventoryQuery, inventoryEnabled]);
 
   useEffect(() => {
+    if (!inventoryEnabled) return;
     loadMovements();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tenantId, movementSku, movementPage, movementPageSize]);
+  }, [tenantId, movementSku, movementPage, movementPageSize, inventoryEnabled]);
 
   useEffect(() => {
+    if (!salesEnabled) return;
     loadSales();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tenantId, salesPage, salesPageSize, salesState]);
+  }, [tenantId, salesPage, salesPageSize, salesState, salesEnabled]);
 
   useEffect(() => {
+    if (!billingEnabled) return;
     loadInvoices();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tenantId, invoicePage, invoicePageSize, invoiceStatusFilter]);
+  }, [tenantId, invoicePage, invoicePageSize, invoiceStatusFilter, billingEnabled]);
 
   useEffect(() => () => {
     if (invoicePreviewUrl) window.URL.revokeObjectURL(invoicePreviewUrl);
@@ -466,7 +518,7 @@ export default function CommerceAdminPage() {
   return (
     <>
       <Helmet>
-        <title>Commerce admin | {CONFIG.appName}</title>
+        <title>Ventas y cobros | {CONFIG.appName}</title>
       </Helmet>
 
       <DashboardContent maxWidth="xl">
@@ -477,7 +529,7 @@ export default function CommerceAdminPage() {
                 <Iconify icon="mdi:store-cog-outline" />
               </Avatar>
               <Box>
-                <Typography variant="h4">Commerce admin</Typography>
+                <Typography variant="h4">Ventas y cobros</Typography>
                 <Typography variant="body2" color="text.secondary">
                   Clientes, inventario, movimientos, ventas y facturas en una superficie administrativa separada del inbox.
                 </Typography>
@@ -493,13 +545,17 @@ export default function CommerceAdminPage() {
         {actionOk && <Alert severity="success" sx={{ mb: 2 }}>{actionOk}</Alert>}
 
         <Card sx={{ p: 2 }}>
-          <Tabs value={tab} onChange={(_, value) => setTab(value)} sx={{ mb: 2 }} variant="scrollable">
-            <Tab value="customers" label="Clientes" />
-            <Tab value="inventory" label="Inventario" />
-            <Tab value="movements" label="Movimientos" />
-            <Tab value="sales" label="Ventas" />
-            <Tab value="invoices" label="Facturas" />
-          </Tabs>
+          {availableTabs.length > 0 ? (
+            <Tabs value={tab} onChange={(_, value) => setTab(value)} sx={{ mb: 2 }} variant="scrollable">
+              {availableTabs.map((entry) => (
+                <Tab key={entry.value} value={entry.value} label={entry.label} />
+              ))}
+            </Tabs>
+          ) : (
+            <Alert severity="info" sx={{ mb: 2 }}>
+              No hay modulos de comercio habilitados para este tenant.
+            </Alert>
+          )}
 
           {tab === 'customers' && (
             <Stack spacing={2}>

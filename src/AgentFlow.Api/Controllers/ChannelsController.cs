@@ -1,9 +1,11 @@
 using AgentFlow.Application.Channels;
 using AgentFlow.Domain.Aggregates;
 using AgentFlow.Domain.Repositories;
+using AgentFlow.Intents.Catalog;
 using AgentFlow.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Text.Json;
 
 namespace AgentFlow.Api.Controllers;
 
@@ -15,15 +17,21 @@ public sealed class ChannelsController : ControllerBase
     private readonly IChannelDefinitionRepository _channelRepo;
     private readonly IChannelGateway _gateway;
     private readonly ITenantContextAccessor _tenantContext;
+    private readonly IIntentCatalogService _intentCatalog;
+    private readonly IIntentRoutingStore _intentRoutingStore;
 
     public ChannelsController(
         IChannelDefinitionRepository channelRepo,
         IChannelGateway gateway,
-        ITenantContextAccessor tenantContext)
+        ITenantContextAccessor tenantContext,
+        IIntentCatalogService intentCatalog,
+        IIntentRoutingStore intentRoutingStore)
     {
         _channelRepo = channelRepo;
         _gateway = gateway;
         _tenantContext = tenantContext;
+        _intentCatalog = intentCatalog;
+        _intentRoutingStore = intentRoutingStore;
     }
 
     [HttpGet]
@@ -347,6 +355,135 @@ public sealed class ChannelsController : ControllerBase
         });
     }
 
+    [HttpGet("{channelId}/intents/catalog")]
+    public async Task<IActionResult> GetChannelIntentCatalog(string tenantId, string channelId, CancellationToken ct)
+    {
+        var context = _tenantContext.Current!;
+        if (context.TenantId != tenantId && !context.IsPlatformAdmin) return Forbid();
+
+        var channel = await _channelRepo.GetByIdAsync(channelId, tenantId, ct);
+        if (channel == null) return NotFound();
+
+        var channelKey = channel.Type.ToString().ToLowerInvariant();
+        var baseIntents = await _intentCatalog.GetBaseIntentsAsync(ct);
+        var rules = await _intentRoutingStore.GetRulesByChannelAsync(tenantId, channelKey, ct);
+
+        var items = baseIntents
+            .OrderBy(i => i.Priority)
+            .ThenBy(i => i.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(i =>
+            {
+                var matched = rules.FirstOrDefault(r => string.Equals(r.IntentKey, i.Key, StringComparison.OrdinalIgnoreCase));
+                return new ChannelIntentCatalogItemDto
+                {
+                    Key = i.Key,
+                    Name = i.Name,
+                    Description = i.Description,
+                    Category = i.Category,
+                    Priority = i.Priority,
+                    Examples = i.Examples,
+                    Selected = matched is not null
+                };
+            })
+            .ToList();
+
+        return Ok(new ChannelIntentCatalogDto
+        {
+            ChannelId = channelId,
+            ChannelType = channel.Type.ToString(),
+            RouterAgentId = channel.RouterAgentId,
+            DefaultAgentId = channel.Config.GetValueOrDefault("DefaultAgentId") ?? string.Empty,
+            Items = items
+        });
+    }
+
+    [HttpPost("{channelId}/intents/apply")]
+    public async Task<IActionResult> ApplyChannelIntentCatalog(
+        string tenantId,
+        string channelId,
+        [FromBody] ApplyChannelIntentCatalogRequest request,
+        CancellationToken ct)
+    {
+        var context = _tenantContext.Current!;
+        if (context.TenantId != tenantId && !context.IsPlatformAdmin) return Forbid();
+
+        var channel = await _channelRepo.GetByIdAsync(channelId, tenantId, ct);
+        if (channel == null) return NotFound();
+
+        var sourceAgentId = !string.IsNullOrWhiteSpace(channel.RouterAgentId)
+            ? channel.RouterAgentId
+            : channel.Config.GetValueOrDefault("DefaultAgentId") ?? "router";
+        var targetAgentId = channel.Config.GetValueOrDefault("DefaultAgentId") ?? sourceAgentId;
+        var channelKey = channel.Type.ToString().ToLowerInvariant();
+
+        var baseIntents = await _intentCatalog.GetBaseIntentsAsync(ct);
+        var catalogByKey = baseIntents.ToDictionary(i => i.Key, StringComparer.OrdinalIgnoreCase);
+        var selectedKeys = (request.IntentKeys ?? Array.Empty<string>())
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(x => x.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var existingRules = await _intentRoutingStore.GetRulesByChannelAsync(tenantId, channelKey, ct);
+        var managedRules = existingRules
+            .Where(r => IsManagedByChannelIntentLoader(r, channelId))
+            .ToList();
+
+        var createdOrUpdated = 0;
+        foreach (var intentKey in selectedKeys)
+        {
+            if (!catalogByKey.TryGetValue(intentKey, out var definition))
+                continue;
+
+            var existing = managedRules.FirstOrDefault(r => string.Equals(r.IntentKey, intentKey, StringComparison.OrdinalIgnoreCase))
+                ?? existingRules.FirstOrDefault(r =>
+                    string.Equals(r.IntentKey, intentKey, StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(r.SourceAgentId, sourceAgentId, StringComparison.OrdinalIgnoreCase));
+
+            var saved = await _intentRoutingStore.UpsertRuleAsync(new IntentRoutingRule
+            {
+                Id = existing?.Id ?? $"channel-{channelId}-intent-{definition.Key}",
+                TenantId = tenantId,
+                IntentKey = definition.Key,
+                IntentDescription = definition.Description,
+                ExamplePhrases = definition.Examples,
+                SourceAgentId = sourceAgentId,
+                TargetAgentId = targetAgentId,
+                WorkflowDefinitionId = existing?.WorkflowDefinitionId,
+                WorkflowName = existing?.WorkflowName,
+                Priority = definition.Priority,
+                Enabled = true,
+                Channel = channelKey,
+                ConditionsJson = JsonSerializer.Serialize(new { managedBy = "channel-intent-loader", channelId }),
+                HandoffPolicyJson = existing?.HandoffPolicyJson,
+                Version = existing?.Version ?? 1,
+                CreatedAt = existing?.CreatedAt ?? DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow
+            }, ct);
+
+            if (!string.IsNullOrWhiteSpace(saved.Id))
+                createdOrUpdated++;
+        }
+
+        var removed = 0;
+        foreach (var stale in managedRules.Where(r => !selectedKeys.Contains(r.IntentKey)))
+        {
+            var ok = await _intentRoutingStore.DeleteRuleAsync(tenantId, stale.Id, ct);
+            if (ok)
+                removed++;
+        }
+
+        return Ok(new
+        {
+            channelId,
+            applied = selectedKeys.Count,
+            createdOrUpdated,
+            removed,
+            sourceAgentId,
+            targetAgentId
+        });
+    }
+
     [HttpGet("{channelId}/routing/preview")]
     public async Task<IActionResult> PreviewRouting(string tenantId, string channelId, CancellationToken ct)
     {
@@ -526,6 +663,31 @@ public sealed class ChannelsController : ControllerBase
 
         return result;
     }
+
+    private static bool IsManagedByChannelIntentLoader(IntentRoutingRule rule, string channelId)
+    {
+        if (rule.Id.StartsWith($"channel-{channelId}-intent-", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (string.IsNullOrWhiteSpace(rule.ConditionsJson))
+            return false;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(rule.ConditionsJson);
+            if (!doc.RootElement.TryGetProperty("managedBy", out var managedBy))
+                return false;
+            if (!string.Equals(managedBy.GetString(), "channel-intent-loader", StringComparison.OrdinalIgnoreCase))
+                return false;
+            if (!doc.RootElement.TryGetProperty("channelId", out var ownerChannel))
+                return false;
+            return string.Equals(ownerChannel.GetString(), channelId, StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return false;
+        }
+    }
 }
 
 public sealed record CreateChannelRequest
@@ -579,6 +741,31 @@ public sealed record ChannelRoutingPreviewDto
     public string? SuggestedAgentId { get; init; }
     public Dictionary<string, int> ActiveLoadByAgent { get; init; } = new(StringComparer.OrdinalIgnoreCase);
     public Dictionary<string, int> RoutingCapacities { get; init; } = new(StringComparer.OrdinalIgnoreCase);
+}
+
+public sealed record ChannelIntentCatalogItemDto
+{
+    public required string Key { get; init; }
+    public required string Name { get; init; }
+    public required string Description { get; init; }
+    public required string Category { get; init; }
+    public required int Priority { get; init; }
+    public IReadOnlyList<string> Examples { get; init; } = Array.Empty<string>();
+    public required bool Selected { get; init; }
+}
+
+public sealed record ChannelIntentCatalogDto
+{
+    public required string ChannelId { get; init; }
+    public required string ChannelType { get; init; }
+    public string? RouterAgentId { get; init; }
+    public string DefaultAgentId { get; init; } = string.Empty;
+    public IReadOnlyList<ChannelIntentCatalogItemDto> Items { get; init; } = Array.Empty<ChannelIntentCatalogItemDto>();
+}
+
+public sealed record ApplyChannelIntentCatalogRequest
+{
+    public IReadOnlyList<string> IntentKeys { get; init; } = Array.Empty<string>();
 }
 
 /// <summary>
