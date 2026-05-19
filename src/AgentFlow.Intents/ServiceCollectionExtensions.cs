@@ -5,6 +5,7 @@ using AgentFlow.Intents.Indexing;
 using AgentFlow.Intents.Ownership;
 using AgentFlow.Intents.Routing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace AgentFlow.Intents;
 
@@ -26,20 +27,20 @@ public static class ServiceCollectionExtensions
         // ========================================
         
         // Register the semantic intent matcher
-        services.AddSingleton<ISemanticIntentMatcher, QdrantSemanticIntentMatcher>();
+        services.AddScoped<ISemanticIntentMatcher, QdrantSemanticIntentMatcher>();
 
         // Register the keyword intent matcher
-        services.AddSingleton<IKeywordIntentMatcher, KeywordIntentMatcher>();
+        services.AddScoped<IKeywordIntentMatcher, KeywordIntentMatcher>();
 
         // Register the hybrid scoring engine (combines semantic + keyword + priority)
-        services.AddSingleton<IIntentScoringEngine, IntentScoringEngine>();
+        services.AddScoped<IIntentScoringEngine, IntentScoringEngine>();
 
         // ========================================
         // ROUTING ORCHESTRATION
         // ========================================
         
         // Register the routing orchestrator (core decision-making component)
-        services.AddSingleton<IRoutingOrchestrator, RoutingOrchestrator>();
+        services.AddScoped<IRoutingOrchestrator, RoutingOrchestrator>();
 
         // ========================================
         // OWNERSHIP SERVICES
@@ -53,7 +54,7 @@ public static class ServiceCollectionExtensions
         // ========================================
         
         // Register the conversation inbox service (stores conversations requiring human review)
-        services.AddSingleton<IConversationInboxService, ConversationInboxService>();
+        services.AddScoped<IConversationInboxService, ConversationInboxService>();
 
         // ========================================
         // CATALOG & INDEXING SERVICES
@@ -61,6 +62,10 @@ public static class ServiceCollectionExtensions
         
         // Register the intent catalog service (loads base intents from YAML)
         services.AddSingleton<IIntentCatalogService, IntentCatalogService>();
+
+        // Fallback embedding generator to keep the system bootable in environments
+        // where a provider-specific embedding generator has not yet been configured.
+        services.TryAddSingleton<IEmbeddingGenerator, HashEmbeddingGenerator>();
 
         // Register the intent vector indexer (indexes intents into Qdrant)
         services.AddSingleton<IntentVectorIndexer>();

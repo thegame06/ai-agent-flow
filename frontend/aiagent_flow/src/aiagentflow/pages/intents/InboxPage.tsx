@@ -61,7 +61,7 @@ export default function InboxPage() {
     try {
       await axios.post(
         endpoints.agentflow.intentRouting.conversationReassign(tenantId, conversationId),
-        { new_intent: 'other' } // This would come from a dialog
+        { newIntent: 'other' } // This would come from a dialog
       );
       await loadData();
       setError(null);

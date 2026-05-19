@@ -1,4 +1,3 @@
-using AgentFlow.Application.Data;
 using AgentFlow.Intents.Catalog.Models;
 using Microsoft.Extensions.Logging;
 using System.Reflection;
@@ -13,7 +12,6 @@ namespace AgentFlow.Intents.Catalog;
 /// </summary>
 public sealed class IntentCatalogService : IIntentCatalogService
 {
-    private readonly IIntentRoutingStore _store;
     private readonly ILogger<IntentCatalogService> _logger;
     
     // Lazy-loaded cache of base intents (immutable after load)
@@ -23,10 +21,8 @@ public sealed class IntentCatalogService : IIntentCatalogService
     private const string BaseIntentsResourceName = "AgentFlow.Intents.Catalog.base-intents.yaml";
 
     public IntentCatalogService(
-        IIntentRoutingStore store,
         ILogger<IntentCatalogService> logger)
     {
-        _store = store ?? throw new ArgumentNullException(nameof(store));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
         // Initialize lazy cache for base intents

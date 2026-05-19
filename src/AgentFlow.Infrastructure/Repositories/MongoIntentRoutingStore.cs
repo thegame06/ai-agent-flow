@@ -70,6 +70,12 @@ public sealed class MongoIntentRoutingStore : IIntentRoutingStore
         return ToModel(doc);
     }
 
+    public async Task<bool> DeleteRuleAsync(string tenantId, string ruleId, CancellationToken ct = default)
+    {
+        var result = await _rules.DeleteOneAsync(x => x.TenantId == tenantId && x.Id == ruleId, ct);
+        return result.DeletedCount > 0;
+    }
+
     public async Task<bool> SetRuleEnabledAsync(string tenantId, string ruleId, bool enabled, CancellationToken ct = default)
     {
         var update = Builders<IntentRoutingRuleDocument>.Update

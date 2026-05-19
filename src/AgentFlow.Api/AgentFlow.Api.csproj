@@ -26,6 +26,7 @@
     <ProjectReference Include="..\AgentFlow.TestRunner\AgentFlow.TestRunner.csproj" />
     <ProjectReference Include="..\AgentFlow.Events\AgentFlow.Events.csproj" />
     <ProjectReference Include="..\AgentFlow.Caching.Redis\AgentFlow.Caching.Redis.csproj" />
+    <ProjectReference Include="..\AgentFlow.Intents\AgentFlow.Intents.csproj" />
   </ItemGroup>
 
 </Project>

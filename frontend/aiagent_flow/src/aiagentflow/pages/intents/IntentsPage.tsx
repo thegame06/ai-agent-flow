@@ -33,6 +33,25 @@ export default function IntentsPage() {
   const [openDialog, setOpenDialog] = useState(false);
   const [selectedIntent, setSelectedIntent] = useState<Intent | null>(null);
 
+  const mapRuleToIntent = useCallback((rule: any): Intent => ({
+    id: rule.id,
+    key: rule.intentKey ?? '',
+    name: rule.intentKey ?? '',
+    description: rule.intentDescription ?? '',
+    category: 'General',
+    examples: rule.examplePhrases ?? [],
+    synonyms: [],
+    confidence_threshold: 0.7,
+    priority: rule.priority ?? 100,
+    workflow_id: rule.workflowDefinitionId ?? '',
+    workflow_name: rule.workflowName ?? '',
+    target_agent_id: rule.targetAgentId ?? '',
+    enabled: rule.enabled ?? true,
+    is_base_intent: false,
+    created_at: rule.createdAt ?? '',
+    updated_at: rule.updatedAt ?? '',
+  }), []);
+
   const loadIntents = useCallback(async () => {
     try {
       setLoading(true);
@@ -40,11 +59,11 @@ export default function IntentsPage() {
       
       const [intentsRes, workflowsRes, agentsRes] = await Promise.all([
         axios.get(endpoints.agentflow.intentRouting.rules(tenantId)),
-        axios.get(`/api/v1/tenants/${tenantId}/workflows`).catch(() => ({ data: [] })),
+        axios.get(endpoints.agentflow.workflows.list(tenantId)).catch(() => ({ data: [] })),
         axios.get(endpoints.agentflow.agents.list(tenantId)).catch(() => ({ data: [] })),
       ]);
       
-      setIntents(intentsRes.data || []);
+      setIntents((intentsRes.data || []).map(mapRuleToIntent));
       setWorkflows(workflowsRes.data || []);
       setAgents(agentsRes.data || []);
     } catch (err) {
@@ -54,7 +73,7 @@ export default function IntentsPage() {
     } finally {
       setLoading(false);
     }
-  }, [tenantId]);
+  }, [mapRuleToIntent, tenantId]);
 
   useEffect(() => {
     loadIntents();
@@ -95,15 +114,26 @@ export default function IntentsPage() {
 
   const handleSave = async (data: IntentFormData) => {
     try {
+      const sourceAgentId = data.target_agent_id || agents[0]?.id || 'router';
+      const payload = {
+        intentKey: data.key,
+        intentDescription: data.description,
+        examplePhrases: data.examples,
+        sourceAgentId,
+        targetAgentId: data.target_agent_id || sourceAgentId,
+        workflowDefinitionId: data.workflow_id || null,
+        workflowName: workflows.find((wf) => wf.id === data.workflow_id)?.name ?? null,
+        priority: data.priority,
+        enabled: data.enabled,
+      };
+
       if (selectedIntent) {
-        // Update existing
         await axios.put(
           endpoints.agentflow.intentRouting.ruleById(tenantId, selectedIntent.id),
-          data
+          payload
         );
       } else {
-        // Create new
-        await axios.post(endpoints.agentflow.intentRouting.rules(tenantId), data);
+        await axios.post(endpoints.agentflow.intentRouting.rules(tenantId), payload);
       }
       await loadIntents();
       setOpenDialog(false);

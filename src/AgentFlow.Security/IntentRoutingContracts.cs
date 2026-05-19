@@ -84,6 +84,7 @@ public interface IIntentRoutingStore
     Task<IReadOnlyList<IntentRoutingRule>> GetRulesAsync(string tenantId, CancellationToken ct = default);
     Task<IntentRoutingRule?> GetRuleByIdAsync(string tenantId, string ruleId, CancellationToken ct = default);
     Task<IntentRoutingRule> UpsertRuleAsync(IntentRoutingRule rule, CancellationToken ct = default);
+    Task<bool> DeleteRuleAsync(string tenantId, string ruleId, CancellationToken ct = default);
     Task<bool> SetRuleEnabledAsync(string tenantId, string ruleId, bool enabled, CancellationToken ct = default);
 
     /// <summary>

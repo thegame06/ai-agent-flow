@@ -1,4 +1,5 @@
 using AgentFlow.Application.Memory;
+using AgentFlow.Intents.Catalog.Models;
 using AgentFlow.Intents.Classification.Models;
 using AgentFlow.Security;
 using Microsoft.Extensions.Logging;
@@ -183,7 +184,8 @@ public sealed class QdrantSemanticIntentMatcher : ISemanticIntentMatcher
                 }
 
                 // Verify tenant matches (critical for multi-tenancy security)
-                if (!string.Equals(rule.TenantId, tenantId, StringComparison.Ordinal))
+                if (!string.IsNullOrWhiteSpace(rule.TenantId) &&
+                    !string.Equals(rule.TenantId, tenantId, StringComparison.Ordinal))
                 {
                     _logger.LogError(
                         "SECURITY VIOLATION: Intent {IntentKey} has mismatched tenant. Expected {ExpectedTenant}, Got {ActualTenant}",
@@ -234,7 +236,49 @@ public sealed class QdrantSemanticIntentMatcher : ISemanticIntentMatcher
         }
         catch (JsonException ex)
         {
-            _logger.LogError(ex, "Failed to deserialize IntentRoutingRule from JSON");
+            _logger.LogDebug(ex, "rule_json is not IntentRoutingRule, trying IntentDefinition fallback.");
+        }
+
+        try
+        {
+            var intent = JsonSerializer.Deserialize<IntentDefinition>(
+                ruleJson,
+                new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                });
+
+            if (intent == null)
+            {
+                return null;
+            }
+
+            // Fallback mapping for catalog-only intents indexed as IntentDefinition.
+            // These entries are classification-only until they are synced into tenant routing rules.
+            return new IntentRoutingRule
+            {
+                Id = $"catalog-{intent.Key}",
+                TenantId = string.Empty,
+                IntentKey = intent.Key,
+                IntentDescription = intent.Description,
+                ExamplePhrases = intent.Examples,
+                SourceAgentId = "router",
+                TargetAgentId = string.Empty,
+                WorkflowDefinitionId = intent.SuggestedWorkflow,
+                WorkflowName = intent.SuggestedWorkflow,
+                Priority = intent.Priority,
+                Enabled = true,
+                Channel = null,
+                ConditionsJson = null,
+                HandoffPolicyJson = null,
+                Version = intent.Version,
+                CreatedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow
+            };
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogError(ex, "Failed to deserialize rule_json as IntentRoutingRule or IntentDefinition");
             return null;
         }
     }

@@ -20,6 +20,7 @@ using AgentFlow.Infrastructure.Channels.WhatsApp;
 using AgentFlow.Infrastructure.Memory;
 using AgentFlow.Infrastructure.Persistence;
 using AgentFlow.Infrastructure.Repositories;
+using AgentFlow.Intents;
 using AgentFlow.ModelRouting;
 using AgentFlow.Observability;
 using AgentFlow.Policy;
@@ -67,6 +68,7 @@ public static class DependencyInjection
             .AddScoped<IWorkflowStudioStore, MongoWorkflowStudioStore>()
             .AddScoped<ITenantConnectionStore, MongoTenantConnectionStore>()
             .AddSecurity(configuration)
+            .AddIntentRouting()
             .AddAgentEngine(configuration)
             .AddMemoryServices(configuration)
             .AddAgentFlowObservability(configuration["Telemetry:OtlpEndpoint"] ?? "http://localhost:4317")
