@@ -187,7 +187,8 @@ public sealed class ApiChannelHandler : IChannelHandler
 
     private async Task<string?> SelectAgentForSessionAsync(ChannelDefinition definition, CancellationToken ct)
     {
-        var routingAgentsRaw = definition.Config.GetValueOrDefault("RoutingAgents");
+        var routingAgentsRaw = definition.Config.GetValueOrDefault("IntentAgents")
+            ?? definition.Config.GetValueOrDefault("RoutingAgents");
         if (!string.IsNullOrWhiteSpace(definition.RouterAgentId))
             return definition.RouterAgentId;
 

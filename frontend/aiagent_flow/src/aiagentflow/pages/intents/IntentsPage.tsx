@@ -17,7 +17,7 @@ import { IntentFilters } from './IntentFilters';
 import { IntentSearchBar } from './IntentSearchBar';
 import { CreateIntentDialog } from './CreateIntentDialog';
 
-import type { Agent, Intent, Workflow, IntentFilter, IntentFormData } from './types';
+import type { Agent, Intent, Workflow, IntentFilter, ChannelOption, IntentFormData } from './types';
 
 // ----------------------------------------------------------------------
 
@@ -26,6 +26,7 @@ export default function IntentsPage() {
   const [intents, setIntents] = useState<Intent[]>([]);
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
+  const [channels, setChannels] = useState<ChannelOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<IntentFilter>({ category: 'all', enabled: 'all' });
@@ -45,6 +46,7 @@ export default function IntentsPage() {
     priority: rule.priority ?? 100,
     workflow_id: rule.workflowDefinitionId ?? '',
     workflow_name: rule.workflowName ?? '',
+    channel: rule.channel ?? '',
     target_agent_id: rule.targetAgentId ?? '',
     enabled: rule.enabled ?? true,
     is_base_intent: false,
@@ -57,15 +59,17 @@ export default function IntentsPage() {
       setLoading(true);
       setError(null);
       
-      const [intentsRes, workflowsRes, agentsRes] = await Promise.all([
+      const [intentsRes, workflowsRes, agentsRes, channelsRes] = await Promise.all([
         axios.get(endpoints.agentflow.intentRouting.rules(tenantId)),
         axios.get(endpoints.agentflow.workflows.list(tenantId)).catch(() => ({ data: [] })),
         axios.get(endpoints.agentflow.agents.list(tenantId)).catch(() => ({ data: [] })),
+        axios.get(endpoints.agentflow.channels.list(tenantId)).catch(() => ({ data: [] })),
       ]);
       
       setIntents((intentsRes.data || []).map(mapRuleToIntent));
       setWorkflows(workflowsRes.data || []);
       setAgents(agentsRes.data || []);
+      setChannels((channelsRes.data || []).map((c: any) => ({ id: c.id, name: c.name, type: String(c.type || '').toLowerCase() })));
     } catch (err) {
       console.error('Failed to load intents:', err);
       setError('Error al cargar intenciones. Verifica que el backend esté corriendo en http://localhost:5000');
@@ -123,6 +127,7 @@ export default function IntentsPage() {
         targetAgentId: data.target_agent_id || sourceAgentId,
         workflowDefinitionId: data.workflow_id || null,
         workflowName: workflows.find((wf) => wf.id === data.workflow_id)?.name ?? null,
+        channel: data.channel || null,
         priority: data.priority,
         enabled: data.enabled,
       };
@@ -235,6 +240,7 @@ export default function IntentsPage() {
           intent={selectedIntent}
           workflows={workflows}
           agents={agents}
+          channels={channels}
           onClose={() => {
             setOpenDialog(false);
             setSelectedIntent(null);
@@ -245,3 +251,4 @@ export default function IntentsPage() {
     </>
   );
 }
+

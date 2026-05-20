@@ -8,6 +8,7 @@ export const ALLOWED_ACTIVITY_TYPES = [
   'connect.enqueue_campaign_message',
   'human.assign',
   'human.handoff',
+  'intent.branch',
   'kyc.document_check',
   'kyc.review_case',
   'payments.create_intent',
@@ -41,6 +42,7 @@ export const ACTIVITY_TYPE_LABELS_ES: Record<string, string> = {
   'connect.enqueue_campaign_message': 'Encolar mensaje de campana',
   'human.assign': 'Asignar a agente',
   'human.handoff': 'Escalar a atencion humana',
+  'intent.branch': 'Bifurcacion por intencion',
   'kyc.document_check': 'Validacion de documento KYC',
   'kyc.review_case': 'Revision humana KYC',
   'payments.create_intent': 'Crear intencion de pago',
@@ -120,6 +122,14 @@ export const ACTIVITY_TYPE_PRESETS: Record<string, Record<string, string>> = {
     team: 'support',
     reason: 'needs-human-review',
     priority: 'high',
+  },
+  'intent.branch': {
+    mode: 'first',
+    intent: '{{payload.detectedIntent}}',
+    matchedIntentsCsv: '{{payload.matchedIntentsCsv}}',
+    'case.intencion_a': 'flow-a',
+    'case.intencion_b': 'flow-b',
+    'case.intencion_c': 'flow-c',
   },
   'kyc.document_check': {
     customerId: '{{payload.customerId}}',
@@ -260,6 +270,66 @@ export const WORKFLOW_QUICKSTARTS: Array<{ id: string; name: string; triggerEven
             config: {
               messageId: '{{payload.inboxMessageId}}',
               status: 'Queued'
+            }
+          }
+        ]
+      },
+      null,
+      2
+    ),
+  },
+  {
+    id: 'wf-intent-branching-demo',
+    name: 'Demo bifurcacion por intencion (A/B/C)',
+    triggerEventName: 'connect.message.received',
+    definitionJson: JSON.stringify(
+      {
+        activities: [
+          {
+            id: 'branch-intent',
+            type: 'intent.branch',
+            config: {
+              mode: 'first',
+              intent: '{{payload.detectedIntent}}',
+              matchedIntentsCsv: '{{payload.matchedIntentsCsv}}',
+              'case.intencion_a': 'flow-a',
+              'case.intencion_b': 'flow-b',
+              'case.intencion_c': 'flow-c',
+            },
+            onSuccess: 'no-match-human'
+          },
+          {
+            id: 'flow-a',
+            type: 'ai.agent',
+            config: {
+              input: 'Resolver flujo A para: {{payload.content}}',
+              context: '{{payload.channel}}'
+            }
+          },
+          {
+            id: 'flow-b',
+            type: 'ai.agent',
+            config: {
+              input: 'Resolver flujo B para: {{payload.content}}',
+              context: '{{payload.channel}}'
+            }
+          },
+          {
+            id: 'flow-c',
+            type: 'human.assign',
+            config: {
+              queue: 'especialistas-c',
+              priority: 'high'
+            }
+          },
+          {
+            id: 'no-match-human',
+            type: 'human.handoff',
+            when: { key: 'steps.branch-intent.matchedIntent', equals: '' },
+            config: {
+              team: 'clasificacion',
+              reason: 'no_intent_match',
+              priority: 'high'
             }
           }
         ]

@@ -233,8 +233,8 @@ public static class DependencyInjection
         services.AddScoped<IExecutionPlanner, AutonomousPlanner>();
         services.AddSingleton(_ => new TokenBudgetService(TokenBudgetConfig.Default));
 
-        // ✅ NEW (Fase 2.2): Workflow Engine for intent-based routing
-        services.AddSingleton<AgentFlow.Abstractions.Workflows.IWorkflowEngine, AgentFlow.Infrastructure.Workflows.InMemoryWorkflowEngine>();
+        // Router intent routing triggers real Workflow Studio executions.
+        services.AddScoped<AgentFlow.Abstractions.Workflows.IWorkflowEngine, WorkflowStudioEngine>();
 
         // Register Brains
         services.AddAgentBrains(configuration);

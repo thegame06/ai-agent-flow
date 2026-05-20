@@ -5,7 +5,9 @@ using AgentFlow.Domain.Repositories;
 using AgentFlow.Abstractions;
 using AgentFlow.Abstractions.Workflow;
 using AgentFlow.Api.Workflow;
+using AgentFlow.Security;
 using Microsoft.Extensions.Configuration;
+using System.Text.Json;
 
 namespace AgentFlow.Api;
 
@@ -707,6 +709,7 @@ Always be concrete: tell the user EXACTLY what to click or configure."
 
         await SeedTenantMcpDefaultsAsync(scope.ServiceProvider, tenantId, systemUser);
         await SeedSalesHappyPathAsync(scope.ServiceProvider, tenantId, systemUser);
+        await SeedBusinessStarterPackAsync(scope.ServiceProvider, tenantId, systemUser);
 
         Console.WriteLine("✅ [Seed] System agents seed complete.");
     }
@@ -946,6 +949,254 @@ Nunca expongas detalles tecnicos internos al cliente."
                 CreatedAt = DateTimeOffset.UtcNow,
                 UpdatedAt = DateTimeOffset.UtcNow,
                 UpdatedBy = ownerUser
+            }, CancellationToken.None);
+        }
+    }
+
+    private static async Task SeedBusinessStarterPackAsync(IServiceProvider services, string tenantId, string ownerUser)
+    {
+        var agentRepo = services.GetRequiredService<IAgentDefinitionRepository>();
+        var workflowStore = services.GetRequiredService<IWorkflowStudioStore>();
+        var channelRepo = services.GetRequiredService<IChannelDefinitionRepository>();
+        var intentStore = services.GetRequiredService<IIntentRoutingStore>();
+
+        var existingAgents = (await agentRepo.GetAllAsync(tenantId, 0, 500)).ToList();
+        IReadOnlyList<WorkflowStep> BuildBusinessSubflow() => new List<WorkflowStep>
+        {
+            new()
+            {
+                Id = "intent-clarify",
+                Type = "think",
+                Label = "Entender necesidad",
+                Description = "Detecta objetivo del cliente y datos faltantes.",
+                Config = new Dictionary<string, object> { ["mode"] = "intent_and_gap_detection" }
+            },
+            new()
+            {
+                Id = "intent-collect",
+                Type = "act",
+                Label = "Recopilar datos",
+                Description = "Solicita y valida un dato por turno.",
+                Config = new Dictionary<string, object> { ["style"] = "guided_dialog" }
+            },
+            new()
+            {
+                Id = "intent-output",
+                Type = "aggregate",
+                Label = "Salida estructurada",
+                Description = "Entrega salida estructurada para el workflow.",
+                Config = new Dictionary<string, object> { ["output"] = "structured_json" }
+            }
+        }.AsReadOnly();
+
+        async Task<AgentDefinition?> EnsureAgentAsync(
+            string name,
+            string description,
+            string systemPrompt,
+            string[] tags)
+        {
+            var existing = existingAgents.FirstOrDefault(a => string.Equals(a.Name, name, StringComparison.OrdinalIgnoreCase));
+            if (existing is not null) return existing;
+
+            var brain = new BrainConfiguration
+            {
+                ModelId = "gpt-4o-mini",
+                Provider = "OpenAI",
+                Temperature = 0.25f,
+                MaxResponseTokens = 1400,
+                RequiresToolExecution = true,
+                SystemPromptTemplate = systemPrompt
+            };
+            var loop = new AgentLoopConfig
+            {
+                MaxIterations = 12,
+                MaxExecutionTime = TimeSpan.FromMinutes(3),
+                ToolCallTimeout = TimeSpan.FromSeconds(25),
+                MaxRetries = 2,
+                AllowParallelToolCalls = false,
+                HitlConfig = new HumanInTheLoopConfig { Enabled = false }
+            };
+            var memory = new MemoryConfig
+            {
+                EnableWorkingMemory = true,
+                WorkingMemoryTtlSeconds = 3600,
+                EnableLongTermMemory = false,
+                EnableVectorMemory = false
+            };
+            var session = new SessionConfig
+            {
+                EnableThreads = true,
+                DefaultThreadTtl = TimeSpan.FromHours(24),
+                MaxTurnsPerThread = 50,
+                ContextWindowSize = 10,
+                AutoCreateThread = true,
+                EnableSummarization = true
+            };
+
+            var create = AgentDefinition.Create(
+                tenantId,
+                name,
+                description,
+                brain,
+                loop,
+                memory,
+                session,
+                BuildBusinessSubflow(),
+                ownerUser);
+            if (!create.IsSuccess) return null;
+
+            var agent = create.Value!;
+            agent.SetTags(tags.ToList().AsReadOnly());
+            var publish = agent.Publish(ownerUser);
+            if (!publish.IsSuccess) return null;
+            await agentRepo.InsertAsync(agent);
+            existingAgents.Add(agent);
+            return agent;
+        }
+
+        var salesAgent = await EnsureAgentAsync(
+            "Asistente de ventas",
+            "Califica prospectos, cotiza productos y cierra ventas.",
+            "Eres un agente comercial. Calificas al cliente, propones opciones y cierras la venta con mensajes claros y cortos.",
+            new[] { "seed", "ventas", "commerce" });
+        var billingAgent = await EnsureAgentAsync(
+            "Asistente de facturacion y cobro",
+            "Emite facturas, explica montos y confirma pagos.",
+            "Eres un agente de facturacion y cobro. Emite factura, confirma total y guia al cliente hasta completar el pago.",
+            new[] { "seed", "facturacion", "cobro" });
+        var inventoryAgent = await EnsureAgentAsync(
+            "Asistente de inventario",
+            "Consulta disponibilidad, reserva y alternativas de inventario.",
+            "Eres un agente de inventario. Verifica stock, propone alternativas y confirma tiempos de entrega.",
+            new[] { "seed", "inventario" });
+        var supportAgent = await EnsureAgentAsync(
+            "Asistente de soporte",
+            "Atiende incidencias, consultas postventa y escalaciones.",
+            "Eres un agente de soporte. Diagnostica el problema, solicita datos clave y resuelve o escala cuando corresponda.",
+            new[] { "seed", "soporte" });
+        var fallbackAgent = await EnsureAgentAsync(
+            "Asistente de respaldo",
+            "Atiende casos sin intencion clara y solicita aclaraciones seguras.",
+            "Eres agente de respaldo. Si no hay claridad, pide una aclaracion breve y redirige al equipo correcto.",
+            new[] { "seed", "fallback", "respaldo" });
+
+        if (salesAgent is null || billingAgent is null || inventoryAgent is null || supportAgent is null || fallbackAgent is null)
+            return;
+
+        async Task EnsureWorkflowAsync(string id, string name, string intentLabel, string intentDescription, string[] examples, string agentId)
+        {
+            var existing = await workflowStore.GetDefinitionAsync(tenantId, id, CancellationToken.None);
+            if (existing is not null) return;
+
+            var definitionJsonTemplate = $$"""
+            {
+              "start": {
+                "intents": [
+                  {
+                    "id": "{{id}}-intent",
+                    "label": "{{intentLabel}}",
+                    "description": "{{intentDescription}}",
+                    "examples": [{{string.Join(", ", examples.Select(e => $"\"{e}\""))}}],
+                    "triggerSource": "message",
+                    "confidenceThreshold": 0.7
+                  }
+                ]
+              },
+              "activities": [
+                {
+                  "id": "primary-agent",
+                  "type": "ai.agent",
+                  "config": {
+                    "agentId": "{{agentId}}",
+                    "input": "__PAYLOAD_CONTENT__",
+                    "context": "__PAYLOAD_CHANNEL__"
+                  }
+                }
+              ]
+            }
+            """;
+            var definitionJson = definitionJsonTemplate
+                .Replace("__PAYLOAD_CONTENT__", "{{payload.content}}", StringComparison.Ordinal)
+                .Replace("__PAYLOAD_CHANNEL__", "{{payload.channel}}", StringComparison.Ordinal);
+
+            await workflowStore.UpsertTemplateAsync(new WorkflowTemplateContract
+            {
+                Id = $"tpl-{id}",
+                TenantId = tenantId,
+                Name = name,
+                Description = $"Template inicial para {intentLabel}.",
+                TriggerEventName = "connect.message.received",
+                DefinitionJson = definitionJson,
+                CreatedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow,
+                UpdatedBy = ownerUser
+            }, CancellationToken.None);
+
+            await workflowStore.UpsertDefinitionAsync(new WorkflowDefinitionContract
+            {
+                Id = id,
+                TenantId = tenantId,
+                Name = name,
+                TriggerEventName = "connect.message.received",
+                Version = 1,
+                Status = WorkflowDefinitionStatus.Published,
+                DefinitionJson = definitionJson,
+                Metadata = new Dictionary<string, string>
+                {
+                    ["seed"] = "true",
+                    ["category"] = "starter-pack"
+                },
+                CreatedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow,
+                UpdatedBy = ownerUser
+            }, CancellationToken.None);
+        }
+
+        await EnsureWorkflowAsync("wf-starter-sales", "Starter ventas", "comprar producto", "Cliente quiere comprar o cotizar.", new[] { "quiero comprar", "necesito cotizacion", "precio del producto" }, salesAgent.Id);
+        await EnsureWorkflowAsync("wf-starter-billing", "Starter facturacion y cobro", "pagar factura", "Cliente quiere pagar o consultar factura.", new[] { "quiero pagar", "enviame la factura", "estado de mi factura" }, billingAgent.Id);
+        await EnsureWorkflowAsync("wf-starter-inventory", "Starter inventario", "consultar inventario", "Cliente quiere disponibilidad o stock.", new[] { "tienen stock", "hay disponible", "disponibilidad" }, inventoryAgent.Id);
+        await EnsureWorkflowAsync("wf-starter-support", "Starter soporte", "soporte postventa", "Cliente reporta incidencia o necesita soporte.", new[] { "tengo un problema", "necesito soporte", "mi pedido fallo" }, supportAgent.Id);
+
+        var channels = await channelRepo.GetAllAsync(tenantId, CancellationToken.None);
+        var firstChannel = channels.FirstOrDefault();
+        if (firstChannel is null) return;
+
+        var sourceAgentId = !string.IsNullOrWhiteSpace(firstChannel.RouterAgentId)
+            ? firstChannel.RouterAgentId!
+            : fallbackAgent.Id;
+        var fallbackAgentId = firstChannel.Config.GetValueOrDefault("DefaultAgentId") ?? fallbackAgent.Id;
+        var channelKey = firstChannel.Type.ToString().ToLowerInvariant();
+
+        var seedRules = new[]
+        {
+            new { Key = "comprar_producto", Desc = "Cliente quiere comprar o cotizar.", Target = salesAgent.Id, Workflow = "wf-starter-sales", Examples = new[] { "quiero comprar", "precio", "cotizacion" } },
+            new { Key = "pagar_factura", Desc = "Cliente quiere pagar o revisar factura.", Target = billingAgent.Id, Workflow = "wf-starter-billing", Examples = new[] { "pagar factura", "enviar factura", "deuda" } },
+            new { Key = "consultar_inventario", Desc = "Cliente consulta disponibilidad de productos.", Target = inventoryAgent.Id, Workflow = "wf-starter-inventory", Examples = new[] { "hay stock", "disponible", "inventario" } },
+            new { Key = "soporte_postventa", Desc = "Cliente necesita ayuda o reporta incidencia.", Target = supportAgent.Id, Workflow = "wf-starter-support", Examples = new[] { "tengo un problema", "soporte", "reclamo" } },
+            new { Key = "fallback_general", Desc = "Caso sin intencion clara.", Target = fallbackAgentId, Workflow = string.Empty, Examples = new[] { "hola", "ayuda", "no se" } },
+        };
+
+        foreach (var rule in seedRules)
+        {
+            await intentStore.UpsertRuleAsync(new IntentRoutingRule
+            {
+                Id = $"seed-{firstChannel.Id}-{rule.Key}",
+                TenantId = tenantId,
+                IntentKey = rule.Key,
+                IntentDescription = rule.Desc,
+                ExamplePhrases = rule.Examples,
+                SourceAgentId = sourceAgentId,
+                TargetAgentId = rule.Target,
+                WorkflowDefinitionId = string.IsNullOrWhiteSpace(rule.Workflow) ? null : rule.Workflow,
+                WorkflowName = string.IsNullOrWhiteSpace(rule.Workflow) ? null : rule.Workflow,
+                Priority = rule.Key == "fallback_general" ? 10 : 100,
+                Enabled = true,
+                Channel = channelKey,
+                ConditionsJson = JsonSerializer.Serialize(new { managedBy = "seed-starter-pack", channelId = firstChannel.Id }),
+                HandoffPolicyJson = JsonSerializer.Serialize(new { source = "seed" }),
+                Version = 1,
+                CreatedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow
             }, CancellationToken.None);
         }
     }

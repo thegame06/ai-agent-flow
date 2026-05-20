@@ -12,10 +12,13 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using AgentFlow.Security;
 using AgentFlow.Intents.Classification;
+using AgentFlow.Intents.Classification.Models;
 using AgentFlow.Intents.Routing;
 using AgentFlow.Intents.Routing.Models;
 using AgentFlow.Abstractions.Workflows;
 using IntentConversationContext = AgentFlow.Intents.Routing.Models.ConversationContext;
+using AgentFlow.Intents.Inbox;
+using AgentFlow.Intents.Inbox.Models;
 
 namespace AgentFlow.Core.Engine;
 
@@ -43,6 +46,7 @@ public sealed class AgentExecutionEngine : IAgentExecutor
     private readonly IIntentScoringEngine? _intentScoringEngine;
     private readonly IRoutingOrchestrator? _routingOrchestrator;
     private readonly IWorkflowEngine? _workflowEngine;
+    private readonly IConversationInboxService? _conversationInboxService;
 
     public AgentExecutionEngine(
         IAgentDefinitionRepository agentRepo,
@@ -60,7 +64,8 @@ public sealed class AgentExecutionEngine : IAgentExecutor
         ILogger<AgentExecutionEngine> logger,
         IIntentScoringEngine? intentScoringEngine = null, // ✅ NEW: Optional for backward compatibility
         IRoutingOrchestrator? routingOrchestrator = null, // ✅ NEW: Optional for backward compatibility
-        IWorkflowEngine? workflowEngine = null) // ✅ NEW: Workflow execution engine
+        IWorkflowEngine? workflowEngine = null, // ✅ NEW: Workflow execution engine
+        IConversationInboxService? conversationInboxService = null)
     {
         _agentRepo = agentRepo;
         _executionRepo = executionRepo;
@@ -78,6 +83,7 @@ public sealed class AgentExecutionEngine : IAgentExecutor
         _intentScoringEngine = intentScoringEngine; // ✅ NEW
         _routingOrchestrator = routingOrchestrator; // ✅ NEW
         _workflowEngine = workflowEngine; // ✅ NEW
+        _conversationInboxService = conversationInboxService;
     }
 
     public async Task<AgentExecutionResult> ExecuteAsync(
@@ -185,7 +191,12 @@ public sealed class AgentExecutionEngine : IAgentExecutor
                                     {
                                         ["AgentKey"] = request.AgentKey,
                                         ["RoutingDecision"] = routingDecision.Action.ToString(),
-                                        ["LockAcquired"] = !string.IsNullOrEmpty(routingDecision.LockId)
+                                        ["LockAcquired"] = !string.IsNullOrEmpty(routingDecision.LockId),
+                                        ["matchedIntentsCsv"] = string.Join(",",
+                                            classification.AllCandidates
+                                                .Select(c => c.IntentKey)
+                                                .Distinct(StringComparer.OrdinalIgnoreCase)),
+                                        ["matchedIntentCount"] = classification.AllCandidates.Count
                                     }
                                 };
 
@@ -253,8 +264,34 @@ public sealed class AgentExecutionEngine : IAgentExecutor
                             routingDecision.ReasonCode,
                             classification.Confidence);
 
-                        // TODO (Fase 2.3): Implement IConversationInboxService to store messages for review
-                        // For now, log and return informative response
+                        if (_conversationInboxService is not null)
+                        {
+                            var state = routingDecision.Action == RoutingAction.Fallback
+                                ? ConversationState.NoMatch
+                                : ConversationState.PendingHumanReview;
+                            var confidence = routingDecision.Action == RoutingAction.Fallback
+                                ? ConfidenceLevel.NoMatch
+                                : ConfidenceLevel.Low;
+                            await _conversationInboxService.CreateOrUpdateAsync(new InboxConversation
+                            {
+                                Id = request.SessionContext?.SessionId
+                                    ?? request.CorrelationId
+                                    ?? Guid.NewGuid().ToString("N"),
+                                TenantId = request.TenantId,
+                                Channel = request.SessionContext?.ChannelType ?? "api",
+                                UserIdentifier = request.UserId,
+                                LastMessage = request.UserMessage,
+                                State = state,
+                                Confidence = confidence,
+                                DetectedIntentKey = classification.BestMatch?.IntentKey,
+                                AssignedAgentId = routingDecision.TargetAgentId,
+                                WorkflowExecutionId = null,
+                                CreatedAt = DateTimeOffset.UtcNow,
+                                UpdatedAt = DateTimeOffset.UtcNow,
+                                RequiresHumanReview = true,
+                                ReviewNotes = routingDecision.ReasonCode
+                            }, CancellationToken.None);
+                        }
                         
                         await _memory.Audit.RecordAsync(new AuditEntry
                         {

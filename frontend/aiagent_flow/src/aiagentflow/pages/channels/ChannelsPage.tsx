@@ -209,6 +209,7 @@ export default function ChannelsPage() {
       const config: Record<string, string> = {
         AuthMode: form.authMode,
         DefaultAgentId: form.defaultAgentId || 'default-agent',
+        IntentAgents: form.routingAgentIds.join(','),
         RoutingAgents: form.routingAgentIds.join(','),
       };
 
@@ -244,7 +245,7 @@ export default function ChannelsPage() {
       const res = await axios.get(endpoints.agentflow.channels.routingGet(TENANT_ID, channel.id));
       setRoutingForm({
         defaultAgentId: res.data?.defaultAgentId || channel.config?.DefaultAgentId || '',
-        routingAgentIds: (res.data?.routingAgents ?? []) as string[],
+        routingAgentIds: ((res.data?.intentAgents ?? res.data?.routingAgents) ?? []) as string[],
       });
       setRoutingChannel(channel);
       setRoutingPreview(null);
@@ -260,7 +261,7 @@ export default function ChannelsPage() {
       setSaving(true);
       await axios.post(endpoints.agentflow.channels.routingUpdate(TENANT_ID, routingChannel.id), {
         defaultAgentId: routingForm.defaultAgentId,
-        routingAgents: routingForm.routingAgentIds,
+        intentAgents: routingForm.routingAgentIds,
       });
       setOpenRouting(false);
       setRoutingChannel(null);
@@ -878,12 +879,12 @@ export default function ChannelsPage() {
             </Divider>
 
             <FormControl fullWidth>
-              <InputLabel>Asistentes alternos</InputLabel>
+              <InputLabel>Agentes de intencion</InputLabel>
               <Select
                 multiple
                 value={form.routingAgentIds}
                 onChange={(e) => setForm((p) => ({ ...p, routingAgentIds: e.target.value as string[] }))}
-                input={<OutlinedInput label="Asistentes alternos" />}
+                input={<OutlinedInput label="Agentes de intencion" />}
                 renderValue={(selected) => (
                   <Stack direction="row" spacing={0.5} flexWrap="wrap">
                     {(selected as string[]).map((id) => {
@@ -897,7 +898,7 @@ export default function ChannelsPage() {
                   <MenuItem key={agent.id} value={agent.id}>{agent.name}</MenuItem>
                 ))}
               </Select>
-              <FormHelperText>El sistema repartira nuevas conversaciones entre estos asistentes segun su carga actual. Dejalo vacio para usar solo el asistente principal.</FormHelperText>
+              <FormHelperText>El sistema repartira nuevas conversaciones entre estos agentes de intencion segun su carga actual. Dejalo vacio para usar solo el agente de respaldo.</FormHelperText>
             </FormControl>
 
             {form.type === 'WhatsApp' && (
@@ -913,13 +914,13 @@ export default function ChannelsPage() {
                 />
                 <TextField
                   select
-                  label="Asistente clasificador"
+                  label="Agente enrutador"
                   value={form.routerAgentId}
                   onChange={(e) => setForm((p) => ({ ...p, routerAgentId: e.target.value }))}
                   fullWidth
-                  helperText="Asistente que interpreta la necesidad del cliente antes de decidir que flujo o responsable debe continuar."
+                  helperText="Recibe primero, interpreta la necesidad del cliente y decide que flujo o responsable debe continuar."
                 >
-                  <MenuItem value="">Sin clasificador (usa el asistente principal)</MenuItem>
+                  <MenuItem value="">Sin enrutador (usa agente de respaldo)</MenuItem>
                   {candidateAgents.map((agent) => (
                     <MenuItem key={agent.id} value={agent.id}>
                       {agent.name}
@@ -946,34 +947,34 @@ export default function ChannelsPage() {
       </Dialog>
 
       <Dialog open={openRouting} onClose={() => setOpenRouting(false)} fullWidth maxWidth="sm">
-        <DialogTitle>Asignacion automatica - {routingChannel?.name}</DialogTitle>
+        <DialogTitle>Enrutamiento por intencion - {routingChannel?.name}</DialogTitle>
         <DialogContent>
           <Stack spacing={2.5} sx={{ pt: 1 }}>
             <Alert severity="info" sx={{ mb: 0 }}>
-              El <strong>asistente principal</strong> responde cuando no aplica ninguna regla especial. Los <strong>asistentes alternos</strong> reciben nuevas conversaciones segun su carga.
+              El <strong>agente enrutador</strong> clasifica el mensaje. Los <strong>agentes por intencion</strong> reciben nuevas conversaciones segun su carga.
             </Alert>
 
             <TextField
               select
-              label="Asistente principal"
+              label="Agente de respaldo"
               value={routingForm.defaultAgentId}
               onChange={(e) => setRoutingForm((prev) => ({ ...prev, defaultAgentId: e.target.value }))}
               fullWidth
-              helperText="Responsable de respaldo cuando el sistema no detecta un motivo claro."
+              helperText="Se usa cuando no hay una intencion clara o no hay agente de intencion disponible."
             >
-              <MenuItem value=""><em>Sin asistente principal</em></MenuItem>
+              <MenuItem value=""><em>Sin agente de respaldo</em></MenuItem>
               {candidateAgents.map((agent) => (
                 <MenuItem key={agent.id} value={agent.id}>{agent.name}</MenuItem>
               ))}
             </TextField>
 
             <FormControl fullWidth>
-              <InputLabel>Asistentes alternos</InputLabel>
+              <InputLabel>Agentes de intencion</InputLabel>
               <Select
                 multiple
                 value={routingForm.routingAgentIds}
                 onChange={(e) => setRoutingForm((prev) => ({ ...prev, routingAgentIds: e.target.value as string[] }))}
-                input={<OutlinedInput label="Asistentes alternos" />}
+                input={<OutlinedInput label="Agentes de intencion" />}
                 renderValue={(selected) => (
                   <Stack direction="row" spacing={0.5} flexWrap="wrap">
                     {(selected as string[]).map((id) => {
@@ -987,7 +988,7 @@ export default function ChannelsPage() {
                   <MenuItem key={agent.id} value={agent.id}>{agent.name}</MenuItem>
                 ))}
               </Select>
-              <FormHelperText>El sistema alternara entre estos asistentes y priorizara al que tenga menos conversaciones activas.</FormHelperText>
+              <FormHelperText>El router enviara la conversacion al agente de intencion con menor carga activa.</FormHelperText>
             </FormControl>
 
             {routingPreview && (

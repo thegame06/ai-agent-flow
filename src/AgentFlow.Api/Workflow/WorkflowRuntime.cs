@@ -126,7 +126,7 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
             while (current is not null && guard < 1000)
             {
                 guard++;
-                if (!ShouldExecute(payload, current.When))
+                if (!ShouldExecute(payload, context, current.When))
                 {
                     current = ResolveNext(current.Next, ordered, byId, current);
                     continue;
@@ -168,14 +168,22 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
                     await store.CompleteStepLogAsync(item.TenantId, stepId, WorkflowExecutionStatus.Completed, output, null, ct);
                     CaptureOutputs(context, current, output);
                     await store.UpdateExecutionContextAsync(item.TenantId, execution.Id, JsonSerializer.Serialize(context), ct);
-                    current = ResolveNext(current.OnSuccess ?? current.Next, ordered, byId, current);
+                    var (outputNext, outputNextQueue) = ResolveNextFromOutput(output);
+                    if (outputNextQueue.Count > 0)
+                        context["runtime.nextQueue"] = string.Join(",", outputNextQueue);
+                    current = ResolveNextConsideringQueue(
+                        outputNext ?? current.OnSuccess ?? current.Next,
+                        ordered,
+                        byId,
+                        current,
+                        context);
                 }
                 catch (Exception ex)
                 {
                     await store.CompleteStepLogAsync(item.TenantId, stepId, WorkflowExecutionStatus.Failed, null, ex.Message, ct);
                     if (!string.IsNullOrWhiteSpace(current.OnFailure))
                     {
-                        current = ResolveNext(current.OnFailure, ordered, byId, current);
+                        current = ResolveNextConsideringQueue(current.OnFailure, ordered, byId, current, context);
                         continue;
                     }
                     throw;
@@ -257,6 +265,74 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
             }, ct);
 
             return JsonSerializer.Serialize(new { inboxMessageId = created.Id, created.Status, created.Channel });
+        }
+
+        if (string.Equals(activity.Type, "intent.branch", StringComparison.OrdinalIgnoreCase))
+        {
+            // Branch by matched intents present in workflow context.
+            // Supports:
+            // - config.matchedIntentsCsv: comma-separated list of matched intents
+            // - config.intent: single detected intent fallback
+            // - config.mode: "first" (default) or "all"
+            // - config.case.<intent_key>: target activity id/name
+            var matchedCsv = GetConfig(resolvedConfig, "matchedIntentsCsv", string.Empty) ?? string.Empty;
+            var detectedIntent = GetConfig(resolvedConfig, "intent", string.Empty) ?? string.Empty;
+            var mode = (GetConfig(resolvedConfig, "mode", "first") ?? "first").Trim().ToLowerInvariant();
+
+            var intents = matchedCsv
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .ToList();
+            if (intents.Count == 0 && !string.IsNullOrWhiteSpace(detectedIntent))
+                intents.Add(detectedIntent);
+
+            var branches = resolvedConfig
+                .Where(kv => kv.Key.StartsWith("case.", StringComparison.OrdinalIgnoreCase))
+                .ToDictionary(
+                    kv => kv.Key["case.".Length..].Trim(),
+                    kv => kv.Value,
+                    StringComparer.OrdinalIgnoreCase);
+
+            if (branches.Count == 0)
+                throw new InvalidOperationException("Activity intent.branch requires at least one config key 'case.<intentKey>=<nextNodeId>'.");
+
+            if (mode == "all")
+            {
+                var nextIds = new List<string>();
+                foreach (var intent in intents)
+                {
+                    if (branches.TryGetValue(intent, out var next) && !string.IsNullOrWhiteSpace(next))
+                        nextIds.Add(next);
+                }
+
+                return JsonSerializer.Serialize(new
+                {
+                    mode = "all",
+                    matchedIntents = intents,
+                    selectedIntents = nextIds.Count,
+                    next = nextIds.FirstOrDefault(),
+                    nextIds
+                });
+            }
+
+            foreach (var intent in intents)
+            {
+                if (branches.TryGetValue(intent, out var next) && !string.IsNullOrWhiteSpace(next))
+                {
+                    return JsonSerializer.Serialize(new
+                    {
+                        mode = "first",
+                        matchedIntent = intent,
+                        next
+                    });
+                }
+            }
+
+            return JsonSerializer.Serialize(new
+            {
+                mode = "first",
+                matchedIntent = (string?)null,
+                next = (string?)null
+            });
         }
 
         if (string.Equals(activity.Type, "connect.update_inbox_status", StringComparison.OrdinalIgnoreCase))
@@ -1088,13 +1164,18 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
         public string UpdatedBy { get; set; } = string.Empty;
     }
 
-    private static bool ShouldExecute(Dictionary<string, JsonElement> payload, WorkflowCondition? condition)
+    private static bool ShouldExecute(Dictionary<string, JsonElement> payload, Dictionary<string, string> context, WorkflowCondition? condition)
     {
         if (condition is null || string.IsNullOrWhiteSpace(condition.Key))
             return true;
 
-        payload.TryGetValue(condition.Key, out var value);
-        var normalized = value.ValueKind == JsonValueKind.Undefined ? null : value.ToString();
+        string? normalized = null;
+        if (payload.TryGetValue(condition.Key, out var value))
+            normalized = value.ValueKind == JsonValueKind.Undefined ? null : value.ToString();
+        else if (context.TryGetValue(condition.Key, out var fromContext))
+            normalized = fromContext;
+        else if (context.TryGetValue($"payload.{condition.Key}", out var fromPayloadAlias))
+            normalized = fromPayloadAlias;
 
         if (condition.EqualsValue is not null)
             return string.Equals(normalized, condition.EqualsValue, StringComparison.OrdinalIgnoreCase);
@@ -1103,6 +1184,40 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
             return !string.Equals(normalized, condition.NotEquals, StringComparison.OrdinalIgnoreCase);
 
         return true;
+    }
+
+    private static (string? Next, List<string> Queue) ResolveNextFromOutput(string? outputJson)
+    {
+        if (string.IsNullOrWhiteSpace(outputJson))
+            return (null, new List<string>());
+
+        try
+        {
+            using var doc = JsonDocument.Parse(outputJson);
+            if (doc.RootElement.ValueKind != JsonValueKind.Object)
+                return (null, new List<string>());
+
+            if (doc.RootElement.TryGetProperty("next", out var next) && next.ValueKind == JsonValueKind.String)
+                return (next.GetString(), new List<string>());
+
+            if (doc.RootElement.TryGetProperty("nextIds", out var nextIds) && nextIds.ValueKind == JsonValueKind.Array)
+            {
+                var queue = new List<string>();
+                foreach (var item in nextIds.EnumerateArray())
+                {
+                    if (item.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(item.GetString()))
+                        queue.Add(item.GetString()!);
+                }
+                if (queue.Count > 0)
+                    return (queue[0], queue.Skip(1).ToList());
+            }
+        }
+        catch
+        {
+            // Ignore parse errors for optional dynamic-next behavior.
+        }
+
+        return (null, new List<string>());
     }
 
     private static Dictionary<string, string> ResolveConfig(Dictionary<string, JsonElement> raw, Dictionary<string, string> context)
@@ -1175,5 +1290,30 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
 
         var index = ordered.IndexOf(current);
         return index >= 0 && index + 1 < ordered.Count ? ordered[index + 1] : null;
+    }
+
+    private static WorkflowRuntimeActivity? ResolveNextConsideringQueue(
+        string? nextId,
+        List<WorkflowRuntimeActivity> ordered,
+        Dictionary<string, WorkflowRuntimeActivity> byId,
+        WorkflowRuntimeActivity current,
+        Dictionary<string, string> context)
+    {
+        var resolved = ResolveNext(nextId, ordered, byId, current);
+        if (resolved is not null)
+            return resolved;
+
+        if (!context.TryGetValue("runtime.nextQueue", out var rawQueue) || string.IsNullOrWhiteSpace(rawQueue))
+            return null;
+
+        var queue = rawQueue
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToList();
+        if (queue.Count == 0)
+            return null;
+
+        var nextFromQueue = queue[0];
+        context["runtime.nextQueue"] = string.Join(",", queue.Skip(1));
+        return ResolveNext(nextFromQueue, ordered, byId, current);
     }
 }

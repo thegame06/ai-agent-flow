@@ -95,7 +95,7 @@ export default function ManagerOrchestrationPage() {
 
   const [agents, setAgents] = useState<Agent[]>([]);
   const [rules, setRules] = useState<IntentRule[]>([]);
-  const [routingAgents, setRoutingAgents] = useState<RoutingAgent[]>([]);
+  const [intentAgents, setIntentAgents] = useState<RoutingAgent[]>([]);
   const [sourceAgentId, setSourceAgentId] = useState('');
   const [targetAgentId, setTargetAgentId] = useState('');
   const [ruleIntentKey, setRuleIntentKey] = useState('agendar_cita');
@@ -111,7 +111,7 @@ export default function ManagerOrchestrationPage() {
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
-      const [agentsRes, rulesRes, routingAgentsRes] = await Promise.all([
+      const [agentsRes, rulesRes, intentAgentsRes] = await Promise.all([
         axios.get(endpoints.agentflow.agents.list(tenantId)),
         axios.get(endpoints.agentflow.intentRouting.rules(tenantId)),
         axios.get(endpoints.agentflow.intentRouting.agents(tenantId)),
@@ -123,7 +123,7 @@ export default function ManagerOrchestrationPage() {
 
       setAgents(agentList);
       setRules(rulesRes.data ?? []);
-      setRoutingAgents(routingAgentsRes.data ?? []);
+      setIntentAgents(intentAgentsRes.data ?? []);
 
       if (!sourceAgentId && agentList[0]) setSourceAgentId(agentList[0].id);
       if (!targetAgentId && agentList[1]) setTargetAgentId(agentList[1].id);
@@ -519,18 +519,18 @@ export default function ManagerOrchestrationPage() {
                 <Grid container spacing={2}>
                   <Grid item xs={12} md={4}>
                     <Typography variant="subtitle2">Agentes registrados</Typography>
-                    <Typography variant="h4">{routingAgents.length}</Typography>
+                    <Typography variant="h4">{intentAgents.length}</Typography>
                   </Grid>
                   <Grid item xs={12} md={4}>
                     <Typography variant="subtitle2">Modo prueba</Typography>
                     <Typography variant="h4">
-                      {routingAgents.filter((agent) => agent.testModeAllowed).length}
+                      {intentAgents.filter((agent) => agent.testModeAllowed).length}
                     </Typography>
                   </Grid>
                   <Grid item xs={12} md={4}>
                     <Typography variant="subtitle2">Respuesta externa</Typography>
                     <Typography variant="h4">
-                      {routingAgents.filter((agent) => agent.externalReplyAllowed).length}
+                      {intentAgents.filter((agent) => agent.externalReplyAllowed).length}
                     </Typography>
                   </Grid>
                 </Grid>

@@ -497,7 +497,9 @@ public sealed class WorkflowStudioController : ControllerBase
             var sourceAgentId = channel.Config.GetValueOrDefault("DefaultAgentId");
             if (string.IsNullOrWhiteSpace(sourceAgentId))
             {
-                sourceAgentId = (channel.Config.GetValueOrDefault("RoutingAgents") ?? string.Empty)
+                sourceAgentId = (channel.Config.GetValueOrDefault("IntentAgents")
+                    ?? channel.Config.GetValueOrDefault("RoutingAgents")
+                    ?? string.Empty)
                     .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                     .FirstOrDefault();
             }

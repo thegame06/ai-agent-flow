@@ -2,8 +2,6 @@ import { Helmet } from 'react-helmet-async';
 import { useMemo, useState, useEffect } from 'react';
 
 import Box from '@mui/material/Box';
-import Tab from '@mui/material/Tab';
-import Tabs from '@mui/material/Tabs';
 import Card from '@mui/material/Card';
 import List from '@mui/material/List';
 import Chip from '@mui/material/Chip';
@@ -11,16 +9,16 @@ import Grid from '@mui/material/Grid';
 import Alert from '@mui/material/Alert';
 import Stack from '@mui/material/Stack';
 import Paper from '@mui/material/Paper';
+import Drawer from '@mui/material/Drawer';
 import Avatar from '@mui/material/Avatar';
 import Button from '@mui/material/Button';
-import Divider from '@mui/material/Divider';
 import ListItem from '@mui/material/ListItem';
 import MenuItem from '@mui/material/MenuItem';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import IconButton from '@mui/material/IconButton';
 import ListItemText from '@mui/material/ListItemText';
-import { DataGrid, GridToolbar } from '@mui/x-data-grid';
+import ListItemButton from '@mui/material/ListItemButton';
 import CircularProgress from '@mui/material/CircularProgress';
 
 import { paths } from 'src/routes/paths';
@@ -175,12 +173,13 @@ export default function ThreadsPage() {
   const [rows, setRows] = useState<SessionRow[]>([]);
   const [totalRows, setTotalRows] = useState(0);
   const [page, setPage] = useState(0);
-  const [pageSize, setPageSize] = useState(25);
+  const [pageSize] = useState(25);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('Active');
   const [loading, setLoading] = useState(false);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [activePanel, setActivePanel] = useState<'customer' | 'sales' | 'billing'>('customer');
+  const [contextDrawerOpen, setContextDrawerOpen] = useState(false);
 
   const [context, setContext] = useState<ConversationContext | null>(null);
   const [customerDraft, setCustomerDraft] = useState<CustomerDraft>({
@@ -585,7 +584,7 @@ export default function ThreadsPage() {
   return (
     <>
       <Helmet>
-        <title>Inbox comercial | {CONFIG.appName}</title>
+        <title>Bandeja de entrada | {CONFIG.appName}</title>
       </Helmet>
 
       <DashboardContent maxWidth="xl">
@@ -596,9 +595,9 @@ export default function ThreadsPage() {
                 <Iconify icon="mdi:chat-processing-outline" />
               </Avatar>
               <Box>
-                <Typography variant="h4">Inbox comercial</Typography>
+                <Typography variant="h4">Bandeja de entrada</Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Conversacion, cliente, POS e invoice en la misma vista.
+                  Conversaciones omnicanal en un flujo unico de atencion.
                 </Typography>
               </Box>
             </Stack>
@@ -617,8 +616,8 @@ export default function ThreadsPage() {
         {actionOk && <Alert severity="success" sx={{ mb: 2 }}>{actionOk}</Alert>}
 
         <Grid container spacing={2}>
-          <Grid item xs={12} md={7}>
-            <Card sx={{ p: 1.5 }}>
+          <Grid item xs={12} md={4}>
+            <Card sx={{ p: 1.5, minHeight: 620 }}>
               <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} sx={{ mb: 1.5 }}>
                 <TextField size="small" fullWidth placeholder="Buscar cliente, telefono o identificador..." value={search} onChange={(e) => setSearch(e.target.value)} />
                 <TextField select size="small" value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }} sx={{ minWidth: 150 }}>
@@ -631,165 +630,132 @@ export default function ThreadsPage() {
                 <Button variant="contained" onClick={() => { setPage(0); loadSessions(); }}>Buscar</Button>
               </Stack>
 
-              <Box sx={{ height: 620 }}>
-                <DataGrid
-                  rows={rows}
-                  columns={[
-                    { field: 'displayName', headerName: 'Cliente', flex: 1, minWidth: 150, valueGetter: (_, row) => row.displayName || row.identifier },
-                    { field: 'identifier', headerName: 'Identificador', flex: 1, minWidth: 180 },
-                    { field: 'channelType', headerName: 'Canal', width: 110 },
-                    {
-                      field: 'unreadCount',
-                      headerName: 'No leidos',
-                      width: 105,
-                      renderCell: (params) => (
-                        <Chip
-                          size="small"
-                          label={String(params.row.unreadCount ?? 0)}
-                          color={(params.row.unreadCount ?? 0) > 0 ? 'warning' : 'default'}
-                          variant={(params.row.unreadCount ?? 0) > 0 ? 'filled' : 'outlined'}
-                        />
-                      ),
-                    },
-                    {
-                      field: 'replyPending',
-                      headerName: 'Seguimiento',
-                      width: 160,
-                      renderCell: (params) => {
-                        if (params.row.lastError) {
-                          return <Chip size="small" color="error" label="Con error" />;
-                        }
-                        if (params.row.replyPending || (params.row.unreadCount ?? 0) > 0) {
-                          return <Chip size="small" color="warning" label="Por responder" />;
-                        }
-                        return <Chip size="small" color="success" variant="outlined" label="Atendido" />;
-                      },
-                    },
-                    { field: 'status', headerName: 'Estado', width: 110, renderCell: (params) => <Chip size="small" label={params.value} color={params.value === 'Active' ? 'success' : 'default'} /> },
-                    { field: 'lastActivityAt', headerName: 'Ult. actividad', width: 170, valueFormatter: (value) => new Date(value as string).toLocaleString() },
-                  ]}
-                  rowCount={totalRows}
-                  loading={loading}
-                  paginationMode="server"
-                  paginationModel={{ page, pageSize }}
-                  onPaginationModelChange={(next) => {
-                    setPage(next.page);
-                    setPageSize(next.pageSize);
-                  }}
-                  pageSizeOptions={[10, 25, 50]}
-                  onRowClick={(params) => {
-                    setSelectedSessionId(params.row.id);
-                    loadContextAndMessages(params.row.id);
-                  }}
-                  disableRowSelectionOnClick
-                  slots={{ toolbar: GridToolbar, loadingOverlay: CircularProgress as any }}
-                />
+              <Box sx={{ minHeight: 520 }}>
+                {loading ? (
+                  <Stack alignItems="center" justifyContent="center" sx={{ py: 8 }}>
+                    <CircularProgress size={26} />
+                  </Stack>
+                ) : (
+                  <List dense sx={{ p: 0 }}>
+                  {rows.map((row) => {
+                      const isSelected = selectedSessionId === row.id;
+                      const hasUnread = (row.unreadCount ?? 0) > 0;
+                      return (
+                        <ListItem key={row.id} disablePadding sx={{ mb: 0.5 }}>
+                          <ListItemButton
+                            selected={isSelected}
+                            onClick={() => {
+                              setSelectedSessionId(row.id);
+                              setContextDrawerOpen(false);
+                              loadContextAndMessages(row.id);
+                            }}
+                            sx={{ borderRadius: 1.5, alignItems: 'flex-start', py: 1.2 }}
+                          >
+                            <Avatar sx={{ width: 34, height: 34, mr: 1.25 }}>
+                              {(row.displayName || row.identifier).slice(0, 1).toUpperCase()}
+                            </Avatar>
+                            <ListItemText
+                              primary={
+                                <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1}>
+                                  <Typography variant="subtitle2" noWrap sx={{ maxWidth: 170 }}>
+                                    {row.displayName || row.identifier}
+                                  </Typography>
+                                  <Typography variant="caption" color="text.secondary">
+                                    {new Date(row.lastActivityAt).toLocaleTimeString()}
+                                  </Typography>
+                                </Stack>
+                              }
+                              secondary={
+                                <Stack spacing={0.5} sx={{ mt: 0.25 }}>
+                                  <Typography variant="caption" color="text.secondary" noWrap>
+                                    {row.lastCustomerMessage || row.lastAgentMessage || row.identifier}
+                                  </Typography>
+                                  <Stack direction="row" spacing={0.75}>
+                                    <Chip size="small" variant="outlined" label={row.channelType} />
+                                    <Chip size="small" label={row.status} color={row.status === 'Active' ? 'success' : 'default'} />
+                                    {(row.replyPending || hasUnread) && <Chip size="small" color="warning" label="Por responder" />}
+                                    {hasUnread && <Chip size="small" color="primary" label={String(row.unreadCount)} />}
+                                  </Stack>
+                                </Stack>
+                              }
+                            />
+                          </ListItemButton>
+                        </ListItem>
+                      );
+                    })}
+                    {!rows.length && (
+                      <ListItem>
+                        <ListItemText primary="No hay conversaciones para este filtro." />
+                      </ListItem>
+                    )}
+                  </List>
+                )}
+                <Stack direction="row" spacing={1} justifyContent="flex-end" sx={{ mt: 1 }}>
+                  <Button size="small" onClick={() => setPage((prev) => Math.max(0, prev - 1))} disabled={page === 0}>
+                    Anterior
+                  </Button>
+                  <Button
+                    size="small"
+                    onClick={() => setPage((prev) => prev + 1)}
+                    disabled={(page + 1) * pageSize >= totalRows}
+                  >
+                    Siguiente
+                  </Button>
+                </Stack>
               </Box>
             </Card>
           </Grid>
 
-          <Grid item xs={12} md={5}>
-            <Card sx={{ p: 2, minHeight: 620 }}>
+          <Grid item xs={12} md={8}>
+            <Card sx={{ p: 2, minHeight: 620, display: 'flex', flexDirection: 'column' }}>
               {!selectedSessionId && <Typography color="text.secondary">Selecciona una conversacion para seguimiento comercial.</Typography>}
               {selectedSessionId && (
-                <Stack spacing={2}>
-                  <Box>
-                    <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.5 }}>
-                      <Typography variant="subtitle1">{context?.party?.fullName || context?.party?.displayName || context?.identifier || selectedSessionId}</Typography>
-                      <Stack direction="row" spacing={1}>
-                        <Chip size="small" label={context?.commercialState || 'lead'} color={commercialStateColor(context?.commercialState) as any} />
-                        <Chip size="small" label={context?.status || '...'} variant="outlined" />
-                      </Stack>
+                <Stack spacing={1.5} sx={{ height: '100%' }}>
+                  <Stack direction="row" justifyContent="space-between" alignItems="center">
+                    <Stack direction="row" spacing={1.2} alignItems="center" sx={{ minWidth: 0 }}>
+                      <Avatar sx={{ width: 36, height: 36 }}>
+                        {(context?.party?.fullName || context?.party?.displayName || context?.identifier || '?').slice(0, 1).toUpperCase()}
+                      </Avatar>
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography variant="subtitle1" noWrap>
+                          {context?.party?.fullName || context?.party?.displayName || context?.identifier || selectedSessionId}
+                        </Typography>
+                        <Typography variant="caption" color={context?.isExpired ? 'error.main' : 'text.secondary'} noWrap>
+                          {context
+                            ? `${context.channelType} · ${context.identifier} · no leidos ${context.unread ?? 0}${context.isExpired ? ' · ventana expirada (24h)' : ''}`
+                            : 'Cargando contexto...'}
+                        </Typography>
+                      </Box>
                     </Stack>
-                    <Typography variant="caption" color={context?.isExpired ? 'error.main' : 'text.secondary'}>
-                      {context
-                        ? `${context.channelType} - ${context.identifier} - unread ${context.unread ?? 0}${context.isExpired ? ' - ventana expirada (24h)' : ''}`
-                        : 'Cargando contexto...'}
-                    </Typography>
-                    {!!rows.find((row) => row.id === selectedSessionId)?.lastError && (
-                      <Typography variant="caption" color="error.main" sx={{ display: 'block', mt: 0.5 }}>
-                        Ultimo error: {rows.find((row) => row.id === selectedSessionId)?.lastError}
-                      </Typography>
-                    )}
-                  </Box>
-
-                  <Stack direction="row" spacing={1}>
-                    <Button size="small" variant="outlined" onClick={saveCustomer} disabled={!inboxEnabled}>
-                      {context?.party?.id ? 'Guardar cliente' : 'Crear cliente'}
-                    </Button>
-                    <Button size="small" variant="outlined" color="warning" onClick={closeConversation} disabled={!inboxEnabled || context?.status === 'Closed'}>
-                      Cerrar chat
-                    </Button>
+                    <Stack direction="row" spacing={0.75} alignItems="center">
+                      <Chip size="small" label={context?.commercialState || 'lead'} color={commercialStateColor(context?.commercialState) as any} />
+                      <Chip size="small" label={context?.status || '...'} variant="outlined" />
+                      <IconButton size="small" onClick={() => { setActivePanel('customer'); setContextDrawerOpen(true); }}>
+                        <Iconify icon="mdi:account-details-outline" />
+                      </IconButton>
+                      <IconButton size="small" onClick={() => { setActivePanel('sales'); setContextDrawerOpen(true); }} disabled={!salesEnabled}>
+                        <Iconify icon="mdi:cart-outline" />
+                      </IconButton>
+                      <IconButton size="small" onClick={() => { setActivePanel('billing'); setContextDrawerOpen(true); }} disabled={!billingEnabled}>
+                        <Iconify icon="mdi:file-document-outline" />
+                      </IconButton>
+                      <IconButton size="small" onClick={() => selectedSessionId && loadContextAndMessages(selectedSessionId)}>
+                        <Iconify icon="solar:refresh-line-duotone" />
+                      </IconButton>
+                      <IconButton size="small" color="warning" onClick={closeConversation} disabled={!inboxEnabled || context?.status === 'Closed'}>
+                        <Iconify icon="mdi:close-circle-outline" />
+                      </IconButton>
+                    </Stack>
                   </Stack>
 
-                  <Box sx={{ p: 1.5, border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
-                    <Stack spacing={1.5}>
-                      <TextField
-                        size="small"
-                        label="Buscar cliente existente"
-                        placeholder="Nombre, telefono o email"
-                        value={customerLookup}
-                        onChange={(e) => setCustomerLookup(e.target.value)}
-                        disabled={!inboxEnabled}
-                      />
-                      {(customerLookupLoading || customerMatches.length > 0) && (
-                        <List dense sx={{ maxHeight: 140, overflow: 'auto', border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
-                          {customerMatches.map((item) => (
-                            <ListItem
-                              key={item.id}
-                              secondaryAction={
-                                <Button size="small" onClick={() => applyCustomerMatch(item)} disabled={!inboxEnabled}>
-                                  Usar
-                                </Button>
-                              }
-                            >
-                              <ListItemText
-                                primary={item.fullName || item.displayName || item.phone || item.identifier}
-                                secondary={[item.phone, item.email, item.kind].filter(Boolean).join(' - ')}
-                              />
-                            </ListItem>
-                          ))}
-                          {!customerMatches.length && !customerLookupLoading && (
-                            <ListItem>
-                              <ListItemText primary="Sin coincidencias para esta busqueda." />
-                            </ListItem>
-                          )}
-                          {customerLookupLoading && (
-                            <ListItem>
-                              <ListItemText primary="Buscando clientes..." />
-                            </ListItem>
-                          )}
-                        </List>
-                      )}
-                      <TextField size="small" label="Alias" value={customerDraft.displayName} onChange={(e) => setCustomerDraft((prev) => ({ ...prev, displayName: e.target.value }))} disabled={!inboxEnabled} />
-                      <TextField size="small" label="Nombre completo" value={customerDraft.fullName} onChange={(e) => setCustomerDraft((prev) => ({ ...prev, fullName: e.target.value }))} disabled={!inboxEnabled} />
-                      <TextField size="small" label="Telefono" value={customerDraft.phone} onChange={(e) => setCustomerDraft((prev) => ({ ...prev, phone: e.target.value }))} disabled={!inboxEnabled} />
-                      <TextField size="small" label="Email" value={customerDraft.email} onChange={(e) => setCustomerDraft((prev) => ({ ...prev, email: e.target.value }))} disabled={!inboxEnabled} />
-                      <TextField select size="small" label="Tipo" value={customerDraft.kind} onChange={(e) => setCustomerDraft((prev) => ({ ...prev, kind: e.target.value }))} disabled={!inboxEnabled}>
-                        <MenuItem value="lead">Lead</MenuItem>
-                        <MenuItem value="customer">Customer</MenuItem>
-                      </TextField>
-                      {!!context?.party?.linkedIdentities?.length && (
-                        <Stack direction="row" spacing={1} flexWrap="wrap">
-                          {context.party.linkedIdentities.map((item) => (
-                            <Chip key={`${item.channel}-${item.identifier}`} size="small" variant="outlined" label={`${item.channel}: ${item.identifier}`} />
-                          ))}
-                        </Stack>
-                      )}
-                    </Stack>
-                  </Box>
-
-                  <Divider />
-
-                  <Box>
-                    <Typography variant="subtitle2" sx={{ mb: 1 }}>Inbox global de la conversacion</Typography>
+                  <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
                     <MessageTimeline
                       messages={messages}
                       loading={loadingMessages}
                       hasMore={hasMoreMessages}
                       onLoadMore={() => selectedSessionId && loadContextAndMessages(selectedSessionId, messagesCursor)}
                     />
-                    <Stack direction="row" spacing={1} sx={{ mt: 1.5 }}>
+                    <Stack direction="row" spacing={1} sx={{ mt: 1.5, pt: 1, borderTop: '1px solid', borderColor: 'divider' }}>
                       <TextField
                         size="small"
                         fullWidth
@@ -809,17 +775,62 @@ export default function ThreadsPage() {
                       </IconButton>
                     </Stack>
                   </Box>
+                  <Drawer
+                    anchor="right"
+                    open={contextDrawerOpen}
+                    onClose={() => setContextDrawerOpen(false)}
+                    ModalProps={{ keepMounted: true }}
+                    PaperProps={{ sx: { width: { xs: '100%', sm: 420 }, p: 2 } }}
+                  >
+                    <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}>
+                      <Typography variant="subtitle1">
+                        {activePanel === 'customer' ? 'Cliente y POS' : activePanel === 'sales' ? 'Ventas' : 'Facturas'}
+                      </Typography>
+                      <IconButton size="small" onClick={() => setContextDrawerOpen(false)}>
+                        <Iconify icon="mdi:close" />
+                      </IconButton>
+                    </Stack>
 
-                  <Divider />
-
-                  <Tabs value={activePanel} onChange={(_, value) => setActivePanel(value)} variant="fullWidth">
-                    <Tab value="customer" label="POS" />
-                    <Tab value="sales" label="Ventas" />
-                    <Tab value="billing" label="Facturas" />
-                  </Tabs>
-
-                  {activePanel === 'customer' && (
-                    <Stack spacing={1.5}>
+                    {activePanel === 'customer' && (
+                      <Stack spacing={1.5}>
+                        <TextField
+                          size="small"
+                          label="Buscar cliente existente"
+                          placeholder="Nombre, telefono o email"
+                          value={customerLookup}
+                          onChange={(e) => setCustomerLookup(e.target.value)}
+                          disabled={!inboxEnabled}
+                        />
+                        {(customerLookupLoading || customerMatches.length > 0) && (
+                          <List dense sx={{ maxHeight: 140, overflow: 'auto', border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+                            {customerMatches.map((item) => (
+                              <ListItem
+                                key={item.id}
+                                secondaryAction={
+                                  <Button size="small" onClick={() => applyCustomerMatch(item)} disabled={!inboxEnabled}>
+                                    Usar
+                                  </Button>
+                                }
+                              >
+                                <ListItemText
+                                  primary={item.fullName || item.displayName || item.phone || item.identifier}
+                                  secondary={[item.phone, item.email, item.kind].filter(Boolean).join(' - ')}
+                                />
+                              </ListItem>
+                            ))}
+                          </List>
+                        )}
+                        <TextField size="small" label="Alias" value={customerDraft.displayName} onChange={(e) => setCustomerDraft((prev) => ({ ...prev, displayName: e.target.value }))} disabled={!inboxEnabled} />
+                        <TextField size="small" label="Nombre completo" value={customerDraft.fullName} onChange={(e) => setCustomerDraft((prev) => ({ ...prev, fullName: e.target.value }))} disabled={!inboxEnabled} />
+                        <TextField size="small" label="Telefono" value={customerDraft.phone} onChange={(e) => setCustomerDraft((prev) => ({ ...prev, phone: e.target.value }))} disabled={!inboxEnabled} />
+                        <TextField size="small" label="Email" value={customerDraft.email} onChange={(e) => setCustomerDraft((prev) => ({ ...prev, email: e.target.value }))} disabled={!inboxEnabled} />
+                        <TextField select size="small" label="Tipo" value={customerDraft.kind} onChange={(e) => setCustomerDraft((prev) => ({ ...prev, kind: e.target.value }))} disabled={!inboxEnabled}>
+                          <MenuItem value="lead">Lead</MenuItem>
+                          <MenuItem value="customer">Customer</MenuItem>
+                        </TextField>
+                        <Button size="small" variant="outlined" onClick={saveCustomer} disabled={!inboxEnabled}>
+                          {context?.party?.id ? 'Guardar cliente' : 'Crear cliente'}
+                        </Button>
                       <Box sx={{ opacity: inventoryEnabled ? 1 : 0.55 }}>
                         <Stack direction="row" spacing={1}>
                           <TextField size="small" fullWidth placeholder="Buscar SKU o nombre" value={inventoryQuery} onChange={(e) => setInventoryQuery(e.target.value)} disabled={!inventoryEnabled} />
@@ -876,48 +887,49 @@ export default function ThreadsPage() {
                         <Button size="small" variant="outlined" onClick={createOrder} disabled={!salesEnabled || !cart.length}>Crear orden</Button>
                         <Button size="small" variant="contained" color="secondary" onClick={() => setInvoicePreviewOpen(true)} disabled={!billingEnabled || !cart.length || (!lastSaleId && !lastOrderId)}>Vista previa factura</Button>
                       </Stack>
-                    </Stack>
-                  )}
+                      </Stack>
+                    )}
 
-                  {activePanel === 'sales' && (
-                    <List dense sx={{ maxHeight: 220, overflow: 'auto', border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
-                      {sales.map((sale) => (
-                        <ListItem
-                          key={sale.id}
-                          secondaryAction={<Button size="small" onClick={() => setEditingSaleId(sale.id)}>Gestionar</Button>}
-                        >
-                          <ListItemText primary={`${sale.state} - $${sale.total} ${sale.currency}`} secondary={`${sale.paymentMethod} - ${new Date(sale.createdAt).toLocaleString()}`} />
-                        </ListItem>
-                      ))}
-                      {!sales.length && <ListItem><ListItemText primary="Sin ventas registradas." /></ListItem>}
-                    </List>
-                  )}
+                    {activePanel === 'sales' && (
+                      <List dense sx={{ maxHeight: '70vh', overflow: 'auto', border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+                        {sales.map((sale) => (
+                          <ListItem
+                            key={sale.id}
+                            secondaryAction={<Button size="small" onClick={() => setEditingSaleId(sale.id)}>Gestionar</Button>}
+                          >
+                            <ListItemText primary={`${sale.state} - $${sale.total} ${sale.currency}`} secondary={`${sale.paymentMethod} - ${new Date(sale.createdAt).toLocaleString()}`} />
+                          </ListItem>
+                        ))}
+                        {!sales.length && <ListItem><ListItemText primary="Sin ventas registradas." /></ListItem>}
+                      </List>
+                    )}
 
-                  {activePanel === 'billing' && (
-                    <List dense sx={{ maxHeight: 220, overflow: 'auto', border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
-                      {invoices.map((invoice) => (
-                        <ListItem
-                          key={invoice.id}
-                          secondaryAction={
-                            <Stack direction="row" spacing={0.5}>
-                              <IconButton size="small" onClick={() => downloadInvoice(invoice.id)}>
-                                <Iconify icon="solar:download-minimalistic-bold" />
-                              </IconButton>
-                              <IconButton size="small" onClick={() => sendInvoiceWhatsApp(invoice.id)} disabled={!billingEnabled}>
-                                <Iconify icon="mdi:whatsapp" />
-                              </IconButton>
-                              <IconButton size="small" onClick={() => markInvoicePaid(invoice.id)} disabled={invoice.status === 'paid'}>
-                                <Iconify icon="solar:check-circle-bold" />
-                              </IconButton>
-                            </Stack>
-                          }
-                        >
-                          <ListItemText primary={`${invoice.number || invoice.id} - $${invoice.total} ${invoice.currency}`} secondary={`${invoice.status} - ${new Date(invoice.createdAt).toLocaleString()}`} />
-                        </ListItem>
-                      ))}
-                      {!invoices.length && <ListItem><ListItemText primary="Sin facturas emitidas." /></ListItem>}
-                    </List>
-                  )}
+                    {activePanel === 'billing' && (
+                      <List dense sx={{ maxHeight: '70vh', overflow: 'auto', border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+                        {invoices.map((invoice) => (
+                          <ListItem
+                            key={invoice.id}
+                            secondaryAction={
+                              <Stack direction="row" spacing={0.5}>
+                                <IconButton size="small" onClick={() => downloadInvoice(invoice.id)}>
+                                  <Iconify icon="solar:download-minimalistic-bold" />
+                                </IconButton>
+                                <IconButton size="small" onClick={() => sendInvoiceWhatsApp(invoice.id)} disabled={!billingEnabled}>
+                                  <Iconify icon="mdi:whatsapp" />
+                                </IconButton>
+                                <IconButton size="small" onClick={() => markInvoicePaid(invoice.id)} disabled={invoice.status === 'paid'}>
+                                  <Iconify icon="solar:check-circle-bold" />
+                                </IconButton>
+                              </Stack>
+                            }
+                          >
+                            <ListItemText primary={`${invoice.number || invoice.id} - $${invoice.total} ${invoice.currency}`} secondary={`${invoice.status} - ${new Date(invoice.createdAt).toLocaleString()}`} />
+                          </ListItem>
+                        ))}
+                        {!invoices.length && <ListItem><ListItemText primary="Sin facturas emitidas." /></ListItem>}
+                      </List>
+                    )}
+                  </Drawer>
                 </Stack>
               )}
             </Card>

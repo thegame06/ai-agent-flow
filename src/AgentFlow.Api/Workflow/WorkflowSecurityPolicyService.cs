@@ -19,6 +19,7 @@ public sealed class WorkflowSecurityPolicyService : IWorkflowSecurityPolicyServi
         "connect.enqueue_campaign_message",
         "human.assign",
         "human.handoff",
+        "intent.branch",
         "ai.agent",
         "kyc.document_check",
         "kyc.review_case",

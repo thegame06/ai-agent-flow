@@ -204,7 +204,8 @@ public sealed class GenericWebhooksController : ControllerBase
 
     private async Task<string?> SelectAgentForSessionAsync(ChannelDefinition channel, CancellationToken ct)
     {
-        var routingAgentsRaw = channel.Config.GetValueOrDefault("RoutingAgents");
+        var routingAgentsRaw = channel.Config.GetValueOrDefault("IntentAgents")
+            ?? channel.Config.GetValueOrDefault("RoutingAgents");
         if (!string.IsNullOrWhiteSpace(channel.RouterAgentId))
             return channel.RouterAgentId;
 

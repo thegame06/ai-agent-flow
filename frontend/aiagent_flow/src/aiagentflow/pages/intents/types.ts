@@ -14,6 +14,7 @@ export interface Intent {
   priority: number;
   workflow_id?: string;
   workflow_name?: string;
+  channel?: string;
   target_agent_id?: string;
   enabled: boolean;
   is_base_intent: boolean;
@@ -37,6 +38,7 @@ export interface IntentFormData {
   confidence_threshold: number;
   priority: number;
   workflow_id?: string;
+  channel?: string;
   target_agent_id?: string;
   enabled: boolean;
 }
@@ -44,6 +46,13 @@ export interface IntentFormData {
 export interface IntentFilter {
   category: string;
   enabled: string;
+  channel?: string;
+}
+
+export interface ChannelOption {
+  id: string;
+  name: string;
+  type: string;
 }
 
 // ----------------------------------------------------------------------

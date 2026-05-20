@@ -737,7 +737,7 @@ export function WorkflowVisualDesigner({
   const channelAgentIds = useMemo(() => {
     if (!selectedWorkflowChannel) return new Set<string>();
     return new Set(
-      [selectedWorkflowChannel.defaultAgentId, ...(selectedWorkflowChannel.routingAgents ?? [])]
+      [selectedWorkflowChannel.defaultAgentId, ...(selectedWorkflowChannel.intentAgents ?? selectedWorkflowChannel.routingAgents ?? [])]
         .filter(Boolean)
         .map((agentId) => String(agentId))
     );
@@ -1178,7 +1178,7 @@ export function WorkflowVisualDesigner({
               <Alert severity="success">
                 Canal detectado: {selectedWorkflowChannel.name} ({selectedWorkflowChannel.type}). Agentes ya asignados:
                 {' '}
-                {[selectedWorkflowChannel.defaultAgentId, ...(selectedWorkflowChannel.routingAgents ?? [])]
+                {[selectedWorkflowChannel.defaultAgentId, ...(selectedWorkflowChannel.intentAgents ?? selectedWorkflowChannel.routingAgents ?? [])]
                   .filter(Boolean)
                   .join(', ') || 'sin asignacion'}
               </Alert>
@@ -2245,5 +2245,4 @@ export function WorkflowVisualDesigner({
     </Card>
   );
 }
-
 

@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
 import { Helmet } from 'react-helmet-async';
+import { useMemo, useState, useEffect } from 'react';
 
 import Box from '@mui/material/Box';
 import Tab from '@mui/material/Tab';
@@ -108,6 +108,7 @@ export default function WorkflowsPage() {
   const [syncingIntents, setSyncingIntents] = useState(false);
   const [probingIntent, setProbingIntent] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [routingRules, setRoutingRules] = useState<any[]>([]);
   const tenantId = useTenantId();
   const {
     saving,
@@ -230,6 +231,16 @@ export default function WorkflowsPage() {
   ].filter(Boolean).length;
   const setupPercent = Math.round((completedSetupSteps / 6) * 100);
 
+  const associatedRoutingIntents = useMemo(
+    () => routingRules.filter((rule) => String(rule.workflowDefinitionId || '') === String(editor.id || '')),
+    [routingRules, editor.id]
+  );
+
+  useEffect(() => {
+    axios.get(endpoints.agentflow.intentRouting.rules(tenantId))
+      .then((res) => setRoutingRules(res.data || []))
+      .catch(() => setRoutingRules([]));
+  }, [tenantId, workflows.length]);
   const workflowReadiness = (workflow: WorkflowDefinition) => {
     const intents = readStartIntents(workflow.definitionJson, workflow.triggerEventName);
     let activitiesInWorkflow: Array<{ type?: string; aiAgent?: { agentId?: string }; config?: Record<string, string> }> = [];
@@ -297,7 +308,7 @@ export default function WorkflowsPage() {
   };
 
   const syncIntentsToRouting = async () => {
-    const sourceAgentId = workflowChannel?.routerAgentId || workflowChannel?.defaultAgentId || workflowChannel?.routingAgents?.[0] || '';
+    const sourceAgentId = workflowChannel?.routerAgentId || workflowChannel?.defaultAgentId || workflowChannel?.intentAgents?.[0] || workflowChannel?.routingAgents?.[0] || '';
     const targetAgentId = firstAgentNode?.config?.agentId || firstAgentNode?.aiAgent?.agentId || sourceAgentId;
     const channel = workflowChannel?.type?.toLowerCase();
 
@@ -347,7 +358,7 @@ export default function WorkflowsPage() {
   };
 
   const simulateCurrentIntent = async () => {
-    const sourceAgentId = workflowChannel?.routerAgentId || workflowChannel?.defaultAgentId || workflowChannel?.routingAgents?.[0] || '';
+    const sourceAgentId = workflowChannel?.routerAgentId || workflowChannel?.defaultAgentId || workflowChannel?.intentAgents?.[0] || workflowChannel?.routingAgents?.[0] || '';
 
     if (!sourceAgentId) {
       setError('No se puede probar el motivo: selecciona un canal con asistente principal o asistente de enrutamiento.');
@@ -471,7 +482,8 @@ export default function WorkflowsPage() {
               <Stack direction="row" spacing={0.8} flexWrap="wrap" alignItems="center">
                 <Chip size="small" color={selectedWorkflow?.status === 'Published' ? 'success' : 'default'} label={selectedWorkflow?.status === 'Published' ? 'Publicado' : 'Borrador'} />
                 <Chip size="small" color={readyToPublish ? 'success' : 'warning'} label={`${setupPercent}% listo`} />
-                <Chip size="small" label={`${startIntents.length} motivos`} />
+                <Chip size="small" label={`${startIntents.length} motivos del flujo`} />
+                <Chip size="small" color="info" label={`${associatedRoutingIntents.length} intenciones asociadas`} />
                 <Chip size="small" label={workflowChannel ? workflowChannel.name : 'Sin canal'} />
                 <Chip size="small" color={hasAiAgentNode ? 'primary' : 'default'} label={hasAiAgentNode ? 'Asistente listo' : 'Sin asistente'} />
               </Stack>
@@ -569,7 +581,7 @@ export default function WorkflowsPage() {
                 <Box sx={{ flex: 1 }}>
                   <Typography variant="caption" color="text.secondary">
                     Entrada principal: <strong>{workflowChannel?.name ?? 'sin canal'}</strong>
-                    {' · '}Asistente responsable: <strong>{firstAgentNode?.aiAgent?.agentName || firstAgentNode?.config?.agentName || firstAgentNode?.config?.agentId || 'sin asistente'}</strong>
+                    {' ï¿½ '}Asistente responsable: <strong>{firstAgentNode?.aiAgent?.agentName || firstAgentNode?.config?.agentName || firstAgentNode?.config?.agentId || 'sin asistente'}</strong>
                   </Typography>
                 </Box>
                 <TextField
@@ -790,6 +802,10 @@ export default function WorkflowsPage() {
     </>
   );
 }
+
+
+
+
 
 
 

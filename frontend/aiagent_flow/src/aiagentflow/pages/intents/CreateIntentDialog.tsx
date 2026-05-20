@@ -19,7 +19,7 @@ import DialogActions from '@mui/material/DialogActions';
 import DialogContent from '@mui/material/DialogContent';
 import FormControlLabel from '@mui/material/FormControlLabel';
 
-import type { Agent, Intent, Workflow, IntentFormData } from './types';
+import type { Agent, Intent, Workflow, ChannelOption, IntentFormData } from './types';
 
 // ----------------------------------------------------------------------
 
@@ -28,6 +28,7 @@ interface CreateIntentDialogProps {
   intent: Intent | null;
   workflows: Workflow[];
   agents: Agent[];
+  channels: ChannelOption[];
   onClose: () => void;
   onSave: (data: IntentFormData) => Promise<void>;
 }
@@ -41,7 +42,7 @@ const CATEGORIES = [
   'Otros',
 ];
 
-export function CreateIntentDialog({ open, intent, workflows, agents, onClose, onSave }: CreateIntentDialogProps) {
+export function CreateIntentDialog({ open, intent, workflows, agents, channels, onClose, onSave }: CreateIntentDialogProps) {
   const [formData, setFormData] = useState<IntentFormData>({
     key: '',
     name: '',
@@ -53,6 +54,7 @@ export function CreateIntentDialog({ open, intent, workflows, agents, onClose, o
     priority: 5,
     workflow_id: '',
     target_agent_id: '',
+    channel: '',
     enabled: true,
   });
 
@@ -73,6 +75,7 @@ export function CreateIntentDialog({ open, intent, workflows, agents, onClose, o
         priority: intent.priority,
         workflow_id: intent.workflow_id || '',
         target_agent_id: intent.target_agent_id || '',
+        channel: intent.channel || '',
         enabled: intent.enabled,
       });
     } else {
@@ -87,6 +90,7 @@ export function CreateIntentDialog({ open, intent, workflows, agents, onClose, o
         priority: 5,
         workflow_id: '',
         target_agent_id: '',
+        channel: '',
         enabled: true,
       });
     }
@@ -101,6 +105,7 @@ export function CreateIntentDialog({ open, intent, workflows, agents, onClose, o
     if (!formData.description.trim()) newErrors.description = 'La descripción es obligatoria';
     if (formData.examples.length === 0) newErrors.examples = 'Se requiere al menos un ejemplo';
 
+    if (!formData.workflow_id && !formData.target_agent_id) newErrors.workflow_id = 'Define un workflow destino o un agente de respaldo.';
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -277,10 +282,10 @@ export function CreateIntentDialog({ open, intent, workflows, agents, onClose, o
 
           {/* Workflow Selector */}
           <FormControl fullWidth>
-            <InputLabel>Workflow (opcional)</InputLabel>
+            <InputLabel>Workflow destino</InputLabel>
             <Select
               value={formData.workflow_id || ''}
-              label="Workflow (opcional)"
+              label="Workflow destino"
               onChange={(e) => setFormData({ ...formData, workflow_id: e.target.value })}
             >
               <MenuItem value="">Sin workflow</MenuItem>
@@ -292,12 +297,28 @@ export function CreateIntentDialog({ open, intent, workflows, agents, onClose, o
             </Select>
           </FormControl>
 
+          <FormControl fullWidth>
+            <InputLabel>Canal</InputLabel>
+            <Select
+              value={formData.channel || ''}
+              label="Canal"
+              onChange={(e) => setFormData({ ...formData, channel: e.target.value })}
+            >
+              <MenuItem value="">Todos</MenuItem>
+              {channels.map((channel) => (
+                <MenuItem key={channel.id} value={channel.type}>
+                  {channel.name} ({channel.type})
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+
           {/* Agent Selector */}
           <FormControl fullWidth>
-            <InputLabel>Agente destino (opcional)</InputLabel>
+            <InputLabel>Agente respaldo (fallback)</InputLabel>
             <Select
               value={formData.target_agent_id || ''}
-              label="Agente destino (opcional)"
+              label="Agente respaldo (fallback)"
               onChange={(e) => setFormData({ ...formData, target_agent_id: e.target.value })}
             >
               <MenuItem value="">Sin agente</MenuItem>
@@ -333,3 +354,4 @@ export function CreateIntentDialog({ open, intent, workflows, agents, onClose, o
     </Dialog>
   );
 }
+

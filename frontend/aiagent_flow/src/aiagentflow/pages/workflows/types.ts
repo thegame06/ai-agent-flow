@@ -159,6 +159,8 @@ export type ChannelOption = {
   config: Record<string, string>;
   routerAgentId?: string;
   defaultAgentId?: string;
+  intentAgents?: string[];
+  // legacy
   routingAgents?: string[];
 };
 

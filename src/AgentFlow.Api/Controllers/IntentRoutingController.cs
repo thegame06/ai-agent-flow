@@ -2,6 +2,7 @@ using AgentFlow.Application.Memory;
 using AgentFlow.Intents.Classification;
 using AgentFlow.Intents.Inbox;
 using AgentFlow.Intents.Inbox.Models;
+using AgentFlow.Api.Workflow;
 using AgentFlow.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -18,19 +19,22 @@ public sealed class IntentRoutingController : ControllerBase
     private readonly ITenantContextAccessor _tenantContext;
     private readonly IIntentScoringEngine _intentScoring;
     private readonly IConversationInboxService _inboxService;
+    private readonly IWorkflowStudioStore _workflowStore;
 
     public IntentRoutingController(
         IIntentRoutingStore store,
         IAuditMemory auditMemory,
         ITenantContextAccessor tenantContext,
         IIntentScoringEngine intentScoring,
-        IConversationInboxService inboxService)
+        IConversationInboxService inboxService,
+        IWorkflowStudioStore workflowStore)
     {
         _store = store;
         _auditMemory = auditMemory;
         _tenantContext = tenantContext;
         _intentScoring = intentScoring;
         _inboxService = inboxService;
+        _workflowStore = workflowStore;
     }
 
     [HttpGet("rules")]
@@ -56,6 +60,26 @@ public sealed class IntentRoutingController : ControllerBase
             });
         }
 
+        if (string.IsNullOrWhiteSpace(body.WorkflowDefinitionId) && string.IsNullOrWhiteSpace(body.TargetAgentId))
+        {
+            return BadRequest(new { message = "La regla debe definir un workflow destino o un agente de respaldo." });
+        }
+
+        var allRules = await _store.GetRulesAsync(tenantId, ct);
+        var duplicate = allRules.FirstOrDefault(r =>
+            string.Equals(r.IntentKey, body.IntentKey, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(r.Channel ?? string.Empty, body.Channel ?? string.Empty, StringComparison.OrdinalIgnoreCase));
+        if (duplicate is not null)
+            return Conflict(new { message = $"Ya existe una intención '{body.IntentKey}' para el canal '{body.Channel ?? "todos"}'." });
+
+        string? workflowName = body.WorkflowName;
+        if (!string.IsNullOrWhiteSpace(body.WorkflowDefinitionId))
+        {
+            var wf = await _workflowStore.GetDefinitionAsync(tenantId, body.WorkflowDefinitionId, ct);
+            if (wf is null) return BadRequest(new { message = $"Workflow '{body.WorkflowDefinitionId}' no existe." });
+            workflowName = wf.Name;
+        }
+
         var saved = await _store.UpsertRuleAsync(new IntentRoutingRule
         {
             Id = string.IsNullOrWhiteSpace(body.Id) ? Guid.NewGuid().ToString("N") : body.Id,
@@ -64,9 +88,9 @@ public sealed class IntentRoutingController : ControllerBase
             IntentDescription = body.IntentDescription ?? string.Empty,
             ExamplePhrases = body.ExamplePhrases ?? Array.Empty<string>(),
             SourceAgentId = body.SourceAgentId,
-            TargetAgentId = body.TargetAgentId,
+            TargetAgentId = body.TargetAgentId ?? body.SourceAgentId,
             WorkflowDefinitionId = body.WorkflowDefinitionId,
-            WorkflowName = body.WorkflowName,
+            WorkflowName = workflowName,
             Priority = body.Priority,
             Enabled = body.Enabled,
             Channel = body.Channel,
@@ -93,8 +117,29 @@ public sealed class IntentRoutingController : ControllerBase
             });
         }
 
+        if (string.IsNullOrWhiteSpace(body.WorkflowDefinitionId) && string.IsNullOrWhiteSpace(body.TargetAgentId))
+        {
+            return BadRequest(new { message = "La regla debe definir un workflow destino o un agente de respaldo." });
+        }
+
         var existing = await _store.GetRuleByIdAsync(tenantId, ruleId, ct);
         if (existing is null) return NotFound();
+
+        var allRules = await _store.GetRulesAsync(tenantId, ct);
+        var duplicate = allRules.FirstOrDefault(r =>
+            !string.Equals(r.Id, ruleId, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(r.IntentKey, body.IntentKey, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(r.Channel ?? string.Empty, body.Channel ?? string.Empty, StringComparison.OrdinalIgnoreCase));
+        if (duplicate is not null)
+            return Conflict(new { message = $"Ya existe una intención '{body.IntentKey}' para el canal '{body.Channel ?? "todos"}'." });
+
+        string? workflowName = body.WorkflowName ?? existing.WorkflowName;
+        if (!string.IsNullOrWhiteSpace(body.WorkflowDefinitionId))
+        {
+            var wf = await _workflowStore.GetDefinitionAsync(tenantId, body.WorkflowDefinitionId, ct);
+            if (wf is null) return BadRequest(new { message = $"Workflow '{body.WorkflowDefinitionId}' no existe." });
+            workflowName = wf.Name;
+        }
 
         var saved = await _store.UpsertRuleAsync(existing with
         {
@@ -102,9 +147,9 @@ public sealed class IntentRoutingController : ControllerBase
             IntentDescription = body.IntentDescription ?? existing.IntentDescription,
             ExamplePhrases = body.ExamplePhrases ?? existing.ExamplePhrases,
             SourceAgentId = body.SourceAgentId,
-            TargetAgentId = body.TargetAgentId,
+            TargetAgentId = body.TargetAgentId ?? existing.TargetAgentId,
             WorkflowDefinitionId = body.WorkflowDefinitionId ?? existing.WorkflowDefinitionId,
-            WorkflowName = body.WorkflowName ?? existing.WorkflowName,
+            WorkflowName = workflowName,
             Priority = body.Priority,
             Enabled = body.Enabled,
             Channel = body.Channel,
@@ -300,7 +345,7 @@ public sealed record UpsertIntentRuleRequest
     public string? IntentDescription { get; init; }
     public IReadOnlyList<string>? ExamplePhrases { get; init; }
     public required string SourceAgentId { get; init; }
-    public required string TargetAgentId { get; init; }
+    public string? TargetAgentId { get; init; }
     public string? WorkflowDefinitionId { get; init; }
     public string? WorkflowName { get; init; }
     public required int Priority { get; init; }

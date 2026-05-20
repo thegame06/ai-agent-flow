@@ -93,9 +93,7 @@ export function IntentsList({ intents, loading, onEdit, onToggle, onDelete }: In
                     color="default"
                     variant="outlined"
                   />
-                </TableCell>
-                <TableCell>
-                  <Stack spacing={0.5}>
+                </TableCell>`r`n                <TableCell>`r`n                  <Typography variant="body2" color="text.secondary">`r`n                    {intent.channel || 'Todos'}`r`n                  </Typography>`r`n                </TableCell>`r`n                <TableCell>`r`n                  <Stack spacing={0.5}>
                     {intent.workflow_name ? (
                       <>
                         <Typography variant="body2">{intent.workflow_name}</Typography>
@@ -165,3 +163,5 @@ export function IntentsList({ intents, loading, onEdit, onToggle, onDelete }: In
     </Card>
   );
 }
+
+

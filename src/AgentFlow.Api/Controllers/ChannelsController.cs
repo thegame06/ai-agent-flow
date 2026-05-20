@@ -299,13 +299,16 @@ public sealed class ChannelsController : ControllerBase
         var channel = await _channelRepo.GetByIdAsync(channelId, tenantId, ct);
         if (channel == null) return NotFound();
 
-        var routingAgents = channel.Config.GetValueOrDefault("RoutingAgents") ?? string.Empty;
+        var routingAgents = ReadIntentAgentsCsv(channel.Config);
         var defaultAgentId = channel.Config.GetValueOrDefault("DefaultAgentId") ?? string.Empty;
 
         return Ok(new ChannelRoutingDto
         {
             ChannelId = channel.Id,
             DefaultAgentId = defaultAgentId,
+            IntentAgents = routingAgents
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .ToList(),
             RoutingAgents = routingAgents
                 .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .ToList()
@@ -326,13 +329,14 @@ public sealed class ChannelsController : ControllerBase
         if (!string.IsNullOrWhiteSpace(request.DefaultAgentId))
             updated["DefaultAgentId"] = request.DefaultAgentId.Trim();
 
-        var routing = request.RoutingAgents?
+        var routing = (request.IntentAgents ?? request.RoutingAgents)?
             .Where(x => !string.IsNullOrWhiteSpace(x))
             .Select(x => x.Trim())
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList() ?? new List<string>();
 
-        updated["RoutingAgents"] = string.Join(",", routing);
+        updated["IntentAgents"] = string.Join(",", routing);
+        updated["RoutingAgents"] = string.Join(",", routing); // backwards-compat
         if (request.RoutingCapacities is not null)
         {
             var capacityCsv = string.Join(",",
@@ -350,6 +354,7 @@ public sealed class ChannelsController : ControllerBase
         {
             ChannelId = channel.Id,
             DefaultAgentId = updated.GetValueOrDefault("DefaultAgentId") ?? string.Empty,
+            IntentAgents = routing,
             RoutingAgents = routing,
             RoutingCapacities = ParseRoutingCapacities(updated.GetValueOrDefault("RoutingCapacities"))
         });
@@ -413,14 +418,18 @@ public sealed class ChannelsController : ControllerBase
         var sourceAgentId = !string.IsNullOrWhiteSpace(channel.RouterAgentId)
             ? channel.RouterAgentId
             : channel.Config.GetValueOrDefault("DefaultAgentId") ?? "router";
-        var targetAgentId = channel.Config.GetValueOrDefault("DefaultAgentId") ?? sourceAgentId;
-        if (string.Equals(sourceAgentId, targetAgentId, StringComparison.OrdinalIgnoreCase))
-        {
-            return BadRequest(new
-            {
-                message = "No se puede cargar intenciones: el canal tiene el mismo agente como origen y destino. Configure un DefaultAgentId distinto al RouterAgentId."
-            });
-        }
+        var defaultAgentId = channel.Config.GetValueOrDefault("DefaultAgentId") ?? string.Empty;
+        var routingAgents = ReadIntentAgentsCsv(channel.Config)
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var fallbackTargetAgentId = routingAgents
+            .FirstOrDefault(x => !string.Equals(x, sourceAgentId, StringComparison.OrdinalIgnoreCase))
+            ?? (!string.IsNullOrWhiteSpace(defaultAgentId) &&
+                !string.Equals(defaultAgentId, sourceAgentId, StringComparison.OrdinalIgnoreCase)
+                    ? defaultAgentId
+                    : string.Empty);
         var channelKey = channel.Type.ToString().ToLowerInvariant();
 
         var baseIntents = await _intentCatalog.GetBaseIntentsAsync(ct);
@@ -446,6 +455,15 @@ public sealed class ChannelsController : ControllerBase
                 ?? existingRules.FirstOrDefault(r =>
                     string.Equals(r.IntentKey, intentKey, StringComparison.OrdinalIgnoreCase) &&
                     string.Equals(r.SourceAgentId, sourceAgentId, StringComparison.OrdinalIgnoreCase));
+            var targetAgentId = existing?.TargetAgentId ?? fallbackTargetAgentId;
+            if (string.IsNullOrWhiteSpace(targetAgentId) ||
+                string.Equals(sourceAgentId, targetAgentId, StringComparison.OrdinalIgnoreCase))
+            {
+                return BadRequest(new
+                {
+                    message = "No hay un agente destino valido para las intenciones. Configure IntentAgents con al menos un agente distinto del RouterAgentId."
+                });
+            }
 
             var saved = await _intentRoutingStore.UpsertRuleAsync(new IntentRoutingRule
             {
@@ -487,7 +505,7 @@ public sealed class ChannelsController : ControllerBase
             createdOrUpdated,
             removed,
             sourceAgentId,
-            targetAgentId
+            targetAgentId = fallbackTargetAgentId
         });
     }
 
@@ -500,7 +518,7 @@ public sealed class ChannelsController : ControllerBase
         var channel = await _channelRepo.GetByIdAsync(channelId, tenantId, ct);
         if (channel == null) return NotFound();
 
-        var routingAgents = (channel.Config.GetValueOrDefault("RoutingAgents") ?? string.Empty)
+        var routingAgents = (ReadIntentAgentsCsv(channel.Config) ?? string.Empty)
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Where(x => !string.IsNullOrWhiteSpace(x))
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -671,6 +689,13 @@ public sealed class ChannelsController : ControllerBase
         return result;
     }
 
+    private static string ReadIntentAgentsCsv(IReadOnlyDictionary<string, string> config)
+    {
+        if (config.TryGetValue("IntentAgents", out var intentAgents) && !string.IsNullOrWhiteSpace(intentAgents))
+            return intentAgents;
+        return config.GetValueOrDefault("RoutingAgents") ?? string.Empty;
+    }
+
     private static bool IsManagedByChannelIntentLoader(IntentRoutingRule rule, string channelId)
     {
         if (rule.Id.StartsWith($"channel-{channelId}-intent-", StringComparison.OrdinalIgnoreCase))
@@ -730,6 +755,7 @@ public sealed record ChannelDto
 public sealed record UpdateChannelRoutingRequest
 {
     public string? DefaultAgentId { get; init; }
+    public List<string>? IntentAgents { get; init; }
     public List<string>? RoutingAgents { get; init; }
     public Dictionary<string, int>? RoutingCapacities { get; init; }
 }
@@ -738,6 +764,7 @@ public sealed record ChannelRoutingDto
 {
     public required string ChannelId { get; init; }
     public required string DefaultAgentId { get; init; }
+    public List<string> IntentAgents { get; init; } = new();
     public List<string> RoutingAgents { get; init; } = new();
     public Dictionary<string, int> RoutingCapacities { get; init; } = new(StringComparer.OrdinalIgnoreCase);
 }

@@ -42,11 +42,6 @@ export const navData: NavSectionProps['data'] = [
     subheader: 'Construccion',
     items: [
       {
-        title: 'Crear automatizacion',
-        path: paths.dashboard.automationNew,
-        icon: ICONS.automation,
-      },
-      {
         title: 'Flujos automatizados',
         path: paths.dashboard.workflows,
         icon: ICONS.workflow,
@@ -67,7 +62,7 @@ export const navData: NavSectionProps['data'] = [
     subheader: 'Operacion',
     items: [
       {
-        title: 'Conversaciones activas',
+        title: 'Bandeja de entrada',
         path: paths.dashboard.threads,
         icon: icon('mdi:forum-outline'),
       },

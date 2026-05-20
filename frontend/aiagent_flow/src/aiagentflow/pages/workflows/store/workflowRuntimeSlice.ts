@@ -97,7 +97,7 @@ const workflowRuntimeSlice = createSlice({
         state.availableChannels = ((action.payload.availableChannels as any[]) ?? []).map(
           (channel) => {
             const config = channel.config ?? channel.Config ?? {};
-            const routingAgents = String(config.RoutingAgents ?? config.routingAgents ?? '')
+            const intentAgents = String(config.IntentAgents ?? config.intentAgents ?? config.RoutingAgents ?? config.routingAgents ?? '')
               .split(',')
               .map((value) => value.trim())
               .filter(Boolean);
@@ -109,7 +109,8 @@ const workflowRuntimeSlice = createSlice({
               config,
               routerAgentId: config.RouterAgentId ?? config.routerAgentId ?? '',
               defaultAgentId: config.DefaultAgentId ?? config.defaultAgentId ?? '',
-              routingAgents,
+              intentAgents,
+              routingAgents: intentAgents,
             } as ChannelOption;
           }
         );

@@ -229,6 +229,28 @@ public sealed class WorkflowCatalogSeeder : IHostedService
         {
             new WorkflowActivityCatalogContract
             {
+                TypeName = "intent.branch",
+                DisplayName = "Bifurcar por intención",
+                Category = "Orquestación",
+                Description = "Evalúa intenciones detectadas y redirige a nodos distintos por coincidencia.",
+                InputSchema = new Dictionary<string, string>
+                {
+                    ["intent"] = "string (detected intent fallback)",
+                    ["matchedIntentsCsv"] = "string (intent_a,intent_b,...)",
+                    ["mode"] = "first|all",
+                    ["case.<intentKey>"] = "string (id/name del nodo destino)"
+                },
+                OutputSchema = new Dictionary<string, string>
+                {
+                    ["next"] = "string",
+                    ["nextIds"] = "array<string>",
+                    ["matchedIntent"] = "string"
+                },
+                UpdatedAt = now,
+                UpdatedBy = actor
+            },
+            new WorkflowActivityCatalogContract
+            {
                 TypeName = "http.request",
                 DisplayName = "Consultar API",
                 Category = "Datos",
