@@ -188,67 +188,16 @@ public sealed class WhatsAppWebhookController : ControllerBase
                 UpdatedBy = "qr-webhook"
             }, ct);
 
-            // --- Trigger published workflow (if any) for connect.message.received ---
-            WorkflowExecutionContract? workflowExecution = null;
-            try
-            {
-                var workflowPayload = new Dictionary<string, object?>
-                {
-                    ["channel"] = "whatsapp",
-                    ["recipient"] = message.From,
-                    ["content"] = message.Content,
-                    ["pushName"] = message.PushName,
-                    ["inboxMessageId"] = inboxMessage.Id,
-                    ["sessionId"] = session.Id,
-                    ["assignedTo"] = session.AgentId
-                };
-                workflowExecution = await _triggerService.TriggerEventAsync(
-                    tenantId,
-                    "connect.message.received",
-                    message.From,
-                    HttpContext.TraceIdentifier,
-                    workflowPayload,
-                    ct);
-                await _audit.RecordExecutionActionAsync(
-                    tenantId,
-                    "qr-webhook",
-                    "workflow.execution.trigger.qr",
-                    workflowExecution.Id,
-                    workflowExecution.WorkflowDefinitionId,
-                    new { inboxMessageId = inboxMessage.Id, from = message.From },
-                    HttpContext.TraceIdentifier,
-                    ct);
-                _logger.LogInformation(
-                    "Workflow triggered for QR message. ExecutionId={ExecutionId}",
-                    workflowExecution.Id);
-            }
-            catch (InvalidOperationException)
-            {
-                // No published workflow for this event — fall through to direct agent execution
-                _logger.LogInformation(
-                    "No published workflow for connect.message.received in tenant {TenantId}. Routing directly to agent.",
-                    tenantId);
-            }
-
-            // --- If no workflow handled it, route directly through the channel gateway ---
-            string? agentResponse = null;
-            string? agentExecutionId = null;
-            if (workflowExecution is null)
-            {
-                var response = await _gateway.ProcessMessageAsync(channelMessage, ct);
-                agentResponse = response.Content;
-                agentExecutionId = response.AgentExecutionId;
-            }
-            else
-            {
-                await _messageRepo.InsertAsync(channelMessage, ct);
-            }
-
-            return Ok(new
+                        // --- Route through channel gateway as primary path ---
+            // Router + intent rules decide whether to trigger a workflow.
+            var response = await _gateway.ProcessMessageAsync(channelMessage, ct);
+            var agentResponse = response.Content;
+            var agentExecutionId = response.AgentExecutionId;
+return Ok(new
             {
                 status = "success",
                 inboxMessageId = inboxMessage.Id,
-                workflowExecutionId = workflowExecution?.Id,
+                workflowExecutionId = (string?)null,
                 agentResponse,
                 agentExecutionId
             });
@@ -311,3 +260,4 @@ public sealed record QrWhatsAppMessage
     public string? PushName { get; init; }
     public long Timestamp { get; init; }
 }
+

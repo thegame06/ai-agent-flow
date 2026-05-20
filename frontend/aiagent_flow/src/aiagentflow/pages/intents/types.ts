@@ -15,6 +15,7 @@ export interface Intent {
   workflow_id?: string;
   workflow_name?: string;
   channel?: string;
+  source_agent_id?: string;
   target_agent_id?: string;
   enabled: boolean;
   is_base_intent: boolean;
@@ -97,13 +98,13 @@ export interface IntentCandidate {
 }
 
 export interface ExplanationData {
-  decision: string;
+  decision?: string;
   factors: Array<{
     name: string;
     contribution: number;
     details: string;
   }>;
-  alternatives_considered: number;
+  alternatives_considered?: number;
 }
 
 // ----------------------------------------------------------------------

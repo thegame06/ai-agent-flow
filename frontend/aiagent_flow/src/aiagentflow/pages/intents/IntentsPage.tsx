@@ -19,8 +19,6 @@ import { CreateIntentDialog } from './CreateIntentDialog';
 
 import type { Agent, Intent, Workflow, IntentFilter, ChannelOption, IntentFormData } from './types';
 
-// ----------------------------------------------------------------------
-
 export default function IntentsPage() {
   const tenantId = useTenantId();
   const [intents, setIntents] = useState<Intent[]>([]);
@@ -34,20 +32,23 @@ export default function IntentsPage() {
   const [openDialog, setOpenDialog] = useState(false);
   const [selectedIntent, setSelectedIntent] = useState<Intent | null>(null);
 
+  const cleanText = (value?: string | null) => String(value ?? '').replace(/\r?\n/g, ' ').trim();
+
   const mapRuleToIntent = useCallback((rule: any): Intent => ({
     id: rule.id,
-    key: rule.intentKey ?? '',
-    name: rule.intentKey ?? '',
-    description: rule.intentDescription ?? '',
+    key: cleanText(rule.intentKey),
+    name: cleanText(rule.intentKey),
+    description: cleanText(rule.intentDescription),
     category: 'General',
-    examples: rule.examplePhrases ?? [],
+    examples: (rule.examplePhrases ?? []).map((x: string) => cleanText(x)).filter(Boolean),
     synonyms: [],
     confidence_threshold: 0.7,
     priority: rule.priority ?? 100,
-    workflow_id: rule.workflowDefinitionId ?? '',
-    workflow_name: rule.workflowName ?? '',
-    channel: rule.channel ?? '',
-    target_agent_id: rule.targetAgentId ?? '',
+    workflow_id: cleanText(rule.workflowDefinitionId),
+    workflow_name: cleanText(rule.workflowName),
+    channel: cleanText(rule.channel),
+    source_agent_id: cleanText(rule.sourceAgentId),
+    target_agent_id: cleanText(rule.targetAgentId),
     enabled: rule.enabled ?? true,
     is_base_intent: false,
     created_at: rule.createdAt ?? '',
@@ -58,21 +59,21 @@ export default function IntentsPage() {
     try {
       setLoading(true);
       setError(null);
-      
+
       const [intentsRes, workflowsRes, agentsRes, channelsRes] = await Promise.all([
         axios.get(endpoints.agentflow.intentRouting.rules(tenantId)),
         axios.get(endpoints.agentflow.workflows.list(tenantId)).catch(() => ({ data: [] })),
         axios.get(endpoints.agentflow.agents.list(tenantId)).catch(() => ({ data: [] })),
         axios.get(endpoints.agentflow.channels.list(tenantId)).catch(() => ({ data: [] })),
       ]);
-      
+
       setIntents((intentsRes.data || []).map(mapRuleToIntent));
       setWorkflows(workflowsRes.data || []);
       setAgents(agentsRes.data || []);
       setChannels((channelsRes.data || []).map((c: any) => ({ id: c.id, name: c.name, type: String(c.type || '').toLowerCase() })));
     } catch (err) {
       console.error('Failed to load intents:', err);
-      setError('Error al cargar intenciones. Verifica que el backend est√© corriendo en http://localhost:5000');
+      setError('Error al cargar intenciones. Verifica que el backend estÈ corriendo en http://localhost:5000');
       setIntents([]);
     } finally {
       setLoading(false);
@@ -99,7 +100,7 @@ export default function IntentsPage() {
       setError(null);
     } catch (err) {
       console.error('Failed to toggle intent:', err);
-      setError(`Error al ${enabled ? 'activar' : 'desactivar'} intenci√≥n. Verifica la conexi√≥n con el backend.`);
+      setError(`Error al ${enabled ? 'activar' : 'desactivar'} intenciÛn. Verifica la conexiÛn con el backend.`);
     }
   };
 
@@ -112,19 +113,19 @@ export default function IntentsPage() {
       setError(null);
     } catch (err) {
       console.error('Failed to delete intent:', err);
-      setError('Error al eliminar intenci√≥n. Verifica la conexi√≥n con el backend.');
+      setError('Error al eliminar intenciÛn. Verifica la conexiÛn con el backend.');
     }
   };
 
   const handleSave = async (data: IntentFormData) => {
     try {
-      const sourceAgentId = data.target_agent_id || agents[0]?.id || 'router';
+      const sourceAgentId = selectedIntent?.source_agent_id || agents[0]?.id || 'router';
       const payload = {
         intentKey: data.key,
         intentDescription: data.description,
-        examplePhrases: data.examples,
+        examplePhrases: data.examples.map((x) => x.trim()).filter(Boolean),
         sourceAgentId,
-        targetAgentId: data.target_agent_id || sourceAgentId,
+        targetAgentId: data.target_agent_id || null,
         workflowDefinitionId: data.workflow_id || null,
         workflowName: workflows.find((wf) => wf.id === data.workflow_id)?.name ?? null,
         channel: data.channel || null,
@@ -144,24 +145,20 @@ export default function IntentsPage() {
       setOpenDialog(false);
       setSelectedIntent(null);
       setError(null);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to save intent:', err);
-      setError(`Error al ${selectedIntent ? 'actualizar' : 'crear'} intenci√≥n. Verifica los datos y la conexi√≥n con el backend.`);
+      setError(err?.response?.data?.message || `Error al ${selectedIntent ? 'actualizar' : 'crear'} intenciÛn. Verifica los datos y la conexiÛn con el backend.`);
     }
   };
 
-  // Filtering logic
   const filteredIntents = intents.filter((intent) => {
-    // Category filter
     if (filter.category !== 'all' && intent.category !== filter.category) {
       return false;
     }
 
-    // Enabled filter
     if (filter.enabled === 'enabled' && !intent.enabled) return false;
     if (filter.enabled === 'disabled' && intent.enabled) return false;
 
-    // Search filter
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       return (
@@ -177,17 +174,16 @@ export default function IntentsPage() {
   return (
     <>
       <Helmet>
-        <title>Reglas de Intenci√≥n | AgentFlow</title>
+        <title>Reglas de IntenciÛn | AgentFlow</title>
       </Helmet>
 
       <DashboardContent maxWidth="xl">
         <Stack spacing={3}>
-          {/* Header */}
           <Stack direction="row" justifyContent="space-between" alignItems="center">
             <Stack spacing={1}>
-              <Typography variant="h4">Reglas de Intenci√≥n</Typography>
+              <Typography variant="h4">Reglas de IntenciÛn</Typography>
               <Typography variant="body2" color="text.secondary">
-                Configura las reglas de routing para clasificar autom√°ticamente los mensajes entrantes
+                Configura las reglas de routing para clasificar autom·ticamente los mensajes entrantes
               </Typography>
             </Stack>
             <Stack direction="row" spacing={2}>
@@ -196,7 +192,7 @@ export default function IntentsPage() {
                 startIcon={<Iconify icon="eva:play-circle-outline" />}
                 href="/dashboard/intents/playground"
               >
-                Probar clasificaci√≥n
+                Probar clasificaciÛn
               </Button>
               <Button
                 variant="contained"
@@ -211,20 +207,16 @@ export default function IntentsPage() {
             </Stack>
           </Stack>
 
-          {/* Filters */}
           <IntentFilters filter={filter} onChange={setFilter} />
 
-          {/* Error Alert */}
           {error && (
             <Alert severity="error" onClose={() => setError(null)}>
               {error}
             </Alert>
           )}
 
-          {/* Search */}
           <IntentSearchBar value={searchQuery} onChange={setSearchQuery} />
 
-          {/* Intents Table */}
           <IntentsList
             intents={filteredIntents}
             onEdit={handleEdit}
@@ -234,7 +226,6 @@ export default function IntentsPage() {
           />
         </Stack>
 
-        {/* Create/Edit Dialog */}
         <CreateIntentDialog
           open={openDialog}
           intent={selectedIntent}
@@ -251,4 +242,3 @@ export default function IntentsPage() {
     </>
   );
 }
-

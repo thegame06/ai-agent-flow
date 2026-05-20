@@ -823,7 +823,7 @@ export default function ThreadsPage() {
                   >
                     <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}>
                       <Typography variant="subtitle1">
-                        {activePanel === 'customer' ? 'Cliente y POS' : activePanel === 'sales' ? 'Ventas' : 'Facturas'}
+                        {activePanel === 'customer' ? 'Cliente y contexto' : activePanel === 'sales' ? 'Ventas y POS' : 'Facturas'}
                       </Typography>
                       <IconButton size="small" onClick={() => setContextDrawerOpen(false)}>
                         <Iconify icon="mdi:close" />
@@ -899,79 +899,107 @@ export default function ThreadsPage() {
                               <Chip size="small" label={`Ventas: ${sales.length}`} />
                               <Chip size="small" label={`Facturas: ${invoices.length}`} />
                             </Stack>
-                      <Box sx={{ opacity: inventoryEnabled ? 1 : 0.55 }}>
-                        <Stack direction="row" spacing={1}>
-                          <TextField size="small" fullWidth placeholder="Buscar SKU o nombre" value={inventoryQuery} onChange={(e) => setInventoryQuery(e.target.value)} disabled={!inventoryEnabled} />
-                          <Button variant="outlined" disabled={!inventoryEnabled}>Buscar</Button>
-                        </Stack>
-                        <List dense sx={{ maxHeight: 140, overflow: 'auto', border: '1px solid', borderColor: 'divider', borderRadius: 1, mt: 1 }}>
-                          {inventory.map((item) => (
-                            <ListItem key={item.id} secondaryAction={<Button size="small" onClick={() => addToCart(item)} disabled={!inventoryEnabled || !salesEnabled}>Agregar</Button>}>
-                              <ListItemText
-                                primary={`${item.sku} - ${item.name}`}
-                                secondary={`$${item.unitPrice} - ${item.itemType || 'physical'} / ${item.unitOfMeasure || 'unit'}${item.tracksInventory === false ? ' - sin stock' : ` - stock ${item.onHand}`}`}
-                              />
-                            </ListItem>
-                          ))}
-                        </List>
-                      </Box>
-
-                      <List dense sx={{ maxHeight: 120, overflow: 'auto', border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
-                        {cart.map((item) => (
-                          <ListItem key={item.sku}>
-                            <ListItemText primary={`${item.sku} - ${item.name}`} secondary={`${item.quantity} x $${item.unitPrice}`} />
-                          </ListItem>
-                        ))}
-                      </List>
-                      <Grid container spacing={1}>
-                        <Grid item xs={12} md={6}>
-                          <TextField select size="small" fullWidth label="Pago" value={saleComposer.paymentMethod} onChange={(e) => setSaleComposer((prev) => ({ ...prev, paymentMethod: e.target.value }))}>
-                            <MenuItem value="cash">cash</MenuItem>
-                            <MenuItem value="card">card</MenuItem>
-                            <MenuItem value="transfer">transfer</MenuItem>
-                          </TextField>
-                        </Grid>
-                        <Grid item xs={6} md={3}>
-                          <TextField size="small" fullWidth label="IVA" value={saleComposer.taxRate} onChange={(e) => setSaleComposer((prev) => ({ ...prev, taxRate: e.target.value }))} disabled={!saleComposer.applyTax} />
-                        </Grid>
-                        <Grid item xs={6} md={3}>
-                          <TextField size="small" fullWidth label="Descuento" value={saleComposer.discountAmount} onChange={(e) => setSaleComposer((prev) => ({ ...prev, discountAmount: e.target.value }))} />
-                        </Grid>
-                      </Grid>
-                      <Button size="small" variant={saleComposer.applyTax ? 'contained' : 'outlined'} sx={{ alignSelf: 'flex-start' }} onClick={() => setSaleComposer((prev) => ({ ...prev, applyTax: !prev.applyTax }))}>
-                        {saleComposer.applyTax ? 'IVA activo' : 'IVA inactivo'}
-                      </Button>
-                      <Box sx={{ p: 1.5, border: '1px solid', borderColor: 'divider', borderRadius: 2, bgcolor: 'background.neutral' }}>
-                        <Typography variant="subtitle2" sx={{ mb: 1 }}>Resumen POS</Typography>
-                        <Stack direction="row" spacing={2} flexWrap="wrap">
-                          <Typography variant="body2">Subtotal: ${Number(salePreview?.subtotal ?? cartSubtotal).toFixed(2)}</Typography>
-                          <Typography variant="body2">Descuento: ${Number(salePreview?.discount ?? 0).toFixed(2)}</Typography>
-                          <Typography variant="body2">IVA: ${Number(salePreview?.tax ?? 0).toFixed(2)}</Typography>
-                          <Typography variant="body2" fontWeight={700}>Total: ${Number(salePreview?.total ?? cartSubtotal).toFixed(2)}</Typography>
-                        </Stack>
-                      </Box>
-                      <Stack direction="row" spacing={1} flexWrap="wrap">
-                        <Button size="small" variant="contained" onClick={createSale} disabled={!salesEnabled || !cart.length}>Crear venta</Button>
-                        <Button size="small" variant="outlined" onClick={createOrder} disabled={!salesEnabled || !cart.length}>Crear orden</Button>
-                        <Button size="small" variant="contained" color="secondary" onClick={() => setInvoicePreviewOpen(true)} disabled={!billingEnabled || !cart.length || (!lastSaleId && !lastOrderId)}>Vista previa factura</Button>
-                      </Stack>
+                            <Typography variant="caption" color="text.secondary">
+                              Gestiona productos, carrito y acciones comerciales en el panel de Ventas y POS.
+                            </Typography>
                           </AccordionDetails>
                         </Accordion>
                       </Stack>
                     )}
 
                     {activePanel === 'sales' && (
-                      <List dense sx={{ maxHeight: '70vh', overflow: 'auto', border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
-                        {sales.map((sale) => (
-                          <ListItem
-                            key={sale.id}
-                            secondaryAction={<Button size="small" onClick={() => setEditingSaleId(sale.id)}>Gestionar</Button>}
-                          >
-                            <ListItemText primary={`${sale.state} - $${sale.total} ${sale.currency}`} secondary={`${sale.paymentMethod} - ${new Date(sale.createdAt).toLocaleString()}`} />
-                          </ListItem>
-                        ))}
-                        {!sales.length && <ListItem><ListItemText primary="Sin ventas registradas." /></ListItem>}
-                      </List>
+                      <Stack spacing={1.5}>
+                        <Accordion defaultExpanded disableGutters>
+                          <AccordionSummary expandIcon={<Iconify icon="mdi:chevron-down" width={18} />}>
+                            <Typography variant="subtitle2">Catálogo e inventario</Typography>
+                          </AccordionSummary>
+                          <AccordionDetails sx={{ pt: 0 }}>
+                            <Stack spacing={1}>
+                              <Stack direction="row" spacing={1}>
+                                <TextField size="small" fullWidth placeholder="Buscar SKU o nombre" value={inventoryQuery} onChange={(e) => setInventoryQuery(e.target.value)} disabled={!inventoryEnabled} />
+                                <Button variant="outlined" disabled={!inventoryEnabled}>Buscar</Button>
+                              </Stack>
+                              <List dense sx={{ maxHeight: 170, overflow: 'auto', border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+                                {inventory.map((item) => (
+                                  <ListItem key={item.id} secondaryAction={<Button size="small" onClick={() => addToCart(item)} disabled={!inventoryEnabled || !salesEnabled}>Agregar</Button>}>
+                                    <ListItemText
+                                      primary={`${item.sku} - ${item.name}`}
+                                      secondary={`$${item.unitPrice} - ${item.itemType || 'physical'} / ${item.unitOfMeasure || 'unit'}${item.tracksInventory === false ? ' - sin stock' : ` - stock ${item.onHand}`}`}
+                                    />
+                                  </ListItem>
+                                ))}
+                              </List>
+                            </Stack>
+                          </AccordionDetails>
+                        </Accordion>
+                        <Accordion defaultExpanded disableGutters>
+                          <AccordionSummary expandIcon={<Iconify icon="mdi:chevron-down" width={18} />}>
+                            <Typography variant="subtitle2">Carrito y cobro</Typography>
+                          </AccordionSummary>
+                          <AccordionDetails sx={{ pt: 0 }}>
+                            <Stack spacing={1}>
+                              <List dense sx={{ maxHeight: 120, overflow: 'auto', border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+                                {cart.map((item) => (
+                                  <ListItem key={item.sku}>
+                                    <ListItemText primary={`${item.sku} - ${item.name}`} secondary={`${item.quantity} x $${item.unitPrice}`} />
+                                  </ListItem>
+                                ))}
+                                {!cart.length && <ListItem><ListItemText primary="Sin productos en carrito." /></ListItem>}
+                              </List>
+                              <Grid container spacing={1}>
+                                <Grid item xs={12} sm={6}>
+                                  <TextField select size="small" fullWidth label="Pago" value={saleComposer.paymentMethod} onChange={(e) => setSaleComposer((prev) => ({ ...prev, paymentMethod: e.target.value }))}>
+                                    <MenuItem value="cash">cash</MenuItem>
+                                    <MenuItem value="card">card</MenuItem>
+                                    <MenuItem value="transfer">transfer</MenuItem>
+                                  </TextField>
+                                </Grid>
+                                <Grid item xs={6} sm={3}>
+                                  <TextField size="small" fullWidth label="IVA" value={saleComposer.taxRate} onChange={(e) => setSaleComposer((prev) => ({ ...prev, taxRate: e.target.value }))} disabled={!saleComposer.applyTax} />
+                                </Grid>
+                                <Grid item xs={6} sm={3}>
+                                  <TextField size="small" fullWidth label="Descuento" value={saleComposer.discountAmount} onChange={(e) => setSaleComposer((prev) => ({ ...prev, discountAmount: e.target.value }))} />
+                                </Grid>
+                              </Grid>
+                              <Button size="small" variant={saleComposer.applyTax ? 'contained' : 'outlined'} sx={{ alignSelf: 'flex-start' }} onClick={() => setSaleComposer((prev) => ({ ...prev, applyTax: !prev.applyTax }))}>
+                                {saleComposer.applyTax ? 'IVA activo' : 'IVA inactivo'}
+                              </Button>
+                              <Box sx={{ p: 1.5, border: '1px solid', borderColor: 'divider', borderRadius: 2, bgcolor: 'background.neutral' }}>
+                                <Typography variant="subtitle2" sx={{ mb: 1 }}>Resumen POS</Typography>
+                                <Stack direction="row" spacing={2} flexWrap="wrap">
+                                  <Typography variant="body2">Subtotal: ${Number(salePreview?.subtotal ?? cartSubtotal).toFixed(2)}</Typography>
+                                  <Typography variant="body2">Descuento: ${Number(salePreview?.discount ?? 0).toFixed(2)}</Typography>
+                                  <Typography variant="body2">IVA: ${Number(salePreview?.tax ?? 0).toFixed(2)}</Typography>
+                                  <Typography variant="body2" fontWeight={700}>Total: ${Number(salePreview?.total ?? cartSubtotal).toFixed(2)}</Typography>
+                                </Stack>
+                              </Box>
+                              <Stack direction="row" spacing={1} flexWrap="wrap">
+                                <Button size="small" variant="contained" onClick={createSale} disabled={!salesEnabled || !cart.length}>Crear venta</Button>
+                                <Button size="small" variant="outlined" onClick={createOrder} disabled={!salesEnabled || !cart.length}>Crear orden</Button>
+                                <Button size="small" variant="contained" color="secondary" onClick={() => setInvoicePreviewOpen(true)} disabled={!billingEnabled || !cart.length || (!lastSaleId && !lastOrderId)}>Vista previa factura</Button>
+                              </Stack>
+                            </Stack>
+                          </AccordionDetails>
+                        </Accordion>
+                        <Accordion defaultExpanded disableGutters>
+                          <AccordionSummary expandIcon={<Iconify icon="mdi:chevron-down" width={18} />}>
+                            <Typography variant="subtitle2">Ventas creadas</Typography>
+                          </AccordionSummary>
+                          <AccordionDetails sx={{ pt: 0 }}>
+                            <List dense sx={{ maxHeight: 220, overflow: 'auto', border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+                              {sales.map((sale) => (
+                                <ListItem
+                                  key={sale.id}
+                                  secondaryAction={<Button size="small" onClick={() => setEditingSaleId(sale.id)}>Gestionar</Button>}
+                                >
+                                  <ListItemText primary={`${sale.state} - $${sale.total} ${sale.currency}`} secondary={`${sale.paymentMethod} - ${new Date(sale.createdAt).toLocaleString()}`} />
+                                </ListItem>
+                              ))}
+                              {!sales.length && <ListItem><ListItemText primary="Sin ventas registradas." /></ListItem>}
+                            </List>
+                          </AccordionDetails>
+                        </Accordion>
+                      </Stack>
                     )}
 
                     {activePanel === 'billing' && (

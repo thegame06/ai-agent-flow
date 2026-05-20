@@ -67,9 +67,23 @@ export default function PlaygroundPage() {
     setError(null);
   };
 
-  const explanationData: ExplanationData | null = result
-    ? JSON.parse(result.explanation_json)
-    : null;
+  const explanationData: ExplanationData | null = (() => {
+    if (!result?.explanation_json) return null;
+    try {
+      const parsed = JSON.parse(result.explanation_json);
+      return {
+        decision: parsed?.decision || parsed?.message || 'Clasificación completada.',
+        factors: Array.isArray(parsed?.factors) ? parsed.factors : [],
+        alternatives_considered: Number(parsed?.alternatives_considered ?? parsed?.candidates_count ?? 0),
+      };
+    } catch {
+      return {
+        decision: 'No se pudo interpretar la explicación detallada.',
+        factors: [],
+        alternatives_considered: 0,
+      };
+    }
+  })();
 
   return (
     <>

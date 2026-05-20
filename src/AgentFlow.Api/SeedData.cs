@@ -996,7 +996,34 @@ Nunca expongas detalles tecnicos internos al cliente."
             string[] tags)
         {
             var existing = existingAgents.FirstOrDefault(a => string.Equals(a.Name, name, StringComparison.OrdinalIgnoreCase));
-            if (existing is not null) return existing;
+            if (existing is not null)
+            {
+                // Backfill: older seeds created business agents without workflow steps.
+                if (existing.WorkflowSteps == null || existing.WorkflowSteps.Count == 0)
+                {
+                    var update = existing.Update(
+                        name: existing.Name,
+                        description: existing.Description,
+                        brain: existing.Brain,
+                        loopConfig: existing.LoopConfig,
+                        memory: existing.Memory,
+                        session: existing.Session,
+                        workflowSteps: BuildBusinessSubflow(),
+                        tools: existing.AuthorizedTools,
+                        tags: existing.Tags,
+                        updatedBy: ownerUser,
+                        shadowAgentId: existing.ShadowAgentId,
+                        canaryAgentId: existing.CanaryAgentId,
+                        canaryWeight: existing.CanaryWeight);
+
+                    if (update.IsSuccess)
+                    {
+                        await agentRepo.UpdateAsync(existing);
+                    }
+                }
+
+                return existing;
+            }
 
             var brain = new BrainConfiguration
             {

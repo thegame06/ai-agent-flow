@@ -79,12 +79,15 @@ public sealed class RoutingOrchestrator : IRoutingOrchestrator
         // No match found - send to fallback
         if (classification.Confidence == ConfidenceLevel.NoMatch)
         {
+            var noRulesConfigured = classification.BestMatch is null && classification.AllCandidates.Count == 0;
+            var reasonCode = noRulesConfigured ? "no_rules_configured" : "no_match";
             _logger.LogInformation(
-                "No intent match for conversation {ConvId} (score: {Score:F3})",
+                "No intent match for conversation {ConvId} (score: {Score:F3}, reason: {Reason})",
                 context.ConversationId,
-                classification.BestScore);
+                classification.BestScore,
+                reasonCode);
 
-            var fallbackDecision = BuildFallbackDecision("no_match", classification);
+            var fallbackDecision = BuildFallbackDecision(reasonCode, classification);
             await AuditDecisionAsync(fallbackDecision, context, classification, ct);
             return fallbackDecision;
         }

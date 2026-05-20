@@ -17,8 +17,6 @@ import { Iconify } from 'src/components/iconify';
 
 import type { Intent } from './types';
 
-// ----------------------------------------------------------------------
-
 interface IntentsListProps {
   intents: Intent[];
   loading: boolean;
@@ -44,7 +42,7 @@ export function IntentsList({ intents, loading, onEdit, onToggle, onDelete }: In
           No hay reglas configuradas
         </Typography>
         <Typography variant="body2" color="text.disabled" sx={{ mt: 1 }}>
-          Crea tu primera regla de intenciÃ³n para comenzar
+          Crea tu primera regla de intención para comenzar
         </Typography>
       </Card>
     );
@@ -56,8 +54,9 @@ export function IntentsList({ intents, loading, onEdit, onToggle, onDelete }: In
         <Table>
           <TableHead>
             <TableRow>
-              <TableCell>IntenciÃ³n</TableCell>
-              <TableCell>CategorÃ­a</TableCell>
+              <TableCell>Intención</TableCell>
+              <TableCell>Categoría</TableCell>
+              <TableCell>Canal</TableCell>
               <TableCell>Workflow</TableCell>
               <TableCell>Agente destino</TableCell>
               <TableCell>Ejemplos</TableCell>
@@ -74,84 +73,56 @@ export function IntentsList({ intents, loading, onEdit, onToggle, onDelete }: In
                   <Stack spacing={0.5}>
                     <Stack direction="row" spacing={1} alignItems="center">
                       <Typography variant="subtitle2">{intent.name}</Typography>
-                      {intent.is_base_intent && (
-                        <Chip label="BASE" size="small" color="primary" sx={{ height: 20 }} />
-                      )}
+                      {intent.is_base_intent && <Chip label="BASE" size="small" color="primary" sx={{ height: 20 }} />}
                     </Stack>
                     <Typography variant="caption" color="text.secondary" noWrap sx={{ maxWidth: 300 }}>
                       {intent.description}
                     </Typography>
-                    <Typography variant="caption" color="text.disabled">
-                      Clave: {intent.key}
-                    </Typography>
+                    <Typography variant="caption" color="text.disabled">Clave: {intent.key}</Typography>
                   </Stack>
                 </TableCell>
                 <TableCell>
-                  <Chip 
-                    label={intent.category} 
-                    size="small" 
-                    color="default"
-                    variant="outlined"
-                  />
-                </TableCell>`r`n                <TableCell>`r`n                  <Typography variant="body2" color="text.secondary">`r`n                    {intent.channel || 'Todos'}`r`n                  </Typography>`r`n                </TableCell>`r`n                <TableCell>`r`n                  <Stack spacing={0.5}>
+                  <Chip label={intent.category} size="small" color="default" variant="outlined" />
+                </TableCell>
+                <TableCell>
+                  <Typography variant="body2" color="text.secondary">{intent.channel || 'Todos'}</Typography>
+                </TableCell>
+                <TableCell>
+                  <Stack spacing={0.5}>
                     {intent.workflow_name ? (
                       <>
                         <Typography variant="body2">{intent.workflow_name}</Typography>
-                        <Typography variant="caption" color="text.disabled">
-                          {intent.workflow_id}
-                        </Typography>
+                        <Typography variant="caption" color="text.disabled">{intent.workflow_id}</Typography>
                       </>
                     ) : (
-                      <Typography variant="caption" color="text.disabled">
-                        Sin workflow
-                      </Typography>
+                      <Typography variant="caption" color="text.disabled">Sin workflow</Typography>
                     )}
                   </Stack>
                 </TableCell>
                 <TableCell>
                   {intent.target_agent_id ? (
-                    <Typography variant="body2" color="text.secondary">
-                      {intent.target_agent_id}
-                    </Typography>
+                    <Typography variant="body2" color="text.secondary">{intent.target_agent_id}</Typography>
                   ) : (
-                    <Typography variant="caption" color="text.disabled">
-                      Sin agente
-                    </Typography>
+                    <Typography variant="caption" color="text.disabled">Sin agente</Typography>
                   )}
                 </TableCell>
                 <TableCell>
-                  <Typography variant="body2" color="text.secondary">
-                    {intent.examples.length} ejemplos
-                  </Typography>
+                  <Typography variant="body2" color="text.secondary">{intent.examples.length} ejemplos</Typography>
                 </TableCell>
                 <TableCell>
-                  <Chip 
-                    label={`P${intent.priority}`} 
-                    size="small" 
-                    color={intent.priority <= 2 ? 'error' : intent.priority <= 4 ? 'warning' : 'default'}
-                  />
+                  <Chip label={`P${intent.priority}`} size="small" color={intent.priority <= 2 ? 'error' : intent.priority <= 4 ? 'warning' : 'default'} />
                 </TableCell>
                 <TableCell>
-                  <Typography variant="body2">
-                    {(intent.confidence_threshold * 100).toFixed(0)}%
-                  </Typography>
+                  <Typography variant="body2">{(intent.confidence_threshold * 100).toFixed(0)}%</Typography>
                 </TableCell>
                 <TableCell>
-                  <Switch
-                    checked={intent.enabled}
-                    onChange={(e) => onToggle(intent.id, e.target.checked)}
-                    size="small"
-                  />
+                  <Switch checked={intent.enabled} onChange={(e) => onToggle(intent.id, e.target.checked)} size="small" />
                 </TableCell>
                 <TableCell align="right">
                   <IconButton size="small" onClick={() => onEdit(intent)}>
                     <Iconify icon="eva:edit-outline" />
                   </IconButton>
-                  <IconButton 
-                    size="small" 
-                    onClick={() => onDelete(intent.id)}
-                    disabled={intent.is_base_intent}
-                  >
+                  <IconButton size="small" onClick={() => onDelete(intent.id)} disabled={intent.is_base_intent}>
                     <Iconify icon="eva:trash-2-outline" />
                   </IconButton>
                 </TableCell>
@@ -163,5 +134,3 @@ export function IntentsList({ intents, loading, onEdit, onToggle, onDelete }: In
     </Card>
   );
 }
-
-

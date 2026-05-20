@@ -16,6 +16,10 @@ interface ExplanationCardProps {
 }
 
 export function ExplanationCard({ explanation }: ExplanationCardProps) {
+  const factors = Array.isArray(explanation?.factors) ? explanation.factors : [];
+  const decision = explanation?.decision || 'Clasificación completada.';
+  const alternatives = Number(explanation?.alternatives_considered ?? 0);
+
   return (
     <Card>
       <CardHeader 
@@ -26,7 +30,7 @@ export function ExplanationCard({ explanation }: ExplanationCardProps) {
         <Stack spacing={3}>
           <Alert severity="info" icon={false}>
             <Typography variant="body2">
-              {explanation.decision}
+              {decision}
             </Typography>
           </Alert>
 
@@ -35,7 +39,7 @@ export function ExplanationCard({ explanation }: ExplanationCardProps) {
               Factores contribuyentes
             </Typography>
             <Stack spacing={2}>
-              {explanation.factors.map((factor, index) => (
+              {factors.map((factor, index) => (
                 <Box key={index}>
                   <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.5 }}>
                     <Typography variant="body2" fontWeight="medium">
@@ -59,7 +63,7 @@ export function ExplanationCard({ explanation }: ExplanationCardProps) {
           </Box>
 
           <Typography variant="caption" color="text.disabled">
-            {explanation.alternatives_considered} intenciones alternativas fueron consideradas
+            {alternatives} intenciones alternativas fueron consideradas
           </Typography>
         </Stack>
       </CardContent>

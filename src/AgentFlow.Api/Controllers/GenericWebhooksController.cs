@@ -1,5 +1,5 @@
+using AgentFlow.Abstractions;
 using AgentFlow.Abstractions.Connect;
-using AgentFlow.Abstractions.Workflow;
 using AgentFlow.Api.Connect;
 using AgentFlow.Api.Workflow;
 using AgentFlow.Domain.Aggregates;
@@ -13,27 +13,27 @@ namespace AgentFlow.Api.Controllers;
 public sealed class GenericWebhooksController : ControllerBase
 {
     private readonly IConnectStore _connectStore;
+    private readonly IChannelGateway _gateway;
     private readonly IChannelDefinitionRepository _channelRepo;
     private readonly IChannelSessionRepository _sessionRepo;
     private readonly IChannelMessageRepository _messageRepo;
-    private readonly IWorkflowTriggerService _triggerService;
     private readonly IWorkflowAuditService _audit;
     private readonly ILogger<GenericWebhooksController> _logger;
 
     public GenericWebhooksController(
         IConnectStore connectStore,
+        IChannelGateway gateway,
         IChannelDefinitionRepository channelRepo,
         IChannelSessionRepository sessionRepo,
         IChannelMessageRepository messageRepo,
-        IWorkflowTriggerService triggerService,
         IWorkflowAuditService audit,
         ILogger<GenericWebhooksController> logger)
     {
         _connectStore = connectStore;
+        _gateway = gateway;
         _channelRepo = channelRepo;
         _sessionRepo = sessionRepo;
         _messageRepo = messageRepo;
-        _triggerService = triggerService;
         _audit = audit;
         _logger = logger;
     }
@@ -105,44 +105,17 @@ public sealed class GenericWebhooksController : ControllerBase
             HttpContext.TraceIdentifier,
             ct);
 
-        var workflowPayload = new Dictionary<string, object?>
-        {
-            ["channel"] = channel,
-            ["recipient"] = recipient,
-            ["content"] = content,
-            ["inboxMessageId"] = inboxMessage.Id,
-            ["sessionId"] = channelSession?.Id,
-            ["assignedTo"] = assignedTo,
-            ["raw"] = payload
-        };
-
-        WorkflowExecutionContract? execution = null;
-        try
-        {
-            execution = await _triggerService.TriggerEventAsync(
-                tenantId,
-                "connect.message.received",
-                "webhook",
-                HttpContext.TraceIdentifier,
-                workflowPayload,
-                ct);
-            await _audit.RecordExecutionActionAsync(
-                tenantId,
-                "webhook",
-                "workflow.execution.trigger.webhook",
-                execution.Id,
-                execution.WorkflowDefinitionId,
-                new { channel, inboxMessageId = inboxMessage.Id },
-                HttpContext.TraceIdentifier,
-                ct);
-        }
-        catch (InvalidOperationException)
-        {
-            _logger.LogInformation("No published workflow for connect.message.received in tenant {TenantId}", tenantId);
-        }
-
+                // Route by channel gateway (router/intents) instead of auto-triggering
+        // the latest published workflow by event name.
+        string? agentResponse = null;
+        string? agentExecutionId = null;
         if (incomingMessage is not null)
-            await _messageRepo.InsertAsync(incomingMessage, ct);
+        {
+            var gatewayResponse = await _gateway.ProcessMessageAsync(incomingMessage, ct);
+            agentResponse = gatewayResponse.Content;
+            agentExecutionId = gatewayResponse.AgentExecutionId;
+        }
+
 
         return Ok(new
         {
@@ -150,9 +123,11 @@ public sealed class GenericWebhooksController : ControllerBase
             tenantId,
             channel,
             inboxMessageId = inboxMessage.Id,
-            workflowExecutionId = execution?.Id,
+            workflowExecutionId = (string?)null,
             sessionId = channelSession?.Id,
-            assignedTo
+            assignedTo,
+            agentExecutionId,
+            agentResponse
         });
     }
 
@@ -283,3 +258,4 @@ public sealed class GenericWebhooksController : ControllerBase
         return $"{channel}:{from}:{recipient}:{timestamp}:{content}".Trim();
     }
 }
+
