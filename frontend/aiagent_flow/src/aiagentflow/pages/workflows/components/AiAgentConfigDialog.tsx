@@ -14,6 +14,8 @@ import DialogActions from '@mui/material/DialogActions';
 import DialogContent from '@mui/material/DialogContent';
 import FormControlLabel from '@mui/material/FormControlLabel';
 
+import { normalizeToolLabel } from 'src/aiagentflow/utils/toolLabels';
+
 import { DEFAULT_AI_AGENT_CONFIG } from '../constants';
 
 import type { ToolOption, ModelOption, AiAgentNodeConfig, WorkflowActivityNode } from '../types';
@@ -108,7 +110,7 @@ export function AiAgentConfigDialog({
                           }}
                         />
                       }
-                      label={tool.displayName || tool.key}
+                      label={normalizeToolLabel(tool.displayName || tool.key)}
                     />
                   );
                 })}

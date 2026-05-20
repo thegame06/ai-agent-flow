@@ -170,7 +170,9 @@ public sealed class ChannelGateway : IChannelGateway
                     // can stamp it into AgentExecution.ChannelMessageId
                     ["channelMessageId"] = incomingMessage.Id,
                     ["permissions"] = string.Join(",", executionContext.Permissions),
-                    ["mcp.policy.allow_actions"] = "tools.execute"
+                    ["mcp.policy.allow_actions"] = "tools.execute",
+                    ["routing.intent_confidence_threshold"] = channel.Config.GetValueOrDefault("IntentConfidenceThreshold") ?? "0.70",
+                    ["routing.assistant_confidence_threshold"] = channel.Config.GetValueOrDefault("AssistantConfidenceThreshold") ?? "0.80"
                 }
             };
 

@@ -35,6 +35,7 @@ import { useRouter } from 'src/routes/hooks';
 import axios from 'src/lib/axios';
 import { CONFIG } from 'src/global-config';
 import { DashboardContent } from 'src/layouts/dashboard';
+import { normalizeToolLabel } from 'src/aiagentflow/utils/toolLabels';
 
 import { Iconify } from 'src/components/iconify';
 
@@ -372,7 +373,7 @@ function TabTools({
                 sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
               >
                 <Stack direction="row" spacing={1} alignItems="center">
-                  <Typography variant="body2" fontWeight={600}>{tool.toolName}</Typography>
+                  <Typography variant="body2" fontWeight={600}>{normalizeToolLabel(tool.toolName || tool.toolId)}</Typography>
                   <Chip label={tool.riskLevel} size="small" variant="outlined" />
                 </Stack>
                 <IconButton size="small" color="error" onClick={() => dispatch(removeTool(tool.toolId))}>
@@ -402,7 +403,7 @@ function TabTools({
                 sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2 }}
               >
                 <Box sx={{ minWidth: 0 }}>
-                  <Typography variant="body2" fontWeight={600} noWrap>{tool.name}</Typography>
+                  <Typography variant="body2" fontWeight={600} noWrap>{normalizeToolLabel(tool.name || tool.extensionId)}</Typography>
                   <Typography variant="caption" color="text.secondary" noWrap>
                     {tool.description || tool.extensionId}
                   </Typography>

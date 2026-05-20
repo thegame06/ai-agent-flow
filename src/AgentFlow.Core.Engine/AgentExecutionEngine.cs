@@ -19,6 +19,7 @@ using AgentFlow.Abstractions.Workflows;
 using IntentConversationContext = AgentFlow.Intents.Routing.Models.ConversationContext;
 using AgentFlow.Intents.Inbox;
 using AgentFlow.Intents.Inbox.Models;
+using System.Globalization;
 
 namespace AgentFlow.Core.Engine;
 
@@ -149,6 +150,31 @@ public sealed class AgentExecutionEngine : IAgentExecutor
                         UserIdentifier = request.UserId
                     },
                     ct);
+
+                var intentThreshold = ReadRoutingThreshold(request.Metadata, "routing.intent_confidence_threshold", 0.70f);
+                var assistantThreshold = ReadRoutingThreshold(request.Metadata, "routing.assistant_confidence_threshold", 0.80f);
+
+                // Second level: assistant inference from available intent catalog when rules/scoring had no route.
+                if ((routingDecision.Action == RoutingAction.Fallback || routingDecision.Action == RoutingAction.Queue)
+                    && classification.BestScore < intentThreshold)
+                {
+                    var assisted = await TryAssistantInferenceRoutingAsync(
+                        agentDef,
+                        request,
+                        classification,
+                        assistantThreshold,
+                        ct);
+
+                    if (assisted is not null)
+                    {
+                        routingDecision = assisted;
+                        _logger.LogInformation(
+                            "Assistant inference promoted routing decision to Route. Intent={IntentKey}, Workflow={WorkflowId}, ConfidenceThreshold={Threshold}",
+                            routingDecision.IntentKey,
+                            routingDecision.WorkflowDefinitionId,
+                            assistantThreshold);
+                    }
+                }
 
                 routingStopwatch.Stop();
 
@@ -1802,6 +1828,134 @@ if (!preResponsePolicy.IsSuccess) return Result<string?>.Failure(preResponsePoli
         {
             _logger.LogDebug("Saved turn to thread {ThreadId}, total turns: {TurnCount}",
                 thread.Id, thread.TurnCount);
+        }
+    }
+
+    private static float ReadRoutingThreshold(IReadOnlyDictionary<string, string> metadata, string key, float fallback)
+    {
+        if (!metadata.TryGetValue(key, out var raw) || string.IsNullOrWhiteSpace(raw))
+            return fallback;
+        return float.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed)
+            ? Math.Clamp(parsed, 0f, 1f)
+            : fallback;
+    }
+
+    private async Task<RoutingDecision?> TryAssistantInferenceRoutingAsync(
+        AgentDefinition routerAgent,
+        AgentExecutionRequest request,
+        IntentClassificationResult classification,
+        float assistantThreshold,
+        CancellationToken ct)
+    {
+        try
+        {
+            var contextJson = request.ContextJson;
+            if (string.IsNullOrWhiteSpace(contextJson))
+                return null;
+
+            using var contextDoc = JsonDocument.Parse(contextJson);
+            if (!contextDoc.RootElement.TryGetProperty("IntentCatalog", out var catalogEl) ||
+                catalogEl.ValueKind != JsonValueKind.String ||
+                string.IsNullOrWhiteSpace(catalogEl.GetString()))
+                return null;
+
+            using var catalogDoc = JsonDocument.Parse(catalogEl.GetString()!);
+            if (catalogDoc.RootElement.ValueKind != JsonValueKind.Array || catalogDoc.RootElement.GetArrayLength() == 0)
+                return null;
+
+            var resolve = await _brainResolver.ResolveAsync(
+                request.TenantId,
+                routerAgent.Id,
+                new AgentBrainExecutionContext
+                {
+                    UserId = request.UserId,
+                    Metadata = request.Metadata
+                },
+                ct);
+
+            var systemPrompt = """
+You are an intent routing assistant.
+Pick exactly one intent from IntentCatalog that best matches the user message.
+Respond strictly in JSON with this shape:
+{"intentKey":"...", "confidence":0.0, "reason":"..."}
+Rules:
+- intentKey must exist in IntentCatalog.
+- confidence must be between 0 and 1.
+- if uncertain, use confidence below 0.80.
+""";
+
+            var think = await resolve.Brain.ThinkAsync(new ThinkContext
+            {
+                TenantId = request.TenantId,
+                UserId = request.UserId,
+                ExecutionId = request.CorrelationId ?? Guid.NewGuid().ToString("N"),
+                CorrelationId = request.CorrelationId,
+                ModelId = routerAgent.Brain.ModelId,
+                SystemPrompt = systemPrompt,
+                UserMessage = $"Message: {request.UserMessage}\nIntentCatalog: {catalogEl.GetString()}",
+                Iteration = 1
+            }, ct);
+
+            var rawJson = think.FinalAnswer ?? think.Rationale ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(rawJson))
+                return null;
+
+            using var inferDoc = JsonDocument.Parse(rawJson);
+            var root = inferDoc.RootElement;
+            if (!root.TryGetProperty("intentKey", out var intentKeyEl))
+                return null;
+            var intentKey = intentKeyEl.GetString();
+            if (string.IsNullOrWhiteSpace(intentKey))
+                return null;
+
+            var confidence = root.TryGetProperty("confidence", out var confEl) && confEl.TryGetSingle(out var c)
+                ? c
+                : 0f;
+            if (confidence < assistantThreshold)
+                return null;
+
+            JsonElement? matched = null;
+            foreach (var item in catalogDoc.RootElement.EnumerateArray())
+            {
+                if (!item.TryGetProperty("intentKey", out var keyEl)) continue;
+                if (string.Equals(keyEl.GetString(), intentKey, StringComparison.OrdinalIgnoreCase))
+                {
+                    matched = item;
+                    break;
+                }
+            }
+            if (matched is null)
+                return null;
+
+            var selected = matched.Value;
+            var workflowId = selected.TryGetProperty("workflowId", out var wfEl) ? wfEl.GetString() : null;
+            var targetAgentId = selected.TryGetProperty("targetAgentId", out var taEl) ? taEl.GetString() : null;
+
+            if (string.IsNullOrWhiteSpace(workflowId) && string.IsNullOrWhiteSpace(targetAgentId))
+                return null;
+
+            return new RoutingDecision
+            {
+                IntentKey = intentKey,
+                WorkflowDefinitionId = string.IsNullOrWhiteSpace(workflowId) ? null : workflowId,
+                TargetAgentId = string.IsNullOrWhiteSpace(targetAgentId) ? null : targetAgentId,
+                Action = RoutingAction.Route,
+                ReasonCode = "assistant_inference_match",
+                ExplanationJson = JsonSerializer.Serialize(new
+                {
+                    source = "assistant_inference",
+                    assistantConfidence = confidence,
+                    assistantThreshold,
+                    score = classification.BestScore
+                }),
+                DecidedAt = DateTimeOffset.UtcNow,
+                LockId = null
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Assistant inference routing fallback failed.");
+            return null;
         }
     }
 

@@ -581,7 +581,7 @@ export default function WorkflowsPage() {
                 <Box sx={{ flex: 1 }}>
                   <Typography variant="caption" color="text.secondary">
                     Entrada principal: <strong>{workflowChannel?.name ?? 'sin canal'}</strong>
-                    {' � '}Asistente responsable: <strong>{firstAgentNode?.aiAgent?.agentName || firstAgentNode?.config?.agentName || firstAgentNode?.config?.agentId || 'sin asistente'}</strong>
+                    {' · '}Asistente responsable: <strong>{firstAgentNode?.aiAgent?.agentName || firstAgentNode?.config?.agentName || firstAgentNode?.config?.agentId || 'sin asistente'}</strong>
                   </Typography>
                 </Box>
                 <TextField

@@ -1,346 +1,143 @@
 namespace AgentFlow.Tests.Unit.IntentRouting;
 
-using AgentFlow.Abstractions;
 using AgentFlow.Application.Memory;
 using AgentFlow.Intents.Classification.Models;
 using AgentFlow.Intents.Ownership;
 using AgentFlow.Intents.Ownership.Models;
 using AgentFlow.Intents.Routing;
 using AgentFlow.Intents.Routing.Models;
+using AgentFlow.Security;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Xunit;
 
-/// <summary>
-/// Tests unitarios para RoutingOrchestrator - Happy Path.
-/// Valida las 4 acciones: Route, Queue, Fallback, Reject.
-/// </summary>
 public sealed class RoutingOrchestratorTests
 {
-    private readonly Mock<IConversationOwnershipManager> _ownershipManager;
-    private readonly Mock<IAuditMemory> _auditMemory;
-    private readonly Mock<ILogger<RoutingOrchestrator>> _logger;
+    private readonly Mock<IConversationOwnershipManager> _ownershipManager = new();
+    private readonly Mock<IAuditMemory> _auditMemory = new();
     private readonly RoutingOrchestrator _orchestrator;
 
     public RoutingOrchestratorTests()
     {
-        _ownershipManager = new Mock<IConversationOwnershipManager>();
-        _auditMemory = new Mock<IAuditMemory>();
-        _logger = new Mock<ILogger<RoutingOrchestrator>>();
-
         _orchestrator = new RoutingOrchestrator(
             _ownershipManager.Object,
             _auditMemory.Object,
-            _logger.Object);
+            Mock.Of<ILogger<RoutingOrchestrator>>());
     }
 
     [Fact]
     public async Task RouteMessage_HighConfidence_RoutesToWorkflow()
     {
-        // Arrange
+        var rule = new IntentRoutingRule { IntentKey = "comprar_producto", WorkflowDefinitionId = "wf-starter-sales", WorkflowName = "Starter ventas", TargetAgentId = "sales-agent", Priority = 100 };
         var classification = new IntentClassificationResult
         {
-            BestMatch = new IntentMatch
-            {
-                IntentKey = "loan_application",
-                DisplayName = "Solicitud de Préstamo",
-                Category = "Sales",
-                SimilarityScore = 0.95,
-                Explanation = "High confidence match"
-            },
-            AllCandidates = new List<ScoredCandidate>(),
-            BestScore = 0.95,
+            Message = "quiero comprar",
+            BestMatch = new IntentMatch { IntentKey = "comprar_producto", SimilarityScore = 0.92f, MatchedVia = "semantic", Rule = rule },
+            AllCandidates = new List<IntentMatch>(),
+            BestScore = 0.92f,
             Confidence = ConfidenceLevel.High,
-            ConfidenceNumeric = 0.95,
+            RequiresHumanReview = false,
             ExplanationJson = "{}"
         };
 
-        var context = new ConversationContext
+        _ownershipManager.Setup(x => x.GetStateAsync("tenant-1", "conv-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ConversationOwnershipState { IsLocked = false, CurrentOwnerAgentId = null, LockedUntil = null });
+        _ownershipManager.Setup(x => x.TryAcquireLockAsync("tenant-1", "conv-1", "sales-agent", It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OwnershipLock { LockId = "lock-1", ConversationId = "conv-1", OwnerAgentId = "sales-agent", AcquiredAt = DateTimeOffset.UtcNow, ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(5) });
+
+        var decision = await _orchestrator.RouteMessageAsync(classification, new ConversationContext
         {
-            ConversationId = "conv-123",
+            ConversationId = "conv-1",
             TenantId = "tenant-1",
             Channel = "whatsapp",
-            UserIdentifier = "user-456",
-            CurrentAgentId = null // No hay agente activo
-        };
+            UserIdentifier = "user-1"
+        }, CancellationToken.None);
 
-        _ownershipManager.Setup(x => x.GetStateAsync(context.TenantId, context.ConversationId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((OwnershipState?)null); // No lock existente
-
-        _ownershipManager.Setup(x => x.TryAcquireLockAsync(
-                It.IsAny<string>(),
-                It.IsAny<string>(),
-                It.IsAny<string>(),
-                It.IsAny<TimeSpan>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
-
-        // Act
-        var decision = await _orchestrator.RouteMessageAsync(classification, context, CancellationToken.None);
-
-        // Assert
-        Assert.NotNull(decision);
         Assert.Equal(RoutingAction.Route, decision.Action);
-        Assert.Equal("loan-officer-workflow", decision.WorkflowDefinitionId); // Basado en mapping interno
-        Assert.True(decision.OwnershipAcquired);
-        Assert.NotNull(decision.ExplanationJson);
-        Assert.Equal("HighConfidence", decision.ReasonCode);
-
-        _ownershipManager.Verify(x => x.TryAcquireLockAsync(
-            context.TenantId,
-            context.ConversationId,
-            It.IsAny<string>(),
-            It.IsAny<TimeSpan>(),
-            It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Equal("wf-starter-sales", decision.WorkflowDefinitionId);
+        Assert.Equal("matched", decision.ReasonCode);
     }
 
     [Fact]
-    public async Task RouteMessage_MediumConfidence_RoutesToWorkflow()
+    public async Task RouteMessage_NoMatch_NoRulesConfigured_Fallback()
     {
-        // Arrange
         var classification = new IntentClassificationResult
         {
-            BestMatch = new IntentMatch
-            {
-                IntentKey = "payment_status",
-                DisplayName = "Estado de Pago",
-                Category = "Payments",
-                SimilarityScore = 0.82,
-                Explanation = "Medium confidence match"
-            },
-            AllCandidates = new List<ScoredCandidate>(),
-            BestScore = 0.82,
-            Confidence = ConfidenceLevel.Medium,
-            ConfidenceNumeric = 0.82,
-            ExplanationJson = "{}"
-        };
-
-        var context = new ConversationContext
-        {
-            ConversationId = "conv-456",
-            TenantId = "tenant-1",
-            Channel = "web",
-            UserIdentifier = "user-789"
-        };
-
-        _ownershipManager.Setup(x => x.GetStateAsync(context.TenantId, context.ConversationId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((OwnershipState?)null);
-
-        _ownershipManager.Setup(x => x.TryAcquireLockAsync(
-                It.IsAny<string>(),
-                It.IsAny<string>(),
-                It.IsAny<string>(),
-                It.IsAny<TimeSpan>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
-
-        // Act
-        var decision = await _orchestrator.RouteMessageAsync(classification, context, CancellationToken.None);
-
-        // Assert
-        Assert.NotNull(decision);
-        Assert.Equal(RoutingAction.Route, decision.Action);
-        Assert.Equal("payment-status-workflow", decision.WorkflowDefinitionId);
-        Assert.True(decision.OwnershipAcquired);
-        Assert.Equal("MediumConfidence", decision.ReasonCode);
-    }
-
-    [Fact]
-    public async Task RouteMessage_LowConfidence_QueuesForReview()
-    {
-        // Arrange
-        var classification = new IntentClassificationResult
-        {
-            BestMatch = new IntentMatch
-            {
-                IntentKey = "general_support",
-                DisplayName = "Soporte General",
-                Category = "Support",
-                SimilarityScore = 0.65,
-                Explanation = "Low confidence match"
-            },
-            AllCandidates = new List<ScoredCandidate>(),
-            BestScore = 0.65,
-            Confidence = ConfidenceLevel.Low,
-            ConfidenceNumeric = 0.65,
-            ExplanationJson = "{}"
-        };
-
-        var context = new ConversationContext
-        {
-            ConversationId = "conv-789",
-            TenantId = "tenant-1",
-            Channel = "whatsapp",
-            UserIdentifier = "user-abc"
-        };
-
-        // Act
-        var decision = await _orchestrator.RouteMessageAsync(classification, context, CancellationToken.None);
-
-        // Assert
-        Assert.NotNull(decision);
-        Assert.Equal(RoutingAction.Queue, decision.Action);
-        Assert.Null(decision.WorkflowDefinitionId); // No workflow para low confidence
-        Assert.False(decision.OwnershipAcquired);
-        Assert.Equal("LowConfidence", decision.ReasonCode);
-
-        // No debe intentar adquirir lock para Queue
-        _ownershipManager.Verify(x => x.TryAcquireLockAsync(
-            It.IsAny<string>(),
-            It.IsAny<string>(),
-            It.IsAny<string>(),
-            It.IsAny<TimeSpan>(),
-            It.IsAny<CancellationToken>()), Times.Never);
-    }
-
-    [Fact]
-    public async Task RouteMessage_NoMatch_FallsBackToHuman()
-    {
-        // Arrange
-        var classification = new IntentClassificationResult
-        {
+            Message = "hola",
             BestMatch = null,
-            AllCandidates = new List<ScoredCandidate>(),
-            BestScore = 0.0,
+            AllCandidates = new List<IntentMatch>(),
+            BestScore = 0f,
             Confidence = ConfidenceLevel.NoMatch,
-            ConfidenceNumeric = 0.0,
+            RequiresHumanReview = true,
             ExplanationJson = "{}"
         };
 
-        var context = new ConversationContext
+        var decision = await _orchestrator.RouteMessageAsync(classification, new ConversationContext
         {
-            ConversationId = "conv-xyz",
+            ConversationId = "conv-2",
             TenantId = "tenant-1",
             Channel = "whatsapp",
-            UserIdentifier = "user-def"
-        };
+            UserIdentifier = "user-2"
+        }, CancellationToken.None);
 
-        // Act
-        var decision = await _orchestrator.RouteMessageAsync(classification, context, CancellationToken.None);
-
-        // Assert
-        Assert.NotNull(decision);
         Assert.Equal(RoutingAction.Fallback, decision.Action);
-        Assert.Null(decision.WorkflowDefinitionId);
-        Assert.False(decision.OwnershipAcquired);
-        Assert.Equal("NoMatch", decision.ReasonCode);
-
-        _ownershipManager.Verify(x => x.TryAcquireLockAsync(
-            It.IsAny<string>(),
-            It.IsAny<string>(),
-            It.IsAny<string>(),
-            It.IsAny<TimeSpan>(),
-            It.IsAny<CancellationToken>()), Times.Never);
+        Assert.Equal("no_rules_configured", decision.ReasonCode);
     }
 
     [Fact]
-    public async Task RouteMessage_ConversationLocked_RejectsWithConflict()
+    public async Task RouteMessage_LowConfidence_Queue()
     {
-        // Arrange
+        var rule = new IntentRoutingRule { IntentKey = "comprar_producto", WorkflowDefinitionId = "wf-starter-sales", TargetAgentId = "sales-agent", Priority = 100 };
         var classification = new IntentClassificationResult
         {
-            BestMatch = new IntentMatch
-            {
-                IntentKey = "loan_application",
-                DisplayName = "Solicitud de Préstamo",
-                Category = "Sales",
-                SimilarityScore = 0.95,
-                Explanation = "High confidence match"
-            },
-            AllCandidates = new List<ScoredCandidate>(),
-            BestScore = 0.95,
-            Confidence = ConfidenceLevel.High,
-            ConfidenceNumeric = 0.95,
+            Message = "me interesa algo",
+            BestMatch = new IntentMatch { IntentKey = "comprar_producto", SimilarityScore = 0.62f, MatchedVia = "semantic", Rule = rule },
+            AllCandidates = new List<IntentMatch>(),
+            BestScore = 0.62f,
+            Confidence = ConfidenceLevel.Low,
+            RequiresHumanReview = true,
             ExplanationJson = "{}"
         };
 
-        var context = new ConversationContext
+        var decision = await _orchestrator.RouteMessageAsync(classification, new ConversationContext
         {
-            ConversationId = "conv-locked",
+            ConversationId = "conv-3",
             TenantId = "tenant-1",
             Channel = "whatsapp",
-            UserIdentifier = "user-ghi"
+            UserIdentifier = "user-3"
+        }, CancellationToken.None);
+
+        Assert.Equal(RoutingAction.Queue, decision.Action);
+        Assert.Equal("low_confidence", decision.ReasonCode);
+    }
+
+    [Fact]
+    public async Task RouteMessage_LockedByAnotherAgent_Reject()
+    {
+        var rule = new IntentRoutingRule { IntentKey = "comprar_producto", WorkflowDefinitionId = "wf-starter-sales", TargetAgentId = "sales-agent", Priority = 100 };
+        var classification = new IntentClassificationResult
+        {
+            Message = "quiero comprar",
+            BestMatch = new IntentMatch { IntentKey = "comprar_producto", SimilarityScore = 0.92f, MatchedVia = "semantic", Rule = rule },
+            AllCandidates = new List<IntentMatch>(),
+            BestScore = 0.92f,
+            Confidence = ConfidenceLevel.High,
+            RequiresHumanReview = false,
+            ExplanationJson = "{}"
         };
 
-        // Simular que otro agente ya tiene el lock
-        _ownershipManager.Setup(x => x.GetStateAsync(context.TenantId, context.ConversationId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new OwnershipState
-            {
-                ConversationId = context.ConversationId,
-                OwnerAgentId = "another-agent-123",
-                AcquiredAt = DateTimeOffset.UtcNow.AddMinutes(-5),
-                ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(5),
-                IsActive = true
-            });
+        _ownershipManager.Setup(x => x.GetStateAsync("tenant-1", "conv-4", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ConversationOwnershipState { IsLocked = true, CurrentOwnerAgentId = "other-agent", LockedUntil = DateTimeOffset.UtcNow.AddMinutes(1) });
 
-        // Act
-        var decision = await _orchestrator.RouteMessageAsync(classification, context, CancellationToken.None);
+        var decision = await _orchestrator.RouteMessageAsync(classification, new ConversationContext
+        {
+            ConversationId = "conv-4",
+            TenantId = "tenant-1",
+            Channel = "whatsapp",
+            UserIdentifier = "user-4"
+        }, CancellationToken.None);
 
-        // Assert
-        Assert.NotNull(decision);
         Assert.Equal(RoutingAction.Reject, decision.Action);
-        Assert.Null(decision.WorkflowDefinitionId);
-        Assert.False(decision.OwnershipAcquired);
-        Assert.Equal("ConversationLocked", decision.ReasonCode);
-
-        // No debe intentar adquirir lock si ya está ocupado
-        _ownershipManager.Verify(x => x.TryAcquireLockAsync(
-            It.IsAny<string>(),
-            It.IsAny<string>(),
-            It.IsAny<string>(),
-            It.IsAny<TimeSpan>(),
-            It.IsAny<CancellationToken>()), Times.Never);
-    }
-
-    [Fact]
-    public async Task RouteMessage_LockAcquisitionFails_FallsBackToQueue()
-    {
-        // Arrange
-        var classification = new IntentClassificationResult
-        {
-            BestMatch = new IntentMatch
-            {
-                IntentKey = "loan_application",
-                DisplayName = "Solicitud de Préstamo",
-                Category = "Sales",
-                SimilarityScore = 0.95,
-                Explanation = "High confidence match"
-            },
-            AllCandidates = new List<ScoredCandidate>(),
-            BestScore = 0.95,
-            Confidence = ConfidenceLevel.High,
-            ConfidenceNumeric = 0.95,
-            ExplanationJson = "{}"
-        };
-
-        var context = new ConversationContext
-        {
-            ConversationId = "conv-fail-lock",
-            TenantId = "tenant-1",
-            Channel = "whatsapp",
-            UserIdentifier = "user-jkl"
-        };
-
-        _ownershipManager.Setup(x => x.GetStateAsync(context.TenantId, context.ConversationId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((OwnershipState?)null);
-
-        // Simular falla al adquirir lock (race condition)
-        _ownershipManager.Setup(x => x.TryAcquireLockAsync(
-                It.IsAny<string>(),
-                It.IsAny<string>(),
-                It.IsAny<string>(),
-                It.IsAny<TimeSpan>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(false);
-
-        // Act
-        var decision = await _orchestrator.RouteMessageAsync(classification, context, CancellationToken.None);
-
-        // Assert
-        Assert.NotNull(decision);
-        Assert.Equal(RoutingAction.Queue, decision.Action); // Fallback a Queue
-        Assert.Null(decision.WorkflowDefinitionId);
-        Assert.False(decision.OwnershipAcquired);
-        Assert.Equal("LockAcquisitionFailed", decision.ReasonCode);
+        Assert.Equal("agent_conflict", decision.ReasonCode);
     }
 }

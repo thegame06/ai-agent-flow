@@ -25,6 +25,7 @@ import { CONFIG } from 'src/global-config';
 import axios, { endpoints } from 'src/lib/axios';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
+import { normalizeToolLabel } from 'src/aiagentflow/utils/toolLabels';
 
 import { Label } from 'src/components/label';
 import { Iconify } from 'src/components/iconify';
@@ -166,6 +167,9 @@ export default function AgentDetailPage() {
   }
 
   const tools = readAgentTools(agent);
+  const toolLabels = Array.isArray(tools)
+    ? tools.map((tool) => normalizeToolLabel(tool))
+    : Object.values(tools || {}).map((tool) => normalizeToolLabel(tool));
   const model = readAgentModel(agent);
   const instructions = readAgentInstructions(agent);
   const memoryCount = countItems(agent.memory || agent.knowledge || agent.dataSources);
@@ -262,7 +266,7 @@ export default function AgentDetailPage() {
                   icon: 'mdi:tools',
                   body:
                     countItems(tools) > 0
-                      ? (Array.isArray(tools) ? tools : Object.keys(tools)).join(', ')
+                      ? toolLabels.join(', ')
                       : 'Sin tools autorizadas. Agregalas desde Agent Studio antes de usar el nodo en un flujo.',
                 },
                 {
