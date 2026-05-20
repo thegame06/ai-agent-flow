@@ -28,12 +28,49 @@ interface InboxTableProps {
   onResolve: (conversationId: string) => void;
 }
 
+const STATE_BY_INDEX: Record<number, string> = {
+  0: 'AwaitingClassification',
+  1: 'Classified',
+  2: 'LowConfidence',
+  3: 'NoMatch',
+  4: 'InProgress',
+  5: 'PendingHumanReview',
+  6: 'Resolved',
+  7: 'Escalated',
+  8: 'Abandoned',
+  9: 'ConflictDetected',
+};
+
+const CONFIDENCE_BY_INDEX: Record<number, string> = {
+  0: 'NoMatch',
+  1: 'Low',
+  2: 'Medium',
+  3: 'High',
+};
+
+const normalizeState = (state: unknown): string => {
+  if (typeof state === 'string') return state;
+  if (typeof state === 'number') return STATE_BY_INDEX[state] ?? `State${state}`;
+  return 'Unknown';
+};
+
+const normalizeConfidence = (confidence: unknown): string => {
+  if (typeof confidence === 'string') return confidence;
+  if (typeof confidence === 'number') return CONFIDENCE_BY_INDEX[confidence] ?? `Level${confidence}`;
+  return 'Unknown';
+};
+
 const stateColor = (state: string) => {
   switch (state) {
     case 'AwaitingClassification': return 'warning';
     case 'Classified': return 'info';
+    case 'LowConfidence': return 'warning';
+    case 'NoMatch': return 'error';
     case 'InProgress': return 'primary';
+    case 'PendingHumanReview': return 'warning';
     case 'Resolved': return 'success';
+    case 'Escalated': return 'error';
+    case 'ConflictDetected': return 'error';
     case 'Abandoned': return 'error';
     default: return 'default';
   }
@@ -87,8 +124,11 @@ export function InboxTable({ conversations, loading, onView, onReassign, onResol
             </TableRow>
           </TableHead>
           <TableBody>
-            {conversations.map((conv) => (
-              <TableRow 
+            {conversations.map((conv) => {
+              const state = normalizeState((conv as any).state);
+              const confidence = normalizeConfidence((conv as any).confidence);
+              return (
+              <TableRow
                 key={conv.id} 
                 hover
                 sx={{
@@ -127,9 +167,9 @@ export function InboxTable({ conversations, loading, onView, onReassign, onResol
                 </TableCell>
                 <TableCell>
                   <Chip 
-                    label={conv.state.replace(/([A-Z])/g, ' $1').trim()}
+                    label={state.replace(/([A-Z])/g, ' $1').trim()}
                     size="small"
-                    color={stateColor(conv.state) as any}
+                    color={stateColor(state) as any}
                   />
                 </TableCell>
                 <TableCell>
@@ -143,9 +183,9 @@ export function InboxTable({ conversations, loading, onView, onReassign, onResol
                 </TableCell>
                 <TableCell>
                   <Chip
-                    label={conv.confidence}
+                    label={confidence}
                     size="small"
-                    color={confidenceColor(conv.confidence) as any}
+                    color={confidenceColor(confidence) as any}
                   />
                 </TableCell>
                 <TableCell>
@@ -160,20 +200,20 @@ export function InboxTable({ conversations, loading, onView, onReassign, onResol
                   <IconButton 
                     size="small" 
                     onClick={() => onReassign(conv.id)}
-                    disabled={conv.state === 'Resolved'}
+                    disabled={state === 'Resolved'}
                   >
                     <Iconify icon="eva:shuffle-2-outline" />
                   </IconButton>
                   <IconButton 
                     size="small" 
                     onClick={() => onResolve(conv.id)}
-                    disabled={conv.state === 'Resolved'}
+                    disabled={state === 'Resolved'}
                   >
                     <Iconify icon="eva:checkmark-outline" />
                   </IconButton>
                 </TableCell>
               </TableRow>
-            ))}
+            )})}
           </TableBody>
         </Table>
       </TableContainer>
