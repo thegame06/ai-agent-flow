@@ -14,11 +14,14 @@ import Avatar from '@mui/material/Avatar';
 import Button from '@mui/material/Button';
 import ListItem from '@mui/material/ListItem';
 import MenuItem from '@mui/material/MenuItem';
+import Accordion from '@mui/material/Accordion';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import IconButton from '@mui/material/IconButton';
 import ListItemText from '@mui/material/ListItemText';
 import ListItemButton from '@mui/material/ListItemButton';
+import AccordionSummary from '@mui/material/AccordionSummary';
+import AccordionDetails from '@mui/material/AccordionDetails';
 import CircularProgress from '@mui/material/CircularProgress';
 
 import { paths } from 'src/routes/paths';
@@ -225,6 +228,29 @@ export default function ThreadsPage() {
   const billingEnabled = Boolean(enabledModules[MODULE_IDS.billing]);
 
   const cartSubtotal = useMemo(() => cart.reduce((acc, item) => acc + item.unitPrice * item.quantity, 0), [cart]);
+  const groupedRows = useMemo(() => {
+    const today = new Date();
+    const isSameDay = (d: Date, base: Date) =>
+      d.getFullYear() === base.getFullYear() &&
+      d.getMonth() === base.getMonth() &&
+      d.getDate() === base.getDate();
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+
+    const groups: Record<'Hoy' | 'Ayer' | 'Anteriores', SessionRow[]> = {
+      Hoy: [],
+      Ayer: [],
+      Anteriores: [],
+    };
+
+    rows.forEach((row) => {
+      const dt = new Date(row.lastActivityAt || row.createdAt);
+      if (isSameDay(dt, today)) groups.Hoy.push(row);
+      else if (isSameDay(dt, yesterday)) groups.Ayer.push(row);
+      else groups.Anteriores.push(row);
+    });
+    return groups;
+  }, [rows]);
 
   const loadSessions = async () => {
     setLoading(true);
@@ -637,9 +663,19 @@ export default function ThreadsPage() {
                   </Stack>
                 ) : (
                   <List dense sx={{ p: 0 }}>
-                  {rows.map((row) => {
+                    {(['Hoy', 'Ayer', 'Anteriores'] as const).map((section) => (
+                      <Box key={section} sx={{ mb: 1 }}>
+                        <Typography variant="overline" color="text.secondary" sx={{ px: 1, fontSize: 11 }}>
+                          {section}
+                        </Typography>
+                        {groupedRows[section].map((row) => {
                       const isSelected = selectedSessionId === row.id;
                       const hasUnread = (row.unreadCount ?? 0) > 0;
+                      const lastEvent = row.lastError
+                        ? 'Error de entrega'
+                        : row.replyPending || hasUnread
+                          ? 'Pendiente de respuesta'
+                          : 'Atendido';
                       return (
                         <ListItem key={row.id} disablePadding sx={{ mb: 0.5 }}>
                           <ListItemButton
@@ -673,6 +709,7 @@ export default function ThreadsPage() {
                                   <Stack direction="row" spacing={0.75}>
                                     <Chip size="small" variant="outlined" label={row.channelType} />
                                     <Chip size="small" label={row.status} color={row.status === 'Active' ? 'success' : 'default'} />
+                                    <Chip size="small" variant="outlined" label={lastEvent} />
                                     {(row.replyPending || hasUnread) && <Chip size="small" color="warning" label="Por responder" />}
                                     {hasUnread && <Chip size="small" color="primary" label={String(row.unreadCount)} />}
                                   </Stack>
@@ -682,7 +719,9 @@ export default function ThreadsPage() {
                           </ListItemButton>
                         </ListItem>
                       );
-                    })}
+                        })}
+                      </Box>
+                    ))}
                     {!rows.length && (
                       <ListItem>
                         <ListItemText primary="No hay conversaciones para este filtro." />
@@ -793,6 +832,24 @@ export default function ThreadsPage() {
 
                     {activePanel === 'customer' && (
                       <Stack spacing={1.5}>
+                        <Accordion defaultExpanded disableGutters>
+                          <AccordionSummary expandIcon={<Iconify icon="mdi:chevron-down" width={18} />}>
+                            <Typography variant="subtitle2">Informacion</Typography>
+                          </AccordionSummary>
+                          <AccordionDetails sx={{ pt: 0 }}>
+                            <Stack spacing={0.75}>
+                              <Typography variant="body2"><b>Canal:</b> {context?.channelType || '-'}</Typography>
+                              <Typography variant="body2"><b>Identificador:</b> {context?.identifier || '-'}</Typography>
+                              <Typography variant="body2"><b>Estado:</b> {context?.status || '-'}</Typography>
+                              <Typography variant="body2"><b>Hilo:</b> {context?.threadId || '-'}</Typography>
+                            </Stack>
+                          </AccordionDetails>
+                        </Accordion>
+                        <Accordion defaultExpanded disableGutters>
+                          <AccordionSummary expandIcon={<Iconify icon="mdi:chevron-down" width={18} />}>
+                            <Typography variant="subtitle2">Contacto</Typography>
+                          </AccordionSummary>
+                          <AccordionDetails sx={{ pt: 0 }}>
                         <TextField
                           size="small"
                           label="Buscar cliente existente"
@@ -831,6 +888,17 @@ export default function ThreadsPage() {
                         <Button size="small" variant="outlined" onClick={saveCustomer} disabled={!inboxEnabled}>
                           {context?.party?.id ? 'Guardar cliente' : 'Crear cliente'}
                         </Button>
+                          </AccordionDetails>
+                        </Accordion>
+                        <Accordion defaultExpanded disableGutters>
+                          <AccordionSummary expandIcon={<Iconify icon="mdi:chevron-down" width={18} />}>
+                            <Typography variant="subtitle2">Historial comercial</Typography>
+                          </AccordionSummary>
+                          <AccordionDetails sx={{ pt: 0 }}>
+                            <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
+                              <Chip size="small" label={`Ventas: ${sales.length}`} />
+                              <Chip size="small" label={`Facturas: ${invoices.length}`} />
+                            </Stack>
                       <Box sx={{ opacity: inventoryEnabled ? 1 : 0.55 }}>
                         <Stack direction="row" spacing={1}>
                           <TextField size="small" fullWidth placeholder="Buscar SKU o nombre" value={inventoryQuery} onChange={(e) => setInventoryQuery(e.target.value)} disabled={!inventoryEnabled} />
@@ -887,6 +955,8 @@ export default function ThreadsPage() {
                         <Button size="small" variant="outlined" onClick={createOrder} disabled={!salesEnabled || !cart.length}>Crear orden</Button>
                         <Button size="small" variant="contained" color="secondary" onClick={() => setInvoicePreviewOpen(true)} disabled={!billingEnabled || !cart.length || (!lastSaleId && !lastOrderId)}>Vista previa factura</Button>
                       </Stack>
+                          </AccordionDetails>
+                        </Accordion>
                       </Stack>
                     )}
 
