@@ -1,5 +1,5 @@
-using AgentFlow.Abstractions;
 using AgentFlow.Abstractions.Connect;
+using AgentFlow.Application.Channels;
 using AgentFlow.Api.Connect;
 using AgentFlow.Api.Workflow;
 using AgentFlow.Domain.Aggregates;
