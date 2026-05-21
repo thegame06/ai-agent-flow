@@ -197,6 +197,7 @@ public sealed class ChannelGateway : IChannelGateway
 
             var finalResponse = executionResult.FinalResponse;
             var executionIdForOutgoing = executionResult.ExecutionId;
+            var respondingAgentKey = executionResult.AgentKey;
 
             // ── Router → WorkflowBrain session handoff ────────────────────────
             // When the Router emits a routing_handoff directive, re-assign the
@@ -246,6 +247,21 @@ public sealed class ChannelGateway : IChannelGateway
 
                 finalResponse = brainResult.FinalResponse;
                 executionIdForOutgoing = brainResult.ExecutionId;
+                respondingAgentKey = brainResult.AgentKey;
+
+                var transitionMessage = ChannelMessage.CreateOutgoing(
+                    incomingMessage.TenantId,
+                    incomingMessage.ChannelId,
+                    incomingMessage.SessionId,
+                    incomingMessage.From,
+                    $"[sistema] Conversacion asignada a workflow '{routingHandoff.WorkflowExecutionId ?? "-"}' y agente '{routingHandoff.WorkflowBrainAgentId}'."
+                );
+                transitionMessage.Metadata["actor"] = "system";
+                transitionMessage.Metadata["agentflow.delivery"] = "suppressed";
+                transitionMessage.Metadata["agentflow.visibility"] = "inbox_only";
+                transitionMessage.Metadata["event_type"] = "workflow_handoff";
+                transitionMessage.LinkExecution(executionIdForOutgoing);
+                await _messageRepo.InsertAsync(transitionMessage, ct);
             }
             else
             {
@@ -278,6 +294,7 @@ public sealed class ChannelGateway : IChannelGateway
                             executionIdForOutgoing = handoffResponse.StatePatch.TryGetValue("lastExecutionId", out var delegatedId)
                                 ? delegatedId
                                 : executionIdForOutgoing;
+                            respondingAgentKey = handoff.TargetAgentId;
 
                             session.LinkAgent(handoff.TargetAgentId);
                             await _sessionRepo.UpdateAsync(session, ct);
@@ -316,6 +333,40 @@ public sealed class ChannelGateway : IChannelGateway
 
             // Create outgoing message
             var customerResponse = finalResponse!;
+            if (ShouldSuppressCustomerDelivery(customerResponse))
+            {
+                var systemMessage = ChannelMessage.CreateOutgoing(
+                    incomingMessage.TenantId,
+                    incomingMessage.ChannelId,
+                    incomingMessage.SessionId,
+                    incomingMessage.From,
+                    customerResponse
+                );
+                systemMessage.Metadata["actor"] = "system";
+                systemMessage.Metadata["actor_label"] = "Sistema";
+                systemMessage.Metadata["agentflow.delivery"] = "suppressed";
+                systemMessage.Metadata["agentflow.visibility"] = "inbox_only";
+                systemMessage.LinkExecution(executionIdForOutgoing);
+                await _messageRepo.InsertAsync(systemMessage, ct);
+
+                var suppressSession = await _sessionRepo.GetByIdAsync(incomingMessage.SessionId, incomingMessage.TenantId, ct);
+                if (suppressSession != null)
+                {
+                    suppressSession.RecordOutgoingMessage("[system] Mensaje interno suprimido para el cliente.");
+                    await _sessionRepo.UpdateAsync(suppressSession, ct);
+                }
+
+                await RecordOutgoingAuditAsync(
+                    incomingMessage,
+                    executionIdForOutgoing,
+                    "suppressed",
+                    customerResponse,
+                    true,
+                    ct);
+
+                return systemMessage;
+            }
+
             var outgoingMessage = ChannelMessage.CreateOutgoing(
                 incomingMessage.TenantId,
                 incomingMessage.ChannelId,
@@ -324,6 +375,14 @@ public sealed class ChannelGateway : IChannelGateway
                 customerResponse
             );
             outgoingMessage.Metadata["actor"] = "bot";
+            outgoingMessage.Metadata["actor_agent_id"] = respondingAgentKey;
+            outgoingMessage.Metadata["actor_label"] = string.IsNullOrWhiteSpace(respondingAgentKey)
+                ? "Agente"
+                : $"Agente {respondingAgentKey}";
+            if (session is not null && session.Metadata.TryGetValue("routing_handoff_workflow", out var workflowId) && !string.IsNullOrWhiteSpace(workflowId))
+            {
+                outgoingMessage.Metadata["workflow_execution_id"] = workflowId;
+            }
             outgoingMessage.Metadata["agentflow.delivery"] = "sent";
 
             outgoingMessage.LinkExecution(executionIdForOutgoing);
@@ -334,6 +393,13 @@ public sealed class ChannelGateway : IChannelGateway
             {
                 _logger.LogError("Failed to send reply: {Error}", sendResult.Error);
             }
+            await RecordOutgoingAuditAsync(
+                incomingMessage,
+                executionIdForOutgoing,
+                sendResult.Success ? "sent" : "failed",
+                customerResponse,
+                false,
+                ct);
 
             return outgoingMessage;
         }
@@ -440,6 +506,44 @@ public sealed class ChannelGateway : IChannelGateway
         }
 
         return result;
+    }
+
+    private static bool ShouldSuppressCustomerDelivery(string response)
+    {
+        if (string.IsNullOrWhiteSpace(response)) return false;
+        var text = response.Trim().ToLowerInvariant();
+        return text.Contains("herramienta de sesión activa no está disponible", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("herramienta de sesion activa no esta disponible", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("no hay suficiente contexto comercial", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("tool", StringComparison.OrdinalIgnoreCase) && text.Contains("not available", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task RecordOutgoingAuditAsync(
+        ChannelMessage incomingMessage,
+        string executionId,
+        string delivery,
+        string response,
+        bool systemOnly,
+        CancellationToken ct)
+    {
+        await _auditMemory.RecordAsync(new AuditEntry
+        {
+            ExecutionId = executionId,
+            AgentId = "channel-gateway",
+            TenantId = incomingMessage.TenantId,
+            UserId = incomingMessage.From,
+            EventType = AuditEventType.ConnectOperation,
+            CorrelationId = incomingMessage.SessionId,
+            EventJson = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                action = "channel.outgoing.reply",
+                channelId = incomingMessage.ChannelId,
+                sessionId = incomingMessage.SessionId,
+                delivery,
+                systemOnly,
+                responsePreview = response.Length > 280 ? response[..280] : response
+            })
+        }, ct);
     }
 
     public async Task<IReadOnlyList<ChannelSession>> GetActiveSessionsAsync(string channelId, string tenantId, CancellationToken ct = default)

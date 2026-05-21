@@ -142,7 +142,8 @@ public sealed class ChannelSessionsController : ControllerBase
         LastError = session.Metadata.GetValueOrDefault("last_error"),
         LastFailureLevel = session.Metadata.GetValueOrDefault("last_failure_level"),
         CustomerKind = session.Metadata.GetValueOrDefault("customer_kind") ?? "unknown",
-        DisplayName = session.Metadata.GetValueOrDefault("display_name")
+        DisplayName = session.Metadata.GetValueOrDefault("display_name"),
+        RoutingWorkflowId = session.Metadata.GetValueOrDefault("routing_handoff_workflow")
     };
 
     private static async Task<ChannelSessionDto> MapSessionAsync(ChannelSession session, ICommerceStore? commerce, CancellationToken ct)
@@ -177,8 +178,10 @@ public sealed class ChannelSessionsController : ControllerBase
         ChannelMessageIdOut = message.Metadata.GetValueOrDefault("wa_message_id_out"),
         Metadata = message.Metadata,
         ErrorMessage = message.ErrorMessage,
-        Actor = message.Metadata.GetValueOrDefault("actor") ??
-            (message.Direction == MessageDirection.Incoming ? "customer" : message.From),
+        Actor = message.Metadata.GetValueOrDefault("actor_label")
+            ?? message.Metadata.GetValueOrDefault("actor_agent_id")
+            ?? message.Metadata.GetValueOrDefault("actor")
+            ?? (message.Direction == MessageDirection.Incoming ? "customer" : message.From),
         DeliveryState = message.Metadata.GetValueOrDefault("agentflow.delivery") ??
             (message.Direction == MessageDirection.Outgoing ? "sent" : "received")
     };
@@ -224,6 +227,9 @@ public sealed class ChannelSessionsController : ControllerBase
 
             if (!string.IsNullOrWhiteSpace(turn.AssistantResponse))
             {
+                var fallbackActor = !string.IsNullOrWhiteSpace(session.AgentId)
+                    ? $"agent:{session.AgentId}"
+                    : "bot";
                 var outbound = new ChannelMessageDto
                 {
                     Id = $"thread-{thread.Id}-a-{index}",
@@ -234,7 +240,7 @@ public sealed class ChannelSessionsController : ControllerBase
                     Content = turn.AssistantResponse!,
                     CreatedAt = turn.Timestamp.AddMilliseconds(1),
                     Status = "Merged",
-                    Actor = "bot",
+                    Actor = fallbackActor,
                     DeliveryState = "sent",
                     Metadata = new Dictionary<string, string> { ["source"] = "thread" }
                 };
@@ -292,6 +298,7 @@ public sealed record ChannelSessionDto
     public string? LastFailureLevel { get; init; }
     public string CustomerKind { get; init; } = "unknown";
     public string? DisplayName { get; init; }
+    public string? RoutingWorkflowId { get; init; }
 }
 
 public sealed record ChannelMessageDto

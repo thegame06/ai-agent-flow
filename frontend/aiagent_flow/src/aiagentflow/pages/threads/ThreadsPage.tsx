@@ -62,6 +62,7 @@ type SessionRow = {
   lastAgentMessage?: string;
   lastError?: string;
   lastFailureLevel?: string;
+  routingWorkflowId?: string;
 };
 
 type SessionMessage = {
@@ -72,6 +73,18 @@ type SessionMessage = {
   actor?: string;
   deliveryState?: string;
   errorMessage?: string;
+  metadata?: Record<string, string>;
+};
+
+type AgentOption = {
+  id: string;
+  name: string;
+};
+type ConversationEvent = {
+  key: string;
+  label: string;
+  time: string;
+  color: 'default' | 'info' | 'secondary' | 'success' | 'warning';
 };
 
 type CommerceIdentityLink = {
@@ -221,6 +234,7 @@ export default function ThreadsPage() {
   const [actionError, setActionError] = useState('');
   const [actionOk, setActionOk] = useState('');
   const [enabledModules, setEnabledModules] = useState<Record<string, boolean>>({});
+  const [agents, setAgents] = useState<AgentOption[]>([]);
 
   const inboxEnabled = Boolean(enabledModules[MODULE_IDS.communicationInbox]);
   const inventoryEnabled = Boolean(enabledModules[MODULE_IDS.inventory]);
@@ -251,6 +265,73 @@ export default function ThreadsPage() {
     });
     return groups;
   }, [rows]);
+  const agentNameById = useMemo(
+    () => new Map(agents.map((agent) => [agent.id, agent.name])),
+    [agents]
+  );
+  const selectedRow = useMemo(
+    () => rows.find((row) => row.id === selectedSessionId) || null,
+    [rows, selectedSessionId]
+  );
+  const conversationEvents = useMemo<ConversationEvent[]>(() => {
+    const events: ConversationEvent[] = [];
+    const fmt = (ts?: string) => {
+      if (!ts) return '';
+      const dt = new Date(ts);
+      if (Number.isNaN(dt.getTime())) return '';
+      return dt.toLocaleTimeString();
+    };
+
+    const workflowHandoff = messages.find((message) => message.metadata?.event_type === 'workflow_handoff');
+    if (workflowHandoff) {
+      events.push({
+        key: `wf-handoff-${workflowHandoff.id}`,
+        label: 'Routing decidido',
+        time: fmt(workflowHandoff.createdAt),
+        color: 'info',
+      });
+      events.push({
+        key: `wf-start-${workflowHandoff.id}`,
+        label: 'Workflow iniciado',
+        time: fmt(workflowHandoff.createdAt),
+        color: 'secondary',
+      });
+    }
+
+    const firstAgentReply = messages.find(
+      (message) =>
+        message.direction === 'Outgoing' &&
+        message.metadata?.actor_agent_id &&
+        message.deliveryState !== 'suppressed'
+    );
+    if (firstAgentReply) {
+      const agentId = firstAgentReply.metadata?.actor_agent_id || '';
+      const name = agentNameById.get(agentId);
+      events.push({
+        key: `agent-reply-${firstAgentReply.id}`,
+        label: `Agente responde${name ? `: ${name}` : ''}`,
+        time: fmt(firstAgentReply.createdAt),
+        color: 'success',
+      });
+    }
+
+    const fallback = messages.find(
+      (message) =>
+        message.direction === 'Outgoing' &&
+        message.deliveryState !== 'suppressed' &&
+        message.content.includes('No se pudo identificar la intención')
+    );
+    if (fallback) {
+      events.push({
+        key: `fallback-${fallback.id}`,
+        label: 'Sin clasificación (bandeja humana)',
+        time: fmt(fallback.createdAt),
+        color: 'warning',
+      });
+    }
+
+    return events;
+  }, [messages, agentNameById]);
 
   const loadSessions = async () => {
     setLoading(true);
@@ -311,6 +392,18 @@ export default function ThreadsPage() {
       }
     };
     loadModuleStates();
+  }, [tenantId]);
+
+  useEffect(() => {
+    const loadAgents = async () => {
+      try {
+        const res = await axios.get(endpoints.agentflow.agents.list(tenantId));
+        setAgents((res.data || []).map((a: any) => ({ id: String(a.id), name: String(a.name || a.id) })));
+      } catch {
+        setAgents([]);
+      }
+    };
+    loadAgents();
   }, [tenantId]);
 
   useEffect(() => {
@@ -769,6 +862,14 @@ export default function ThreadsPage() {
                     <Stack direction="row" spacing={0.75} alignItems="center">
                       <Chip size="small" label={context?.commercialState || 'lead'} color={commercialStateColor(context?.commercialState) as any} />
                       <Chip size="small" label={context?.status || '...'} variant="outlined" />
+                      {selectedRow?.routingWorkflowId && (
+                        <Chip size="small" color="secondary" variant="outlined" label={`Workflow ${selectedRow.routingWorkflowId}`} />
+                      )}
+                      <Chip
+                        size="small"
+                        variant="outlined"
+                        label={`Atiende: ${agentNameById.get(selectedRow?.agentId || '') || selectedRow?.agentId || 'sin agente'}`}
+                      />
                       <IconButton size="small" onClick={() => { setActivePanel('customer'); setContextDrawerOpen(true); }}>
                         <Iconify icon="mdi:account-details-outline" />
                       </IconButton>
@@ -786,6 +887,19 @@ export default function ThreadsPage() {
                       </IconButton>
                     </Stack>
                   </Stack>
+                  {conversationEvents.length > 0 && (
+                    <Stack direction="row" spacing={1} alignItems="center" sx={{ px: 0.5, flexWrap: 'wrap' }} useFlexGap>
+                      {conversationEvents.map((event) => (
+                        <Chip
+                          key={event.key}
+                          size="small"
+                          color={event.color}
+                          variant="outlined"
+                          label={event.time ? `${event.label} · ${event.time}` : event.label}
+                        />
+                      ))}
+                    </Stack>
+                  )}
 
                   <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
                     <MessageTimeline
@@ -793,6 +907,7 @@ export default function ThreadsPage() {
                       loading={loadingMessages}
                       hasMore={hasMoreMessages}
                       onLoadMore={() => selectedSessionId && loadContextAndMessages(selectedSessionId, messagesCursor)}
+                      resolveAgentName={(agentId) => agentNameById.get(agentId)}
                     />
                     <Stack direction="row" spacing={1} sx={{ mt: 1.5, pt: 1, borderTop: '1px solid', borderColor: 'divider' }}>
                       <TextField

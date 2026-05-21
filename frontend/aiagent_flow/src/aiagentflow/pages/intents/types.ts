@@ -135,9 +135,12 @@ export interface InboxConversation {
   state: ConversationState;
   confidence: ConfidenceLevel;
   detected_intent_key?: string;
+  assigned_agent_id?: string;
+  workflow_execution_id?: string;
   created_at: string;
   updated_at: string;
   requires_human_review: boolean;
+  review_notes?: string;
 }
 
 export interface InboxStats {

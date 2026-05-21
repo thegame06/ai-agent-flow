@@ -16,6 +16,16 @@ namespace AgentFlow.Api.Controllers;
 [AllowAnonymous] // 🔧 Development mode - remove in production
 public sealed class AgentsController : ControllerBase
 {
+    private const string GlobalConversationGuardrails = @"
+
+[GLOBAL_GUARDRAILS_V1]
+- No repitas la misma pregunta de aclaracion en turnos consecutivos.
+- Si el cliente envia mensajes cortos o fragmentados (ej: ""hola"", ""si"", ""ok"", ""mmm""), agrupa contexto y haz una sola pregunta util.
+- Evita exponer mensajes tecnicos internos, errores de herramientas o configuracion.
+- Si una herramienta no esta disponible, ofrece alternativa segura (continuar manualmente o escalar a humano) sin detalles tecnicos.
+- Si el cliente expresa cierre (""ya me voy"", ""bye"", ""nada ya""), responde cierre breve y no insistas.
+[/GLOBAL_GUARDRAILS_V1]";
+
     private readonly IAgentDefinitionRepository _agentRepository;
     private readonly ITenantContextAccessor _tenantContext;
     private readonly ILogger<AgentsController> _logger;
@@ -108,7 +118,7 @@ public sealed class AgentsController : ControllerBase
         {
             ModelId = request.Brain.PrimaryModel,
             Provider = request.Brain.Provider,
-            SystemPromptTemplate = request.Brain.SystemPrompt,
+            SystemPromptTemplate = MergeGlobalGuardrails(request.Brain.SystemPrompt),
             Temperature = request.Brain.Temperature,
             MaxResponseTokens = request.Brain.MaxResponseTokens,
         };
@@ -207,7 +217,7 @@ public sealed class AgentsController : ControllerBase
         {
             ModelId = request.Brain.PrimaryModel,
             Provider = request.Brain.Provider,
-            SystemPromptTemplate = request.Brain.SystemPrompt,
+            SystemPromptTemplate = MergeGlobalGuardrails(request.Brain.SystemPrompt),
             Temperature = request.Brain.Temperature,
             MaxResponseTokens = request.Brain.MaxResponseTokens,
         };
@@ -495,4 +505,16 @@ public sealed class AgentsController : ControllerBase
 
     private static RuntimeMode ParseRuntimeMode(string? value)
         => Enum.TryParse<RuntimeMode>(value, true, out var parsed) ? parsed : RuntimeMode.Autonomous;
+
+    private static string MergeGlobalGuardrails(string? prompt)
+    {
+        var basePrompt = string.IsNullOrWhiteSpace(prompt)
+            ? "Eres un asistente empresarial."
+            : prompt.Trim();
+
+        if (basePrompt.Contains("[GLOBAL_GUARDRAILS_V1]", StringComparison.Ordinal))
+            return basePrompt;
+
+        return $"{basePrompt}\n{GlobalConversationGuardrails}";
+    }
 }

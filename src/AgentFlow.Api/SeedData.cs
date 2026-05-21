@@ -758,6 +758,37 @@ Always be concrete: tell the user EXACTLY what to click or configure."
     {
         var agentRepo = services.GetRequiredService<IAgentDefinitionRepository>();
         var workflowStore = services.GetRequiredService<IWorkflowStudioStore>();
+        const string salesSystemPrompt = @"Eres el asistente de ventas de Annonai.
+
+Objetivo:
+- atender leads que escriben por un canal
+- identificar necesidad real sin repetir preguntas
+- sugerir opciones utiles segun presupuesto/uso
+- convertir a venta y facturacion cuando haya contexto suficiente
+
+Reglas de conversacion:
+- responde en el idioma del cliente
+- evita bucles: no repitas la misma pregunta dos veces seguidas
+- si el cliente escribe mensajes cortos o fragmentados (ej: hola | si | ok | mmm), agrupa contexto y responde con una sola pregunta util
+- si el cliente aun no sabe modelo exacto, ofrece 2-4 opciones concretas por rango de uso/presupuesto en lugar de volver a preguntar lo mismo
+- maximo 1 pregunta de clarificacion por turno
+- cuando el cliente diga que no desea continuar (ej: ya me voy, nada ya, bye), cierra cordialmente sin insistir
+
+Reglas comerciales:
+- no inventes stock ni precios exactos si no hay herramienta/dato confiable
+- si una herramienta no esta disponible, NO muestres error tecnico; ofrece alternativa manual (tomar datos y seguimiento humano)
+- antes de vender, confirma: producto, presupuesto, datos de contacto
+- antes de facturar, confirma total y metodo de entrega
+
+Herramientas preferidas:
+- af_commerce_resolve_party
+- af_commerce_assert_active_session
+- af_commerce_search_inventory
+- af_commerce_calculate_sale
+- af_commerce_create_sale
+- af_commerce_create_invoice
+- af_commerce_send_invoice_whatsapp
+- af_commerce_send_conversation_message";
 
         var existingAgents = await agentRepo.GetAllAsync(tenantId, 0, 500);
         var salesAssistant = existingAgents.FirstOrDefault(a => string.Equals(a.Name, "Asistente de ventas", StringComparison.OrdinalIgnoreCase));
@@ -771,37 +802,7 @@ Always be concrete: tell the user EXACTLY what to click or configure."
                 Temperature = 0.2f,
                 MaxResponseTokens = 1200,
                 RequiresToolExecution = true,
-                SystemPromptTemplate = @"Eres el asistente de ventas de Annonai.
-
-Objetivo:
-- atender leads que escriben por un canal
-- identificar que producto quieren
-- buscar productos en inventario
-- confirmar cantidades y datos del cliente
-- crear la venta
-- emitir factura
-- si aplica, enviarla por WhatsApp
-
-Reglas:
-- responde en el idioma del cliente
-- haz preguntas cortas y una por turno
-- no inventes productos, precios ni stock; usa herramientas
-- antes de vender, resuelve o crea el cliente en CRM
-- antes de facturar, confirma el total con el cliente
-- si falta un dato, dilo claramente
-- cuando no haya match comercial, explica que no encontraste coincidencia y pide aclaracion
-
-Herramientas a usar cuando aplique:
-- af_commerce_resolve_party
-- af_commerce_assert_active_session
-- af_commerce_search_inventory
-- af_commerce_calculate_sale
-- af_commerce_create_sale
-- af_commerce_create_invoice
-- af_commerce_send_invoice_whatsapp
-- af_commerce_send_conversation_message
-
-Nunca expongas detalles tecnicos internos al cliente."
+                SystemPromptTemplate = salesSystemPrompt
             };
 
             var loop = new AgentLoopConfig
@@ -879,6 +880,35 @@ Nunca expongas detalles tecnicos internos al cliente."
 
         if (salesAssistant is null)
             return;
+
+        if (!string.Equals(salesAssistant.Brain.SystemPromptTemplate?.Trim(), salesSystemPrompt.Trim(), StringComparison.Ordinal))
+        {
+            var updatedBrain = salesAssistant.Brain with
+            {
+                SystemPromptTemplate = salesSystemPrompt,
+                RequiresToolExecution = true,
+                Temperature = 0.2f,
+                MaxResponseTokens = 1200
+            };
+
+            var update = salesAssistant.Update(
+                name: salesAssistant.Name,
+                description: salesAssistant.Description,
+                brain: updatedBrain,
+                loopConfig: salesAssistant.LoopConfig,
+                memory: salesAssistant.Memory,
+                session: salesAssistant.Session,
+                workflowSteps: salesAssistant.WorkflowSteps,
+                tools: salesAssistant.AuthorizedTools,
+                tags: salesAssistant.Tags,
+                updatedBy: ownerUser,
+                shadowAgentId: salesAssistant.ShadowAgentId,
+                canaryAgentId: salesAssistant.CanaryAgentId,
+                canaryWeight: salesAssistant.CanaryWeight);
+
+            if (update.IsSuccess)
+                await agentRepo.UpdateAsync(salesAssistant);
+        }
 
         const string workflowId = "wf-sales-happy-path";
         var existingDefinition = await workflowStore.GetDefinitionAsync(tenantId, workflowId, CancellationToken.None);
@@ -999,12 +1029,23 @@ Nunca expongas detalles tecnicos internos al cliente."
             if (existing is not null)
             {
                 // Backfill: older seeds created business agents without workflow steps.
+                var updatedBrain = existing.Brain with
+                {
+                    SystemPromptTemplate = systemPrompt,
+                    RequiresToolExecution = true
+                };
+
+                var needsPromptUpdate = !string.Equals(
+                    existing.Brain.SystemPromptTemplate?.Trim(),
+                    systemPrompt.Trim(),
+                    StringComparison.Ordinal);
+
                 if (existing.WorkflowSteps == null || existing.WorkflowSteps.Count == 0)
                 {
                     var update = existing.Update(
                         name: existing.Name,
                         description: existing.Description,
-                        brain: existing.Brain,
+                        brain: updatedBrain,
                         loopConfig: existing.LoopConfig,
                         memory: existing.Memory,
                         session: existing.Session,
@@ -1020,6 +1061,26 @@ Nunca expongas detalles tecnicos internos al cliente."
                     {
                         await agentRepo.UpdateAsync(existing);
                     }
+                }
+                else if (needsPromptUpdate)
+                {
+                    var update = existing.Update(
+                        name: existing.Name,
+                        description: existing.Description,
+                        brain: updatedBrain,
+                        loopConfig: existing.LoopConfig,
+                        memory: existing.Memory,
+                        session: existing.Session,
+                        workflowSteps: existing.WorkflowSteps,
+                        tools: existing.AuthorizedTools,
+                        tags: existing.Tags,
+                        updatedBy: ownerUser,
+                        shadowAgentId: existing.ShadowAgentId,
+                        canaryAgentId: existing.CanaryAgentId,
+                        canaryWeight: existing.CanaryWeight);
+
+                    if (update.IsSuccess)
+                        await agentRepo.UpdateAsync(existing);
                 }
 
                 return existing;
@@ -1084,7 +1145,19 @@ Nunca expongas detalles tecnicos internos al cliente."
         var salesAgent = await EnsureAgentAsync(
             "Asistente de ventas",
             "Califica prospectos, cotiza productos y cierra ventas.",
-            "Eres un agente comercial. Calificas al cliente, propones opciones y cierras la venta con mensajes claros y cortos.",
+            @"Eres un agente comercial conversacional.
+
+Objetivo:
+- entender la necesidad del cliente sin generar bucles
+- recomendar opciones concretas por uso y presupuesto
+- avanzar a cotizacion/venta cuando haya datos suficientes
+
+Reglas:
+- no repitas la misma pregunta dos veces seguidas
+- si el cliente manda mensajes cortos o fragmentados (hola, si, ok, mmm), espera contexto minimo y responde con una sola pregunta util
+- si no conoce modelo exacto, ofrece 2-4 opciones recomendadas segun uso y presupuesto
+- maximo una pregunta de clarificacion por turno
+- nunca expongas errores tecnicos internos; si falta una herramienta, propone continuar con atencion humana o registro manual",
             new[] { "seed", "ventas", "commerce" });
         var billingAgent = await EnsureAgentAsync(
             "Asistente de facturacion y cobro",

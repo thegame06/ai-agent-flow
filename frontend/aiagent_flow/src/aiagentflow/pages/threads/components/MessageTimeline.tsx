@@ -14,6 +14,7 @@ type SessionMessage = {
   actor?: string;
   deliveryState?: string;
   errorMessage?: string;
+  metadata?: Record<string, string>;
 };
 
 type Props = {
@@ -21,11 +22,12 @@ type Props = {
   loading: boolean;
   hasMore: boolean;
   onLoadMore: () => void;
+  resolveAgentName?: (agentId: string) => string | undefined;
 };
 
 const WINDOW_SIZE = 80;
 
-export function MessageTimeline({ messages, loading, hasMore, onLoadMore }: Props) {
+export function MessageTimeline({ messages, loading, hasMore, onLoadMore, resolveAgentName }: Props) {
   const [windowEnd, setWindowEnd] = useState(WINDOW_SIZE);
 
   const visibleMessages = useMemo(() => {
@@ -54,8 +56,23 @@ export function MessageTimeline({ messages, loading, hasMore, onLoadMore }: Prop
             {visibleMessages.map((message) => {
               const isIncoming = message.direction === 'Incoming';
               const actor = message.actor || (isIncoming ? 'customer' : 'agent');
-              const isSystem = actor === 'billing' || actor === 'system';
+              const metadata = message.metadata || {};
+              const eventType = metadata.event_type || '';
+              const isSystem = actor === 'billing' || actor === 'system' || metadata.actor === 'system';
               const hasFailure = message.deliveryState === 'not_sent' || Boolean(message.errorMessage);
+              const isInternalOnly = message.deliveryState === 'suppressed' || metadata['agentflow.visibility'] === 'inbox_only';
+              const actorLabel = (() => {
+                if (isIncoming) return 'Cliente';
+                if (isSystem && eventType === 'workflow_handoff') return 'Sistema (enrutamiento)';
+                if (isSystem) return 'Sistema';
+                if (actor.startsWith('agent:')) {
+                  const agentId = actor.slice(6);
+                  const agentName = resolveAgentName?.(agentId);
+                  return agentName ? `Agente ${agentName}` : `Agente ${agentId}`;
+                }
+                if (actor === 'bot') return 'Agente';
+                return actor;
+              })();
               const bubbleBg = isIncoming
                 ? 'background.paper'
                 : isSystem
@@ -87,8 +104,18 @@ export function MessageTimeline({ messages, loading, hasMore, onLoadMore }: Prop
                     }}
                   >
                     <Typography variant="caption" sx={{ display: 'block', mb: 0.5, opacity: 0.72, textTransform: 'capitalize' }}>
-                      {actor}
+                      {actorLabel}
                     </Typography>
+                    {eventType === 'workflow_handoff' && (
+                      <Typography variant="caption" sx={{ display: 'block', mb: 0.6, fontWeight: 700, opacity: 0.85 }}>
+                        Workflow asignado
+                      </Typography>
+                    )}
+                    {isInternalOnly && (
+                      <Typography variant="caption" sx={{ display: 'block', mb: 0.6, fontWeight: 700, opacity: 0.85 }}>
+                        Mensaje interno (no enviado al cliente)
+                      </Typography>
+                    )}
                     <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
                       {message.content}
                     </Typography>

@@ -1,8 +1,8 @@
 ﻿import { Helmet } from 'react-helmet-async';
 import { useState, useEffect, useCallback } from 'react';
 
-import Alert from '@mui/material/Alert';
 import Chip from '@mui/material/Chip';
+import Alert from '@mui/material/Alert';
 import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import Button from '@mui/material/Button';
@@ -244,6 +244,9 @@ export default function InboxPage() {
                   <Typography variant="body2"><b>ID:</b> {viewConversation?.id || '-'}</Typography>
                   <Typography variant="body2"><b>Usuario:</b> {viewConversation?.user_identifier || '-'}</Typography>
                   <Typography variant="body2"><b>Intencion detectada:</b> {viewConversation?.detected_intent_key || 'Sin intencion detectada'}</Typography>
+                  <Typography variant="body2"><b>Agente asignado:</b> {viewConversation?.assigned_agent_id || '-'}</Typography>
+                  <Typography variant="body2"><b>Ejecucion de workflow:</b> {viewConversation?.workflow_execution_id || '-'}</Typography>
+                  <Typography variant="body2"><b>Nota del sistema:</b> {viewConversation?.review_notes || '-'}</Typography>
                   <Typography variant="body2"><b>Creado:</b> {toDate(viewConversation?.created_at)}</Typography>
                   <Typography variant="body2"><b>Actualizado:</b> {toDate(viewConversation?.updated_at)}</Typography>
                 </Stack>
