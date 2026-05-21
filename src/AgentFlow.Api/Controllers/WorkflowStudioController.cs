@@ -494,7 +494,7 @@ public sealed class WorkflowStudioController : ControllerBase
 
         foreach (var channel in matchingChannels)
         {
-            var sourceAgentId = channel.Config.GetValueOrDefault("DefaultAgentId");
+            var sourceAgentId = channel.RouterAgentId;
             if (string.IsNullOrWhiteSpace(sourceAgentId))
             {
                 sourceAgentId = (channel.Config.GetValueOrDefault("IntentAgents")
@@ -503,6 +503,8 @@ public sealed class WorkflowStudioController : ControllerBase
                     .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                     .FirstOrDefault();
             }
+            if (string.IsNullOrWhiteSpace(sourceAgentId))
+                sourceAgentId = channel.Config.GetValueOrDefault("DefaultAgentId");
 
             if (string.IsNullOrWhiteSpace(sourceAgentId))
                 continue;
@@ -510,7 +512,8 @@ public sealed class WorkflowStudioController : ControllerBase
             for (var index = 0; index < startIntents.Count; index++)
             {
                 var intent = startIntents[index];
-                var intentKey = !string.IsNullOrWhiteSpace(intent.Label) ? intent.Label! : intent.Id;
+                var rawIntentKey = !string.IsNullOrWhiteSpace(intent.Label) ? intent.Label! : intent.Id;
+                var intentKey = NormalizeIntentKey(rawIntentKey);
                 if (string.IsNullOrWhiteSpace(intentKey))
                     continue;
 
@@ -520,6 +523,7 @@ public sealed class WorkflowStudioController : ControllerBase
                     TenantId = definition.TenantId,
                     IntentKey = intentKey,
                     IntentDescription = intent.Description ?? string.Empty,
+                    Category = "Workflow",
                     ExamplePhrases = intent.Examples,
                     SourceAgentId = sourceAgentId,
                     TargetAgentId = targetAgentId,
@@ -629,6 +633,23 @@ public sealed class WorkflowStudioController : ControllerBase
         ChannelType.WhatsApp or ChannelType.WebChat or ChannelType.Telegram or ChannelType.Slack => "connect.message.received",
         _ => "connect.message.received"
     };
+
+    private static string NormalizeIntentKey(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+
+        var cleaned = new string(value
+            .Trim()
+            .ToLowerInvariant()
+            .Select(c => char.IsLetterOrDigit(c) ? c : '_')
+            .ToArray());
+
+        while (cleaned.Contains("__", StringComparison.Ordinal))
+            cleaned = cleaned.Replace("__", "_", StringComparison.Ordinal);
+
+        return cleaned.Trim('_');
+    }
 }
 
 internal sealed record WorkflowStartIntentSnapshot(

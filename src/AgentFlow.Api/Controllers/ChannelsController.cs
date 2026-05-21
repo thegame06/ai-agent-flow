@@ -471,6 +471,7 @@ public sealed class ChannelsController : ControllerBase
                 TenantId = tenantId,
                 IntentKey = definition.Key,
                 IntentDescription = definition.Description,
+                Category = string.IsNullOrWhiteSpace(definition.Category) ? "General" : definition.Category,
                 ExamplePhrases = definition.Examples,
                 SourceAgentId = sourceAgentId,
                 TargetAgentId = targetAgentId,

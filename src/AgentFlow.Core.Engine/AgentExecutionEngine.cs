@@ -122,12 +122,13 @@ public sealed class AgentExecutionEngine : IAgentExecutor
             try
             {
                 var routingStopwatch = Stopwatch.StartNew();
+                var normalizedRoutingChannel = NormalizeRoutingChannel(request.SessionContext?.ChannelType);
 
                 // 1️⃣ Classify the intent using hybrid scoring (semantic + keyword + priority)
                 var classification = await _intentScoringEngine.ClassifyAsync(
                     request.UserMessage,
                     request.TenantId,
-                    request.SessionContext?.ChannelType,
+                    normalizedRoutingChannel,
                     ct);
 
                 _logger.LogInformation(
@@ -146,7 +147,7 @@ public sealed class AgentExecutionEngine : IAgentExecutor
                             ?? request.CorrelationId 
                             ?? Guid.NewGuid().ToString("N"),
                         TenantId = request.TenantId,
-                        Channel = request.SessionContext?.ChannelType ?? "api",
+                        Channel = normalizedRoutingChannel,
                         UserIdentifier = request.UserId
                     },
                     ct);
@@ -208,7 +209,7 @@ public sealed class AgentExecutionEngine : IAgentExecutor
                                 {
                                     TenantId = request.TenantId,
                                     ConversationId = request.SessionContext?.SessionId ?? request.CorrelationId ?? Guid.NewGuid().ToString("N"),
-                                    Channel = request.SessionContext?.ChannelType ?? "api",
+                                    Channel = normalizedRoutingChannel,
                                     UserIdentifier = request.UserId,
                                     UserMessage = request.UserMessage,
                                     DetectedIntentKey = classification.BestMatch?.IntentKey ?? "unknown",
@@ -272,9 +273,17 @@ public sealed class AgentExecutionEngine : IAgentExecutor
                                     WorkflowExecutionStatus.Timeout => ExecutionStatus.Failed,
                                     _ => ExecutionStatus.Completed
                                 },
-                                FinalResponse = workflowResult != null
-                                    ? $"✅ Mensaje clasificado como '{routingDecision.IntentKey}' y workflow {routingDecision.WorkflowDefinitionId} iniciado (ExecutionId: {workflowResult.ExecutionId})"
-                                    : $"✅ Mensaje clasificado como '{routingDecision.IntentKey}' y enrutado a workflow {routingDecision.WorkflowDefinitionId}",
+                                FinalResponse = !string.IsNullOrWhiteSpace(routingDecision.TargetAgentId)
+                                    ? JsonSerializer.Serialize(new
+                                    {
+                                        type = "routing_handoff",
+                                        workflowBrainAgentId = routingDecision.TargetAgentId,
+                                        workflowExecutionId = workflowResult?.ExecutionId,
+                                        intent = routingDecision.IntentKey
+                                    })
+                                    : (workflowResult != null
+                                        ? $"Mensaje clasificado como '{routingDecision.IntentKey}' y workflow {routingDecision.WorkflowDefinitionId} iniciado (ExecutionId: {workflowResult.ExecutionId})"
+                                        : $"Mensaje clasificado como '{routingDecision.IntentKey}' y enrutado a workflow {routingDecision.WorkflowDefinitionId}"),
                                 TotalSteps = 2, // Intent classification + Routing decision
                                 TotalTokensUsed = 0, // No LLM call needed!
                                 DurationMs = routingStopwatch.ElapsedMilliseconds
@@ -304,7 +313,7 @@ public sealed class AgentExecutionEngine : IAgentExecutor
                                     ?? request.CorrelationId
                                     ?? Guid.NewGuid().ToString("N"),
                                 TenantId = request.TenantId,
-                                Channel = request.SessionContext?.ChannelType ?? "api",
+                                Channel = normalizedRoutingChannel,
                                 UserIdentifier = request.UserId,
                                 LastMessage = request.UserMessage,
                                 State = state,
@@ -1982,4 +1991,14 @@ Rules:
 
         return threadKey;
     }
+
+    private static string NormalizeRoutingChannel(string? channel)
+    {
+        if (string.IsNullOrWhiteSpace(channel))
+            return "api";
+        return channel.Trim().ToLowerInvariant();
+    }
 }
+
+
+

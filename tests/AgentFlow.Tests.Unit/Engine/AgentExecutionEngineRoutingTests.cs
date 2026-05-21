@@ -119,7 +119,7 @@ public sealed class AgentExecutionEngineRoutingTests
             {
                 SessionId = "sess-1",
                 UserIdentifier = "145346172870721@lid",
-                ChannelType = "whatsapp",
+                ChannelType = "WhatsApp",
                 ChannelId = "ch-1",
                 IsWindowOpen = true,
                 WindowHours = 24
@@ -228,7 +228,7 @@ public sealed class AgentExecutionEngineRoutingTests
             {
                 SessionId = "sess-2",
                 UserIdentifier = "145346172870721@lid",
-                ChannelType = "whatsapp",
+                ChannelType = "WhatsApp",
                 ChannelId = "ch-1",
                 IsWindowOpen = true,
                 WindowHours = 24

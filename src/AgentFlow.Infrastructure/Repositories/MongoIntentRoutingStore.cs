@@ -46,6 +46,7 @@ public sealed class MongoIntentRoutingStore : IIntentRoutingStore
             TenantId = rule.TenantId,
             IntentKey = rule.IntentKey,
             IntentDescription = rule.IntentDescription,
+            Category = string.IsNullOrWhiteSpace(rule.Category) ? "General" : rule.Category,
             ExamplePhrases = rule.ExamplePhrases.ToList(),
             SourceAgentId = rule.SourceAgentId,
             TargetAgentId = rule.TargetAgentId,
@@ -90,15 +91,24 @@ public sealed class MongoIntentRoutingStore : IIntentRoutingStore
     public async Task<IReadOnlyList<IntentRoutingRule>> GetRulesByChannelAsync(
         string tenantId, string channel, CancellationToken ct = default)
     {
+        var normalizedChannel = NormalizeChannel(channel);
         var docs = await _rules
-            .Find(x => x.TenantId == tenantId
-                    && x.Enabled
-                    && (x.Channel == null || x.Channel == string.Empty || x.Channel == channel))
+            .Find(x => x.TenantId == tenantId && x.Enabled)
             .SortBy(x => x.Priority)
             .ThenBy(x => x.IntentKey)
             .ToListAsync(ct);
 
-        return docs.Select(ToModel).ToList();
+        var filtered = docs
+            .Where(x =>
+            {
+                var ruleChannel = NormalizeChannel(x.Channel);
+                return string.IsNullOrEmpty(ruleChannel) ||
+                       string.Equals(ruleChannel, normalizedChannel, StringComparison.OrdinalIgnoreCase);
+            })
+            .Select(ToModel)
+            .ToList();
+
+        return filtered;
     }
 
     public async Task<IReadOnlyList<AgentRegistryEntry>> GetAgentsAsync(string tenantId, CancellationToken ct = default)
@@ -136,14 +146,23 @@ public sealed class MongoIntentRoutingStore : IIntentRoutingStore
 
     public async Task<IntentRuleSimulationResult> SimulateAsync(string tenantId, string sourceAgentId, string intent, string? channel, CancellationToken ct = default)
     {
+        var normalizedChannel = NormalizeChannel(channel);
         var rules = await _rules.Find(x =>
                 x.TenantId == tenantId &&
                 x.SourceAgentId == sourceAgentId &&
-                x.Enabled &&
-                (x.Channel == null || x.Channel == "" || x.Channel == channel))
+                x.Enabled)
             .SortBy(x => x.Priority)
             .ThenBy(x => x.UpdatedAt)
             .ToListAsync(ct);
+
+        rules = rules
+            .Where(x =>
+            {
+                var ruleChannel = NormalizeChannel(x.Channel);
+                return string.IsNullOrEmpty(ruleChannel) ||
+                       string.Equals(ruleChannel, normalizedChannel, StringComparison.OrdinalIgnoreCase);
+            })
+            .ToList();
 
         if (rules.Count == 0)
         {
@@ -250,12 +269,21 @@ public sealed class MongoIntentRoutingStore : IIntentRoutingStore
             .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
     }
 
+    private static string NormalizeChannel(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+
+        return value.Trim().ToLowerInvariant();
+    }
+
     private static IntentRoutingRule ToModel(IntentRoutingRuleDocument x) => new()
     {
         Id = x.Id,
         TenantId = x.TenantId,
         IntentKey = x.IntentKey,
         IntentDescription = x.IntentDescription,
+        Category = string.IsNullOrWhiteSpace(x.Category) ? "General" : x.Category,
         ExamplePhrases = x.ExamplePhrases.AsReadOnly(),
         SourceAgentId = x.SourceAgentId,
         TargetAgentId = x.TargetAgentId,
@@ -292,6 +320,7 @@ public sealed class MongoIntentRoutingStore : IIntentRoutingStore
         public string TenantId { get; set; } = string.Empty;
         public string IntentKey { get; set; } = string.Empty;
         public string IntentDescription { get; set; } = string.Empty;
+        public string Category { get; set; } = "General";
         public List<string> ExamplePhrases { get; set; } = [];
         public string SourceAgentId { get; set; } = string.Empty;
         public string TargetAgentId { get; set; } = string.Empty;

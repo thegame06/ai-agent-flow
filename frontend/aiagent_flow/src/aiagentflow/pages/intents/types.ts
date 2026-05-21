@@ -114,11 +114,17 @@ export interface ExplanationData {
 export type ConversationState = 
   | 'AwaitingClassification' 
   | 'Classified' 
+  | 'LowConfidence'
+  | 'NoMatch'
   | 'InProgress' 
+  | 'PendingHumanReview'
   | 'Resolved' 
-  | 'Abandoned';
+  | 'Escalated'
+  | 'ConflictDetected'
+  | 'Abandoned'
+  | string;
 
-export type ConfidenceLevel = 'High' | 'Medium' | 'Low';
+export type ConfidenceLevel = 'High' | 'Medium' | 'Low' | 'NoMatch' | string;
 
 export interface InboxConversation {
   id: string;

@@ -1,4 +1,4 @@
-import { Helmet } from 'react-helmet-async';
+Ôªøimport { Helmet } from 'react-helmet-async';
 import { useState, useEffect, useCallback } from 'react';
 
 import Alert from '@mui/material/Alert';
@@ -39,7 +39,7 @@ export default function IntentsPage() {
     key: cleanText(rule.intentKey),
     name: cleanText(rule.intentKey),
     description: cleanText(rule.intentDescription),
-    category: 'General',
+    category: cleanText(rule.category) || 'General',
     examples: (rule.examplePhrases ?? []).map((x: string) => cleanText(x)).filter(Boolean),
     synonyms: [],
     confidence_threshold: 0.7,
@@ -73,7 +73,7 @@ export default function IntentsPage() {
       setChannels((channelsRes.data || []).map((c: any) => ({ id: c.id, name: c.name, type: String(c.type || '').toLowerCase() })));
     } catch (err) {
       console.error('Failed to load intents:', err);
-      setError('Error al cargar intenciones. Verifica que el backend estÈ corriendo en http://localhost:5000');
+      setError('Error al cargar intenciones. Verifica que el backend est√© corriendo en http://localhost:5000');
       setIntents([]);
     } finally {
       setLoading(false);
@@ -100,7 +100,7 @@ export default function IntentsPage() {
       setError(null);
     } catch (err) {
       console.error('Failed to toggle intent:', err);
-      setError(`Error al ${enabled ? 'activar' : 'desactivar'} intenciÛn. Verifica la conexiÛn con el backend.`);
+      setError(`Error al ${enabled ? 'activar' : 'desactivar'} intenci√≥n. Verifica la conexi√≥n con el backend.`);
     }
   };
 
@@ -113,7 +113,7 @@ export default function IntentsPage() {
       setError(null);
     } catch (err) {
       console.error('Failed to delete intent:', err);
-      setError('Error al eliminar intenciÛn. Verifica la conexiÛn con el backend.');
+      setError('Error al eliminar intenci√≥n. Verifica la conexi√≥n con el backend.');
     }
   };
 
@@ -123,6 +123,7 @@ export default function IntentsPage() {
       const payload = {
         intentKey: data.key,
         intentDescription: data.description,
+        category: data.category,
         examplePhrases: data.examples.map((x) => x.trim()).filter(Boolean),
         sourceAgentId,
         targetAgentId: data.target_agent_id || null,
@@ -147,7 +148,7 @@ export default function IntentsPage() {
       setError(null);
     } catch (err: any) {
       console.error('Failed to save intent:', err);
-      setError(err?.response?.data?.message || `Error al ${selectedIntent ? 'actualizar' : 'crear'} intenciÛn. Verifica los datos y la conexiÛn con el backend.`);
+      setError(err?.response?.data?.message || `Error al ${selectedIntent ? 'actualizar' : 'crear'} intenci√≥n. Verifica los datos y la conexi√≥n con el backend.`);
     }
   };
 
@@ -174,16 +175,16 @@ export default function IntentsPage() {
   return (
     <>
       <Helmet>
-        <title>Reglas de IntenciÛn | AgentFlow</title>
+        <title>Reglas de Intenci√≥n | AgentFlow</title>
       </Helmet>
 
       <DashboardContent maxWidth="xl">
         <Stack spacing={3}>
           <Stack direction="row" justifyContent="space-between" alignItems="center">
             <Stack spacing={1}>
-              <Typography variant="h4">Reglas de IntenciÛn</Typography>
+              <Typography variant="h4">Reglas de Intenci√≥n</Typography>
               <Typography variant="body2" color="text.secondary">
-                Configura las reglas de routing para clasificar autom·ticamente los mensajes entrantes
+                Configura las reglas de routing para clasificar autom√°ticamente los mensajes entrantes
               </Typography>
             </Stack>
             <Stack direction="row" spacing={2}>
@@ -192,7 +193,7 @@ export default function IntentsPage() {
                 startIcon={<Iconify icon="eva:play-circle-outline" />}
                 href="/dashboard/intents/playground"
               >
-                Probar clasificaciÛn
+                Probar clasificaci√≥n
               </Button>
               <Button
                 variant="contained"
@@ -242,3 +243,4 @@ export default function IntentsPage() {
     </>
   );
 }
+

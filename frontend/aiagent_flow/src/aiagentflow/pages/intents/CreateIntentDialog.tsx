@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 
 import Box from '@mui/material/Box';
 import Chip from '@mui/material/Chip';
@@ -34,10 +34,10 @@ interface CreateIntentDialogProps {
 }
 
 const CATEGORIES = [
-  'Atención al cliente',
+  'Atencion al cliente',
   'Ventas',
-  'Soporte técnico',
-  'Información',
+  'Soporte tecnico',
+  'Informacion',
   'Transacciones',
   'Otros',
 ];
@@ -47,7 +47,7 @@ export function CreateIntentDialog({ open, intent, workflows, agents, channels, 
     key: '',
     name: '',
     description: '',
-    category: 'Atención al cliente',
+    category: 'Atencion al cliente',
     examples: [],
     synonyms: [],
     confidence_threshold: 0.7,
@@ -83,7 +83,7 @@ export function CreateIntentDialog({ open, intent, workflows, agents, channels, 
         key: '',
         name: '',
         description: '',
-        category: 'Atención al cliente',
+        category: 'Atencion al cliente',
         examples: [],
         synonyms: [],
         confidence_threshold: 0.7,
@@ -102,7 +102,7 @@ export function CreateIntentDialog({ open, intent, workflows, agents, channels, 
     
     if (!formData.key.trim()) newErrors.key = 'La clave es obligatoria';
     if (!formData.name.trim()) newErrors.name = 'El nombre es obligatorio';
-    if (!formData.description.trim()) newErrors.description = 'La descripción es obligatoria';
+    if (!formData.description.trim()) newErrors.description = 'La descripcion es obligatoria';
     if (formData.examples.length === 0) newErrors.examples = 'Se requiere al menos un ejemplo';
 
     if (!formData.workflow_id && !formData.target_agent_id) newErrors.workflow_id = 'Define un workflow destino o un agente de respaldo.';
@@ -142,7 +142,7 @@ export function CreateIntentDialog({ open, intent, workflows, agents, channels, 
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-      <DialogTitle>{intent ? 'Editar regla de intención' : 'Nueva regla de intención'}</DialogTitle>
+      <DialogTitle>{intent ? 'Editar regla de intencion' : 'Nueva regla de intencion'}</DialogTitle>
       <Divider />
       
       <DialogContent>
@@ -150,11 +150,11 @@ export function CreateIntentDialog({ open, intent, workflows, agents, channels, 
           {/* Basic Information */}
           <TextField
             fullWidth
-            label="Clave única"
+            label="Clave unica"
             value={formData.key}
             onChange={(e) => setFormData({ ...formData, key: e.target.value })}
             error={!!errors.key}
-            helperText={errors.key || 'Identificador único (ej: solicitud_prestamo)'}
+            helperText={errors.key || 'Identificador unico (ej: solicitud_prestamo)'}
             disabled={!!intent}
           />
 
@@ -164,25 +164,25 @@ export function CreateIntentDialog({ open, intent, workflows, agents, channels, 
             value={formData.name}
             onChange={(e) => setFormData({ ...formData, name: e.target.value })}
             error={!!errors.name}
-            helperText={errors.name || 'Nombre descriptivo de la intención'}
+            helperText={errors.name || 'Nombre descriptivo de la intencion'}
           />
 
           <TextField
             fullWidth
             multiline
             rows={2}
-            label="Descripción"
+            label="Descripcion"
             value={formData.description}
             onChange={(e) => setFormData({ ...formData, description: e.target.value })}
             error={!!errors.description}
-            helperText={errors.description || '¿Qué representa esta intención?'}
+            helperText={errors.description || 'Que representa esta intencion?'}
           />
 
           <FormControl fullWidth>
-            <InputLabel>Categoría</InputLabel>
+            <InputLabel>Categoria</InputLabel>
             <Select
               value={formData.category}
-              label="Categoría"
+              label="Categoria"
               onChange={(e) => setFormData({ ...formData, category: e.target.value })}
             >
               {CATEGORIES.map((cat) => (
@@ -221,12 +221,12 @@ export function CreateIntentDialog({ open, intent, workflows, agents, channels, 
 
           {/* Synonyms */}
           <Box>
-            <Typography variant="subtitle2" sx={{ mb: 1 }}>Sinónimos (opcional)</Typography>
+            <Typography variant="subtitle2" sx={{ mb: 1 }}>Sinonimos (opcional)</Typography>
             <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
               <TextField
                 fullWidth
                 size="small"
-                placeholder="Agrega un sinónimo..."
+                placeholder="Agrega un sinonimo..."
                 value={synonymInput}
                 onChange={(e) => setSynonymInput(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && addSynonym()}
@@ -248,7 +248,7 @@ export function CreateIntentDialog({ open, intent, workflows, agents, channels, 
 
           {/* Advanced Settings */}
           <Box>
-            <Typography variant="subtitle2" sx={{ mb: 2 }}>Prioridad (1 = Más alta)</Typography>
+            <Typography variant="subtitle2" sx={{ mb: 2 }}>Prioridad (1 = Mas alta)</Typography>
             <Slider
               value={formData.priority}
               onChange={(_, value) => setFormData({ ...formData, priority: value as number })}
@@ -354,4 +354,5 @@ export function CreateIntentDialog({ open, intent, workflows, agents, channels, 
     </Dialog>
   );
 }
+
 

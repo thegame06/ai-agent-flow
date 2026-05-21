@@ -1196,11 +1196,11 @@ Nunca expongas detalles tecnicos internos al cliente."
 
         var seedRules = new[]
         {
-            new { Key = "comprar_producto", Desc = "Cliente quiere comprar o cotizar.", Target = salesAgent.Id, Workflow = "wf-starter-sales", Examples = new[] { "quiero comprar", "precio", "cotizacion" } },
-            new { Key = "pagar_factura", Desc = "Cliente quiere pagar o revisar factura.", Target = billingAgent.Id, Workflow = "wf-starter-billing", Examples = new[] { "pagar factura", "enviar factura", "deuda" } },
-            new { Key = "consultar_inventario", Desc = "Cliente consulta disponibilidad de productos.", Target = inventoryAgent.Id, Workflow = "wf-starter-inventory", Examples = new[] { "hay stock", "disponible", "inventario" } },
-            new { Key = "soporte_postventa", Desc = "Cliente necesita ayuda o reporta incidencia.", Target = supportAgent.Id, Workflow = "wf-starter-support", Examples = new[] { "tengo un problema", "soporte", "reclamo" } },
-            new { Key = "fallback_general", Desc = "Caso sin intencion clara.", Target = fallbackAgentId, Workflow = string.Empty, Examples = new[] { "hola", "ayuda", "no se" } },
+            new { Key = "comprar_producto", Desc = "Cliente quiere comprar o cotizar.", Category = "Ventas", Target = salesAgent.Id, Workflow = "wf-starter-sales", Examples = new[] { "quiero comprar", "precio", "cotizacion" } },
+            new { Key = "pagar_factura", Desc = "Cliente quiere pagar o revisar factura.", Category = "Facturacion", Target = billingAgent.Id, Workflow = "wf-starter-billing", Examples = new[] { "pagar factura", "enviar factura", "deuda" } },
+            new { Key = "consultar_inventario", Desc = "Cliente consulta disponibilidad de productos.", Category = "Inventario", Target = inventoryAgent.Id, Workflow = "wf-starter-inventory", Examples = new[] { "hay stock", "disponible", "inventario" } },
+            new { Key = "soporte_postventa", Desc = "Cliente necesita ayuda o reporta incidencia.", Category = "Soporte", Target = supportAgent.Id, Workflow = "wf-starter-support", Examples = new[] { "tengo un problema", "soporte", "reclamo" } },
+            new { Key = "fallback_general", Desc = "Caso sin intencion clara.", Category = "General", Target = fallbackAgentId, Workflow = string.Empty, Examples = new[] { "hola", "ayuda", "no se" } },
         };
 
         foreach (var rule in seedRules)
@@ -1211,6 +1211,7 @@ Nunca expongas detalles tecnicos internos al cliente."
                 TenantId = tenantId,
                 IntentKey = rule.Key,
                 IntentDescription = rule.Desc,
+                Category = rule.Category,
                 ExamplePhrases = rule.Examples,
                 SourceAgentId = sourceAgentId,
                 TargetAgentId = rule.Target,

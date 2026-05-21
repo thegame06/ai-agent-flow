@@ -97,6 +97,14 @@ const writeStartIntents = (definitionJson: string, intents: WorkflowStartIntent[
   }
 };
 
+const slugifyIntentKey = (value: string) =>
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
+
 export default function WorkflowsPage() {
   const [editorMode, setEditorMode] = useState<'builder' | 'advanced'>('builder');
   const [designType, setDesignType] = useState<WorkflowDesignType>('workflow');
@@ -324,7 +332,7 @@ export default function WorkflowsPage() {
         startIntents.map((intent, index) =>
           axios.post(endpoints.agentflow.intentRouting.rules(tenantId), {
             id: `brain-${editor.id || 'draft'}-${intent.id}`,
-            intentKey: intent.label || intent.id,
+            intentKey: slugifyIntentKey(intent.label || intent.id),
             intentDescription: intent.description ?? '',
             examplePhrases: intent.examples ?? [],
             sourceAgentId,

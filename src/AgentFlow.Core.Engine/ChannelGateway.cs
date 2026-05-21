@@ -161,7 +161,7 @@ public sealed class ChannelGateway : IChannelGateway
                     IntentCatalog = intentCatalogJson
                 }),
                 CorrelationId = incomingMessage.SessionId,
-                ThreadId = incomingMessage.SessionId,
+                ThreadId = session?.ThreadId,
                 Priority = ExecutionPriority.Normal,
                 SessionContext = sessionContext,
                 Metadata = new Dictionary<string, string>
@@ -259,7 +259,7 @@ public sealed class ChannelGateway : IChannelGateway
                         {
                             TenantId = incomingMessage.TenantId,
                             SessionId = incomingMessage.SessionId,
-                            ThreadId = incomingMessage.SessionId,
+                            ThreadId = session.ThreadId ?? incomingMessage.SessionId,
                             CorrelationId = incomingMessage.SessionId,
                             SourceAgentKey = agentKey,
                             TargetAgentKey = handoff.TargetAgentId,

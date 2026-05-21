@@ -18,6 +18,7 @@ public sealed record IntentRoutingRule
     /// Be specific: "Customer wants to apply for a personal or car loan"
     /// </summary>
     public string IntentDescription { get; init; } = string.Empty;
+    public string Category { get; init; } = "General";
 
     /// <summary>
     /// Example phrases that represent this intent (fed to the Router LLM as few-shot examples).

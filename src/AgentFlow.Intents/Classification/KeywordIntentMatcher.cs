@@ -132,7 +132,7 @@ public sealed class KeywordIntentMatcher : IKeywordIntentMatcher
         // Normalize message for case-insensitive matching
         var normalizedMessage = message.ToLowerInvariant();
 
-        // 1. EXACT MATCH (weight: 0.3)
+        // 1. EXACT MATCH (weight: 0.7)
         // Check if message contains any complete example phrase
         bool hasExactMatch = rule.ExamplePhrases.Any(phrase =>
             !string.IsNullOrWhiteSpace(phrase) &&
@@ -140,10 +140,10 @@ public sealed class KeywordIntentMatcher : IKeywordIntentMatcher
 
         if (hasExactMatch)
         {
-            score += 0.3f;
+            score += 0.7f;
         }
 
-        // 2. N-GRAM OVERLAP (weight: 0.5)
+        // 2. N-GRAM OVERLAP (weight: 0.2)
         // Tokenize message and all example phrases
         var messageTokens = Tokenize(normalizedMessage);
 
@@ -173,11 +173,11 @@ public sealed class KeywordIntentMatcher : IKeywordIntentMatcher
                 float overlapRatio = (float)overlapCount / maxTokens;
 
                 // Apply weight
-                score += overlapRatio * 0.5f;
+                score += overlapRatio * 0.2f;
             }
         }
 
-        // 3. SYNONYM MATCH (weight: 0.2)
+        // 3. SYNONYM MATCH (weight: 0.1)
         // Note: For now, we check if the IntentDescription contains synonyms.
         // In production, you'd maintain a separate synonym dictionary.
         // This is a simplified implementation that checks if the intent description
@@ -191,7 +191,7 @@ public sealed class KeywordIntentMatcher : IKeywordIntentMatcher
 
             if (hasSynonymMatch)
             {
-                score += 0.2f;
+                score += 0.1f;
             }
         }
 

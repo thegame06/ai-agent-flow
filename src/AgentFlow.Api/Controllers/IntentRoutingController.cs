@@ -4,6 +4,7 @@ using AgentFlow.Intents.Inbox;
 using AgentFlow.Intents.Inbox.Models;
 using AgentFlow.Api.Workflow;
 using AgentFlow.Security;
+using AgentFlow.Domain.Repositories;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -20,6 +21,8 @@ public sealed class IntentRoutingController : ControllerBase
     private readonly IIntentScoringEngine _intentScoring;
     private readonly IConversationInboxService _inboxService;
     private readonly IWorkflowStudioStore _workflowStore;
+    private readonly IChannelSessionRepository _sessionRepo;
+    private readonly IChannelDefinitionRepository _channelRepo;
 
     public IntentRoutingController(
         IIntentRoutingStore store,
@@ -27,7 +30,9 @@ public sealed class IntentRoutingController : ControllerBase
         ITenantContextAccessor tenantContext,
         IIntentScoringEngine intentScoring,
         IConversationInboxService inboxService,
-        IWorkflowStudioStore workflowStore)
+        IWorkflowStudioStore workflowStore,
+        IChannelSessionRepository sessionRepo,
+        IChannelDefinitionRepository channelRepo)
     {
         _store = store;
         _auditMemory = auditMemory;
@@ -35,6 +40,8 @@ public sealed class IntentRoutingController : ControllerBase
         _intentScoring = intentScoring;
         _inboxService = inboxService;
         _workflowStore = workflowStore;
+        _sessionRepo = sessionRepo;
+        _channelRepo = channelRepo;
     }
 
     [HttpGet("rules")]
@@ -52,6 +59,9 @@ public sealed class IntentRoutingController : ControllerBase
     {
         var context = _tenantContext.Current!;
         if (context.TenantId != tenantId && !context.IsPlatformAdmin) return Forbid();
+        var normalizedIntentKey = NormalizeIntentKey(body.IntentKey);
+        if (string.IsNullOrWhiteSpace(normalizedIntentKey))
+            return BadRequest(new { message = "intentKey invalido. Usa letras, numeros y guiones bajos." });
         if (string.Equals(body.SourceAgentId, body.TargetAgentId, StringComparison.OrdinalIgnoreCase))
         {
             return BadRequest(new
@@ -67,7 +77,7 @@ public sealed class IntentRoutingController : ControllerBase
 
         var allRules = await _store.GetRulesAsync(tenantId, ct);
         var duplicate = allRules.FirstOrDefault(r =>
-            string.Equals(r.IntentKey, body.IntentKey, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(r.IntentKey, normalizedIntentKey, StringComparison.OrdinalIgnoreCase) &&
             string.Equals(r.Channel ?? string.Empty, body.Channel ?? string.Empty, StringComparison.OrdinalIgnoreCase));
         if (duplicate is not null)
             return Conflict(new { message = $"Ya existe una intención '{body.IntentKey}' para el canal '{body.Channel ?? "todos"}'." });
@@ -84,8 +94,9 @@ public sealed class IntentRoutingController : ControllerBase
         {
             Id = string.IsNullOrWhiteSpace(body.Id) ? Guid.NewGuid().ToString("N") : body.Id,
             TenantId = tenantId,
-            IntentKey = body.IntentKey,
+            IntentKey = normalizedIntentKey,
             IntentDescription = body.IntentDescription ?? string.Empty,
+            Category = string.IsNullOrWhiteSpace(body.Category) ? "General" : body.Category!,
             ExamplePhrases = body.ExamplePhrases ?? Array.Empty<string>(),
             SourceAgentId = body.SourceAgentId,
             TargetAgentId = body.TargetAgentId ?? body.SourceAgentId,
@@ -109,6 +120,9 @@ public sealed class IntentRoutingController : ControllerBase
     {
         var context = _tenantContext.Current!;
         if (context.TenantId != tenantId && !context.IsPlatformAdmin) return Forbid();
+        var normalizedIntentKey = NormalizeIntentKey(body.IntentKey);
+        if (string.IsNullOrWhiteSpace(normalizedIntentKey))
+            return BadRequest(new { message = "intentKey invalido. Usa letras, numeros y guiones bajos." });
         if (string.Equals(body.SourceAgentId, body.TargetAgentId, StringComparison.OrdinalIgnoreCase))
         {
             return BadRequest(new
@@ -128,7 +142,7 @@ public sealed class IntentRoutingController : ControllerBase
         var allRules = await _store.GetRulesAsync(tenantId, ct);
         var duplicate = allRules.FirstOrDefault(r =>
             !string.Equals(r.Id, ruleId, StringComparison.OrdinalIgnoreCase) &&
-            string.Equals(r.IntentKey, body.IntentKey, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(r.IntentKey, normalizedIntentKey, StringComparison.OrdinalIgnoreCase) &&
             string.Equals(r.Channel ?? string.Empty, body.Channel ?? string.Empty, StringComparison.OrdinalIgnoreCase));
         if (duplicate is not null)
             return Conflict(new { message = $"Ya existe una intención '{body.IntentKey}' para el canal '{body.Channel ?? "todos"}'." });
@@ -143,8 +157,9 @@ public sealed class IntentRoutingController : ControllerBase
 
         var saved = await _store.UpsertRuleAsync(existing with
         {
-            IntentKey = body.IntentKey,
+            IntentKey = normalizedIntentKey,
             IntentDescription = body.IntentDescription ?? existing.IntentDescription,
+            Category = string.IsNullOrWhiteSpace(body.Category) ? existing.Category : body.Category!,
             ExamplePhrases = body.ExamplePhrases ?? existing.ExamplePhrases,
             SourceAgentId = body.SourceAgentId,
             TargetAgentId = body.TargetAgentId ?? existing.TargetAgentId,
@@ -281,6 +296,23 @@ public sealed class IntentRoutingController : ControllerBase
         return Ok(saved);
     }
 
+    private static string NormalizeIntentKey(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+
+        var cleaned = new string(value
+            .Trim()
+            .ToLowerInvariant()
+            .Select(c => char.IsLetterOrDigit(c) ? c : '_')
+            .ToArray());
+
+        while (cleaned.Contains("__", StringComparison.Ordinal))
+            cleaned = cleaned.Replace("__", "_", StringComparison.Ordinal);
+
+        return cleaned.Trim('_');
+    }
+
     [HttpGet("conversations")]
     public async Task<IActionResult> GetConversations([FromRoute] string tenantId, CancellationToken ct)
     {
@@ -336,6 +368,98 @@ public sealed class IntentRoutingController : ControllerBase
         var ok = await _inboxService.UpdateStateAsync(tenantId, conversationId, ConversationState.Resolved, "Resolved from inbox.", ct);
         return ok ? NoContent() : NotFound();
     }
+
+    [HttpGet("diagnostics/sessions/{sessionId}")]
+    public async Task<IActionResult> GetSessionDiagnostics(
+        [FromRoute] string tenantId,
+        [FromRoute] string sessionId,
+        [FromQuery] string? message,
+        CancellationToken ct)
+    {
+        var context = _tenantContext.Current!;
+        if (context.TenantId != tenantId && !context.IsPlatformAdmin) return Forbid();
+
+        var session = await _sessionRepo.GetByIdAsync(sessionId, tenantId, ct);
+        if (session is null) return NotFound(new { message = $"Sesion '{sessionId}' no existe." });
+
+        var channel = await _channelRepo.GetByIdAsync(session.ChannelId, tenantId, ct);
+        if (channel is null) return NotFound(new { message = $"Canal '{session.ChannelId}' no existe." });
+
+        var channelKey = channel.Type.ToString().ToLowerInvariant();
+        var sourceAgentId = !string.IsNullOrWhiteSpace(channel.RouterAgentId)
+            ? channel.RouterAgentId
+            : channel.Config.GetValueOrDefault("DefaultAgentId") ?? string.Empty;
+
+        var rules = await _store.GetRulesByChannelAsync(tenantId, channelKey, ct);
+        var rulesForSource = string.IsNullOrWhiteSpace(sourceAgentId)
+            ? rules
+            : rules.Where(r => string.Equals(r.SourceAgentId, sourceAgentId, StringComparison.OrdinalIgnoreCase)).ToList();
+
+        object? classification = null;
+        if (!string.IsNullOrWhiteSpace(message))
+        {
+            var result = await _intentScoring.ClassifyAsync(message, tenantId, channelKey, ct);
+            classification = new
+            {
+                input = message,
+                best_intent = result.BestMatch?.IntentKey,
+                best_score = result.BestScore,
+                confidence = result.Confidence.ToString(),
+                requires_human_review = result.RequiresHumanReview,
+                top_candidates = result.AllCandidates
+                    .Take(3)
+                    .Select(c => new
+                    {
+                        intent_key = c.IntentKey,
+                        score = c.SimilarityScore,
+                        workflow_id = c.Rule.WorkflowDefinitionId,
+                        target_agent_id = c.Rule.TargetAgentId,
+                        source_agent_id = c.Rule.SourceAgentId
+                    })
+                    .ToArray()
+            };
+        }
+
+        return Ok(new
+        {
+            session = new
+            {
+                id = session.Id,
+                channel_id = session.ChannelId,
+                channel = channelKey,
+                identifier = session.Identifier,
+                owner_agent_id = session.AgentId,
+                thread_id = session.ThreadId,
+                status = session.Status.ToString(),
+                last_inbound_at = session.LastInboundAt,
+                last_outbound_at = session.LastOutboundAt
+            },
+            routing = new
+            {
+                router_agent_id = channel.RouterAgentId,
+                default_agent_id = channel.Config.GetValueOrDefault("DefaultAgentId"),
+                source_agent_id_used_for_rules = sourceAgentId,
+                channel_rule_count = rules.Count,
+                source_rule_count = rulesForSource.Count,
+                rules = rulesForSource
+                    .OrderBy(r => r.Priority)
+                    .Select(r => new
+                    {
+                        r.Id,
+                        r.IntentKey,
+                        r.Category,
+                        r.Enabled,
+                        r.Priority,
+                        r.Channel,
+                        r.SourceAgentId,
+                        r.TargetAgentId,
+                        r.WorkflowDefinitionId
+                    })
+                    .ToArray()
+            },
+            classification
+        });
+    }
 }
 
 public sealed record UpsertIntentRuleRequest
@@ -343,6 +467,7 @@ public sealed record UpsertIntentRuleRequest
     public string? Id { get; init; }
     public required string IntentKey { get; init; }
     public string? IntentDescription { get; init; }
+    public string? Category { get; init; }
     public IReadOnlyList<string>? ExamplePhrases { get; init; }
     public required string SourceAgentId { get; init; }
     public string? TargetAgentId { get; init; }

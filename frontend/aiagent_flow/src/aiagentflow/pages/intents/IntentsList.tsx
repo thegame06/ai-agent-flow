@@ -1,4 +1,4 @@
-import Box from '@mui/material/Box';
+ï»¿import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import Chip from '@mui/material/Chip';
 import Stack from '@mui/material/Stack';
@@ -42,7 +42,7 @@ export function IntentsList({ intents, loading, onEdit, onToggle, onDelete }: In
           No hay reglas configuradas
         </Typography>
         <Typography variant="body2" color="text.disabled" sx={{ mt: 1 }}>
-          Crea tu primera regla de intención para comenzar
+          Crea tu primera regla de intenciÃ³n para comenzar
         </Typography>
       </Card>
     );
@@ -54,8 +54,8 @@ export function IntentsList({ intents, loading, onEdit, onToggle, onDelete }: In
         <Table>
           <TableHead>
             <TableRow>
-              <TableCell>Intención</TableCell>
-              <TableCell>Categoría</TableCell>
+              <TableCell>IntenciÃ³n</TableCell>
+              <TableCell>CategorÃ­a</TableCell>
               <TableCell>Canal</TableCell>
               <TableCell>Workflow</TableCell>
               <TableCell>Agente destino</TableCell>
@@ -134,3 +134,4 @@ export function IntentsList({ intents, loading, onEdit, onToggle, onDelete }: In
     </Card>
   );
 }
+
