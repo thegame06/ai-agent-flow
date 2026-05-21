@@ -2,9 +2,12 @@
 import { useState, useEffect, useCallback } from 'react';
 
 import Alert from '@mui/material/Alert';
+import Chip from '@mui/material/Chip';
+import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import Button from '@mui/material/Button';
 import Dialog from '@mui/material/Dialog';
+import Divider from '@mui/material/Divider';
 import MenuItem from '@mui/material/MenuItem';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
@@ -41,6 +44,46 @@ export default function InboxPage() {
 
   const normalizeState = (state: unknown) => (typeof state === 'string' ? state : String(state ?? 'Unknown'));
   const normalizeConfidence = (confidence: unknown) => (typeof confidence === 'string' ? confidence : String(confidence ?? 'Unknown'));
+  const toDate = (value?: string) => {
+    if (!value) return '-';
+    const dt = new Date(value);
+    if (Number.isNaN(dt.getTime())) return '-';
+    return dt.toLocaleString();
+  };
+  const stateLabel = (state: string) => {
+    const map: Record<string, string> = {
+      AwaitingClassification: 'Esperando clasificacion',
+      Classified: 'Clasificado',
+      LowConfidence: 'Baja confianza',
+      NoMatch: 'Sin coincidencia',
+      InProgress: 'En progreso',
+      PendingHumanReview: 'Revision humana',
+      Resolved: 'Resuelto',
+      Escalated: 'Escalado',
+      ConflictDetected: 'Conflicto',
+      Abandoned: 'Abandonado',
+      Unknown: 'Desconocido',
+      '0': 'Esperando clasificacion',
+      '1': 'Clasificado',
+      '2': 'Baja confianza',
+      '3': 'Sin coincidencia',
+    };
+    return map[state] ?? state;
+  };
+  const confidenceLabel = (confidence: string) => {
+    const map: Record<string, string> = {
+      High: 'Alta',
+      Medium: 'Media',
+      Low: 'Baja',
+      NoMatch: 'Sin match',
+      Unknown: 'Desconocida',
+      '0': 'Sin match',
+      '1': 'Baja',
+      '2': 'Media',
+      '3': 'Alta',
+    };
+    return map[confidence] ?? confidence;
+  };
 
   const loadData = useCallback(async () => {
     try {
@@ -186,20 +229,42 @@ export default function InboxPage() {
           />
         </Stack>
 
-        <Dialog open={Boolean(viewConversation)} onClose={() => setViewConversation(null)} maxWidth="sm" fullWidth>
+        <Dialog open={Boolean(viewConversation)} onClose={() => setViewConversation(null)} maxWidth="md" fullWidth>
           <DialogTitle>Detalle del caso</DialogTitle>
           <DialogContent>
-            <Stack spacing={1.5} sx={{ pt: 1 }}>
-              <Typography variant="body2"><b>ID:</b> {viewConversation?.id}</Typography>
-              <Typography variant="body2"><b>Canal:</b> {viewConversation?.channel}</Typography>
-              <Typography variant="body2"><b>Usuario:</b> {viewConversation?.user_identifier}</Typography>
-              <Typography variant="body2"><b>Estado:</b> {normalizeState((viewConversation as any)?.state)}</Typography>
-              <Typography variant="body2"><b>Confianza:</b> {normalizeConfidence((viewConversation as any)?.confidence)}</Typography>
-              <Typography variant="body2"><b>Intencion detectada:</b> {viewConversation?.detected_intent_key || '-'}</Typography>
-              <Typography variant="body2"><b>Creado:</b> {viewConversation?.created_at}</Typography>
-              <Typography variant="body2"><b>Actualizado:</b> {viewConversation?.updated_at}</Typography>
-              <Typography variant="subtitle2" sx={{ mt: 1 }}>Ultimo mensaje</Typography>
-              <Alert severity="info" icon={false}>{viewConversation?.last_message || 'Sin mensaje'}</Alert>
+            <Stack spacing={2} sx={{ pt: 1 }}>
+              <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                <Chip size="small" label={`Canal: ${viewConversation?.channel || '-'}`} />
+                <Chip size="small" color="info" label={`Estado: ${stateLabel(normalizeState((viewConversation as any)?.state))}`} />
+                <Chip size="small" color="warning" label={`Confianza: ${confidenceLabel(normalizeConfidence((viewConversation as any)?.confidence))}`} />
+              </Stack>
+
+              <Paper variant="outlined" sx={{ p: 2 }}>
+                <Stack spacing={1.25}>
+                  <Typography variant="body2"><b>ID:</b> {viewConversation?.id || '-'}</Typography>
+                  <Typography variant="body2"><b>Usuario:</b> {viewConversation?.user_identifier || '-'}</Typography>
+                  <Typography variant="body2"><b>Intencion detectada:</b> {viewConversation?.detected_intent_key || 'Sin intencion detectada'}</Typography>
+                  <Typography variant="body2"><b>Creado:</b> {toDate(viewConversation?.created_at)}</Typography>
+                  <Typography variant="body2"><b>Actualizado:</b> {toDate(viewConversation?.updated_at)}</Typography>
+                </Stack>
+              </Paper>
+
+              <Divider />
+              <Stack spacing={1}>
+                <Typography variant="subtitle2">Ultimo mensaje del cliente</Typography>
+                <Paper
+                  variant="outlined"
+                  sx={{
+                    p: 1.5,
+                    bgcolor: 'background.neutral',
+                    borderColor: 'divider',
+                  }}
+                >
+                  <Typography variant="body2">
+                    {viewConversation?.last_message?.trim() || 'Sin mensaje'}
+                  </Typography>
+                </Paper>
+              </Stack>
             </Stack>
           </DialogContent>
           <DialogActions>
