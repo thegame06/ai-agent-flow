@@ -15,9 +15,9 @@ interface BestMatchCardProps {
     intent_key: string;
     intent_name: string;
     description: string;
-  };
+  } | null;
   confidence: number;
-  confidenceLevel: 'High' | 'Medium' | 'Low';
+  confidenceLevel: 'High' | 'Medium' | 'Low' | 'NoMatch' | string;
 }
 
 const confidenceColor = (level: string) => {
@@ -30,6 +30,7 @@ const confidenceColor = (level: string) => {
 };
 
 export function BestMatchCard({ match, confidence, confidenceLevel }: BestMatchCardProps) {
+  const hasMatch = Boolean(match);
   return (
     <Card>
       <CardContent>
@@ -48,15 +49,15 @@ export function BestMatchCard({ match, confidence, confidenceLevel }: BestMatchC
 
           <Box>
             <Typography variant="subtitle1" sx={{ mb: 0.5 }}>
-              {match.intent_name}
+              {hasMatch ? match!.intent_name : 'Sin coincidencia'}
             </Typography>
             <Typography variant="caption" color="text.disabled">
-              {match.intent_key}
+              {hasMatch ? match!.intent_key : 'unknown'}
             </Typography>
           </Box>
 
           <Typography variant="body2" color="text.secondary">
-            {match.description}
+            {hasMatch ? match!.description : 'No se encontro una intencion confiable para este mensaje.'}
           </Typography>
 
           <Box>

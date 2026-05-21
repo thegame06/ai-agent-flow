@@ -82,9 +82,9 @@ export interface ClassificationResult {
     intent_key: string;
     intent_name: string;
     description: string;
-  };
+  } | null;
   best_score: number;
-  confidence: 'High' | 'Medium' | 'Low';
+  confidence: 'High' | 'Medium' | 'Low' | 'NoMatch' | string;
   all_candidates: IntentCandidate[];
   explanation_json: string;
   processing_time_ms: number;
