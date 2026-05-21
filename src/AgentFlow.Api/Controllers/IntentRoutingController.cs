@@ -431,8 +431,9 @@ public sealed class IntentRoutingController : ControllerBase
                 owner_agent_id = session.AgentId,
                 thread_id = session.ThreadId,
                 status = session.Status.ToString(),
-                last_inbound_at = session.LastInboundAt,
-                last_outbound_at = session.LastOutboundAt
+                last_activity_at = session.LastActivityAt,
+                last_inbound_at = session.Metadata.TryGetValue("last_incoming_at", out var lastIn) ? lastIn : null,
+                last_outbound_at = session.Metadata.TryGetValue("last_outgoing_at", out var lastOut) ? lastOut : null
             },
             routing = new
             {
