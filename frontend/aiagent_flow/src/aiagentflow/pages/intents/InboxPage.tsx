@@ -53,7 +53,13 @@ export default function InboxPage() {
       setConversations(conversationsRes.data || []);
       setStats(statsRes.data || null);
       const rulesRes = await axios.get(endpoints.agentflow.intentRouting.rules(tenantId));
-      const keys = Array.from(new Set((rulesRes.data || []).map((r: any) => String(r.intentKey || '').trim()).filter(Boolean)));
+      const keys: string[] = Array.from(
+        new Set<string>(
+          (rulesRes.data || [])
+            .map((r: any) => String(r.intentKey || '').trim())
+            .filter((value: string) => value.length > 0)
+        )
+      );
       setIntentKeys(keys);
     } catch (err) {
       console.error('Failed to load inbox data:', err);
