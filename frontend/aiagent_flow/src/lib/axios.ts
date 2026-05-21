@@ -273,6 +273,12 @@ export const endpoints = {
     systemOrchestrator: {
       status: (tenantId: string) => `/api/v1/tenants/${tenantId}/system-orchestrator/status`,
     },
+    workforce: {
+      people: (tenantId: string) => `/api/v1/tenants/${tenantId}/settings/workforce/people`,
+      queues: (tenantId: string) => `/api/v1/tenants/${tenantId}/settings/workforce/queues`,
+      resolution: (tenantId: string, targetId: string) =>
+        `/api/v1/tenants/${tenantId}/settings/workforce/resolution?targetId=${encodeURIComponent(targetId)}`,
+    },
     // System
     health: '/health',
   },

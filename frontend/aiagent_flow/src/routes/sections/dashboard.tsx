@@ -34,6 +34,7 @@ const McpPage = lazy(() => import('src/aiagentflow/pages/system/McpPage'));
 const ChannelsPage = lazy(() => import('src/aiagentflow/pages/channels/ChannelsPage'));
 const FeatureFlagsPage = lazy(() => import('src/aiagentflow/pages/system/FeatureFlagsPage'));
 const SettingsPage = lazy(() => import('src/aiagentflow/pages/settings/SettingsPage'));
+const WorkforcePage = lazy(() => import('src/aiagentflow/pages/system/WorkforcePage'));
 const ThreadsPage = lazy(() => import('src/aiagentflow/pages/threads/ThreadsPage'));
 const CommerceAdminPage = lazy(() => import('src/aiagentflow/pages/commerce/CommerceAdminPage'));
 const EvaluationsPage = lazy(() => import('src/aiagentflow/pages/evaluations/EvaluationsPage'));
@@ -109,6 +110,7 @@ export const dashboardRoutes: RouteObject[] = [
           { path: 'channels', element: <ChannelsPage /> },
           { path: 'feature-flags', element: <FeatureFlagsPage /> },
           { path: 'settings', element: <SettingsPage /> },
+          { path: 'workforce', element: <WorkforcePage /> },
         ],
       },
     ],

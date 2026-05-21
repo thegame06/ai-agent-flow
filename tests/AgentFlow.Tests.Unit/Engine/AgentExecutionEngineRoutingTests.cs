@@ -247,6 +247,128 @@ public sealed class AgentExecutionEngineRoutingTests
             It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    [Fact]
+    public async Task ExecuteAsync_RouterNoMatch_WithEscalationTarget_NotifiesQueue()
+    {
+        var agentRepo = new Mock<IAgentDefinitionRepository>();
+        var executionRepo = new Mock<IAgentExecutionRepository>();
+        var threadRepo = new Mock<IConversationThreadRepository>();
+        var brainResolver = new Mock<IAgentBrainResolver>();
+        var toolExecutor = new Mock<IToolExecutor>();
+        var policyEngine = new Mock<IPolicyEngine>();
+        var eventTransport = new Mock<IAgentEventTransport>();
+        var checkpointStore = new Mock<ICheckpointStore>();
+        var toolRegistry = new Mock<IToolRegistry>();
+        var planner = new Mock<IExecutionPlanner>();
+        var intentScoring = new Mock<IIntentScoringEngine>();
+        var routingOrchestrator = new Mock<IRoutingOrchestrator>();
+        var workflowEngine = new Mock<IWorkflowEngine>();
+        var inboxService = new Mock<IConversationInboxService>();
+        var escalationNotifier = new Mock<IHumanEscalationNotifier>();
+
+        var audit = new Mock<IAuditMemory>();
+        var memory = new Mock<IAgentMemoryService>();
+        memory.SetupGet(x => x.Audit).Returns(audit.Object);
+        memory.SetupGet(x => x.Working).Returns(Mock.Of<IWorkingMemory>());
+        memory.SetupGet(x => x.LongTerm).Returns(Mock.Of<ILongTermMemory>());
+        memory.SetupGet(x => x.Vector).Returns(Mock.Of<IVectorMemory>());
+
+        agentRepo.Setup(x => x.GetByIdAsync("router-agent", "tenant-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(BuildRouterAgent());
+
+        intentScoring.Setup(x => x.ClassifyAsync("hola", "tenant-1", "whatsapp", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new IntentClassificationResult
+            {
+                Message = "hola",
+                BestMatch = null,
+                AllCandidates = new List<IntentMatch>(),
+                BestScore = 0f,
+                Confidence = ConfidenceLevel.NoMatch,
+                RequiresHumanReview = true,
+                ExplanationJson = "{}"
+            });
+
+        routingOrchestrator.Setup(x => x.RouteMessageAsync(
+                It.IsAny<IntentClassificationResult>(),
+                It.IsAny<ConversationContext>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new RoutingDecision
+            {
+                IntentKey = "unknown",
+                WorkflowDefinitionId = null,
+                TargetAgentId = null,
+                Action = RoutingAction.Fallback,
+                ReasonCode = "no_rules_configured",
+                ExplanationJson = "{}",
+                DecidedAt = DateTimeOffset.UtcNow
+            });
+
+        inboxService.Setup(x => x.CreateOrUpdateAsync(It.IsAny<InboxConversation>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((InboxConversation c, CancellationToken _) => c);
+
+        escalationNotifier.Setup(x => x.NotifyAsync(
+                It.IsAny<HumanEscalationNotificationRequest>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new HumanEscalationNotificationResult
+            {
+                Delivered = true,
+                QueueId = "ventas-n1",
+                QueueName = "Ventas N1",
+                ActiveMembers = 3,
+                TicketId = "esc-1"
+            });
+
+        var engine = new AgentExecutionEngine(
+            agentRepo.Object,
+            executionRepo.Object,
+            threadRepo.Object,
+            brainResolver.Object,
+            toolExecutor.Object,
+            memory.Object,
+            policyEngine.Object,
+            eventTransport.Object,
+            checkpointStore.Object,
+            toolRegistry.Object,
+            planner.Object,
+            new TokenBudgetService(TokenBudgetConfig.Default),
+            NullLogger<AgentExecutionEngine>.Instance,
+            intentScoring.Object,
+            routingOrchestrator.Object,
+            workflowEngine.Object,
+            inboxService.Object,
+            escalationNotifier.Object);
+
+        await engine.ExecuteAsync(new AgentExecutionRequest
+        {
+            TenantId = "tenant-1",
+            AgentKey = "router-agent",
+            UserId = "user-1",
+            UserMessage = "hola",
+            CorrelationId = "corr-3",
+            SessionContext = new AgentSessionContext
+            {
+                SessionId = "sess-3",
+                UserIdentifier = "145346172870721@lid",
+                ChannelType = "WhatsApp",
+                ChannelId = "ch-1",
+                IsWindowOpen = true,
+                WindowHours = 24
+            },
+            Metadata = new Dictionary<string, string>
+            {
+                ["routing.no_match_action"] = "human_review_only",
+                ["routing.fallback_escalation_target"] = "ventas-n1"
+            }
+        }, CancellationToken.None);
+
+        escalationNotifier.Verify(x => x.NotifyAsync(
+            It.Is<HumanEscalationNotificationRequest>(r =>
+                r.TenantId == "tenant-1" &&
+                r.QueueId == "ventas-n1" &&
+                r.ConversationId == "sess-3"),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
     private static AgentDefinition BuildRouterAgent()
     {
         var create = AgentDefinition.Create(

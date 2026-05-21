@@ -48,6 +48,7 @@ public sealed class AgentExecutionEngine : IAgentExecutor
     private readonly IRoutingOrchestrator? _routingOrchestrator;
     private readonly IWorkflowEngine? _workflowEngine;
     private readonly IConversationInboxService? _conversationInboxService;
+    private readonly IHumanEscalationNotifier? _humanEscalationNotifier;
 
     public AgentExecutionEngine(
         IAgentDefinitionRepository agentRepo,
@@ -66,7 +67,8 @@ public sealed class AgentExecutionEngine : IAgentExecutor
         IIntentScoringEngine? intentScoringEngine = null, // ✅ NEW: Optional for backward compatibility
         IRoutingOrchestrator? routingOrchestrator = null, // ✅ NEW: Optional for backward compatibility
         IWorkflowEngine? workflowEngine = null, // ✅ NEW: Workflow execution engine
-        IConversationInboxService? conversationInboxService = null)
+        IConversationInboxService? conversationInboxService = null,
+        IHumanEscalationNotifier? humanEscalationNotifier = null)
     {
         _agentRepo = agentRepo;
         _executionRepo = executionRepo;
@@ -85,6 +87,7 @@ public sealed class AgentExecutionEngine : IAgentExecutor
         _routingOrchestrator = routingOrchestrator; // ✅ NEW
         _workflowEngine = workflowEngine; // ✅ NEW
         _conversationInboxService = conversationInboxService;
+        _humanEscalationNotifier = humanEscalationNotifier;
     }
 
     public async Task<AgentExecutionResult> ExecuteAsync(
@@ -319,15 +322,28 @@ public sealed class AgentExecutionEngine : IAgentExecutor
                                 State = state,
                                 Confidence = confidence,
                                 DetectedIntentKey = classification.BestMatch?.IntentKey,
-                                AssignedAgentId = routingDecision.TargetAgentId,
+                                AssignedAgentId = request.Metadata.GetValueOrDefault("routing.fallback_agent_id") ?? routingDecision.TargetAgentId,
                                 WorkflowExecutionId = null,
                                 CreatedAt = DateTimeOffset.UtcNow,
                                 UpdatedAt = DateTimeOffset.UtcNow,
                                 RequiresHumanReview = true,
-                                ReviewNotes = routingDecision.ReasonCode
+                                ReviewNotes = $"{routingDecision.ReasonCode}|{request.Metadata.GetValueOrDefault("routing.no_match_action") ?? "human_review_only"}"
                             }, CancellationToken.None);
                         }
                         
+                        var noMatchAction = request.Metadata.TryGetValue("routing.no_match_action", out var noMatchRaw)
+                            ? noMatchRaw?.Trim().ToLowerInvariant()
+                            : "human_review_only";
+                        var fallbackAgentId = request.Metadata.GetValueOrDefault("routing.fallback_agent_id") ?? string.Empty;
+                        var escalationTarget = request.Metadata.GetValueOrDefault("routing.fallback_escalation_target") ?? string.Empty;
+                        var maxClarificationTurns = int.TryParse(
+                            request.Metadata.GetValueOrDefault("routing.fallback_max_clarification_turns"), out var parsedTurns)
+                            ? Math.Clamp(parsedTurns, 1, 5)
+                            : 2;
+                        var fallbackTurn = int.TryParse(request.Metadata.GetValueOrDefault("routing.fallback.turn"), out var parsedTurn)
+                            ? Math.Max(0, parsedTurn)
+                            : 0;
+
                         await _memory.Audit.RecordAsync(new AuditEntry
                         {
                             ExecutionId = executionId,
@@ -338,14 +354,160 @@ public sealed class AgentExecutionEngine : IAgentExecutor
                             CorrelationId = request.CorrelationId ?? string.Empty,
                             EventJson = JsonSerializer.Serialize(new
                             {
+                                action = "routing.nomatch",
                                 intentKey = routingDecision.IntentKey,
-                                action = routingDecision.Action.ToString(),
+                                decisionAction = routingDecision.Action.ToString(),
                                 reason = routingDecision.ReasonCode,
                                 confidence = classification.Confidence.ToString(),
                                 score = classification.BestScore,
-                                requiresHumanReview = true
+                                requiresHumanReview = true,
+                                noMatchAction,
+                                fallbackAgentId,
+                                escalationTarget
                             })
                         }, CancellationToken.None);
+
+                        if (routingDecision.Action == RoutingAction.Fallback && string.Equals(noMatchAction, "clarify_then_route", StringComparison.OrdinalIgnoreCase))
+                        {
+                            var questions = ParseFallbackQuestions(request.Metadata.GetValueOrDefault("routing.fallback_questions_json"));
+                            var activeQuestions = questions.Where(q => q.Active).Take(5).ToList();
+                            var nextQuestion = fallbackTurn < maxClarificationTurns && fallbackTurn < activeQuestions.Count
+                                ? activeQuestions[fallbackTurn]
+                                : null;
+
+                            await _memory.Audit.RecordAsync(new AuditEntry
+                            {
+                                ExecutionId = executionId,
+                                AgentId = string.IsNullOrWhiteSpace(fallbackAgentId) ? request.AgentKey : fallbackAgentId,
+                                TenantId = request.TenantId,
+                                UserId = request.UserId,
+                                EventType = AuditEventType.RoutingDecision,
+                                CorrelationId = request.CorrelationId ?? string.Empty,
+                                EventJson = JsonSerializer.Serialize(new
+                                {
+                                    action = "fallback.started",
+                                    strategy = "clarify_then_route",
+                                    fallbackTurn,
+                                    maxClarificationTurns,
+                                    configuredQuestions = activeQuestions.Count
+                                })
+                            }, CancellationToken.None);
+
+                            if (nextQuestion is not null)
+                            {
+                                await _memory.Audit.RecordAsync(new AuditEntry
+                                {
+                                    ExecutionId = executionId,
+                                    AgentId = string.IsNullOrWhiteSpace(fallbackAgentId) ? request.AgentKey : fallbackAgentId,
+                                    TenantId = request.TenantId,
+                                    UserId = request.UserId,
+                                    EventType = AuditEventType.RoutingDecision,
+                                    CorrelationId = request.CorrelationId ?? string.Empty,
+                                    EventJson = JsonSerializer.Serialize(new
+                                    {
+                                        action = "fallback.clarification_question",
+                                        question = nextQuestion.Text,
+                                        field = nextQuestion.Field,
+                                        required = nextQuestion.Required,
+                                        turn = fallbackTurn + 1
+                                    })
+                                }, CancellationToken.None);
+
+                                return new AgentExecutionResult
+                                {
+                                    ExecutionId = executionId,
+                                    AgentKey = request.AgentKey,
+                                    AgentVersion = agentDef.Version.ToString(),
+                                    Status = ExecutionStatus.Completed,
+                                    FinalResponse = JsonSerializer.Serialize(new
+                                    {
+                                        type = "routing_fallback",
+                                        state = "clarifying",
+                                        nextTurn = fallbackTurn + 1,
+                                        requiresHumanReview = false,
+                                        reasonCode = routingDecision.ReasonCode,
+                                        escalationTarget,
+                                        customerMessage = nextQuestion.Text
+                                    }),
+                                    TotalSteps = 2,
+                                    TotalTokensUsed = 0,
+                                    DurationMs = routingStopwatch.ElapsedMilliseconds
+                                };
+                            }
+
+                            await _memory.Audit.RecordAsync(new AuditEntry
+                            {
+                                ExecutionId = executionId,
+                                AgentId = string.IsNullOrWhiteSpace(fallbackAgentId) ? request.AgentKey : fallbackAgentId,
+                                TenantId = request.TenantId,
+                                UserId = request.UserId,
+                                EventType = AuditEventType.RoutingDecision,
+                                CorrelationId = request.CorrelationId ?? string.Empty,
+                                EventJson = JsonSerializer.Serialize(new
+                                {
+                                    action = "fallback.reclassify",
+                                    result = "no_match",
+                                    reason = "clarification_exhausted",
+                                    attempts = fallbackTurn
+                                })
+                            }, CancellationToken.None);
+                        }
+
+                        await _memory.Audit.RecordAsync(new AuditEntry
+                        {
+                            ExecutionId = executionId,
+                            AgentId = string.IsNullOrWhiteSpace(fallbackAgentId) ? request.AgentKey : fallbackAgentId,
+                            TenantId = request.TenantId,
+                            UserId = request.UserId,
+                            EventType = AuditEventType.RoutingDecision,
+                            CorrelationId = request.CorrelationId ?? string.Empty,
+                            EventJson = JsonSerializer.Serialize(new
+                            {
+                                action = "fallback.escalated_human",
+                                reason = routingDecision.ReasonCode,
+                                escalationTarget,
+                                strategy = noMatchAction
+                            })
+                        }, CancellationToken.None);
+
+                        HumanEscalationNotificationResult? escalationNotifyResult = null;
+                        if (!string.IsNullOrWhiteSpace(escalationTarget) && _humanEscalationNotifier is not null)
+                        {
+                            escalationNotifyResult = await _humanEscalationNotifier.NotifyAsync(
+                                new HumanEscalationNotificationRequest
+                                {
+                                    TenantId = request.TenantId,
+                                    QueueId = escalationTarget,
+                                    ConversationId = request.SessionContext?.SessionId ?? request.CorrelationId ?? executionId,
+                                    UserId = request.UserId,
+                                    Channel = normalizedRoutingChannel,
+                                    LastMessage = request.UserMessage,
+                                    ReasonCode = routingDecision.ReasonCode,
+                                    ExecutionId = executionId,
+                                    CorrelationId = request.CorrelationId ?? string.Empty
+                                },
+                                CancellationToken.None);
+
+                            await _memory.Audit.RecordAsync(new AuditEntry
+                            {
+                                ExecutionId = executionId,
+                                AgentId = string.IsNullOrWhiteSpace(fallbackAgentId) ? request.AgentKey : fallbackAgentId,
+                                TenantId = request.TenantId,
+                                UserId = request.UserId,
+                                EventType = AuditEventType.RoutingDecision,
+                                CorrelationId = request.CorrelationId ?? string.Empty,
+                                EventJson = JsonSerializer.Serialize(new
+                                {
+                                    action = "fallback.escalation_notification",
+                                    delivered = escalationNotifyResult.Delivered,
+                                    queueId = escalationNotifyResult.QueueId,
+                                    queueName = escalationNotifyResult.QueueName,
+                                    activeMembers = escalationNotifyResult.ActiveMembers,
+                                    ticketId = escalationNotifyResult.TicketId,
+                                    reason = escalationNotifyResult.Reason
+                                })
+                            }, CancellationToken.None);
+                        }
 
                         return new AgentExecutionResult
                         {
@@ -353,9 +515,17 @@ public sealed class AgentExecutionEngine : IAgentExecutor
                             AgentKey = request.AgentKey,
                             AgentVersion = agentDef.Version.ToString(),
                             Status = ExecutionStatus.Completed,
-                            FinalResponse = routingDecision.Action == RoutingAction.Fallback
-                                ? "⚠️ No se pudo identificar la intención de tu mensaje. Un agente humano revisará tu solicitud pronto."
-                                : "⚠️ Tu mensaje ha sido agregado a la cola de revisión. Un agente humano te atenderá pronto.",
+                            FinalResponse = JsonSerializer.Serialize(new
+                            {
+                                type = "routing_fallback",
+                                state = "escalated_human",
+                                nextTurn = fallbackTurn,
+                                requiresHumanReview = true,
+                                reasonCode = routingDecision.ReasonCode,
+                                escalationTarget,
+                                escalationTicketId = escalationNotifyResult?.TicketId,
+                                customerMessage = "No pude clasificar tu solicitud con suficiente certeza. Te conecto con un asesor para continuar."
+                            }),
                             TotalSteps = 2,
                             TotalTokensUsed = 0,
                             DurationMs = routingStopwatch.ElapsedMilliseconds
@@ -1998,7 +2168,39 @@ Rules:
             return "api";
         return channel.Trim().ToLowerInvariant();
     }
+
+    private static IReadOnlyList<FallbackQuestion> ParseFallbackQuestions(string? rawJson)
+    {
+        if (string.IsNullOrWhiteSpace(rawJson))
+            return Array.Empty<FallbackQuestion>();
+        try
+        {
+            using var doc = JsonDocument.Parse(rawJson);
+            if (doc.RootElement.ValueKind != JsonValueKind.Array)
+                return Array.Empty<FallbackQuestion>();
+            var list = new List<FallbackQuestion>();
+            foreach (var item in doc.RootElement.EnumerateArray())
+            {
+                if (item.ValueKind != JsonValueKind.Object) continue;
+                var text = item.TryGetProperty("text", out var textEl) ? textEl.GetString() : null;
+                if (string.IsNullOrWhiteSpace(text)) continue;
+                var active = !item.TryGetProperty("active", out var activeEl) || activeEl.ValueKind != JsonValueKind.False;
+                var field = item.TryGetProperty("field", out var fieldEl) ? (fieldEl.GetString() ?? string.Empty) : string.Empty;
+                var required = item.TryGetProperty("required", out var reqEl) && reqEl.ValueKind == JsonValueKind.True;
+                list.Add(new FallbackQuestion(text!, active, field, required));
+            }
+            return list;
+        }
+        catch
+        {
+            return Array.Empty<FallbackQuestion>();
+        }
+    }
+
+    private sealed record FallbackQuestion(string Text, bool Active, string Field, bool Required);
 }
+
+
 
 
 

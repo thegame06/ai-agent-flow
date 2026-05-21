@@ -21,6 +21,7 @@ public sealed class ChannelGateway : IChannelGateway
     private readonly IAgentHandoffExecutor _handoffExecutor;
     private readonly IManagerHandoffPolicy _handoffPolicy;
     private readonly IIntentRoutingStore _intentRoutingStore;
+    private readonly IAgentDefinitionRepository _agentRepo;
     private readonly ITenantContextAccessor _tenantContext;
     private readonly IAuditMemory _auditMemory;
     private readonly ILogger<ChannelGateway> _logger;
@@ -33,6 +34,7 @@ public sealed class ChannelGateway : IChannelGateway
         IAgentHandoffExecutor handoffExecutor,
         IManagerHandoffPolicy handoffPolicy,
         IIntentRoutingStore intentRoutingStore,
+        IAgentDefinitionRepository agentRepo,
         ITenantContextAccessor tenantContext,
         IAuditMemory auditMemory,
         IEnumerable<IChannelHandler> handlers,
@@ -45,6 +47,7 @@ public sealed class ChannelGateway : IChannelGateway
         _handoffExecutor = handoffExecutor;
         _handoffPolicy = handoffPolicy;
         _intentRoutingStore = intentRoutingStore;
+        _agentRepo = agentRepo;
         _tenantContext = tenantContext;
         _auditMemory = auditMemory;
         _logger = logger;
@@ -143,6 +146,28 @@ public sealed class ChannelGateway : IChannelGateway
             if (ambientContext is null)
                 _tenantContext.Set(executionContext);
 
+            var requestMetadata = new Dictionary<string, string>
+            {
+                // Pass the originating message ID so AgentExecutionEngine
+                // can stamp it into AgentExecution.ChannelMessageId
+                ["channelMessageId"] = incomingMessage.Id,
+                ["permissions"] = string.Join(",", executionContext.Permissions),
+                ["mcp.policy.allow_actions"] = "tools.execute",
+                ["routing.intent_confidence_threshold"] = channel.Config.GetValueOrDefault("IntentConfidenceThreshold") ?? "0.70",
+                ["routing.assistant_confidence_threshold"] = channel.Config.GetValueOrDefault("AssistantConfidenceThreshold") ?? "0.80",
+                ["routing.no_match_action"] = channel.Config.GetValueOrDefault("NoMatchAction") ?? "human_review_only",
+                ["routing.fallback_agent_id"] = channel.Config.GetValueOrDefault("RouterFallbackAgentId") ?? string.Empty,
+                ["routing.fallback_max_clarification_turns"] = channel.Config.GetValueOrDefault("MaxClarificationTurns") ?? "2",
+                ["routing.fallback_escalation_target"] = channel.Config.GetValueOrDefault("EscalationTarget") ?? string.Empty,
+                ["routing.fallback_questions_json"] = channel.Config.GetValueOrDefault("FallbackQuestionsJson") ?? "[]"
+            };
+
+            if (session is not null)
+            {
+                requestMetadata["routing.fallback.state"] = session.Metadata.GetValueOrDefault("routing.fallback.state") ?? string.Empty;
+                requestMetadata["routing.fallback.turn"] = session.Metadata.GetValueOrDefault("routing.fallback.turn") ?? "0";
+            }
+
             var executionRequest = new AgentExecutionRequest
             {
                 TenantId = incomingMessage.TenantId,
@@ -164,16 +189,7 @@ public sealed class ChannelGateway : IChannelGateway
                 ThreadId = session?.ThreadId,
                 Priority = ExecutionPriority.Normal,
                 SessionContext = sessionContext,
-                Metadata = new Dictionary<string, string>
-                {
-                    // Pass the originating message ID so AgentExecutionEngine
-                    // can stamp it into AgentExecution.ChannelMessageId
-                    ["channelMessageId"] = incomingMessage.Id,
-                    ["permissions"] = string.Join(",", executionContext.Permissions),
-                    ["mcp.policy.allow_actions"] = "tools.execute",
-                    ["routing.intent_confidence_threshold"] = channel.Config.GetValueOrDefault("IntentConfidenceThreshold") ?? "0.70",
-                    ["routing.assistant_confidence_threshold"] = channel.Config.GetValueOrDefault("AssistantConfidenceThreshold") ?? "0.80"
-                }
+                Metadata = requestMetadata
             };
 
             var executionResult = await _agentExecutor.ExecuteAsync(executionRequest, ct);
@@ -198,6 +214,29 @@ public sealed class ChannelGateway : IChannelGateway
             var finalResponse = executionResult.FinalResponse;
             var executionIdForOutgoing = executionResult.ExecutionId;
             var respondingAgentKey = executionResult.AgentKey;
+            if (session is not null)
+            {
+                var fallbackDirective = TryParseFallbackDirective(finalResponse);
+                if (fallbackDirective is not null)
+                {
+                    session.Metadata["routing.fallback.state"] = fallbackDirective.State;
+                    session.Metadata["routing.fallback.turn"] = fallbackDirective.NextTurn.ToString();
+                    session.Metadata["routing.fallback.reason"] = fallbackDirective.ReasonCode ?? string.Empty;
+                    session.Metadata["requires_human_review"] = fallbackDirective.RequiresHumanReview ? "true" : "false";
+                    if (!string.IsNullOrWhiteSpace(fallbackDirective.EscalationTarget))
+                        session.Metadata["routing.fallback.escalation_target"] = fallbackDirective.EscalationTarget!;
+                    await _sessionRepo.UpdateAsync(session, ct);
+
+                    finalResponse = fallbackDirective.CustomerMessage;
+                }
+                else if (session.Metadata.ContainsKey("routing.fallback.state"))
+                {
+                    session.Metadata.Remove("routing.fallback.state");
+                    session.Metadata.Remove("routing.fallback.turn");
+                    session.Metadata.Remove("routing.fallback.reason");
+                    await _sessionRepo.UpdateAsync(session, ct);
+                }
+            }
 
             // ── Router → WorkflowBrain session handoff ────────────────────────
             // When the Router emits a routing_handoff directive, re-assign the
@@ -335,6 +374,10 @@ public sealed class ChannelGateway : IChannelGateway
             var customerResponse = finalResponse!;
             if (ShouldSuppressCustomerDelivery(customerResponse))
             {
+                var customerSafeResponse = await BuildCustomerSafeFallbackAsync(
+                    incomingMessage.TenantId,
+                    respondingAgentKey,
+                    ct);
                 var systemMessage = ChannelMessage.CreateOutgoing(
                     incomingMessage.TenantId,
                     incomingMessage.ChannelId,
@@ -353,6 +396,8 @@ public sealed class ChannelGateway : IChannelGateway
                 if (suppressSession != null)
                 {
                     suppressSession.RecordOutgoingMessage("[system] Mensaje interno suprimido para el cliente.");
+                    suppressSession.Metadata["requires_human_review"] = "true";
+                    suppressSession.Metadata["reply_pending"] = "true";
                     await _sessionRepo.UpdateAsync(suppressSession, ct);
                 }
 
@@ -364,7 +409,32 @@ public sealed class ChannelGateway : IChannelGateway
                     true,
                     ct);
 
-                return systemMessage;
+                var safeMessage = ChannelMessage.CreateOutgoing(
+                    incomingMessage.TenantId,
+                    incomingMessage.ChannelId,
+                    incomingMessage.SessionId,
+                    incomingMessage.From,
+                    customerSafeResponse
+                );
+                safeMessage.Metadata["actor"] = "bot";
+                safeMessage.Metadata["actor_agent_id"] = respondingAgentKey;
+                safeMessage.Metadata["actor_label"] = string.IsNullOrWhiteSpace(respondingAgentKey)
+                    ? "Agente"
+                    : $"Agente {respondingAgentKey}";
+                safeMessage.Metadata["agentflow.delivery"] = "sent";
+                safeMessage.Metadata["agentflow.safe_fallback"] = "true";
+                safeMessage.LinkExecution(executionIdForOutgoing);
+
+                var safeSendResult = await SendMessageAsync(incomingMessage.ChannelId, safeMessage, ct);
+                await RecordOutgoingAuditAsync(
+                    incomingMessage,
+                    executionIdForOutgoing,
+                    safeSendResult.Success ? "sent" : "failed",
+                    customerSafeResponse,
+                    false,
+                    ct);
+
+                return safeMessage;
             }
 
             var outgoingMessage = ChannelMessage.CreateOutgoing(
@@ -511,11 +581,51 @@ public sealed class ChannelGateway : IChannelGateway
     private static bool ShouldSuppressCustomerDelivery(string response)
     {
         if (string.IsNullOrWhiteSpace(response)) return false;
-        var text = response.Trim().ToLowerInvariant();
-        return text.Contains("herramienta de sesión activa no está disponible", StringComparison.OrdinalIgnoreCase)
-            || text.Contains("herramienta de sesion activa no esta disponible", StringComparison.OrdinalIgnoreCase)
-            || text.Contains("no hay suficiente contexto comercial", StringComparison.OrdinalIgnoreCase)
-            || text.Contains("tool", StringComparison.OrdinalIgnoreCase) && text.Contains("not available", StringComparison.OrdinalIgnoreCase);
+        var text = response.Trim();
+        var lower = text.ToLowerInvariant();
+
+        var hasInternalNoun =
+            lower.Contains("herramienta", StringComparison.OrdinalIgnoreCase)
+            || lower.Contains("tool", StringComparison.OrdinalIgnoreCase)
+            || lower.Contains("tenant", StringComparison.OrdinalIgnoreCase)
+            || lower.Contains("workflow", StringComparison.OrdinalIgnoreCase)
+            || lower.Contains("sesión", StringComparison.OrdinalIgnoreCase)
+            || lower.Contains("sesion", StringComparison.OrdinalIgnoreCase)
+            || lower.Contains("mcp", StringComparison.OrdinalIgnoreCase);
+
+        var hasFailureVerb =
+            lower.Contains("no está disponible", StringComparison.OrdinalIgnoreCase)
+            || lower.Contains("no esta disponible", StringComparison.OrdinalIgnoreCase)
+            || lower.Contains("error", StringComparison.OrdinalIgnoreCase)
+            || lower.Contains("exception", StringComparison.OrdinalIgnoreCase)
+            || lower.Contains("invalid", StringComparison.OrdinalIgnoreCase)
+            || lower.Contains("insufficient", StringComparison.OrdinalIgnoreCase)
+            || lower.Contains("no hay suficiente", StringComparison.OrdinalIgnoreCase)
+            || lower.Contains("not available", StringComparison.OrdinalIgnoreCase);
+
+        var looksLikeInternalPayload =
+            (text.StartsWith("{", StringComparison.Ordinal) && text.EndsWith("}", StringComparison.Ordinal))
+            || lower.Contains("\"errorcode\"", StringComparison.OrdinalIgnoreCase)
+            || lower.Contains("stacktrace", StringComparison.OrdinalIgnoreCase);
+
+        return looksLikeInternalPayload || (hasInternalNoun && hasFailureVerb);
+    }
+
+    private async Task<string> BuildCustomerSafeFallbackAsync(
+        string tenantId,
+        string? respondingAgentKey,
+        CancellationToken ct)
+    {
+        const string genericFallback = "En este momento no puedo completar esta solicitud automáticamente. Te conecto con un asesor para continuar.";
+        if (!string.IsNullOrWhiteSpace(respondingAgentKey))
+        {
+            var agent = await _agentRepo.GetByIdAsync(respondingAgentKey!, tenantId, ct);
+            var configured = agent?.Session.CustomerSafeFallbackMessage?.Trim();
+            if (!string.IsNullOrWhiteSpace(configured))
+                return configured;
+        }
+
+        return genericFallback;
     }
 
     private async Task RecordOutgoingAuditAsync(
@@ -683,6 +793,42 @@ public sealed class ChannelGateway : IChannelGateway
         catch { return null; }
     }
 
+    private sealed record FallbackDirective(
+        string CustomerMessage,
+        string State,
+        int NextTurn,
+        bool RequiresHumanReview,
+        string? ReasonCode,
+        string? EscalationTarget);
+
+    private static FallbackDirective? TryParseFallbackDirective(string? response)
+    {
+        if (string.IsNullOrWhiteSpace(response)) return null;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(response);
+            var root = doc.RootElement;
+            if (root.ValueKind != System.Text.Json.JsonValueKind.Object) return null;
+            if (!root.TryGetProperty("type", out var typeEl) ||
+                !string.Equals(typeEl.GetString(), "routing_fallback", StringComparison.OrdinalIgnoreCase))
+                return null;
+            if (!root.TryGetProperty("customerMessage", out var msgEl) || string.IsNullOrWhiteSpace(msgEl.GetString()))
+                return null;
+
+            var state = root.TryGetProperty("state", out var stateEl) ? (stateEl.GetString() ?? "inactive") : "inactive";
+            var nextTurn = root.TryGetProperty("nextTurn", out var turnEl) && turnEl.TryGetInt32(out var t) ? t : 0;
+            var requiresHumanReview = root.TryGetProperty("requiresHumanReview", out var rrEl)
+                && rrEl.ValueKind == System.Text.Json.JsonValueKind.True;
+            var reasonCode = root.TryGetProperty("reasonCode", out var reasonEl) ? reasonEl.GetString() : null;
+            var escalationTarget = root.TryGetProperty("escalationTarget", out var etEl) ? etEl.GetString() : null;
+            return new FallbackDirective(msgEl.GetString()!, state, nextTurn, requiresHumanReview, reasonCode, escalationTarget);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     private static string ResolveAgentKey(ChannelDefinition channel, ChannelSession? session)
     {
         // Sticky routing: preserve owner agent for the current session.
@@ -698,3 +844,4 @@ public sealed class ChannelGateway : IChannelGateway
     }
 
 }
+

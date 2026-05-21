@@ -79,6 +79,7 @@ public sealed record SessionConfigDto
     public bool AutoCreateThread { get; init; } = true;
     public bool EnableSummarization { get; init; } = false;
     public string ThreadKeyPattern { get; init; } = "{agentName}-{guid}";
+    public string? CustomerSafeFallbackMessage { get; init; }
 }
 
 /// <summary>

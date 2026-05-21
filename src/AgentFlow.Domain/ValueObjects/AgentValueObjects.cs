@@ -111,6 +111,7 @@ public sealed record SessionConfig
     /// Example: "{agentName}-{userId}-{date}" → "support-agent-user123-2026-02-22"
     /// </summary>
     public string ThreadKeyPattern { get; init; } = "{agentName}-{guid}";
+    public string? CustomerSafeFallbackMessage { get; init; }
 }
 
 /// <summary>

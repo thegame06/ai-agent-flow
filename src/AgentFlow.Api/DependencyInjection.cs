@@ -2,6 +2,7 @@ using AgentFlow.Abstractions;
 using AgentFlow.Api.AuthProfiles;
 using AgentFlow.Api.Commerce;
 using AgentFlow.Api.Connect;
+using AgentFlow.Api.Routing;
 using AgentFlow.Api.Workflow;
 using AgentFlow.Application.Channels;
 using AgentFlow.Application.Memory;
@@ -64,6 +65,7 @@ public static class DependencyInjection
             .AddSingleton<IModelCatalogStore, MongoModelCatalogStore>()
             .AddScoped<IModelCredentialResolver, AuthProfileModelCredentialResolver>()
             .AddScoped<IConnectStore, MongoConnectStore>()
+            .AddScoped<IHumanEscalationNotifier, WorkforceHumanEscalationNotifier>()
             .AddSingleton<ICommerceStore, CommerceStore>()
             .AddScoped<IWorkflowStudioStore, MongoWorkflowStudioStore>()
             .AddScoped<ITenantConnectionStore, MongoTenantConnectionStore>()

@@ -78,6 +78,7 @@ export const paths = {
       segmentRouting: `${ROOTS.DASHBOARD}/system/segment-routing`,
       featureFlags: `${ROOTS.DASHBOARD}/system/feature-flags`,
       settings: `${ROOTS.DASHBOARD}/system/settings`,
+      workforce: `${ROOTS.DASHBOARD}/system/workforce`,
     },
   },
 };

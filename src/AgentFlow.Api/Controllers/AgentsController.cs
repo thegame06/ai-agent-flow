@@ -150,6 +150,7 @@ public sealed class AgentsController : ControllerBase
             AutoCreateThread = request.Session.AutoCreateThread,
             EnableSummarization = request.Session.EnableSummarization,
             ThreadKeyPattern = request.Session.ThreadKeyPattern,
+            CustomerSafeFallbackMessage = request.Session.CustomerSafeFallbackMessage,
         };
 
         var agentResult = AgentDefinition.Create(
@@ -250,6 +251,17 @@ public sealed class AgentsController : ControllerBase
             })
             .ToList()
             .AsReadOnly();
+        var session = new SessionConfig
+        {
+            EnableThreads = request.Session.EnableThreads,
+            DefaultThreadTtl = TimeSpan.FromHours(request.Session.DefaultThreadTtlHours),
+            MaxTurnsPerThread = request.Session.MaxTurnsPerThread,
+            ContextWindowSize = request.Session.ContextWindowSize,
+            AutoCreateThread = request.Session.AutoCreateThread,
+            EnableSummarization = request.Session.EnableSummarization,
+            ThreadKeyPattern = request.Session.ThreadKeyPattern,
+            CustomerSafeFallbackMessage = request.Session.CustomerSafeFallbackMessage,
+        };
 
         // Use the domain's Update method (validates invariants)
         var updateResult = existing.Update(
@@ -258,7 +270,7 @@ public sealed class AgentsController : ControllerBase
             brain,
             loop,
             memory,
-            session: null,
+            session: session,
             workflowSteps: request.Steps.Select(MapWorkflowStep).ToList().AsReadOnly(),
             tools: tools,
             tags: request.Tags.ToList().AsReadOnly(),
@@ -426,6 +438,7 @@ public sealed class AgentsController : ControllerBase
             AutoCreateThread = agent.Session.AutoCreateThread,
             EnableSummarization = agent.Session.EnableSummarization,
             ThreadKeyPattern = agent.Session.ThreadKeyPattern,
+            CustomerSafeFallbackMessage = agent.Session.CustomerSafeFallbackMessage,
         },
         Steps = agent.WorkflowSteps.Select(s => new DesignerStepDto
         {

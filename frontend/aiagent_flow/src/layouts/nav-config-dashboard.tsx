@@ -124,6 +124,7 @@ export const navData: NavSectionProps['data'] = [
           { title: 'Modelos IA', path: paths.dashboard.system.models },
           { title: 'Credenciales', path: paths.dashboard.system.authProfiles },
           { title: 'Funciones beta', path: paths.dashboard.system.featureFlags },
+          { title: 'Equipos y atencion', path: paths.dashboard.system.workforce },
           { title: 'Politicas', path: paths.dashboard.governance.policies },
           { title: 'Auditoria', path: paths.dashboard.governance.audit },
         ],

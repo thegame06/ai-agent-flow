@@ -106,6 +106,12 @@ interface ChannelIntentCatalogItem {
   selected: boolean;
 }
 
+interface WorkforceQueueOption {
+  id: string;
+  name: string;
+  active: boolean;
+}
+
 const getErrorMessage = (err: any, fallback: string) =>
   err?.response?.data?.message || err?.response?.data?.error || err?.message || fallback;
 
@@ -131,7 +137,20 @@ export default function ChannelsPage() {
   const [connections, setConnections] = useState<TenantConnection[]>([]);
   const [openRouting, setOpenRouting] = useState(false);
   const [routingChannel, setRoutingChannel] = useState<Channel | null>(null);
-  const [routingForm, setRoutingForm] = useState({ defaultAgentId: '', routingAgentIds: [] as string[] });
+  const [queueOptions, setQueueOptions] = useState<WorkforceQueueOption[]>([]);
+  const [routingForm, setRoutingForm] = useState({
+    defaultAgentId: '',
+    routingAgentIds: [] as string[],
+    noMatchAction: 'human_review_only',
+    routerFallbackAgentId: '',
+    maxClarificationTurns: 2,
+    escalationTarget: '',
+    clarificationQuestions: [
+      { text: '¿Me puedes contar brevemente qué necesitas?', active: true, field: 'motivo', required: true, retries: 1, noResponseAction: 'continue' },
+      { text: '¿Qué resultado esperas obtener?', active: true, field: 'objetivo', required: false, retries: 1, noResponseAction: 'continue' },
+      { text: '¿Es algo urgente para hoy?', active: false, field: 'urgencia', required: false, retries: 1, noResponseAction: 'continue' },
+    ] as Array<{ text: string; active: boolean; field: string; required: boolean; retries: number; noResponseAction: string }>,
+  });
   const [routingPreview, setRoutingPreview] = useState<{ suggestedAgentId?: string; activeLoadByAgent?: Record<string, number> } | null>(null);
   const [openIntentsModal, setOpenIntentsModal] = useState(false);
   const [intentsChannel, setIntentsChannel] = useState<Channel | null>(null);
@@ -174,11 +193,12 @@ export default function ChannelsPage() {
     try {
       setLoading(true);
       setError(null);
-      const [channelsRes, sessionsRes, agentsRes, connectionsRes] = await Promise.all([
+      const [channelsRes, sessionsRes, agentsRes, connectionsRes, queuesRes] = await Promise.all([
         axios.get(endpoints.agentflow.channels.list(TENANT_ID)),
         axios.get(`/api/v1/tenants/${TENANT_ID}/channel-sessions?page=${sessionsPage}&pageSize=${sessionsPageSize}`),
         axios.get(`/api/v1/tenants/${TENANT_ID}/agents`),
         axios.get(endpoints.agentflow.connections.list(TENANT_ID)).catch(() => ({ data: [] })),
+        axios.get(endpoints.agentflow.workforce.queues(TENANT_ID)).catch(() => ({ data: [] })),
       ]);
 
       setChannels((channelsRes.data ?? []) as Channel[]);
@@ -190,6 +210,10 @@ export default function ChannelsPage() {
         .map((a: any) => ({ id: a.id, name: a.name }));
       setCandidateAgents(agents);
       setConnections((connectionsRes.data ?? []) as TenantConnection[]);
+      const queues = ((queuesRes.data ?? []) as WorkforceQueueOption[])
+        .filter((q) => q?.id && q?.name)
+        .map((q) => ({ id: q.id, name: q.name, active: Boolean(q.active) }));
+      setQueueOptions(queues);
     } catch (err: any) {
       setError(err?.message || 'Error cargando canales');
     } finally {
@@ -246,6 +270,17 @@ export default function ChannelsPage() {
       setRoutingForm({
         defaultAgentId: res.data?.defaultAgentId || channel.config?.DefaultAgentId || '',
         routingAgentIds: ((res.data?.intentAgents ?? res.data?.routingAgents) ?? []) as string[],
+        noMatchAction: res.data?.noMatchAction || 'human_review_only',
+        routerFallbackAgentId: res.data?.routerFallbackAgentId || '',
+        maxClarificationTurns: Number(res.data?.maxClarificationTurns || 2),
+        escalationTarget: res.data?.escalationTarget || '',
+        clarificationQuestions: (res.data?.clarificationQuestions && Array.isArray(res.data.clarificationQuestions) && res.data.clarificationQuestions.length > 0)
+          ? res.data.clarificationQuestions
+          : [
+            { text: '¿Me puedes contar brevemente qué necesitas?', active: true, field: 'motivo', required: true, retries: 1, noResponseAction: 'continue' },
+            { text: '¿Qué resultado esperas obtener?', active: true, field: 'objetivo', required: false, retries: 1, noResponseAction: 'continue' },
+            { text: '¿Es algo urgente para hoy?', active: false, field: 'urgencia', required: false, retries: 1, noResponseAction: 'continue' },
+          ],
       });
       setRoutingChannel(channel);
       setRoutingPreview(null);
@@ -262,6 +297,11 @@ export default function ChannelsPage() {
       await axios.post(endpoints.agentflow.channels.routingUpdate(TENANT_ID, routingChannel.id), {
         defaultAgentId: routingForm.defaultAgentId,
         intentAgents: routingForm.routingAgentIds,
+        noMatchAction: routingForm.noMatchAction,
+        routerFallbackAgentId: routingForm.routerFallbackAgentId || null,
+        maxClarificationTurns: routingForm.maxClarificationTurns,
+        escalationTarget: routingForm.escalationTarget || null,
+        clarificationQuestions: routingForm.clarificationQuestions,
       });
       setOpenRouting(false);
       setRoutingChannel(null);
@@ -669,14 +709,6 @@ export default function ChannelsPage() {
                             <IconButton size="small" title="Cargar intenciones" onClick={() => openIntentsDialog(c)}>
                               <Iconify icon="mdi:playlist-check" />
                             </IconButton>
-                            <IconButton
-                              size="small"
-                              title="Crear automatizacion"
-                              component={RouterLink}
-                              href={`${paths.dashboard.automationNew}?channelId=${encodeURIComponent(c.id)}`}
-                            >
-                              <Iconify icon="mdi:auto-fix" />
-                            </IconButton>
                             <IconButton size="small" title="Probar mensajes" onClick={() => { setTestPanelChannel(c); setTestResult(null); setTestMsg({ content: '', from: '', callbackUrl: '', asyncMode: false }); setOpenTestPanel(true); }}>
                               <Iconify icon="mdi:message-flash-outline" />
                             </IconButton>
@@ -990,6 +1022,102 @@ export default function ChannelsPage() {
               </Select>
               <FormHelperText>El router enviara la conversacion al agente de intencion con menor carga activa.</FormHelperText>
             </FormControl>
+
+            <Divider />
+
+            <FormControl fullWidth>
+              <InputLabel>Estrategia sin match</InputLabel>
+              <Select
+                value={routingForm.noMatchAction}
+                onChange={(e) => setRoutingForm((prev) => ({ ...prev, noMatchAction: e.target.value }))}
+                input={<OutlinedInput label="Estrategia sin match" />}
+              >
+                <MenuItem value="human_review_only">Solo revisión humana</MenuItem>
+                <MenuItem value="clarify_then_route">Preguntar y reintentar</MenuItem>
+              </Select>
+            </FormControl>
+
+            <TextField
+              select
+              label="Agente fallback"
+              value={routingForm.routerFallbackAgentId}
+              onChange={(e) => setRoutingForm((prev) => ({ ...prev, routerFallbackAgentId: e.target.value }))}
+              fullWidth
+              helperText="Agente responsable del proceso de fallback y trazabilidad de auditoría."
+            >
+              <MenuItem value=""><em>Sin agente fallback</em></MenuItem>
+              {candidateAgents.map((agent) => (
+                <MenuItem key={agent.id} value={agent.id}>{agent.name}</MenuItem>
+              ))}
+            </TextField>
+
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+              <TextField
+                label="Máximo de preguntas"
+                type="number"
+                value={routingForm.maxClarificationTurns}
+                onChange={(e) => setRoutingForm((prev) => ({ ...prev, maxClarificationTurns: Number(e.target.value || 2) }))}
+                inputProps={{ min: 1, max: 5 }}
+                fullWidth
+                disabled={routingForm.noMatchAction !== 'clarify_then_route'}
+              />
+              <TextField
+                select
+                label="Destino de escalación"
+                value={routingForm.escalationTarget}
+                onChange={(e) => setRoutingForm((prev) => ({ ...prev, escalationTarget: e.target.value }))}
+                fullWidth
+                helperText="Cola humana que recibirá casos escalados sin clasificación."
+              >
+                <MenuItem value=""><em>Sin cola de escalación</em></MenuItem>
+                {queueOptions.filter((q) => q.active).map((q) => (
+                  <MenuItem key={q.id} value={q.id}>{q.name}</MenuItem>
+                ))}
+              </TextField>
+            </Stack>
+
+            <Stack spacing={1.25}>
+              <Typography variant="subtitle2">Preguntas de clarificación</Typography>
+              {routingForm.clarificationQuestions.map((q, idx) => (
+                <Stack key={`q-${idx}`} direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                  <TextField
+                    label={`Pregunta ${idx + 1}`}
+                    value={q.text}
+                    onChange={(e) => setRoutingForm((prev) => ({
+                      ...prev,
+                      clarificationQuestions: prev.clarificationQuestions.map((item, i) => i === idx ? { ...item, text: e.target.value } : item),
+                    }))}
+                    fullWidth
+                    disabled={routingForm.noMatchAction !== 'clarify_then_route'}
+                  />
+                  <TextField
+                    label="Campo"
+                    value={q.field}
+                    onChange={(e) => setRoutingForm((prev) => ({
+                      ...prev,
+                      clarificationQuestions: prev.clarificationQuestions.map((item, i) => i === idx ? { ...item, field: e.target.value } : item),
+                    }))}
+                    sx={{ minWidth: 140 }}
+                    disabled={routingForm.noMatchAction !== 'clarify_then_route'}
+                  />
+                  <FormControl sx={{ minWidth: 92 }}>
+                    <InputLabel>Activa</InputLabel>
+                    <Select
+                      value={q.active ? 'si' : 'no'}
+                      label="Activa"
+                      onChange={(e) => setRoutingForm((prev) => ({
+                        ...prev,
+                        clarificationQuestions: prev.clarificationQuestions.map((item, i) => i === idx ? { ...item, active: e.target.value === 'si' } : item),
+                      }))}
+                      disabled={routingForm.noMatchAction !== 'clarify_then_route'}
+                    >
+                      <MenuItem value="si">Sí</MenuItem>
+                      <MenuItem value="no">No</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Stack>
+              ))}
+            </Stack>
 
             {routingPreview && (
               <Alert severity="success">

@@ -48,6 +48,7 @@ type SessionRow = {
   channelId: string;
   channelType: string;
   identifier: string;
+  agentId?: string;
   threadId?: string;
   status: string;
   createdAt: string;

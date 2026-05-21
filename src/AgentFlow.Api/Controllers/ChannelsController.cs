@@ -311,7 +311,12 @@ public sealed class ChannelsController : ControllerBase
                 .ToList(),
             RoutingAgents = routingAgents
                 .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .ToList()
+                .ToList(),
+            NoMatchAction = channel.Config.GetValueOrDefault("NoMatchAction") ?? "human_review_only",
+            RouterFallbackAgentId = channel.Config.GetValueOrDefault("RouterFallbackAgentId"),
+            MaxClarificationTurns = int.TryParse(channel.Config.GetValueOrDefault("MaxClarificationTurns"), out var turns) ? turns : 2,
+            EscalationTarget = channel.Config.GetValueOrDefault("EscalationTarget"),
+            ClarificationQuestions = ParseFallbackQuestions(channel.Config.GetValueOrDefault("FallbackQuestionsJson"))
         });
     }
 
@@ -345,6 +350,16 @@ public sealed class ChannelsController : ControllerBase
                     .Select(kv => $"{kv.Key.Trim()}:{kv.Value}"));
             updated["RoutingCapacities"] = capacityCsv;
         }
+        updated["NoMatchAction"] = string.IsNullOrWhiteSpace(request.NoMatchAction)
+            ? (updated.GetValueOrDefault("NoMatchAction") ?? "human_review_only")
+            : request.NoMatchAction.Trim().ToLowerInvariant();
+        if (!string.IsNullOrWhiteSpace(request.RouterFallbackAgentId))
+            updated["RouterFallbackAgentId"] = request.RouterFallbackAgentId.Trim();
+        updated["MaxClarificationTurns"] = Math.Clamp(request.MaxClarificationTurns ?? 2, 1, 5).ToString();
+        if (!string.IsNullOrWhiteSpace(request.EscalationTarget))
+            updated["EscalationTarget"] = request.EscalationTarget.Trim();
+        if (request.ClarificationQuestions is not null)
+            updated["FallbackQuestionsJson"] = JsonSerializer.Serialize(request.ClarificationQuestions.Take(5));
         channel.UpdateConfig(updated);
 
         var result = await _channelRepo.UpdateAsync(channel, ct);
@@ -356,7 +371,12 @@ public sealed class ChannelsController : ControllerBase
             DefaultAgentId = updated.GetValueOrDefault("DefaultAgentId") ?? string.Empty,
             IntentAgents = routing,
             RoutingAgents = routing,
-            RoutingCapacities = ParseRoutingCapacities(updated.GetValueOrDefault("RoutingCapacities"))
+            RoutingCapacities = ParseRoutingCapacities(updated.GetValueOrDefault("RoutingCapacities")),
+            NoMatchAction = updated.GetValueOrDefault("NoMatchAction") ?? "human_review_only",
+            RouterFallbackAgentId = updated.GetValueOrDefault("RouterFallbackAgentId"),
+            MaxClarificationTurns = int.TryParse(updated.GetValueOrDefault("MaxClarificationTurns"), out var maxTurns) ? maxTurns : 2,
+            EscalationTarget = updated.GetValueOrDefault("EscalationTarget"),
+            ClarificationQuestions = ParseFallbackQuestions(updated.GetValueOrDefault("FallbackQuestionsJson"))
         });
     }
 
@@ -721,6 +741,21 @@ public sealed class ChannelsController : ControllerBase
             return false;
         }
     }
+
+    private static List<FallbackQuestionDto> ParseFallbackQuestions(string? rawJson)
+    {
+        if (string.IsNullOrWhiteSpace(rawJson))
+            return new List<FallbackQuestionDto>();
+        try
+        {
+            var parsed = JsonSerializer.Deserialize<List<FallbackQuestionDto>>(rawJson);
+            return parsed?.Where(q => !string.IsNullOrWhiteSpace(q.Text)).Take(5).ToList() ?? new List<FallbackQuestionDto>();
+        }
+        catch
+        {
+            return new List<FallbackQuestionDto>();
+        }
+    }
 }
 
 public sealed record CreateChannelRequest
@@ -759,6 +794,11 @@ public sealed record UpdateChannelRoutingRequest
     public List<string>? IntentAgents { get; init; }
     public List<string>? RoutingAgents { get; init; }
     public Dictionary<string, int>? RoutingCapacities { get; init; }
+    public string? NoMatchAction { get; init; }
+    public string? RouterFallbackAgentId { get; init; }
+    public int? MaxClarificationTurns { get; init; }
+    public string? EscalationTarget { get; init; }
+    public List<FallbackQuestionDto>? ClarificationQuestions { get; init; }
 }
 
 public sealed record ChannelRoutingDto
@@ -768,6 +808,21 @@ public sealed record ChannelRoutingDto
     public List<string> IntentAgents { get; init; } = new();
     public List<string> RoutingAgents { get; init; } = new();
     public Dictionary<string, int> RoutingCapacities { get; init; } = new(StringComparer.OrdinalIgnoreCase);
+    public string NoMatchAction { get; init; } = "human_review_only";
+    public string? RouterFallbackAgentId { get; init; }
+    public int MaxClarificationTurns { get; init; } = 2;
+    public string? EscalationTarget { get; init; }
+    public List<FallbackQuestionDto> ClarificationQuestions { get; init; } = new();
+}
+
+public sealed record FallbackQuestionDto
+{
+    public string Text { get; init; } = string.Empty;
+    public bool Active { get; init; } = true;
+    public string Field { get; init; } = string.Empty;
+    public bool Required { get; init; } = false;
+    public int Retries { get; init; } = 1;
+    public string NoResponseAction { get; init; } = "continue";
 }
 
 public sealed record ChannelRoutingPreviewDto
