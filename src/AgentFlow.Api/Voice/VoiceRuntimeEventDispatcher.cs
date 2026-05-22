@@ -9,26 +9,20 @@ namespace AgentFlow.Api.Voice;
 public sealed class VoiceRuntimeEventDispatcher : BackgroundService
 {
     private readonly IAgentEventTransport _eventTransport;
-    private readonly IAgentRuntimeRegistry _runtimeRegistry;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<VoiceRuntimeEventDispatcher> _logger;
     private readonly IExecutionGovernancePolicy _governancePolicy;
-    private readonly IWorkflowAuditService _audit;
 
     public VoiceRuntimeEventDispatcher(
         IAgentEventTransport eventTransport,
-        IAgentRuntimeRegistry runtimeRegistry,
         IServiceScopeFactory scopeFactory,
         ILogger<VoiceRuntimeEventDispatcher> logger,
-        IExecutionGovernancePolicy governancePolicy,
-        IWorkflowAuditService audit)
+        IExecutionGovernancePolicy governancePolicy)
     {
         _eventTransport = eventTransport;
-        _runtimeRegistry = runtimeRegistry;
         _scopeFactory = scopeFactory;
         _logger = logger;
         _governancePolicy = governancePolicy;
-        _audit = audit;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -75,7 +69,9 @@ public sealed class VoiceRuntimeEventDispatcher : BackgroundService
 
         try
         {
-            var runtime = _runtimeRegistry.GetRequired(AgentRuntimeKind.Voice);
+            using var scope = _scopeFactory.CreateScope();
+            var runtimeRegistry = scope.ServiceProvider.GetRequiredService<IAgentRuntimeRegistry>();
+            var runtime = runtimeRegistry.GetRequired(AgentRuntimeKind.Voice);
             var result = await runtime.ExecuteAsync(new AgentRuntimeRequest
             {
                 TenantId = evt.TenantId,
@@ -86,7 +82,7 @@ public sealed class VoiceRuntimeEventDispatcher : BackgroundService
                     ["eventType"] = evt.EventType,
                     ["eventId"] = evt.EventId
                 }
-            }, ct);
+                }, ct);
 
             _logger.LogInformation(
                 "Voice runtime dispatched event. Tenant={TenantId} SessionId={SessionId} EventType={EventType} Status={Status}",
@@ -149,11 +145,13 @@ public sealed class VoiceRuntimeEventDispatcher : BackgroundService
     {
         try
         {
+            using var scope = _scopeFactory.CreateScope();
+            var runtimeRegistry = scope.ServiceProvider.GetRequiredService<IAgentRuntimeRegistry>();
             var transcript = JsonSerializer.Deserialize<TranscriptProducedEvent>(evt.Payload);
             if (transcript is null || string.IsNullOrWhiteSpace(transcript.Transcript))
                 return;
 
-            var runtime = _runtimeRegistry.GetRequired(AgentRuntimeKind.Voice);
+            var runtime = runtimeRegistry.GetRequired(AgentRuntimeKind.Voice);
             var runtimeResult = await runtime.ExecuteAsync(new AgentRuntimeRequest
             {
                 TenantId = evt.TenantId,
@@ -204,10 +202,12 @@ public sealed class VoiceRuntimeEventDispatcher : BackgroundService
 
     private async Task<(string Transcript, string ProviderId)> TranscribeWithProviderOrFallbackAsync(AgentEvent evt, AudioChunkReceivedEvent chunk, CancellationToken ct)
     {
+        IWorkflowAuditService? audit = null;
         try
         {
             using var scope = _scopeFactory.CreateScope();
             var resolver = scope.ServiceProvider.GetRequiredService<IProviderResolver>();
+            audit = scope.ServiceProvider.GetRequiredService<IWorkflowAuditService>();
             var preferred = evt.Headers.TryGetValue("sttProvider", out var configuredProvider)
                 ? configuredProvider
                 : "openai";
@@ -260,7 +260,9 @@ public sealed class VoiceRuntimeEventDispatcher : BackgroundService
                 tenantId: evt.TenantId,
                 flow: "voice.stt",
                 provider: attemptedProvider);
-            await _audit.RecordStudioActionAsync(
+            if (audit is not null)
+            {
+                await audit.RecordStudioActionAsync(
                 evt.TenantId,
                 "voice-runtime",
                 "voice.stt.fallback",
@@ -274,6 +276,7 @@ public sealed class VoiceRuntimeEventDispatcher : BackgroundService
                 },
                 evt.CorrelationId,
                 ct);
+            }
             _logger.LogDebug(
                 ex,
                 "Falling back to synthetic transcript for audio chunk. Tenant={TenantId} SessionId={SessionId}",
@@ -288,10 +291,12 @@ public sealed class VoiceRuntimeEventDispatcher : BackgroundService
         string text,
         CancellationToken ct)
     {
+        IWorkflowAuditService? audit = null;
         try
         {
             using var scope = _scopeFactory.CreateScope();
             var resolver = scope.ServiceProvider.GetRequiredService<IProviderResolver>();
+            audit = scope.ServiceProvider.GetRequiredService<IWorkflowAuditService>();
             var preferred = evt.Headers.TryGetValue("ttsProvider", out var configuredProvider)
                 ? configuredProvider
                 : "openai";
@@ -342,7 +347,9 @@ public sealed class VoiceRuntimeEventDispatcher : BackgroundService
                 tenantId: evt.TenantId,
                 flow: "voice.tts",
                 provider: attemptedProvider);
-            await _audit.RecordStudioActionAsync(
+            if (audit is not null)
+            {
+                await audit.RecordStudioActionAsync(
                 evt.TenantId,
                 "voice-runtime",
                 "voice.tts.fallback",
@@ -356,6 +363,7 @@ public sealed class VoiceRuntimeEventDispatcher : BackgroundService
                 },
                 evt.CorrelationId,
                 ct);
+            }
             _logger.LogDebug(
                 ex,
                 "Falling back to synthetic audio bytes for TTS. Tenant={TenantId} SessionId={SessionId}",

@@ -18,7 +18,7 @@ builder.Services.AddControllers()
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(opt =>
 {
-    opt.SwaggerDoc("v1", new() { Title = "AgentFlow API", Version = "v1" });
+    opt.SwaggerDoc("v1", new() { Title = "Annonai Agent Flow API", Version = "v1" });
     opt.AddSecurityDefinition("Bearer", new()
     {
         Type = Microsoft.OpenApi.Models.SecuritySchemeType.Http,

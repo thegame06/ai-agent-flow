@@ -271,7 +271,7 @@ public static class DependencyInjection
         });
         services.AddSingleton<IChannelCapabilityPolicy, ChannelCapabilityPolicy>();
         services.AddScoped<IChannelExecutionRequestFactory, ChannelExecutionRequestFactory>();
-        services.AddSingleton<IChannelDeliveryPolicy, ChannelDeliveryPolicy>();
+        services.AddScoped<IChannelDeliveryPolicy, ChannelDeliveryPolicy>();
         services.AddScoped<IAgentHandoffExecutor, AgentHandoffExecutor>();
         services.AddScoped<IVoiceSessionOrchestrator, VoiceSessionOrchestrator>();
         services.AddScoped<IToolExecutor, ToolExecutorService>();

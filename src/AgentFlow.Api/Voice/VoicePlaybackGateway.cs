@@ -13,19 +13,16 @@ public sealed class VoicePlaybackGateway : BackgroundService
     private readonly IAgentEventTransport _eventTransport;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<VoicePlaybackGateway> _logger;
-    private readonly IWorkflowAuditService _audit;
     private readonly ConcurrentDictionary<string, DateTimeOffset> _dedupe = new(StringComparer.OrdinalIgnoreCase);
 
     public VoicePlaybackGateway(
         IAgentEventTransport eventTransport,
         IServiceScopeFactory scopeFactory,
-        ILogger<VoicePlaybackGateway> logger,
-        IWorkflowAuditService audit)
+        ILogger<VoicePlaybackGateway> logger)
     {
         _eventTransport = eventTransport;
         _scopeFactory = scopeFactory;
         _logger = logger;
-        _audit = audit;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -64,10 +61,13 @@ public sealed class VoicePlaybackGateway : BackgroundService
 
     public async Task HandleSynthesizedEventAsync(AgentEvent evt, AudioSynthesizedEvent synthesized, CancellationToken ct)
     {
+        using var scope = _scopeFactory.CreateScope();
+        var audit = scope.ServiceProvider.GetRequiredService<IWorkflowAuditService>();
+
         if (!MarkEventAsInFlight(evt))
         {
             _logger.LogDebug("Skipping duplicate playback event. EventId={EventId}", evt.EventId);
-            await _audit.RecordStudioActionAsync(
+            await audit.RecordStudioActionAsync(
                 evt.TenantId,
                 "voice-playback",
                 "voice.playback.duplicate_ignored",
@@ -99,7 +99,6 @@ public sealed class VoicePlaybackGateway : BackgroundService
 
         try
         {
-            using var scope = _scopeFactory.CreateScope();
             var resolver = scope.ServiceProvider.GetRequiredService<IProviderResolver>();
             var channel = evt.Headers.TryGetValue("channel", out var ch) ? ch : "voice";
             var preferredProvider = evt.Headers.TryGetValue("provider", out var p) ? p : "twilio";
@@ -145,7 +144,7 @@ public sealed class VoicePlaybackGateway : BackgroundService
                         synthesized.SessionId,
                         callId,
                         resolved.Adapter.ProviderId);
-                    await _audit.RecordStudioActionAsync(
+                    await audit.RecordStudioActionAsync(
                         evt.TenantId,
                         "voice-playback",
                         "voice.playback.delivered",
@@ -192,7 +191,7 @@ public sealed class VoicePlaybackGateway : BackgroundService
                 evt.TenantId,
                 synthesized.SessionId,
                 callId);
-            await _audit.RecordStudioActionAsync(
+            await audit.RecordStudioActionAsync(
                 evt.TenantId,
                 "voice-playback",
                 "voice.playback.failed",
