@@ -28,6 +28,7 @@ const ToolsPage = lazy(() => import('src/aiagentflow/pages/tools/ToolsPage'));
 const MarketplacePage = lazy(() => import('src/aiagentflow/pages/tools/MarketplacePage'));
 const PoliciesPage = lazy(() => import('src/aiagentflow/pages/policies/PoliciesPage'));
 const AuditLogPage = lazy(() => import('src/aiagentflow/pages/audit/AuditPage'));
+const OperationsPage = lazy(() => import('src/aiagentflow/pages/operations/OperationsPage'));
 const ModelsPage = lazy(() => import('src/aiagentflow/pages/models/ModelsPage'));
 const AuthProfilesPage = lazy(() => import('src/aiagentflow/pages/system/AuthProfilesPage'));
 const McpPage = lazy(() => import('src/aiagentflow/pages/system/McpPage'));
@@ -98,6 +99,7 @@ export const dashboardRoutes: RouteObject[] = [
           { element: <PoliciesPage />, index: true },
           { path: 'policies', element: <PoliciesPage /> },
           { path: 'audit', element: <AuditLogPage /> },
+          { path: 'operations', element: <OperationsPage /> },
         ],
       },
       {

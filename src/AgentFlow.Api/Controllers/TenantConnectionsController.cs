@@ -1,3 +1,4 @@
+using AgentFlow.Abstractions;
 using AgentFlow.Api.Connect;
 using AgentFlow.Application.Memory;
 using AgentFlow.Security;
@@ -341,7 +342,13 @@ public sealed class TenantConnectionsController : ControllerBase
     {
         if (string.Equals(connection.ConnectorId, "twilio", StringComparison.OrdinalIgnoreCase))
         {
-            return new[] { "voice.call", "callcenter.outbound_call", "sms", "status callbacks" };
+            return new[]
+            {
+                CommunicationCapabilities.CallOutbound,
+                CommunicationCapabilities.CallControl,
+                CommunicationCapabilities.TextSend,
+                "status.callbacks"
+            };
         }
 
         if (string.Equals(connection.ConnectorId, "storage", StringComparison.OrdinalIgnoreCase))
@@ -359,6 +366,17 @@ public sealed class TenantConnectionsController : ControllerBase
             return new[] { "http.request", "webhook.call" };
         }
 
+        if (string.Equals(connection.ConnectorId, "openai", StringComparison.OrdinalIgnoreCase))
+        {
+            return new[]
+            {
+                "reasoning",
+                "embeddings",
+                CommunicationCapabilities.AudioTranscribe,
+                CommunicationCapabilities.AudioSynthesize
+            };
+        }
+
         return connection.Type switch
         {
             TenantConnectionType.Messaging => new[] { "messages", "callbacks" },
@@ -374,9 +392,9 @@ public sealed class TenantConnectionsController : ControllerBase
         => CapabilitiesForConnection(connection)
             .Select(capability => capability switch
             {
-                "voice.call" => "voice.call",
-                "callcenter.outbound_call" => "callcenter.outbound_call",
-                "sms" => "connect.enqueue_campaign_message",
+                CommunicationCapabilities.CallOutbound => "voice.call",
+                CommunicationCapabilities.CallControl => "callcenter.outbound_call",
+                CommunicationCapabilities.TextSend => "connect.enqueue_campaign_message",
                 "files.read" => "files.read",
                 "drive.lookup" => "drive.lookup",
                 "storage.write" => "storage.write",

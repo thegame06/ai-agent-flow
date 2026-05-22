@@ -124,6 +124,47 @@ public sealed class ChannelSession
     {
         LockVersion++;
     }
+
+    public void StartVoiceCall(
+        string callId,
+        string? phoneNumber,
+        string? direction,
+        string? providerStatus)
+    {
+        LastActivityAt = DateTimeOffset.UtcNow;
+        Metadata["voice.call_id"] = callId;
+        if (!string.IsNullOrWhiteSpace(phoneNumber))
+            Metadata["voice.phone_number"] = phoneNumber!;
+        if (!string.IsNullOrWhiteSpace(direction))
+            Metadata["voice.direction"] = direction!;
+        if (!string.IsNullOrWhiteSpace(providerStatus))
+            Metadata["voice.provider_status"] = providerStatus!;
+        Metadata["voice.session_state"] = "active";
+    }
+
+    public void UpdateVoiceCallStatus(string status, string? duration = null)
+    {
+        LastActivityAt = DateTimeOffset.UtcNow;
+        Metadata["voice.provider_status"] = status;
+        if (!string.IsNullOrWhiteSpace(duration))
+            Metadata["voice.call_duration"] = duration!;
+
+        var normalized = status.Trim().ToLowerInvariant();
+        if (normalized is "completed" or "busy" or "failed" or "no-answer" or "canceled")
+        {
+            Metadata["voice.session_state"] = "ended";
+            Close();
+            return;
+        }
+
+        Metadata["voice.session_state"] = normalized switch
+        {
+            "ringing" => "ringing",
+            "queued" or "initiated" => "queued",
+            "in-progress" or "answered" => "in_progress",
+            _ => "active"
+        };
+    }
 }
 
 public enum SessionStatus

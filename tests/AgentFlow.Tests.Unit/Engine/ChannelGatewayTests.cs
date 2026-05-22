@@ -22,6 +22,7 @@ public sealed class ChannelGatewayTests
         var executor = new Mock<IAgentExecutor>();
         var handoffExecutor = new Mock<IAgentHandoffExecutor>();
         var handoffPolicy = new Mock<IManagerHandoffPolicy>();
+        var requestFactory = new Mock<IChannelExecutionRequestFactory>();
 
         var channel = ChannelDefinition.Create("tenant-1", "api", ChannelType.Api);
         var session = ChannelSession.Create("tenant-1", channel.Id, ChannelType.Api, "user-1");
@@ -46,6 +47,9 @@ public sealed class ChannelGatewayTests
                 Status = ExecutionStatus.Completed,
                 FinalResponse = "ok"
             });
+        requestFactory.Setup(x => x.CreateAsync(It.IsAny<ChannelMessage>(), It.IsAny<ChannelDefinition>(), It.IsAny<ChannelSession?>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ChannelMessage incoming, ChannelDefinition _, ChannelSession? s, string a, CancellationToken _) =>
+                BuildExecutionRequest(incoming, s, a));
 
         var gateway = new ChannelGateway(
             channelRepo.Object,
@@ -54,9 +58,10 @@ public sealed class ChannelGatewayTests
             executor.Object,
             handoffExecutor.Object,
             handoffPolicy.Object,
-            Mock.Of<AgentFlow.Security.IIntentRoutingStore>(),
-            Mock.Of<ITenantContextAccessor>(),
+            requestFactory.Object,
+            Mock.Of<IAgentDefinitionRepository>(),
             Mock.Of<IAuditMemory>(),
+            Mock.Of<IChannelCapabilityPolicy>(),
             new[] { new TestChannelHandler(ChannelType.Api) },
             NullLogger<ChannelGateway>.Instance);
 
@@ -79,6 +84,7 @@ public sealed class ChannelGatewayTests
         var executor = new Mock<IAgentExecutor>();
         var handoffExecutor = new Mock<IAgentHandoffExecutor>();
         var handoffPolicy = new Mock<IManagerHandoffPolicy>();
+        var requestFactory = new Mock<IChannelExecutionRequestFactory>();
 
         var channel = ChannelDefinition.Create("tenant-1", "api", ChannelType.Api);
 
@@ -99,6 +105,9 @@ public sealed class ChannelGatewayTests
                 Status = ExecutionStatus.Completed,
                 FinalResponse = "ok"
             });
+        requestFactory.Setup(x => x.CreateAsync(It.IsAny<ChannelMessage>(), It.IsAny<ChannelDefinition>(), It.IsAny<ChannelSession?>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ChannelMessage incoming, ChannelDefinition _, ChannelSession? s, string a, CancellationToken _) =>
+                BuildExecutionRequest(incoming, s, a));
 
         var gateway = new ChannelGateway(
             channelRepo.Object,
@@ -107,9 +116,10 @@ public sealed class ChannelGatewayTests
             executor.Object,
             handoffExecutor.Object,
             handoffPolicy.Object,
-            Mock.Of<AgentFlow.Security.IIntentRoutingStore>(),
-            Mock.Of<ITenantContextAccessor>(),
+            requestFactory.Object,
+            Mock.Of<IAgentDefinitionRepository>(),
             Mock.Of<IAuditMemory>(),
+            Mock.Of<IChannelCapabilityPolicy>(),
             new[] { new TestChannelHandler(ChannelType.Api) },
             NullLogger<ChannelGateway>.Instance);
 
@@ -132,6 +142,7 @@ public sealed class ChannelGatewayTests
         var executor = new Mock<IAgentExecutor>();
         var handoffExecutor = new Mock<IAgentHandoffExecutor>();
         var handoffPolicy = new Mock<IManagerHandoffPolicy>();
+        var requestFactory = new Mock<IChannelExecutionRequestFactory>();
 
         var channel = ChannelDefinition.Create("tenant-1", "api", ChannelType.Api);
         var session = ChannelSession.Create("tenant-1", channel.Id, ChannelType.Api, "user-1");
@@ -167,6 +178,9 @@ public sealed class ChannelGatewayTests
                 ResultJson = "{\"message\":\"Delegated reply\"}",
                 StatePatch = new Dictionary<string, string> { ["lastExecutionId"] = "exec-sub" }
             });
+        requestFactory.Setup(x => x.CreateAsync(It.IsAny<ChannelMessage>(), It.IsAny<ChannelDefinition>(), It.IsAny<ChannelSession?>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ChannelMessage incoming, ChannelDefinition _, ChannelSession? s, string a, CancellationToken _) =>
+                BuildExecutionRequest(incoming, s, a));
 
         var gateway = new ChannelGateway(
             channelRepo.Object,
@@ -175,9 +189,10 @@ public sealed class ChannelGatewayTests
             executor.Object,
             handoffExecutor.Object,
             handoffPolicy.Object,
-            Mock.Of<AgentFlow.Security.IIntentRoutingStore>(),
-            Mock.Of<ITenantContextAccessor>(),
+            requestFactory.Object,
+            Mock.Of<IAgentDefinitionRepository>(),
             Mock.Of<IAuditMemory>(),
+            Mock.Of<IChannelCapabilityPolicy>(),
             new[] { new TestChannelHandler(ChannelType.Api) },
             NullLogger<ChannelGateway>.Instance);
 
@@ -218,5 +233,21 @@ public sealed class ChannelGatewayTests
 
         public Task<HealthStatus> CheckHealthAsync(ChannelDefinition definition, CancellationToken ct = default)
             => Task.FromResult(HealthStatus.Ok());
+    }
+
+    private static AgentExecutionRequest BuildExecutionRequest(ChannelMessage incoming, ChannelSession? session, string agentKey)
+    {
+        return new AgentExecutionRequest
+        {
+            TenantId = incoming.TenantId,
+            AgentKey = agentKey,
+            UserId = incoming.From,
+            UserMessage = incoming.Content,
+            ContextJson = "{}",
+            CorrelationId = incoming.SessionId,
+            ThreadId = session?.ThreadId,
+            Priority = ExecutionPriority.Normal,
+            Metadata = new Dictionary<string, string>()
+        };
     }
 }

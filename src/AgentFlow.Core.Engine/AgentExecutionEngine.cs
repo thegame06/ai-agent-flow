@@ -42,6 +42,7 @@ public sealed class AgentExecutionEngine : IAgentExecutor
     private readonly IExecutionPlanner _planner;
     private readonly TokenBudgetService _tokenBudget;
     private readonly ILogger<AgentExecutionEngine> _logger;
+    private readonly IExecutionGovernancePolicy _governancePolicy;
     
     // ✅ NEW: Intent Routing dependencies (Fase 2.2)
     private readonly IIntentScoringEngine? _intentScoringEngine;
@@ -64,6 +65,7 @@ public sealed class AgentExecutionEngine : IAgentExecutor
         IExecutionPlanner planner,
         TokenBudgetService tokenBudget,
         ILogger<AgentExecutionEngine> logger,
+        IExecutionGovernancePolicy? governancePolicy = null,
         IIntentScoringEngine? intentScoringEngine = null, // ✅ NEW: Optional for backward compatibility
         IRoutingOrchestrator? routingOrchestrator = null, // ✅ NEW: Optional for backward compatibility
         IWorkflowEngine? workflowEngine = null, // ✅ NEW: Workflow execution engine
@@ -83,6 +85,7 @@ public sealed class AgentExecutionEngine : IAgentExecutor
         _planner = planner;
         _tokenBudget = tokenBudget;
         _logger = logger;
+        _governancePolicy = governancePolicy ?? new ExecutionGovernancePolicy();
         _intentScoringEngine = intentScoringEngine; // ✅ NEW
         _routingOrchestrator = routingOrchestrator; // ✅ NEW
         _workflowEngine = workflowEngine; // ✅ NEW
@@ -751,6 +754,37 @@ public sealed class AgentExecutionEngine : IAgentExecutor
         });
 
         var estimatedCostUsd = EstimateTokenCostUsd(totalTokens);
+        var isCostAllowed = _governancePolicy.IsCostAllowed(request.TenantId, "agent.execution", estimatedCostUsd, out var denialReason);
+        if (!isCostAllowed)
+        {
+            _logger.LogWarning(
+                "Execution cost guardrail exceeded. ExecutionId={ExecutionId} TenantId={TenantId} CostUsd={Cost} Reason={Reason}",
+                execution.Id,
+                request.TenantId,
+                estimatedCostUsd,
+                denialReason);
+        }
+        await _memory.Audit.RecordAsync(new AuditEntry
+        {
+            ExecutionId = execution.Id,
+            AgentId = agentDef.Id.ToString(),
+            TenantId = request.TenantId,
+            UserId = request.UserId,
+            EventType = AuditEventType.ConnectOperation,
+            CorrelationId = request.CorrelationId ?? string.Empty,
+            EventJson = JsonSerializer.Serialize(new
+            {
+                action = "governance.cost.evaluated",
+                policy = "execution_cost_guardrail",
+                decision = isCostAllowed ? "allow" : "deny",
+                flow = "agent.execution",
+                estimatedCostUsd,
+                totalTokens,
+                model = agentDef.Brain.ModelId,
+                agentKey = request.AgentKey
+            }),
+            OccurredAt = DateTimeOffset.UtcNow
+        }, ct);
         AgentFlowTelemetry.TokenCostPerExecution.Record(estimatedCostUsd, new TagList
         {
             { "agent_id", agentDef.Id.ToString() },

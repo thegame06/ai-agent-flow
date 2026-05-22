@@ -28,7 +28,7 @@ public sealed class RoutingOrchestratorTests
     [Fact]
     public async Task RouteMessage_HighConfidence_RoutesToWorkflow()
     {
-        var rule = new IntentRoutingRule { IntentKey = "comprar_producto", WorkflowDefinitionId = "wf-starter-sales", WorkflowName = "Starter ventas", TargetAgentId = "sales-agent", Priority = 100 };
+        var rule = CreateRule("comprar_producto", "wf-starter-sales", "sales-agent", 100);
         var classification = new IntentClassificationResult
         {
             Message = "quiero comprar",
@@ -41,7 +41,7 @@ public sealed class RoutingOrchestratorTests
         };
 
         _ownershipManager.Setup(x => x.GetStateAsync("tenant-1", "conv-1", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ConversationOwnershipState { IsLocked = false, CurrentOwnerAgentId = null, LockedUntil = null });
+            .ReturnsAsync(new ConversationOwnershipState { ConversationId = "conv-1", IsLocked = false, CurrentOwnerAgentId = null, LockedUntil = null });
         _ownershipManager.Setup(x => x.TryAcquireLockAsync("tenant-1", "conv-1", "sales-agent", It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new OwnershipLock { LockId = "lock-1", ConversationId = "conv-1", OwnerAgentId = "sales-agent", AcquiredAt = DateTimeOffset.UtcNow, ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(5) });
 
@@ -87,7 +87,7 @@ public sealed class RoutingOrchestratorTests
     [Fact]
     public async Task RouteMessage_LowConfidence_Queue()
     {
-        var rule = new IntentRoutingRule { IntentKey = "comprar_producto", WorkflowDefinitionId = "wf-starter-sales", TargetAgentId = "sales-agent", Priority = 100 };
+        var rule = CreateRule("comprar_producto", "wf-starter-sales", "sales-agent", 100);
         var classification = new IntentClassificationResult
         {
             Message = "me interesa algo",
@@ -114,7 +114,7 @@ public sealed class RoutingOrchestratorTests
     [Fact]
     public async Task RouteMessage_LockedByAnotherAgent_Reject()
     {
-        var rule = new IntentRoutingRule { IntentKey = "comprar_producto", WorkflowDefinitionId = "wf-starter-sales", TargetAgentId = "sales-agent", Priority = 100 };
+        var rule = CreateRule("comprar_producto", "wf-starter-sales", "sales-agent", 100);
         var classification = new IntentClassificationResult
         {
             Message = "quiero comprar",
@@ -127,7 +127,7 @@ public sealed class RoutingOrchestratorTests
         };
 
         _ownershipManager.Setup(x => x.GetStateAsync("tenant-1", "conv-4", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ConversationOwnershipState { IsLocked = true, CurrentOwnerAgentId = "other-agent", LockedUntil = DateTimeOffset.UtcNow.AddMinutes(1) });
+            .ReturnsAsync(new ConversationOwnershipState { ConversationId = "conv-4", IsLocked = true, CurrentOwnerAgentId = "other-agent", LockedUntil = DateTimeOffset.UtcNow.AddMinutes(1) });
 
         var decision = await _orchestrator.RouteMessageAsync(classification, new ConversationContext
         {
@@ -139,5 +139,25 @@ public sealed class RoutingOrchestratorTests
 
         Assert.Equal(RoutingAction.Reject, decision.Action);
         Assert.Equal("agent_conflict", decision.ReasonCode);
+    }
+
+    private static IntentRoutingRule CreateRule(string intentKey, string workflowId, string targetAgentId, int priority)
+    {
+        var now = DateTimeOffset.UtcNow;
+        return new IntentRoutingRule
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            TenantId = "tenant-1",
+            IntentKey = intentKey,
+            SourceAgentId = "router-agent",
+            TargetAgentId = targetAgentId,
+            WorkflowDefinitionId = workflowId,
+            WorkflowName = workflowId,
+            Priority = priority,
+            Enabled = true,
+            Version = 1,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
     }
 }

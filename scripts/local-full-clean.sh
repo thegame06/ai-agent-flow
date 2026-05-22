@@ -5,7 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RUN_DIR="$ROOT_DIR/.agent/run"
 COMPOSE_PROJECT="${COMPOSE_PROJECT_NAME:-aiagents}"
 
-PORTS=("${FRONTEND_PORT:-3039}" "${API_PORT:-5000}" "${QR_PORT:-3401}" "${MCP_TEST_PORT:-3501}" "${MCP_SERVER_PORT:-3502}")
+PORTS=("${FRONTEND_PORT:-3039}" "${API_PORT:-5000}" "${QR_PORT:-3401}" "${MCP_TEST_PORT:-3501}" "${MCP_SERVER_PORT:-3502}" "4222" "8222")
 
 stop_pid_file() {
   local file="$1"
@@ -77,7 +77,7 @@ if command -v docker >/dev/null 2>&1; then
 
   # Compose can leave named containers around in mixed Windows/WSL/Git Bash setups.
   # Remove only the managed local containers; volumes are kept unless WIPE_DATA=1.
-  docker rm -f agentflow-mcp-test agentflow-mongo-local agentflow-redis-local >/dev/null 2>&1 || true
+  docker rm -f agentflow-mcp-test agentflow-mongo-local agentflow-redis-local agentflow-qdrant-local agentflow-nats-local >/dev/null 2>&1 || true
 fi
 
 echo "[clean] final port check"

@@ -68,6 +68,7 @@ export const paths = {
       root: `${ROOTS.DASHBOARD}/governance`,
       policies: `${ROOTS.DASHBOARD}/governance/policies`,
       audit: `${ROOTS.DASHBOARD}/governance/audit`,
+      operations: `${ROOTS.DASHBOARD}/governance/operations`,
     },
     system: {
       root: `${ROOTS.DASHBOARD}/system`,

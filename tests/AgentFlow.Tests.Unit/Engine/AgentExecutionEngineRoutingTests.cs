@@ -5,6 +5,7 @@ using AgentFlow.Core.Engine;
 using AgentFlow.Domain.Aggregates;
 using AgentFlow.Domain.Enums;
 using AgentFlow.Domain.Repositories;
+using AgentFlow.Domain.ValueObjects;
 using AgentFlow.Intents.Classification;
 using AgentFlow.Intents.Classification.Models;
 using AgentFlow.Intents.Inbox;
@@ -14,6 +15,7 @@ using AgentFlow.Intents.Routing.Models;
 using AgentFlow.Security;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using RoutingConversationContext = AgentFlow.Intents.Routing.Models.ConversationContext;
 
 namespace AgentFlow.Tests.Unit.Engine;
 
@@ -48,7 +50,7 @@ public sealed class AgentExecutionEngineRoutingTests
         agentRepo.Setup(x => x.GetByIdAsync("router-agent", "tenant-1", It.IsAny<CancellationToken>()))
             .ReturnsAsync(routerAgent);
 
-        var rule = new IntentRoutingRule { IntentKey = "comprar_producto", WorkflowDefinitionId = "wf-starter-sales", TargetAgentId = "sales-agent", Priority = 100 };
+        var rule = CreateRule("comprar_producto", "wf-starter-sales", "sales-agent", 100);
         intentScoring.Setup(x => x.ClassifyAsync("quiero comprar", "tenant-1", "whatsapp", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new IntentClassificationResult
             {
@@ -63,7 +65,7 @@ public sealed class AgentExecutionEngineRoutingTests
 
         routingOrchestrator.Setup(x => x.RouteMessageAsync(
                 It.IsAny<IntentClassificationResult>(),
-                It.IsAny<ConversationContext>(),
+                It.IsAny<RoutingConversationContext>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new RoutingDecision
             {
@@ -103,10 +105,11 @@ public sealed class AgentExecutionEngineRoutingTests
             planner.Object,
             new TokenBudgetService(TokenBudgetConfig.Default),
             NullLogger<AgentExecutionEngine>.Instance,
-            intentScoring.Object,
-            routingOrchestrator.Object,
-            workflowEngine.Object,
-            inboxService.Object);
+            governancePolicy: null,
+            intentScoringEngine: intentScoring.Object,
+            routingOrchestrator: routingOrchestrator.Object,
+            workflowEngine: workflowEngine.Object,
+            conversationInboxService: inboxService.Object);
 
         var result = await engine.ExecuteAsync(new AgentExecutionRequest
         {
@@ -182,7 +185,7 @@ public sealed class AgentExecutionEngineRoutingTests
 
         routingOrchestrator.Setup(x => x.RouteMessageAsync(
                 It.IsAny<IntentClassificationResult>(),
-                It.IsAny<ConversationContext>(),
+                It.IsAny<RoutingConversationContext>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new RoutingDecision
             {
@@ -212,10 +215,11 @@ public sealed class AgentExecutionEngineRoutingTests
             planner.Object,
             new TokenBudgetService(TokenBudgetConfig.Default),
             NullLogger<AgentExecutionEngine>.Instance,
-            intentScoring.Object,
-            routingOrchestrator.Object,
-            workflowEngine.Object,
-            inboxService.Object);
+            governancePolicy: null,
+            intentScoringEngine: intentScoring.Object,
+            routingOrchestrator: routingOrchestrator.Object,
+            workflowEngine: workflowEngine.Object,
+            conversationInboxService: inboxService.Object);
 
         var result = await engine.ExecuteAsync(new AgentExecutionRequest
         {
@@ -290,7 +294,7 @@ public sealed class AgentExecutionEngineRoutingTests
 
         routingOrchestrator.Setup(x => x.RouteMessageAsync(
                 It.IsAny<IntentClassificationResult>(),
-                It.IsAny<ConversationContext>(),
+                It.IsAny<RoutingConversationContext>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new RoutingDecision
             {
@@ -332,11 +336,12 @@ public sealed class AgentExecutionEngineRoutingTests
             planner.Object,
             new TokenBudgetService(TokenBudgetConfig.Default),
             NullLogger<AgentExecutionEngine>.Instance,
-            intentScoring.Object,
-            routingOrchestrator.Object,
-            workflowEngine.Object,
-            inboxService.Object,
-            escalationNotifier.Object);
+            governancePolicy: null,
+            intentScoringEngine: intentScoring.Object,
+            routingOrchestrator: routingOrchestrator.Object,
+            workflowEngine: workflowEngine.Object,
+            conversationInboxService: inboxService.Object,
+            humanEscalationNotifier: escalationNotifier.Object);
 
         await engine.ExecuteAsync(new AgentExecutionRequest
         {
@@ -415,5 +420,25 @@ public sealed class AgentExecutionEngineRoutingTests
         var agent = create.Value!;
         agent.SetSystemRole(AgentSystemRole.Router);
         return agent;
+    }
+
+    private static IntentRoutingRule CreateRule(string intentKey, string workflowId, string targetAgentId, int priority)
+    {
+        var now = DateTimeOffset.UtcNow;
+        return new IntentRoutingRule
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            TenantId = "tenant-1",
+            IntentKey = intentKey,
+            SourceAgentId = "router-agent",
+            TargetAgentId = targetAgentId,
+            WorkflowDefinitionId = workflowId,
+            WorkflowName = workflowId,
+            Priority = priority,
+            Enabled = true,
+            Version = 1,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
     }
 }

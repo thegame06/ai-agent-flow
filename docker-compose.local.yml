@@ -47,6 +47,20 @@ services:
       retries: 10
       start_period: 30s
 
+  nats-local:
+    image: nats:2.10-alpine
+    container_name: agentflow-nats-local
+    restart: unless-stopped
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    command: ["-js", "-m", "8222"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8222/healthz || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
   mcp-test:
     image: node:22-alpine
     container_name: agentflow-mcp-test
@@ -64,6 +78,8 @@ services:
       redis-local:
         condition: service_healthy
       qdrant-local:
+        condition: service_healthy
+      nats-local:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:3501/health || exit 1"]

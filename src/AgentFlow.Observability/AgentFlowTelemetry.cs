@@ -116,6 +116,18 @@ public static class AgentFlowTelemetry
 
     public static readonly Histogram<double> ExecutionCostEstimate =
         _meter.CreateHistogram<double>("agentflow.execution.cost_estimate_usd", "usd", "Estimated cost by flow/correlation id");
+
+    public static readonly Counter<long> EventDeliveryRetries =
+        _meter.CreateCounter<long>("agentflow.events.delivery.retries", "retries", "Event delivery retries by transport/agent");
+
+    public static readonly Counter<long> EventDeadLetters =
+        _meter.CreateCounter<long>("agentflow.events.deadletters", "events", "Events sent to dead-letter channel");
+
+    public static readonly Counter<long> ModelRoleSelections =
+        _meter.CreateCounter<long>("agentflow.models.role.selections", "selections", "Model selections by role/model/provider");
+
+    public static readonly Counter<long> ModelRoleFallbacks =
+        _meter.CreateCounter<long>("agentflow.models.role.fallbacks", "fallbacks", "Model fallback selections by role/reason");
 }
 
 /// <summary>
@@ -181,30 +193,36 @@ public static class ObservabilityExtensions
 {
     public static IServiceCollection AddAgentFlowObservability(
         this IServiceCollection services,
-        string otlpEndpoint = "http://localhost:4317")
+        string telemetryExporter = "none",
+        string? otlpEndpoint = null)
     {
-        services.AddOpenTelemetry()
-            .WithTracing(builder =>
-            {
-                builder
-                    .SetResourceBuilder(ResourceBuilder.CreateDefault()
-                        .AddService(AgentFlowTelemetry.ServiceName, serviceVersion: AgentFlowTelemetry.Version))
-                    .AddSource(AgentFlowTelemetry.EngineSource.Name)
-                    .AddSource(AgentFlowTelemetry.BrainSource.Name)
-                    .AddSource(AgentFlowTelemetry.ToolSource.Name)
-                    .AddSource(AgentFlowTelemetry.SecuritySource.Name)
-                    .AddAspNetCoreInstrumentation()
-                    .AddHttpClientInstrumentation()
-                    .AddOtlpExporter(opt => opt.Endpoint = new Uri(otlpEndpoint));
-            })
-            .WithMetrics(builder =>
-            {
-                builder
-                    .SetResourceBuilder(ResourceBuilder.CreateDefault()
-                        .AddService(AgentFlowTelemetry.ServiceName))
-                    .AddMeter(AgentFlowTelemetry.ServiceName)
-                    .AddOtlpExporter(opt => opt.Endpoint = new Uri(otlpEndpoint));
-            });
+        var exporter = (telemetryExporter ?? "none").Trim().ToLowerInvariant();
+        var otel = services.AddOpenTelemetry();
+        otel.WithTracing(builder =>
+        {
+            builder
+                .SetResourceBuilder(ResourceBuilder.CreateDefault()
+                    .AddService(AgentFlowTelemetry.ServiceName, serviceVersion: AgentFlowTelemetry.Version))
+                .AddSource(AgentFlowTelemetry.EngineSource.Name)
+                .AddSource(AgentFlowTelemetry.BrainSource.Name)
+                .AddSource(AgentFlowTelemetry.ToolSource.Name)
+                .AddSource(AgentFlowTelemetry.SecuritySource.Name)
+                .AddAspNetCoreInstrumentation()
+                .AddHttpClientInstrumentation();
+
+            if (exporter == "console")
+                builder.AddConsoleExporter();
+        });
+        otel.WithMetrics(builder =>
+        {
+            builder
+                .SetResourceBuilder(ResourceBuilder.CreateDefault()
+                    .AddService(AgentFlowTelemetry.ServiceName))
+                .AddMeter(AgentFlowTelemetry.ServiceName);
+
+            if (exporter == "console")
+                builder.AddConsoleExporter();
+        });
 
         return services;
     }

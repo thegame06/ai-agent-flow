@@ -127,6 +127,7 @@ export const navData: NavSectionProps['data'] = [
           { title: 'Equipos y atencion', path: paths.dashboard.system.workforce },
           { title: 'Politicas', path: paths.dashboard.governance.policies },
           { title: 'Auditoria', path: paths.dashboard.governance.audit },
+          { title: 'Operaciones IA', path: paths.dashboard.governance.operations },
         ],
       },
     ],

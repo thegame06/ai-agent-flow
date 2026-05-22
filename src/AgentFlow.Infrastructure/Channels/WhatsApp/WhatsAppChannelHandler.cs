@@ -2,6 +2,7 @@ using AgentFlow.Application.Channels;
 using AgentFlow.Domain.Aggregates;
 using AgentFlow.Domain.Common;
 using AgentFlow.Domain.Repositories;
+using AgentFlow.Abstractions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -15,15 +16,18 @@ public sealed class WhatsAppChannelHandler : IChannelHandler, IChannelQrProvider
     private readonly IChannelSessionRepository _sessionRepo;
     private readonly ILogger<WhatsAppChannelHandler> _logger;
     private readonly WhatsAppClient _whatsappClient;
+    private readonly IProviderResolver _providerResolver;
 
     public ChannelType SupportedChannelType => ChannelType.WhatsApp;
 
     public WhatsAppChannelHandler(
         IChannelSessionRepository sessionRepo,
+        IProviderResolver providerResolver,
         IOptions<WhatsAppOptions> options,
         ILogger<WhatsAppChannelHandler> logger)
     {
         _sessionRepo = sessionRepo;
+        _providerResolver = providerResolver;
         _logger = logger;
         _whatsappClient = new WhatsAppClient(options.Value, logger);
     }
@@ -129,27 +133,40 @@ public sealed class WhatsAppChannelHandler : IChannelHandler, IChannelQrProvider
             var sessionExpired = await IsSessionExpiredAsync(sessionId, definition, ct);
 
             string waMessageId;
-            if (sessionExpired)
+            var authMode = definition.Config.GetValueOrDefault("AuthMode", "qr");
+            var shouldUseProviderResolver =
+                !string.Equals(authMode, "qr", StringComparison.OrdinalIgnoreCase) &&
+                (!string.IsNullOrWhiteSpace(definition.Config.GetValueOrDefault("ConnectionId")) ||
+                 !string.IsNullOrWhiteSpace(definition.Config.GetValueOrDefault("Provider")));
+
+            if (shouldUseProviderResolver)
             {
-                var templateName = definition.ReopenTemplateName;
-                if (string.IsNullOrWhiteSpace(templateName))
-                {
-                    _logger.LogWarning(
-                        "Session window closed for {To} but no ReopenTemplateName configured on channel {ChannelId}. " +
-                        "Message will NOT be delivered. Configure a WhatsApp-approved template.",
-                        to, definition.Id);
-                    return SendResult.Fail("Session window closed and no reopen template configured.");
-                }
-
-                _logger.LogInformation(
-                    "Session window closed for {To}. Sending template '{Template}' to re-open window.",
-                    to, templateName);
-
-                waMessageId = await _whatsappClient.SendTemplateMessageAsync(to, templateName, ct);
+                waMessageId = await SendViaProviderAsync(definition, to, message.Content, sessionExpired, ct);
             }
             else
             {
-                waMessageId = await _whatsappClient.SendTextMessageAsync(to, message.Content, ct);
+                if (sessionExpired)
+                {
+                    var templateName = definition.ReopenTemplateName;
+                    if (string.IsNullOrWhiteSpace(templateName))
+                    {
+                        _logger.LogWarning(
+                            "Session window closed for {To} but no ReopenTemplateName configured on channel {ChannelId}. " +
+                            "Message will NOT be delivered. Configure a WhatsApp-approved template.",
+                            to, definition.Id);
+                        return SendResult.Fail("Session window closed and no reopen template configured.");
+                    }
+
+                    _logger.LogInformation(
+                        "Session window closed for {To}. Sending template '{Template}' to re-open window.",
+                        to, templateName);
+
+                    waMessageId = await _whatsappClient.SendTemplateMessageAsync(to, templateName, ct);
+                }
+                else
+                {
+                    waMessageId = await _whatsappClient.SendTextMessageAsync(to, message.Content, ct);
+                }
             }
 
             message.Metadata["wa_message_id_out"] = waMessageId;
@@ -300,9 +317,65 @@ public sealed class WhatsAppChannelHandler : IChannelHandler, IChannelQrProvider
 
     public async Task<HealthStatus> CheckHealthAsync(ChannelDefinition definition, CancellationToken ct = default)
     {
+        var authMode = definition.Config.GetValueOrDefault("AuthMode", "qr");
+        var usesProviderResolver =
+            !string.Equals(authMode, "qr", StringComparison.OrdinalIgnoreCase) &&
+            (!string.IsNullOrWhiteSpace(definition.Config.GetValueOrDefault("ConnectionId")) ||
+             !string.IsNullOrWhiteSpace(definition.Config.GetValueOrDefault("Provider")));
+        if (usesProviderResolver)
+        {
+            return HealthStatus.Ok("WhatsApp provider-based channel ready.");
+        }
+
         var isHealthy = await _whatsappClient.IsConnectedAsync(ct);
         return isHealthy
             ? HealthStatus.Ok("WhatsApp connection active")
             : HealthStatus.Unhealthy("WhatsApp disconnected");
+    }
+
+    private async Task<string> SendViaProviderAsync(
+        ChannelDefinition definition,
+        string to,
+        string content,
+        bool sessionExpired,
+        CancellationToken ct)
+    {
+        var capability = sessionExpired ? CommunicationCapabilities.TemplateSend : CommunicationCapabilities.TextSend;
+        var resolved = await _providerResolver.ResolveRequiredAsync<IMessageSendProviderAdapter>(
+            new ProviderResolutionContext
+            {
+                TenantId = definition.TenantId,
+                Capability = capability,
+                Channel = "whatsapp",
+                PreferredProviderId = definition.Config.GetValueOrDefault("Provider"),
+                ConnectionId = definition.Config.GetValueOrDefault("ConnectionId"),
+                Metadata = new Dictionary<string, string>
+                {
+                    ["channelId"] = definition.Id
+                }
+            },
+            ct);
+
+        var templateName = sessionExpired ? definition.ReopenTemplateName : null;
+        if (sessionExpired && string.IsNullOrWhiteSpace(templateName))
+            throw new InvalidOperationException("Session window closed and no ReopenTemplateName configured for provider-based WhatsApp delivery.");
+
+        var result = await resolved.Adapter.SendMessageAsync(
+            resolved.Connection,
+            new ProviderMessageSendRequest
+            {
+                Recipient = to,
+                Content = content,
+                TemplateName = templateName,
+                StatusCallbackUrl = definition.Config.GetValueOrDefault("StatusCallbackUrl"),
+                Metadata = new Dictionary<string, string>
+                {
+                    ["channelId"] = definition.Id,
+                    ["authMode"] = definition.Config.GetValueOrDefault("AuthMode", "business")
+                }
+            },
+            ct);
+
+        return result.ProviderMessageId;
     }
 }

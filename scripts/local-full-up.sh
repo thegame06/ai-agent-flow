@@ -64,7 +64,7 @@ if command -v docker >/dev/null 2>&1; then
     exit 1
   fi
 
-  echo "[full-up] Starting infra (mongo_local_data + redis_local_data + mcp-test) via docker-compose.local.yml"
+  echo "[full-up] Starting infra (mongo + redis + qdrant + nats + mcp-test) via docker-compose.local.yml"
   MCP_TEST_PORT=${MCP_TEST_PORT:-3501} docker compose -p "$COMPOSE_PROJECT" -f "$ROOT_DIR/docker-compose.local.yml" up -d --wait
 else
   echo "[full-up] docker not found; skipping container infra"

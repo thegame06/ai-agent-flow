@@ -8,6 +8,7 @@ using AgentFlow.Domain.Aggregates;
 using AgentFlow.Domain.Enums;
 using AgentFlow.Domain.Repositories;
 using AgentFlow.Domain.ValueObjects;
+using AgentFlow.Events;
 using AgentFlow.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -28,6 +29,8 @@ public sealed class AuditController : ControllerBase
     private readonly IAgentExecutionRepository _executionRepo;
     private readonly IAgentDefinitionRepository _agentRepo;
     private readonly ICommerceStore? _commerce;
+    private readonly IDeadLetterStore _deadLetterStore;
+    private readonly IAgentEventTransport _eventTransport;
 
     public AuditController(
         IAuditMemory auditMemory,
@@ -38,6 +41,8 @@ public sealed class AuditController : ControllerBase
         IConversationThreadRepository threadRepo,
         IAgentExecutionRepository executionRepo,
         IAgentDefinitionRepository agentRepo,
+        IDeadLetterStore deadLetterStore,
+        IAgentEventTransport eventTransport,
         ICommerceStore? commerce = null)
     {
         _auditMemory = auditMemory;
@@ -48,6 +53,8 @@ public sealed class AuditController : ControllerBase
         _threadRepo = threadRepo;
         _executionRepo = executionRepo;
         _agentRepo = agentRepo;
+        _deadLetterStore = deadLetterStore;
+        _eventTransport = eventTransport;
         _commerce = commerce;
     }
 
@@ -196,6 +203,146 @@ public sealed class AuditController : ControllerBase
             .ToList();
 
         return Ok(summary);
+    }
+
+    [HttpGet("operations/summary")]
+    public async Task<IActionResult> GetOperationsSummary(
+        [FromRoute] string tenantId,
+        [FromQuery] int limit = 2000,
+        CancellationToken ct = default)
+    {
+        if (!CanAccess(tenantId)) return Forbid();
+
+        var boundedLimit = Math.Clamp(limit, 100, 10000);
+        var recent = await _auditMemory.GetRecentAsync(tenantId, boundedLimit, ct);
+
+        var policyFallbacks = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var providerFallbacks = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var modelFallbacks = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var executionCosts = new List<double>();
+
+        foreach (var entry in recent)
+        {
+            var payload = ParseJson(entry.EventJson);
+            if (payload is null)
+                continue;
+
+            var policy = ReadString(payload, "policy")
+                ?? ReadNestedString(payload, "details", "policy");
+            var decision = ReadString(payload, "decision")
+                ?? ReadNestedString(payload, "details", "decision");
+            if (!string.IsNullOrWhiteSpace(policy) && !string.IsNullOrWhiteSpace(decision) &&
+                (decision!.Contains("fallback", StringComparison.OrdinalIgnoreCase) || decision.Contains("deny", StringComparison.OrdinalIgnoreCase)))
+            {
+                policyFallbacks[policy] = policyFallbacks.GetValueOrDefault(policy) + 1;
+            }
+
+            var provider = ReadString(payload, "provider")
+                ?? ReadNestedString(payload, "details", "provider")
+                ?? ReadString(payload, "ttsProvider")
+                ?? ReadString(payload, "transcriptProvider")
+                ?? ReadNestedString(payload, "details", "ttsProvider")
+                ?? ReadNestedString(payload, "details", "transcriptProvider");
+            if (!string.IsNullOrWhiteSpace(provider))
+                providerFallbacks[provider!] = providerFallbacks.GetValueOrDefault(provider!) + 1;
+
+            var model = ReadString(payload, "model")
+                ?? ReadNestedString(payload, "details", "model")
+                ?? ReadString(payload, "fallbackModel")
+                ?? ReadString(payload, "modelId")
+                ?? ReadNestedString(payload, "details", "fallbackModel")
+                ?? ReadNestedString(payload, "details", "modelId");
+            if (!string.IsNullOrWhiteSpace(model))
+                modelFallbacks[model!] = modelFallbacks.GetValueOrDefault(model!) + 1;
+
+            var estimatedCostRaw = ReadString(payload, "estimatedCostUsd")
+                ?? ReadNestedString(payload, "details", "estimatedCostUsd");
+            if (double.TryParse(estimatedCostRaw, NumberStyles.Float, CultureInfo.InvariantCulture, out var cost))
+                executionCosts.Add(cost);
+        }
+
+        return Ok(new
+        {
+            tenantId,
+            inspectedEvents = recent.Count,
+            totalFallbackOrDenialSignals = policyFallbacks.Values.Sum(),
+            avgEstimatedCostUsd = executionCosts.Count == 0 ? 0 : Math.Round(executionCosts.Average(), 6),
+            p95EstimatedCostUsd = executionCosts.Count == 0 ? 0 : Math.Round(Percentile(executionCosts, 0.95), 6),
+            byPolicy = policyFallbacks
+                .OrderByDescending(x => x.Value)
+                .Select(x => new { key = x.Key, count = x.Value })
+                .ToList(),
+            byProvider = providerFallbacks
+                .OrderByDescending(x => x.Value)
+                .Take(20)
+                .Select(x => new { key = x.Key, count = x.Value })
+                .ToList(),
+            byModel = modelFallbacks
+                .OrderByDescending(x => x.Value)
+                .Take(20)
+                .Select(x => new { key = x.Key, count = x.Value })
+                .ToList(),
+            alerts = BuildOperationalAlerts(
+                recent.Count,
+                policyFallbacks.Values.Sum(),
+                executionCosts,
+                _deadLetterStore.List(500))
+        });
+    }
+
+    [HttpGet("operations/deadletters")]
+    public IActionResult GetDeadLetters(
+        [FromRoute] string tenantId,
+        [FromQuery] int limit = 200)
+    {
+        if (!CanAccess(tenantId)) return Forbid();
+
+        var items = _deadLetterStore.List(limit)
+            .Where(x => string.Equals(x.Event.TenantId, tenantId, StringComparison.OrdinalIgnoreCase))
+            .Select(x => new
+            {
+                x.Id,
+                x.AgentKey,
+                x.Reason,
+                x.OccurredAt,
+                x.Replayed,
+                x.ReplayedAt,
+                eventId = x.Event.EventId,
+                eventType = x.Event.EventType,
+                correlationId = x.Event.CorrelationId,
+                sessionId = x.Event.SessionId
+            })
+            .ToList();
+
+        return Ok(items);
+    }
+
+    [HttpPost("operations/deadletters/{deadLetterId}/replay")]
+    public async Task<IActionResult> ReplayDeadLetter(
+        [FromRoute] string tenantId,
+        [FromRoute] string deadLetterId,
+        CancellationToken ct = default)
+    {
+        if (!CanAccess(tenantId)) return Forbid();
+        var item = _deadLetterStore.Get(deadLetterId);
+        if (item is null || !string.Equals(item.Event.TenantId, tenantId, StringComparison.OrdinalIgnoreCase))
+            return NotFound(new { error = "Dead-letter event not found." });
+
+        var replayEvent = item.Event with
+        {
+            EventId = Guid.NewGuid().ToString("N"),
+            OccurredAt = DateTimeOffset.UtcNow,
+            Headers = new Dictionary<string, string>(item.Event.Headers)
+            {
+                ["replay"] = "true",
+                ["replayOfDeadLetterId"] = deadLetterId
+            }
+        };
+
+        await _eventTransport.PublishAsync(replayEvent, ct);
+        _deadLetterStore.MarkReplayed(deadLetterId);
+
+        return Ok(new { status = "replayed", deadLetterId, replayEventId = replayEvent.EventId });
     }
 
     [HttpGet("journey/{correlationId}")]
@@ -767,6 +914,64 @@ public sealed class AuditController : ControllerBase
         var mustQuote = normalized.Contains(',') || normalized.Contains('"');
         if (!mustQuote) return normalized;
         return $"\"{normalized.Replace("\"", "\"\"")}\"";
+    }
+
+    private static double Percentile(List<double> values, double percentile)
+    {
+        var sorted = values.OrderBy(x => x).ToArray();
+        if (sorted.Length == 0) return 0;
+        var index = (sorted.Length - 1) * percentile;
+        var lower = (int)Math.Floor(index);
+        var upper = (int)Math.Ceiling(index);
+        if (lower == upper) return sorted[lower];
+        var weight = index - lower;
+        return sorted[lower] * (1 - weight) + sorted[upper] * weight;
+    }
+
+    private static IReadOnlyList<object> BuildOperationalAlerts(
+        int inspectedEvents,
+        int fallbackSignals,
+        List<double> executionCosts,
+        IReadOnlyList<DeadLetterEnvelope> deadLetters)
+    {
+        var alerts = new List<object>();
+        var fallbackRate = inspectedEvents == 0 ? 0 : (double)fallbackSignals / inspectedEvents;
+        if (fallbackRate >= 0.10)
+        {
+            alerts.Add(new
+            {
+                severity = "warning",
+                code = "fallback_rate_high",
+                message = $"Fallback/deny rate is high ({fallbackRate:P1})."
+            });
+        }
+
+        if (executionCosts.Count > 0)
+        {
+            var p95 = Percentile(executionCosts, 0.95);
+            if (p95 >= 0.50)
+            {
+                alerts.Add(new
+                {
+                    severity = "warning",
+                    code = "cost_p95_high",
+                    message = $"P95 estimated execution cost is high ({p95:F4} USD)."
+                });
+            }
+        }
+
+        var recentDeadLetters = deadLetters.Count(x => x.OccurredAt >= DateTimeOffset.UtcNow.AddHours(-1));
+        if (recentDeadLetters > 0)
+        {
+            alerts.Add(new
+            {
+                severity = recentDeadLetters >= 10 ? "critical" : "warning",
+                code = "deadletters_detected",
+                message = $"Detected {recentDeadLetters} dead-letter events in the last hour."
+            });
+        }
+
+        return alerts;
     }
 }
 

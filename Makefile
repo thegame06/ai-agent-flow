@@ -4,7 +4,7 @@ ROOT := $(shell pwd)
 TEST_SCRIPT := $(ROOT)/scripts/test/ephemeral.sh
 DOTNET := $(shell bash $(ROOT)/scripts/resolve-dotnet.sh)
 
-.PHONY: help test-env-up test-env-down test-ephemeral test-unit test-integration test-backend test-frontend test-all quality-no-mock contract-check qa-one-shot up-local-full down-local-full clean-local-full restart-local-full refresh-local-full check-qr
+.PHONY: help test-env-up test-env-down test-ephemeral test-unit test-integration test-backend test-frontend test-all quality-no-mock contract-check qa-one-shot up-local-full down-local-full clean-local-full restart-local-full refresh-local-full check-qr check-local-ports verify-local-stack deadletters-list deadletters-replay
 
 help:
 	@echo "Available targets:"
@@ -19,12 +19,16 @@ help:
 	@echo "  make quality-no-mock    # Fail if runtime code contains mock/stub/simulated paths"
 	@echo "  make contract-check     # Validate IAgentBrain SK/MAF contract golden suite"
 	@echo "  make qa-one-shot        # Full QA gate (guardrail + backend + frontend)"
-	@echo "  make up-local-full      # Start full local stack (infra + api + frontend + qr bridge)"
+	@echo "  make up-local-full      # Start full local stack (infra + api + frontend + qr bridge; includes NATS)"
 	@echo "  make down-local-full    # Stop full local stack (keeps docker volumes/data)"
 	@echo "  make clean-local-full   # Kill stale stack/processes (keeps docker volumes/data)"
 	@echo "  make restart-local-full # Restart stack without wiping data"
 	@echo "  make refresh-local-full # Full refresh: clean + wipe volumes + start"
 	@echo "  make check-qr CHANNEL_ID=<id> # Debug QR bridge/session for a channel"
+	@echo "  make check-local-ports  # Check expected local ports (including NATS)"
+	@echo "  make verify-local-stack # Verify docker local stack health/ports/endpoints"
+	@echo "  make deadletters-list TENANT_ID=<id> [API_BASE=http://localhost:5000] # List DLQ items"
+	@echo "  make deadletters-replay TENANT_ID=<id> DEADLETTER_ID=<id> [API_BASE=http://localhost:5000] # Replay one DLQ item"
 
 test-env-up:
 	@bash $(TEST_SCRIPT) up
@@ -84,5 +88,18 @@ refresh-local-full:
 check-qr:
 	@if [[ -z "$$CHANNEL_ID" ]]; then echo "Usage: make check-qr CHANNEL_ID=<id>"; exit 1; fi
 	@bash scripts/check-qr.sh "$$CHANNEL_ID"
+
+check-local-ports:
+	@bash scripts/check-local-ports.sh
+
+verify-local-stack:
+	@bash scripts/verify-docker-linux.sh
+
+deadletters-list:
+	@TENANT_ID=$${TENANT_ID:-tenant-1} API_BASE=$${API_BASE:-http://localhost:5000} bash scripts/operations/deadletters.sh list
+
+deadletters-replay:
+	@if [[ -z "$$DEADLETTER_ID" ]]; then echo "Usage: make deadletters-replay TENANT_ID=<id> DEADLETTER_ID=<id> [API_BASE=http://localhost:5000]"; exit 1; fi
+	@TENANT_ID=$${TENANT_ID:-tenant-1} API_BASE=$${API_BASE:-http://localhost:5000} bash scripts/operations/deadletters.sh replay "$$DEADLETTER_ID"
 
 test-all: test-ephemeral

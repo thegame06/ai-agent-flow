@@ -161,6 +161,9 @@ export const endpoints = {
       list: (tenantId: string) => `/api/v1/tenants/${tenantId}/audit`,
       correlations: (tenantId: string) => `/api/v1/tenants/${tenantId}/audit/correlations`,
       journey: (tenantId: string, correlationId: string) => `/api/v1/tenants/${tenantId}/audit/journey/${encodeURIComponent(correlationId)}`,
+      operationsSummary: (tenantId: string) => `/api/v1/tenants/${tenantId}/audit/operations/summary`,
+      deadLetters: (tenantId: string) => `/api/v1/tenants/${tenantId}/audit/operations/deadletters`,
+      replayDeadLetter: (tenantId: string, deadLetterId: string) => `/api/v1/tenants/${tenantId}/audit/operations/deadletters/${deadLetterId}/replay`,
     },
     // Evaluations
     evaluations: {

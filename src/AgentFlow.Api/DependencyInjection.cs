@@ -3,6 +3,7 @@ using AgentFlow.Api.AuthProfiles;
 using AgentFlow.Api.Commerce;
 using AgentFlow.Api.Connect;
 using AgentFlow.Api.Routing;
+using AgentFlow.Api.Voice;
 using AgentFlow.Api.Workflow;
 using AgentFlow.Application.Channels;
 using AgentFlow.Application.Memory;
@@ -20,6 +21,7 @@ using AgentFlow.Infrastructure.Channels.WebChat;
 using AgentFlow.Infrastructure.Channels.WhatsApp;
 using AgentFlow.Infrastructure.Memory;
 using AgentFlow.Infrastructure.Persistence;
+using AgentFlow.Infrastructure.Providers;
 using AgentFlow.Infrastructure.Repositories;
 using AgentFlow.Intents;
 using AgentFlow.ModelRouting;
@@ -52,15 +54,16 @@ public static class DependencyInjection
             .AddDslEngine()
             .AddPolicyEngine()
             .AddEvaluationEngine()
-            .AddModelRouting()
+            .AddModelRouting(configuration)
             .AddTestRunner()
-            .AddEventTransport()
+            .AddEventTransport(configuration)
             .AddPromptEngine()
             .AddAgentFlowRedis(configuration.GetConnectionString("Redis") ?? "localhost:6379")
             .AddAgentFlowExtensions()
             .AddMongoDB(configuration)
             .AddRepositories()
             .AddChannelGateway(configuration)
+            .AddCommunicationPlatform()
             .AddSingleton<IAuthProfilesStore, MongoAuthProfilesStore>()
             .AddSingleton<IModelCatalogStore, MongoModelCatalogStore>()
             .AddScoped<IModelCredentialResolver, AuthProfileModelCredentialResolver>()
@@ -73,7 +76,9 @@ public static class DependencyInjection
             .AddIntentRouting()
             .AddAgentEngine(configuration)
             .AddMemoryServices(configuration)
-            .AddAgentFlowObservability(configuration["Telemetry:OtlpEndpoint"] ?? "http://localhost:4317")
+            .AddAgentFlowObservability(
+                configuration["Telemetry:Exporter"] ?? "none",
+                configuration["Telemetry:OtlpEndpoint"])
             .AddMcpGateway(configuration);
 
         services.AddSingleton<IWorkflowExecutionQueue, InMemoryWorkflowExecutionQueue>();
@@ -83,6 +88,35 @@ public static class DependencyInjection
         services.AddHostedService<WorkflowRuntimeWorker>();
         services.AddHostedService<WorkflowCatalogSeeder>();
         services.AddHostedService<ModelRoutingBootstrapService>();
+        services.AddHostedService<VoiceRuntimeEventDispatcher>();
+        services.AddHostedService<VoicePlaybackGateway>();
+        services.AddScoped<ITwilioWebhookSignatureValidator, TwilioWebhookSignatureValidator>();
+
+        return services;
+    }
+
+    private static IServiceCollection AddCommunicationPlatform(this IServiceCollection services)
+    {
+        services.AddSingleton<IProviderAdapter, TwilioWhatsAppProviderAdapter>();
+        services.AddSingleton<IProviderAdapter, TwilioVoiceProviderAdapter>();
+        services.AddSingleton<IProviderAdapter, MetaWhatsAppProviderAdapter>();
+        services.AddSingleton<IProviderAdapter, OpenAiTranscriptionProviderAdapter>();
+        services.AddSingleton<IProviderAdapter, OpenAiSynthesisProviderAdapter>();
+        services.AddSingleton<IProviderRegistry>(sp =>
+        {
+            var registry = new InMemoryProviderRegistry();
+            foreach (var adapter in sp.GetServices<IProviderAdapter>())
+            {
+                registry.Register(adapter);
+            }
+            return registry;
+        });
+        services.AddScoped<IProviderResolver, TenantProviderResolver>();
+
+        services.AddScoped<IAgentRuntime, TextAgentRuntime>();
+        services.AddScoped<IAgentRuntime, VoiceAgentRuntime>();
+        services.AddScoped<IAgentRuntime, MultimodalRealtimeRuntime>();
+        services.AddScoped<IAgentRuntimeRegistry, AgentRuntimeRegistry>();
 
         return services;
     }
@@ -150,11 +184,11 @@ public static class DependencyInjection
     private static IServiceCollection AddChannelGateway(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddScoped<IChannelGateway, ChannelGateway>();
-        services.AddSingleton<IChannelHandler, WhatsAppChannelHandler>();
-        services.AddSingleton<IChannelHandler, WebChatChannelHandler>();
-        services.AddSingleton<IChannelHandler, ApiChannelHandler>();
-        services.AddSingleton<IChannelHandler, VoiceChannelHandler>();
-        services.AddSingleton<IChannelHandler, CallCenterChannelHandler>();
+        services.AddScoped<IChannelHandler, WhatsAppChannelHandler>();
+        services.AddScoped<IChannelHandler, WebChatChannelHandler>();
+        services.AddScoped<IChannelHandler, ApiChannelHandler>();
+        services.AddScoped<IChannelHandler, VoiceChannelHandler>();
+        services.AddScoped<IChannelHandler, CallCenterChannelHandler>();
         services.Configure<WhatsAppOptions>(configuration.GetSection("WhatsApp"));
 
         return services;
@@ -227,7 +261,19 @@ public static class DependencyInjection
     private static IServiceCollection AddAgentEngine(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddScoped<IAgentExecutor, AgentExecutionEngine>();
+        services.AddSingleton<IExecutionGovernancePolicy>(_ =>
+        {
+            var raw = configuration["Governance:MaxExecutionCostUsd"];
+            var parsed = double.TryParse(raw, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var value)
+                ? value
+                : 0.50d;
+            return new ExecutionGovernancePolicy(parsed);
+        });
+        services.AddSingleton<IChannelCapabilityPolicy, ChannelCapabilityPolicy>();
+        services.AddScoped<IChannelExecutionRequestFactory, ChannelExecutionRequestFactory>();
+        services.AddSingleton<IChannelDeliveryPolicy, ChannelDeliveryPolicy>();
         services.AddScoped<IAgentHandoffExecutor, AgentHandoffExecutor>();
+        services.AddScoped<IVoiceSessionOrchestrator, VoiceSessionOrchestrator>();
         services.AddScoped<IToolExecutor, ToolExecutorService>();
         services.AddScoped<IToolAuthorizationService, DefaultToolAuthorizationService>();
         services.AddSingleton<IToolSandbox, DefaultToolSandbox>();

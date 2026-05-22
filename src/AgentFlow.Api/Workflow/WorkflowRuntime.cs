@@ -86,6 +86,7 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
         var httpClientFactory = scope.ServiceProvider.GetService<IHttpClientFactory>();
         var mcpGateway = scope.ServiceProvider.GetRequiredService<IMcpToolGateway>();
         var agentRepo = scope.ServiceProvider.GetRequiredService<IAgentDefinitionRepository>();
+        var providerResolver = scope.ServiceProvider.GetRequiredService<IProviderResolver>();
 
         var execution = (await store.GetExecutionsAsync(item.TenantId, 500, ct))
             .FirstOrDefault(x => x.Id == item.ExecutionId);
@@ -160,6 +161,7 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
                         httpClientFactory,
                         mcpGateway,
                         agentRepo,
+                        providerResolver,
                         scope.ServiceProvider,
                         current,
                         execution,
@@ -229,6 +231,7 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
         IHttpClientFactory? httpClientFactory,
         IMcpToolGateway mcpGateway,
         IAgentDefinitionRepository agentRepo,
+        IProviderResolver providerResolver,
         IServiceProvider serviceProvider,
         WorkflowRuntimeActivity activity,
         WorkflowExecutionContract execution,
@@ -650,15 +653,7 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
         if (string.Equals(activity.Type, "voice.call", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(activity.Type, "callcenter.outbound_call", StringComparison.OrdinalIgnoreCase))
         {
-            return await ExecuteTwilioVoiceActivityAsync(
-                tenantId,
-                connectionStore,
-                dataProtectionProvider,
-                httpClientFactory,
-                activity,
-                execution,
-                resolvedConfig,
-                ct);
+            return await ExecuteProviderVoiceActivityAsync(tenantId, providerResolver, activity, execution, resolvedConfig, ct);
         }
 
         // ── channel.send ──────────────────────────────────────────────────────
@@ -736,6 +731,7 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
         IHttpClientFactory? httpClientFactory,
         IMcpToolGateway mcpGateway,
         IAgentDefinitionRepository agentRepo,
+        IProviderResolver providerResolver,
         IServiceProvider serviceProvider,
         WorkflowRuntimeActivity activity,
         WorkflowExecutionContract execution,
@@ -766,6 +762,7 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
                     httpClientFactory,
                     mcpGateway,
                     agentRepo,
+                    providerResolver,
                     serviceProvider,
                     activity,
                     execution,
@@ -885,11 +882,9 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
         return result.OutputJson;
     }
 
-    private static async Task<string?> ExecuteTwilioVoiceActivityAsync(
+    private static async Task<string?> ExecuteProviderVoiceActivityAsync(
         string tenantId,
-        ITenantConnectionStore connectionStore,
-        IDataProtectionProvider dataProtectionProvider,
-        IHttpClientFactory? httpClientFactory,
+        IProviderResolver providerResolver,
         WorkflowRuntimeActivity activity,
         WorkflowExecutionContract execution,
         Dictionary<string, string> resolvedConfig,
@@ -901,55 +896,53 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
             throw new InvalidOperationException($"Activity {activity.Type} requires config.phoneNumber.");
         if (string.IsNullOrWhiteSpace(script))
             throw new InvalidOperationException($"Activity {activity.Type} requires config.script.");
+        var channel = activity.Type == "callcenter.outbound_call" ? "callcenter" : "voice";
+        var resolved = await providerResolver.ResolveRequiredAsync<IVoiceCallProviderAdapter>(
+            new ProviderResolutionContext
+            {
+                TenantId = tenantId,
+                Capability = CommunicationCapabilities.CallOutbound,
+                Channel = channel,
+                PreferredProviderId = GetConfig(resolvedConfig, "provider", null),
+                ConnectionId = GetConfig(resolvedConfig, "connectionId", null),
+                Metadata = new Dictionary<string, string>
+                {
+                    ["workflowExecutionId"] = execution.Id,
+                    ["workflowDefinitionId"] = execution.WorkflowDefinitionId
+                }
+            },
+            ct);
 
-        var connection = await ResolveConnectionAsync(tenantId, connectionStore, resolvedConfig, "twilio", ct)
-            ?? throw new InvalidOperationException("Twilio connection not found. Configure one tenant connection with connectorId/provider 'twilio'.");
-        var secret = ReadConnectionSecret(connection, dataProtectionProvider);
-        var accountSid = GetConnectionConfig(connection.Connection, "accountSid", secret, "accountSid", "account");
-        var authToken = GetSecretValue(secret, "authToken", "token", "secret");
-        var fromPhone = GetConnectionConfig(connection.Connection, "fromPhoneNumber", secret, "fromPhoneNumber", "senderPhoneNumber", "from");
-        var statusCallback = GetConnectionConfig(connection.Connection, "statusCallbackUrl", secret, "statusCallbackUrl", "statusCallbackURI");
-
-        if (string.IsNullOrWhiteSpace(accountSid) || string.IsNullOrWhiteSpace(authToken) || string.IsNullOrWhiteSpace(fromPhone))
-            throw new InvalidOperationException("Twilio connection requires accountSid, authToken secret and fromPhoneNumber.");
-
-        var twiml = script!.Contains("<Say", StringComparison.OrdinalIgnoreCase)
-            ? script
-            : $"<Response><Say language='es-MX' loop='1' voice='Polly.Mia'>{System.Security.SecurityElement.Escape(CleanForAudio(script))}</Say></Response>";
-
-        var form = new Dictionary<string, string>
-        {
-            ["To"] = phoneNumber!,
-            ["From"] = fromPhone!,
-            ["Twiml"] = twiml
-        };
-        if (!string.IsNullOrWhiteSpace(statusCallback))
-        {
-            form["StatusCallback"] = statusCallback!;
-            form["StatusCallbackEvent"] = "initiated ringing answered completed busy no-answer canceled";
-        }
-
-        var http = httpClientFactory?.CreateClient("workflow-runtime") ?? new HttpClient();
-        using var request = new HttpRequestMessage(HttpMethod.Post, $"https://api.twilio.com/2010-04-01/Accounts/{accountSid}/Calls.json")
-        {
-            Content = new FormUrlEncodedContent(form)
-        };
-        request.Headers.Authorization = new AuthenticationHeaderValue(
-            "Basic",
-            Convert.ToBase64String(Encoding.ASCII.GetBytes($"{accountSid}:{authToken}")));
-
-        var response = await http.SendAsync(request, ct);
-        var body = await response.Content.ReadAsStringAsync(ct);
-        if (!response.IsSuccessStatusCode)
-            throw new InvalidOperationException($"Twilio voice call failed with {(int)response.StatusCode}: {body}");
+        var result = await resolved.Adapter.PlaceCallAsync(
+            resolved.Connection,
+            new ProviderVoiceCallRequest
+            {
+                PhoneNumber = phoneNumber!,
+                Script = script!,
+                StatusCallbackUrl = BuildVoiceStatusCallbackUrl(
+                    GetConfig(resolvedConfig, "statusCallbackUrl", null)
+                    ?? GetConfig(resolved.Connection.Config.ToDictionary(k => k.Key, v => v.Value), "statusCallbackUrl", null)
+                    ?? GetConfig(resolved.Connection.Config.ToDictionary(k => k.Key, v => v.Value), "statusCallbackURI", null),
+                    channel,
+                    execution.CorrelationId,
+                    execution.Id),
+                Metadata = new Dictionary<string, string>
+                {
+                    ["workflowExecutionId"] = execution.Id,
+                    ["workflowDefinitionId"] = execution.WorkflowDefinitionId
+                }
+            },
+            ct);
 
         return JsonSerializer.Serialize(new
         {
-            provider = "twilio",
-            channel = activity.Type == "callcenter.outbound_call" ? "callcenter" : "voice",
+            provider = resolved.Adapter.ProviderId,
+            channel,
             phoneNumber,
-            connectionId = connection.Connection.Id,
-            body
+            connectionId = resolved.Connection.ConnectionId,
+            providerCallId = result.ProviderCallId,
+            providerStatus = result.ProviderStatus,
+            body = result.RawResponse
         });
     }
 
@@ -1044,6 +1037,50 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
     {
         var firstLine = text.Split('\n')[0];
         return Regex.Replace(firstLine, @"\d{3,}", match => string.Join(" ", match.Value.ToCharArray()));
+    }
+
+    private static string? BuildVoiceStatusCallbackUrl(
+        string? baseUrl,
+        string channel,
+        string? sessionId,
+        string workflowExecutionId)
+    {
+        if (string.IsNullOrWhiteSpace(baseUrl))
+            return null;
+
+        if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var absolute))
+            return baseUrl;
+
+        var builder = new UriBuilder(absolute);
+        var queryParams = ParseQuery(builder.Query);
+        queryParams["channel"] = channel;
+        if (!string.IsNullOrWhiteSpace(sessionId))
+            queryParams["sessionId"] = sessionId!;
+        queryParams["workflowExecutionId"] = workflowExecutionId;
+        builder.Query = string.Join("&", queryParams.Select(kv => $"{Uri.EscapeDataString(kv.Key)}={Uri.EscapeDataString(kv.Value)}"));
+        return builder.Uri.ToString();
+    }
+
+    private static Dictionary<string, string> ParseQuery(string? query)
+    {
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(query))
+            return result;
+
+        var trimmed = query.StartsWith('?') ? query[1..] : query;
+        foreach (var part in trimmed.Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var idx = part.IndexOf('=');
+            if (idx <= 0)
+                continue;
+
+            var key = Uri.UnescapeDataString(part[..idx]);
+            var value = Uri.UnescapeDataString(part[(idx + 1)..]);
+            if (!string.IsNullOrWhiteSpace(key))
+                result[key] = value;
+        }
+
+        return result;
     }
 
     private static string ApplyBasicDlp(string input)

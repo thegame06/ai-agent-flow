@@ -42,7 +42,7 @@ fi
 # 2. Containers
 echo ""
 echo "2. Containers..."
-containers=("agentflow-mongo-local" "agentflow-redis-local" "agentflow-qdrant-local" "agentflow-mcp-test")
+containers=("agentflow-mongo-local" "agentflow-redis-local" "agentflow-qdrant-local" "agentflow-nats-local" "agentflow-mcp-test")
 all_healthy=true
 
 for container in "${containers[@]}"; do
@@ -110,6 +110,8 @@ check_port 27018 "MongoDB"
 check_port 6380 "Redis"
 check_port 6333 "Qdrant REST"
 check_port 6334 "Qdrant gRPC"
+check_port 4222 "NATS"
+check_port 8222 "NATS Monitor"
 check_port 3501 "MCP Test"
 
 # 4. Endpoints HTTP
@@ -137,6 +139,7 @@ check_endpoint() {
 }
 
 check_endpoint "http://localhost:6333/readyz" "Qdrant"
+check_endpoint "http://localhost:8222/healthz" "NATS Monitor"
 check_endpoint "http://localhost:5000/health" "API" || warning "API no iniciada (normal si solo corriste docker compose)"
 check_endpoint "http://localhost:3039" "Frontend" || warning "Frontend no iniciado (normal si solo corriste docker compose)"
 

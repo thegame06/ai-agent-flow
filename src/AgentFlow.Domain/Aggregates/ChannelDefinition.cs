@@ -1,3 +1,5 @@
+using AgentFlow.Domain.Communication;
+
 namespace AgentFlow.Domain.Aggregates;
 
 /// <summary>
@@ -82,6 +84,69 @@ public sealed class ChannelDefinition
             ? t
             : null;
 
+    public IReadOnlyList<ChannelCapabilityDescriptor> Capabilities => Type switch
+    {
+        ChannelType.WhatsApp =>
+        [
+            new() { Name = "text.send", PayloadFormat = "text/plain" },
+            new() { Name = "template.send", PayloadFormat = "template" }
+        ],
+        ChannelType.Voice or ChannelType.CallCenter =>
+        [
+            new() { Name = "call.outbound", PayloadFormat = "audio/twiml" },
+            new() { Name = "call.control", PayloadFormat = "audio/control" },
+            new() { Name = "audio.stream.in", SupportsStreaming = true, PayloadFormat = "audio/pcm" },
+            new() { Name = "audio.stream.out", SupportsStreaming = true, PayloadFormat = "audio/pcm" }
+        ],
+        ChannelType.WebChat or ChannelType.Api =>
+        [
+            new() { Name = "text.send", PayloadFormat = "application/json" }
+        ],
+        _ =>
+        [
+            new() { Name = "text.send", PayloadFormat = "text/plain" }
+        ]
+    };
+
+    public ChannelSessionPolicy SessionPolicy => Type switch
+    {
+        ChannelType.WhatsApp => new()
+        {
+            SessionWindowHours = SessionWindowHours,
+            RequiresTemplateOutsideWindow = true
+        },
+        ChannelType.Voice or ChannelType.CallCenter => new()
+        {
+            SessionWindowHours = 1,
+            SupportsRealtime = true,
+            SupportsInterruptions = true
+        },
+        _ => new()
+        {
+            SessionWindowHours = SessionWindowHours
+        }
+    };
+
+    public ChannelEventContractMap EventContractMap => Type switch
+    {
+        ChannelType.Voice or ChannelType.CallCenter => new()
+        {
+            InboundEventType = "connect.call.received",
+            OutboundEventType = "connect.call.response.sent",
+            DeliveryStatusEventType = "connect.call.status.updated",
+            SessionStartedEventType = "connect.call.started",
+            SessionEndedEventType = "connect.call.ended"
+        },
+        _ => new()
+        {
+            InboundEventType = "connect.message.received",
+            OutboundEventType = "connect.message.sent",
+            DeliveryStatusEventType = "connect.message.status.updated",
+            SessionStartedEventType = "connect.session.started",
+            SessionEndedEventType = "connect.session.ended"
+        }
+    };
+
     public void SetSessionWindowHours(int hours)
     {
         if (hours < 1) throw new ArgumentOutOfRangeException(nameof(hours), "SessionWindowHours must be at least 1.");
@@ -98,6 +163,14 @@ public sealed class ChannelDefinition
     {
         if (string.IsNullOrWhiteSpace(templateName)) throw new ArgumentException("ReopenTemplateName cannot be empty.");
         Config["ReopenTemplateName"] = templateName;
+    }
+
+    public bool SupportsCapability(string capabilityName)
+    {
+        if (string.IsNullOrWhiteSpace(capabilityName))
+            return false;
+
+        return Capabilities.Any(c => string.Equals(c.Name, capabilityName, StringComparison.OrdinalIgnoreCase));
     }
 }
 
