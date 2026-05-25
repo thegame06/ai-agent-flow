@@ -110,7 +110,16 @@ public sealed class WhatsAppWebQrTransport : IWhatsAppTransport
 
         ApplyBridgeAuth();
         var response = await _httpClient.GetAsync($"{_options.QrBridgeBaseUrl.TrimEnd('/')}/session/qr?channelId={Uri.EscapeDataString(_channelId)}", ct);
-        if (!response.IsSuccessStatusCode) return null;
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorBody = await response.Content.ReadAsStringAsync(ct);
+            _logger.LogWarning(
+                "QR bridge /session/qr failed for channel {ChannelId}: {StatusCode} {Body}",
+                _channelId,
+                (int)response.StatusCode,
+                errorBody);
+            return null;
+        }
 
         var body = await response.Content.ReadAsStringAsync(ct);
         using var doc = JsonDocument.Parse(body);
