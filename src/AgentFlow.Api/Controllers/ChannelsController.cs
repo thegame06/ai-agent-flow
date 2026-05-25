@@ -633,7 +633,8 @@ public sealed class ChannelsController : ControllerBase
         var health = await handler.CheckHealthAsync(channel, ct);
 
         string? qrCode = null;
-        if (channel.Type == ChannelType.WhatsApp && channel.Config.GetValueOrDefault("AuthMode") == "qr")
+        if (channel.Type == ChannelType.WhatsApp &&
+            string.Equals(channel.Config.GetValueOrDefault("AuthMode"), "qr", StringComparison.OrdinalIgnoreCase))
         {
             var qrHandler = handler as AgentFlow.Application.Channels.IChannelQrProvider;
             if (qrHandler != null)

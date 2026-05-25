@@ -370,7 +370,7 @@ export default function ChannelsPage() {
     try {
       await axios.post(`/api/v1/tenants/${TENANT_ID}/channels/${channel.id}/activate`);
 
-      if (channel.type === 'WhatsApp' && channel.config?.AuthMode === 'qr') {
+      if (channel.type === 'WhatsApp' && (channel.config?.AuthMode || '').toLowerCase() === 'qr') {
         setSelectedChannel(channel);
 
         try {
@@ -414,7 +414,7 @@ export default function ChannelsPage() {
   const handleCheckHealth = async (channel: Channel) => {
     try {
       const res = await axios.get(`/api/v1/tenants/${TENANT_ID}/channels/${channel.id}/status`);
-      const qrSuffix = channel.type === 'WhatsApp' && channel.config?.AuthMode === 'qr'
+      const qrSuffix = channel.type === 'WhatsApp' && (channel.config?.AuthMode || '').toLowerCase() === 'qr'
         ? ` | QR: ${res.data.healthy ? 'CONNECTED' : (res.data.qrAvailable ? 'AVAILABLE' : 'PENDING')}`
         : '';
       alert(`Health: ${res.data.healthy ? 'OK' : 'UNHEALTHY'} - ${res.data.message || 'n/a'}${qrSuffix}`);
@@ -440,7 +440,7 @@ export default function ChannelsPage() {
     setQrPolling(true);
     setQrPollRounds(0);
 
-    const maxRounds = 10;
+    const maxRounds = 30;
     for (let round = 1; round <= maxRounds; round++) {
       setQrPollRounds(round);
       try {
@@ -1260,7 +1260,7 @@ export default function ChannelsPage() {
             )}
             {qrPolling && (
               <Alert severity="warning" sx={{ mt: 2 }}>
-                Esperando confirmacion de conexion... intento {qrPollRounds}/10
+                Esperando confirmacion de conexion... intento {qrPollRounds}/30
               </Alert>
             )}
           </Box>

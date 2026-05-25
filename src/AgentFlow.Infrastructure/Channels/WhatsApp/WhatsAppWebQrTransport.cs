@@ -48,14 +48,24 @@ public sealed class WhatsAppWebQrTransport : IWhatsAppTransport
 
         var qrResponse = await _httpClient.GetAsync($"{_options.QrBridgeBaseUrl.TrimEnd('/')}/session/qr?channelId={Uri.EscapeDataString(channelId)}", ct);
         if (!qrResponse.IsSuccessStatusCode)
-            return QrAuthResult.Fail("QR bridge did not return qr code yet");
+        {
+            _logger.LogInformation(
+                "QR bridge session started for channel {ChannelId}; QR still pending (status {StatusCode}).",
+                channelId,
+                (int)qrResponse.StatusCode);
+            // Session is started; QR can appear a few seconds later.
+            return new QrAuthResult { Success = true, QrCode = null };
+        }
 
         var qrBody = await qrResponse.Content.ReadAsStringAsync(ct);
         using var doc = JsonDocument.Parse(qrBody);
         var qr = doc.RootElement.TryGetProperty("qrCode", out var qrElement) ? qrElement.GetString() : null;
 
         if (string.IsNullOrWhiteSpace(qr))
-            return QrAuthResult.Fail("QR code not available yet. Retry in a few seconds.");
+        {
+            _logger.LogInformation("QR bridge session started for channel {ChannelId}; QR not available yet.", channelId);
+            return new QrAuthResult { Success = true, QrCode = null };
+        }
 
         return QrAuthResult.Ok(qr);
     }
