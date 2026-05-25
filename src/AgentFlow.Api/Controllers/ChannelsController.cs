@@ -611,7 +611,7 @@ public sealed class ChannelsController : ControllerBase
         var handler = _gateway.GetHandler(channel.Type) as AgentFlow.Application.Channels.IChannelQrProvider;
         if (handler == null) return BadRequest(new { message = "WhatsApp handler does not support QR" });
 
-        var qrCode = await handler.GetQrCodeAsync(ct);
+        var qrCode = await handler.GetQrCodeAsync(channel.Id, ct);
         if (string.IsNullOrWhiteSpace(qrCode))
             return NotFound(new { message = "QR code not available yet" });
 
@@ -638,7 +638,7 @@ public sealed class ChannelsController : ControllerBase
         {
             var qrHandler = handler as AgentFlow.Application.Channels.IChannelQrProvider;
             if (qrHandler != null)
-                qrCode = await qrHandler.GetQrCodeAsync(ct);
+                qrCode = await qrHandler.GetQrCodeAsync(channel.Id, ct);
         }
 
         return Ok(new

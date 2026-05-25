@@ -114,7 +114,7 @@ public class ChannelStatusTests
         public Task<HealthStatus> CheckHealthAsync(ChannelDefinition definition, CancellationToken ct = default)
             => Task.FromResult(HealthStatus.Ok("healthy"));
 
-        public Task<string?> GetQrCodeAsync(CancellationToken ct = default)
+        public Task<string?> GetQrCodeAsync(string channelId, CancellationToken ct = default)
             => Task.FromResult(_qrCode);
     }
 

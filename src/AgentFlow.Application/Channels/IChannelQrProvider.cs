@@ -5,5 +5,5 @@ namespace AgentFlow.Application.Channels;
 /// </summary>
 public interface IChannelQrProvider
 {
-    Task<string?> GetQrCodeAsync(CancellationToken ct = default);
+    Task<string?> GetQrCodeAsync(string channelId, CancellationToken ct = default);
 }

@@ -42,6 +42,7 @@ public sealed class WhatsAppChannelHandler : IChannelHandler, IChannelQrProvider
             
             if (authMode == "qr")
             {
+                _whatsappClient.UseQrChannel(definition.Id);
                 // QR-based authentication (like OpenClaw)
                 var qrResult = await _whatsappClient.ConnectWithQrAsync(definition.Id, ct);
                 if (!qrResult.Success)
@@ -80,6 +81,7 @@ public sealed class WhatsAppChannelHandler : IChannelHandler, IChannelQrProvider
     public async Task ShutdownAsync(ChannelDefinition definition, CancellationToken ct = default)
     {
         _logger.LogInformation("Shutting down WhatsApp channel {ChannelId}", definition.Id);
+        _whatsappClient.UseQrChannel(definition.Id);
         await _whatsappClient.DisconnectAsync(ct);
         definition.Deactivate();
     }
@@ -145,6 +147,8 @@ public sealed class WhatsAppChannelHandler : IChannelHandler, IChannelQrProvider
             }
             else
             {
+                if (string.Equals(authMode, "qr", StringComparison.OrdinalIgnoreCase))
+                    _whatsappClient.UseQrChannel(definition.Id);
                 if (sessionExpired)
                 {
                     var templateName = definition.ReopenTemplateName;
@@ -312,8 +316,11 @@ public sealed class WhatsAppChannelHandler : IChannelHandler, IChannelQrProvider
         return result;
     }
 
-    public async Task<string?> GetQrCodeAsync(CancellationToken ct = default)
-        => await _whatsappClient.GetQrCodeAsync(ct);
+    public async Task<string?> GetQrCodeAsync(string channelId, CancellationToken ct = default)
+    {
+        _whatsappClient.UseQrChannel(channelId);
+        return await _whatsappClient.GetQrCodeAsync(ct);
+    }
 
     public async Task<HealthStatus> CheckHealthAsync(ChannelDefinition definition, CancellationToken ct = default)
     {
@@ -326,6 +333,9 @@ public sealed class WhatsAppChannelHandler : IChannelHandler, IChannelQrProvider
         {
             return HealthStatus.Ok("WhatsApp provider-based channel ready.");
         }
+
+        if (string.Equals(authMode, "qr", StringComparison.OrdinalIgnoreCase))
+            _whatsappClient.UseQrChannel(definition.Id);
 
         var isHealthy = await _whatsappClient.IsConnectedAsync(ct);
         return isHealthy

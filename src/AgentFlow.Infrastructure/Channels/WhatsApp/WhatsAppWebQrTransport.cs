@@ -21,6 +21,12 @@ public sealed class WhatsAppWebQrTransport : IWhatsAppTransport
         _httpClient = new HttpClient();
     }
 
+    public void SetChannelContext(string channelId)
+    {
+        _channelId = channelId;
+        ApplyBridgeAuth();
+    }
+
     public async Task<QrAuthResult> ConnectAsync(string channelId, string? apiToken, string? phoneNumberId, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(_options.QrBridgeBaseUrl))

@@ -63,10 +63,19 @@ public sealed class WhatsAppClient
 
     public async Task<QrAuthResult> ConnectWithQrAsync(string channelId, CancellationToken ct = default)
     {
+        if (_qrTransport is WhatsAppWebQrTransport qr)
+            qr.SetChannelContext(channelId);
         _activeTransport = _qrTransport;
         var result = await _activeTransport.ConnectAsync(channelId, null, null, ct);
         if (!result.Success) _activeTransport = null;
         return result;
+    }
+
+    public void UseQrChannel(string channelId)
+    {
+        if (_qrTransport is WhatsAppWebQrTransport qr)
+            qr.SetChannelContext(channelId);
+        _activeTransport = _qrTransport;
     }
 
     public async Task ConnectWithBusinessApiAsync(string apiToken, string phoneNumberId, CancellationToken ct = default)
