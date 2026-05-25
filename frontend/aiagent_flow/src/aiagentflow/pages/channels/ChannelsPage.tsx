@@ -1237,7 +1237,16 @@ export default function ChannelsPage() {
       </Dialog>
 
       {/* QR Code Dialog */}
-      <Dialog open={!!qrCode} onClose={() => setQrCode(null)} maxWidth="sm">
+      <Dialog
+        open={Boolean(selectedChannel && (qrPolling || qrCode))}
+        onClose={() => {
+          setQrCode(null);
+          setSelectedChannel(null);
+          setQrPolling(false);
+          setQrPollRounds(0);
+        }}
+        maxWidth="sm"
+      >
         <DialogTitle>Escanear codigo QR - {selectedChannel?.name}</DialogTitle>
         <DialogContent>
           <Box sx={{ textAlign: 'center', py: 3 }}>
@@ -1276,7 +1285,16 @@ export default function ChannelsPage() {
           >
             Refrescar QR
           </Button>
-          <Button onClick={() => setQrCode(null)}>Cerrar</Button>
+          <Button
+            onClick={() => {
+              setQrCode(null);
+              setSelectedChannel(null);
+              setQrPolling(false);
+              setQrPollRounds(0);
+            }}
+          >
+            Cerrar
+          </Button>
         </DialogActions>
       </Dialog>
 
