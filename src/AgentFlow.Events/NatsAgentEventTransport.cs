@@ -41,7 +41,7 @@ public sealed class NatsAgentEventTransport : IAgentEventTransport, IAsyncDispos
         Func<AgentEvent, Task> handler,
         CancellationToken ct = default)
     {
-        var subject = BuildSubject(agentKey);
+        var subject = BuildSubscriptionSubject(agentKey);
         var subscription = _connection.SubscribeAsync(subject);
         subscription.MessageHandler += async (_, args) =>
         {
@@ -75,10 +75,27 @@ public sealed class NatsAgentEventTransport : IAgentEventTransport, IAsyncDispos
     }
 
     private string BuildSubject(string agentKey) =>
-        $"{_options.NatsSubjectPrefix}.{Sanitize(agentKey)}";
+        $"{NormalizePrefix(_options.NatsSubjectPrefix)}.{Sanitize(agentKey)}";
+
+    private string BuildSubscriptionSubject(string agentKey)
+    {
+        var prefix = NormalizePrefix(_options.NatsSubjectPrefix);
+
+        // Allow background workers to subscribe to all agents.
+        if (agentKey == "*" || agentKey == ">")
+            return $"{prefix}.>";
+
+        return $"{prefix}.{Sanitize(agentKey)}";
+    }
 
     private string BuildDeadLetterSubject(string agentKey) =>
-        $"{_options.NatsSubjectPrefix}.{_options.NatsDeadLetterSuffix}.{Sanitize(agentKey)}";
+        $"{NormalizePrefix(_options.NatsSubjectPrefix)}.{Sanitize(_options.NatsDeadLetterSuffix)}.{Sanitize(agentKey)}";
+
+    private static string NormalizePrefix(string prefix)
+    {
+        var normalized = (prefix ?? string.Empty).Trim().Trim('.');
+        return string.IsNullOrWhiteSpace(normalized) ? "agentflow.events" : normalized;
+    }
 
     private async Task HandleWithRetryAsync(
         AgentEvent evt,
@@ -175,7 +192,8 @@ public sealed class NatsAgentEventTransport : IAgentEventTransport, IAsyncDispos
             return "unknown";
 
         var chars = raw.ToLowerInvariant().Select(ch => char.IsLetterOrDigit(ch) ? ch : '_').ToArray();
-        return new string(chars).Trim('_');
+        var sanitized = new string(chars).Trim('_');
+        return string.IsNullOrWhiteSpace(sanitized) ? "unknown" : sanitized;
     }
 
     private sealed class Subscription(IAsyncSubscription subscription) : IAsyncDisposable

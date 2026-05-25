@@ -78,7 +78,7 @@ services:
       redis-local:
         condition: service_healthy
       qdrant-local:
-        condition: service_healthy
+        condition: service_started
       nats-local:
         condition: service_healthy
     healthcheck:
