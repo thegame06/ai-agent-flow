@@ -18,6 +18,7 @@ import { usePathname } from '../hooks';
 
 const OverviewPage = lazy(() => import('src/aiagentflow/pages/overview/OverviewPage'));
 const AgentsPage = lazy(() => import('src/aiagentflow/pages/agents/AgentsPage'));
+const AgentsListDetailPage = lazy(() => import('src/aiagentflow/pages/agents/AgentsListDetailPage'));
 const AgentDetailPage = lazy(() => import('src/aiagentflow/pages/agents/Detail/AgentDetailPage'));
 const AgentDesignerPage = lazy(() => import('src/aiagentflow/pages/agents/Designer/AgentDesignerPage'));
 const ChatPage = lazy(() => import('src/aiagentflow/pages/ChatPage'));
@@ -75,6 +76,7 @@ export const dashboardRoutes: RouteObject[] = [
       { path: 'annonai', element: <AutomationWizardPage /> },
       { path: 'overview', element: <OverviewPage /> },
       { path: 'agents', element: <AgentsPage /> },
+      { path: 'agents/list-detail', element: <AgentsListDetailPage /> },
       { path: 'agents/:id', element: <AgentDetailPage /> },
       { path: 'agents/:agentId/chat', element: <ChatPage /> },
       { path: 'agents/designer', element: <AgentDesignerPage /> },

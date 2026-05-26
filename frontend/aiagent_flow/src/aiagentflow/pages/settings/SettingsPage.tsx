@@ -13,6 +13,7 @@ import TextField from '@mui/material/TextField';
 import CardHeader from '@mui/material/CardHeader';
 import Typography from '@mui/material/Typography';
 import CardContent from '@mui/material/CardContent';
+import { useColorScheme } from '@mui/material/styles';
 
 import axios from 'src/lib/axios';
 import { CONFIG } from 'src/global-config';
@@ -20,6 +21,7 @@ import { DashboardContent } from 'src/layouts/dashboard';
 import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
 
 import { Iconify } from 'src/components/iconify';
+import { useSettingsContext } from 'src/components/settings';
 
 type Settings = {
   tenantName: string;
@@ -56,6 +58,8 @@ const defaultSettings: Settings = {
 };
 
 export default function SettingsPage() {
+  const uiSettings = useSettingsContext();
+  const { mode, setMode } = useColorScheme();
   const tenantId = useTenantId();
   const [settings, setSettings] = useState<Settings>(defaultSettings);
   const [loading, setLoading] = useState(true);
@@ -94,6 +98,14 @@ export default function SettingsPage() {
 
   const set = <K extends keyof Settings>(key: K, value: Settings[K]) =>
     setSettings((prev) => ({ ...prev, [key]: value }));
+
+  const darkModeEnabled = (mode ?? uiSettings.state.colorScheme) === 'dark';
+
+  const toggleDarkMode = (enabled: boolean) => {
+    const next = enabled ? 'dark' : 'light';
+    setMode(next);
+    uiSettings.setState({ colorScheme: next });
+  };
 
   return (
     <>
@@ -139,6 +151,21 @@ export default function SettingsPage() {
                   <RowSwitch label="Sandbox Dangerous Tools" checked={settings.sandboxDangerousTools} onChange={(v) => set('sandboxDangerousTools', v)} />
                   <Divider />
                   <RowSwitch label="Audit Logging" checked={settings.auditLogging} onChange={(v) => set('auditLogging', v)} />
+                </Stack>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          <Grid item xs={12} md={6}>
+            <Card>
+              <CardHeader title="Appearance" subheader="Theme preferences" avatar={<Iconify icon="mdi:theme-light-dark" width={28} />} />
+              <Divider />
+              <CardContent>
+                <Stack spacing={2.5}>
+                  <RowSwitch label="Dark Mode" checked={darkModeEnabled} onChange={toggleDarkMode} />
+                  <Typography variant="caption" color="text.secondary">
+                    Aplica a toda la interfaz del dashboard y queda guardado en el navegador.
+                  </Typography>
                 </Stack>
               </CardContent>
             </Card>

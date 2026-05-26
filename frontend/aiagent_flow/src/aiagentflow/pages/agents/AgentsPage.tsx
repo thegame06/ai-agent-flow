@@ -225,6 +225,14 @@ export default function AgentsPage() {
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent={{ md: 'flex-end' }}>
                 <Button
                   component={RouterLink}
+                  href={paths.dashboard.agentsListDetail}
+                  variant="outlined"
+                  startIcon={<Iconify icon="mdi:view-split-vertical" />}
+                >
+                  Vista lista-detalle
+                </Button>
+                <Button
+                  component={RouterLink}
                   href={paths.dashboard.workflows}
                   variant="outlined"
                   startIcon={<Iconify icon="mdi:source-branch" />}

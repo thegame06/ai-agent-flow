@@ -46,6 +46,7 @@ export const paths = {
     annonai: `${ROOTS.DASHBOARD}/annonai`,
     overview: `${ROOTS.DASHBOARD}/overview`,
     agents: `${ROOTS.DASHBOARD}/agents`,
+    agentsListDetail: `${ROOTS.DASHBOARD}/agents/list-detail`,
     agentDesigner: `${ROOTS.DASHBOARD}/agents/designer`,
     agentEdit: (id: string) => `${ROOTS.DASHBOARD}/agents/designer/${id}`,
     executions: `${ROOTS.DASHBOARD}/executions`,
