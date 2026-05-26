@@ -72,6 +72,7 @@ export const dashboardRoutes: RouteObject[] = [
     element: CONFIG.auth.skip ? dashboardLayout() : <AuthGuard>{dashboardLayout()}</AuthGuard>,
     children: [
       { element: <Navigate to="/dashboard/annonai" replace />, index: true },
+      { path: 'annonai', element: <AutomationWizardPage /> },
       { path: 'overview', element: <OverviewPage /> },
       { path: 'agents', element: <AgentsPage /> },
       { path: 'agents/:id', element: <AgentDetailPage /> },
