@@ -87,6 +87,18 @@ function TabGeneral({ draft, dispatch }: { draft: any; dispatch: any }) {
         placeholder="Describe the agent's purpose and capabilities..."
       />
       <Stack direction="row" spacing={2}>
+        <FormControl sx={{ minWidth: 220 }}>
+          <InputLabel>Runtime de agente</InputLabel>
+          <Select
+            value={draft.runtimeKind}
+            label="Runtime de agente"
+            onChange={(e) => dispatch(updateField({ field: 'runtimeKind', value: e.target.value }))}
+          >
+            <MenuItem value="Text">Text runtime</MenuItem>
+            <MenuItem value="Voice">Voice runtime</MenuItem>
+            <MenuItem value="MultimodalRealtime">Multimodal runtime</MenuItem>
+          </Select>
+        </FormControl>
         <TextField
           label="Version"
           value={draft.version}
@@ -490,6 +502,14 @@ function TabModel({
           </Select>
         </FormControl>
       </Stack>
+      <TextField
+        fullWidth
+        label="Cadena de fallback (reasoning)"
+        value={mc.reasoningModelCandidatesCsv}
+        onChange={(e) => dispatch(updateModel({ reasoningModelCandidatesCsv: e.target.value }))}
+        placeholder="gpt-4o-mini,gpt-4.1-mini"
+        helperText="Modelos alternativos en orden de prioridad, separados por coma."
+      />
 
       <Box>
         <Typography variant="subtitle2" gutterBottom>

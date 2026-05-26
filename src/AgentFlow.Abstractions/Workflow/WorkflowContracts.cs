@@ -56,6 +56,7 @@ public sealed record WorkflowDefinitionContract
     public string TenantId { get; init; } = string.Empty;
     public string Name { get; init; } = string.Empty;
     public string TriggerEventName { get; init; } = string.Empty;
+    public string RuntimeKind { get; init; } = "Text";
     public int Version { get; init; } = 1;
     public WorkflowDefinitionStatus Status { get; init; } = WorkflowDefinitionStatus.Draft;
     public string DefinitionJson { get; init; } = "{}";

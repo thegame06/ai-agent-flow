@@ -10,6 +10,7 @@ namespace AgentFlow.Domain.ValueObjects;
 public sealed record BrainConfiguration
 {
     public string ModelId { get; init; } = string.Empty;       // e.g. "gpt-4o"
+    public string? ReasoningModelCandidatesCsv { get; init; }   // e.g. "gpt-4o-mini,gpt-4.1-mini"
     public string Provider { get; init; } = string.Empty;      // e.g. "OpenAI", "AzureOpenAI"
     public string? Endpoint { get; init; }                     // Azure endpoint if applicable
     public string SystemPromptTemplate { get; init; } = string.Empty;
@@ -70,6 +71,12 @@ public sealed record MemoryConfig
 /// </summary>
 public sealed record SessionConfig
 {
+    /// <summary>
+    /// Runtime modality used by this agent.
+    /// Text is default for backward compatibility.
+    /// </summary>
+    public AgentRuntimeKind RuntimeKind { get; init; } = AgentRuntimeKind.Text;
+
     /// <summary>
     /// Enable persistent multi-turn conversations (ConversationThread).
     /// If false, each execution is stateless.

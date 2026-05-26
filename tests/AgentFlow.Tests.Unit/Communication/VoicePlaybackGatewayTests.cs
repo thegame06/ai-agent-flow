@@ -49,13 +49,13 @@ public class VoicePlaybackGatewayTests
 
         var services = new ServiceCollection();
         services.AddSingleton(resolver.Object);
+        services.AddSingleton(Mock.Of<IWorkflowAuditService>());
         using var root = services.BuildServiceProvider();
 
         var gateway = new VoicePlaybackGateway(
             Mock.Of<IAgentEventTransport>(),
             root.GetRequiredService<IServiceScopeFactory>(),
-            NullLogger<VoicePlaybackGateway>.Instance,
-            Mock.Of<IWorkflowAuditService>());
+            NullLogger<VoicePlaybackGateway>.Instance);
 
         var evt = new AgentEvent
         {
@@ -134,13 +134,13 @@ public class VoicePlaybackGatewayTests
 
         var services = new ServiceCollection();
         services.AddSingleton(resolver.Object);
+        services.AddSingleton(Mock.Of<IWorkflowAuditService>());
         using var root = services.BuildServiceProvider();
 
         var gateway = new VoicePlaybackGateway(
             Mock.Of<IAgentEventTransport>(),
             root.GetRequiredService<IServiceScopeFactory>(),
-            NullLogger<VoicePlaybackGateway>.Instance,
-            Mock.Of<IWorkflowAuditService>());
+            NullLogger<VoicePlaybackGateway>.Instance);
 
         var evt = new AgentEvent
         {
@@ -213,13 +213,13 @@ public class VoicePlaybackGatewayTests
 
         var services = new ServiceCollection();
         services.AddSingleton(resolver.Object);
+        services.AddSingleton(Mock.Of<IWorkflowAuditService>());
         using var root = services.BuildServiceProvider();
 
         var gateway = new VoicePlaybackGateway(
             Mock.Of<IAgentEventTransport>(),
             root.GetRequiredService<IServiceScopeFactory>(),
-            NullLogger<VoicePlaybackGateway>.Instance,
-            Mock.Of<IWorkflowAuditService>());
+            NullLogger<VoicePlaybackGateway>.Instance);
 
         var evt = new AgentEvent
         {

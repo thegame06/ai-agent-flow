@@ -240,6 +240,7 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
     {
         if (!policy.IsAllowedActivityType(activity.Type))
             throw new InvalidOperationException($"Activity type '{activity.Type}' is blocked by security policy.");
+        var workflowAudit = serviceProvider.GetService<IWorkflowAuditService>();
 
         if (string.Equals(activity.Type, "connect.send_whatsapp_template", StringComparison.OrdinalIgnoreCase))
         {
@@ -468,6 +469,52 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
                         "and cannot be used in a workflow node. Assign a custom agent instead.");
             }
 
+            var canonicalStateJson = BuildCanonicalConversationStateJson(
+                ParseExecutionContextDictionary(execution.ContextJson),
+                resolvedConfig,
+                execution.CorrelationId,
+                execution.WorkflowDefinitionId);
+            var externalContextRefs = ParseCsvList(GetConfig(resolvedConfig, "externalContextRefs", string.Empty));
+            var attachmentRefs = ParseCsvList(GetConfig(resolvedConfig, "attachmentRefs", string.Empty));
+            var resolvedExternalContexts = await ResolveContextReferencesAsync(database, tenantId, externalContextRefs, ct);
+            var resolvedAttachments = await ResolveAttachmentReferencesAsync(database, tenantId, attachmentRefs, ct);
+            var attachmentsCount = 0;
+            try
+            {
+                using var stateDoc = JsonDocument.Parse(canonicalStateJson);
+                if (stateDoc.RootElement.TryGetProperty("attachments", out var attachmentsEl)
+                    && attachmentsEl.ValueKind == JsonValueKind.Array)
+                {
+                    attachmentsCount = attachmentsEl.GetArrayLength();
+                }
+            }
+            catch
+            {
+                attachmentsCount = 0;
+            }
+
+            if (workflowAudit is not null)
+            {
+                await workflowAudit.RecordExecutionActionAsync(
+                    tenantId,
+                    execution.RequestedBy,
+                    "workflow.ai_agent.context_wiring",
+                    execution.Id,
+                    execution.WorkflowDefinitionId,
+                    new
+                    {
+                        hasContextField = !string.IsNullOrWhiteSpace(GetConfig(resolvedConfig, "context")),
+                        externalContextRefsCount = externalContextRefs.Count,
+                        externalContextResolvedCount = resolvedExternalContexts.Count,
+                        attachmentsCount,
+                        attachmentsResolvedCount = resolvedAttachments.Count,
+                        hasConversationState = true,
+                        stage = GetConfig(resolvedConfig, "stage", "workflow_runtime")
+                    },
+                    execution.CorrelationId,
+                    ct);
+            }
+
             var request = new AgentExecutionRequest
             {
                 TenantId = tenantId,
@@ -480,7 +527,12 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
                     workflowDefinitionId = execution.WorkflowDefinitionId,
                     model = primaryModel,
                     fallbackModel,
-                    knowledge = GetConfig(resolvedConfig, "knowledge")
+                    knowledge = GetConfig(resolvedConfig, "knowledge"),
+                    context = GetConfig(resolvedConfig, "context"),
+                    externalContextRefs,
+                    externalContext = resolvedExternalContexts,
+                    attachments = resolvedAttachments,
+                    conversationState = JsonSerializer.Deserialize<JsonElement>(canonicalStateJson)
                 }),
                 CorrelationId = execution.CorrelationId,
                 ThreadId = execution.Id,
@@ -1116,6 +1168,264 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
         return Math.Clamp(score, 0, 100);
     }
 
+    private static string BuildCanonicalConversationStateJson(
+        Dictionary<string, string> context,
+        Dictionary<string, string> resolvedConfig,
+        string? conversationId,
+        string workflowDefinitionId)
+    {
+        var stage = GetConfig(resolvedConfig, "stage", "workflow_runtime");
+        var intent = context.TryGetValue("payload.detectedIntent", out var detectedIntent)
+            ? detectedIntent
+            : GetConfig(resolvedConfig, "intent", string.Empty);
+        var externalRefs = ParseCsvList(GetConfig(resolvedConfig, "externalContextRefs", string.Empty));
+        var attachmentRefs = ParseCsvList(GetConfig(resolvedConfig, "attachmentRefs", string.Empty));
+        var slots = ExtractSlotMap(context, resolvedConfig);
+
+        var state = new
+        {
+            intent,
+            stage,
+            slots,
+            handoff = new
+            {
+                source = "workflow_runtime",
+                target = GetConfig(resolvedConfig, "agentId", string.Empty),
+                reason = "workflow_ai_agent"
+            },
+            attachments = attachmentRefs.Select(x => new
+            {
+                id = x,
+                name = x,
+                type = "reference",
+                summary = $"Attachment reference: {x}",
+                storageRef = x
+            }),
+            externalContextRefs = externalRefs,
+            metadata = new
+            {
+                conversationId,
+                workflowDefinitionId
+            }
+        };
+
+        return JsonSerializer.Serialize(state);
+    }
+
+    private static Dictionary<string, string> ExtractSlotMap(
+        Dictionary<string, string> context,
+        Dictionary<string, string> resolvedConfig)
+    {
+        var slots = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var candidates = new[]
+        {
+            "producto", "product", "modalidad_pago", "payment_mode", "cantidad", "quantity"
+        };
+
+        foreach (var key in candidates)
+        {
+            if (context.TryGetValue($"payload.{key}", out var fromPayload) && !string.IsNullOrWhiteSpace(fromPayload))
+            {
+                slots[key] = fromPayload;
+                continue;
+            }
+
+            if (resolvedConfig.TryGetValue(key, out var fromConfig) && !string.IsNullOrWhiteSpace(fromConfig))
+                slots[key] = fromConfig;
+        }
+
+        return slots;
+    }
+
+    private static List<string> ParseCsvList(string? csv)
+    {
+        if (string.IsNullOrWhiteSpace(csv))
+            return new List<string>();
+
+        return csv
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static async Task<List<object>> ResolveContextReferencesAsync(
+        IMongoDatabase database,
+        string tenantId,
+        IReadOnlyList<string> refs,
+        CancellationToken ct)
+    {
+        if (refs.Count == 0)
+            return new List<object>();
+
+        var storage = database.GetCollection<WorkflowStorageDocument>("workflow_storage");
+        var filter = Builders<WorkflowStorageDocument>.Filter.Eq(x => x.TenantId, tenantId)
+            & Builders<WorkflowStorageDocument>.Filter.In(x => x.Path, refs);
+        var docs = await storage.Find(filter).Limit(20).ToListAsync(ct);
+
+        var byPath = docs.ToDictionary(x => x.Path, StringComparer.OrdinalIgnoreCase);
+        var resolved = new List<object>(refs.Count);
+        foreach (var item in refs)
+        {
+            if (byPath.TryGetValue(item, out var doc))
+            {
+                resolved.Add(new
+                {
+                    reference = item,
+                    found = true,
+                    preview = BuildSanitizedPreview(doc.Content, 400)
+                });
+            }
+            else
+            {
+                resolved.Add(new
+                {
+                    reference = item,
+                    found = false,
+                    preview = string.Empty
+                });
+            }
+        }
+
+        return resolved;
+    }
+
+    private static async Task<List<object>> ResolveAttachmentReferencesAsync(
+        IMongoDatabase database,
+        string tenantId,
+        IReadOnlyList<string> refs,
+        CancellationToken ct)
+    {
+        if (refs.Count == 0)
+            return new List<object>();
+
+        var storage = database.GetCollection<WorkflowStorageDocument>("workflow_storage");
+        var filter = Builders<WorkflowStorageDocument>.Filter.Eq(x => x.TenantId, tenantId)
+            & Builders<WorkflowStorageDocument>.Filter.In(x => x.Path, refs);
+        var docs = await storage.Find(filter).Limit(20).ToListAsync(ct);
+
+        var byPath = docs.ToDictionary(x => x.Path, StringComparer.OrdinalIgnoreCase);
+        var resolved = new List<object>(refs.Count);
+        foreach (var item in refs)
+        {
+            if (byPath.TryGetValue(item, out var doc))
+            {
+                resolved.Add(new
+                {
+                    id = item,
+                    name = item,
+                    type = InferAttachmentType(item),
+                    summary = BuildAttachmentSummary(item, doc.Content),
+                    summaryVersion = "v1",
+                    found = true
+                });
+            }
+            else
+            {
+                resolved.Add(new
+                {
+                    id = item,
+                    name = item,
+                    type = InferAttachmentType(item),
+                    summary = string.Empty,
+                    summaryVersion = "v1",
+                    found = false
+                });
+            }
+        }
+
+        return resolved;
+    }
+
+    private static string InferAttachmentType(string path)
+    {
+        var lower = path.ToLowerInvariant();
+        if (lower.EndsWith(".pdf", StringComparison.Ordinal)) return "pdf";
+        if (lower.EndsWith(".csv", StringComparison.Ordinal)) return "csv";
+        if (lower.EndsWith(".json", StringComparison.Ordinal)) return "json";
+        if (lower.EndsWith(".txt", StringComparison.Ordinal) || lower.EndsWith(".md", StringComparison.Ordinal)) return "text";
+        if (lower.EndsWith(".jpg", StringComparison.Ordinal) || lower.EndsWith(".jpeg", StringComparison.Ordinal) || lower.EndsWith(".png", StringComparison.Ordinal)) return "image";
+        return "reference";
+    }
+
+    private static string BuildAttachmentSummary(string path, string? content)
+    {
+        if (string.IsNullOrWhiteSpace(content))
+            return string.Empty;
+
+        var type = InferAttachmentType(path);
+        var normalized = content.Replace("\r\n", "\n");
+
+        return type switch
+        {
+            "csv" => BuildCsvSummary(normalized),
+            "json" => BuildJsonSummary(normalized),
+            "pdf" => $"PDF attachment parsed as text preview: {BuildSanitizedPreview(normalized, 220)}",
+            "image" => "Image attachment reference detected. OCR/extraction is not enabled in this runtime path.",
+            _ => BuildSanitizedPreview(normalized, 240)
+        };
+    }
+
+    private static string BuildCsvSummary(string content)
+    {
+        var lines = content.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (lines.Length == 0)
+            return string.Empty;
+        var header = lines[0];
+        var rows = Math.Max(0, lines.Length - 1);
+        var sample = lines.Skip(1).Take(2).ToArray();
+        var sampleText = sample.Length == 0 ? string.Empty : $" Sample: {string.Join(" | ", sample)}";
+        return BuildSanitizedPreview($"CSV rows={rows}. Header={header}.{sampleText}", 240);
+    }
+
+    private static string BuildJsonSummary(string content)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(content);
+            if (doc.RootElement.ValueKind == JsonValueKind.Object)
+            {
+                var keys = doc.RootElement.EnumerateObject().Select(x => x.Name).Take(8);
+                return BuildSanitizedPreview($"JSON object keys: {string.Join(", ", keys)}", 240);
+            }
+            if (doc.RootElement.ValueKind == JsonValueKind.Array)
+                return $"JSON array length approx: {doc.RootElement.GetArrayLength()}";
+        }
+        catch
+        {
+            // fallback preview below
+        }
+
+        return BuildSanitizedPreview(content, 240);
+    }
+
+    private static string BuildSanitizedPreview(string raw, int maxLength)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return string.Empty;
+
+        var redacted = Regex.Replace(raw, @"\b[\w\.-]+@[\w\.-]+\.\w+\b", "[redacted_email]", RegexOptions.IgnoreCase);
+        redacted = Regex.Replace(redacted, @"\b\d{8,16}\b", "[redacted_number]", RegexOptions.IgnoreCase);
+        redacted = Regex.Replace(redacted, @"\s+", " ").Trim();
+        return redacted.Length > maxLength ? redacted[..maxLength] : redacted;
+    }
+
+    private static Dictionary<string, string> ParseExecutionContextDictionary(string? contextJson)
+    {
+        if (string.IsNullOrWhiteSpace(contextJson))
+            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        try
+        {
+            return JsonSerializer.Deserialize<Dictionary<string, string>>(contextJson)
+                ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        }
+    }
+
     private static int ParseInt(string? raw, int fallback) => int.TryParse(raw, out var value) ? value : fallback;
     private static bool ParseBool(string? raw, bool fallback) => bool.TryParse(raw, out var value) ? value : fallback;
     private static decimal ParseDecimal(string? raw, decimal fallback) => decimal.TryParse(raw, out var value) ? value : fallback;
@@ -1147,13 +1457,35 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
         if (string.IsNullOrWhiteSpace(fallbackModel))
             throw new InvalidOperationException("ai.agent failed and no fallbackModel is configured.");
 
-        var fallbackContext = JsonSerializer.Serialize(new
+        var fallbackPayload = new Dictionary<string, object?>
         {
-            workflowExecutionId = primaryRequest.ThreadId,
-            model = primaryModel,
-            fallbackModel,
-            useFallback = true
-        });
+            ["workflowExecutionId"] = primaryRequest.ThreadId,
+            ["model"] = primaryModel,
+            ["fallbackModel"] = fallbackModel,
+            ["useFallback"] = true
+        };
+
+        if (!string.IsNullOrWhiteSpace(primaryRequest.ContextJson))
+        {
+            try
+            {
+                var existing = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(primaryRequest.ContextJson!);
+                if (existing is not null)
+                {
+                    foreach (var kv in existing)
+                    {
+                        if (!fallbackPayload.ContainsKey(kv.Key))
+                            fallbackPayload[kv.Key] = kv.Value;
+                    }
+                }
+            }
+            catch
+            {
+                // Keep fallback payload minimal on malformed context.
+            }
+        }
+
+        var fallbackContext = JsonSerializer.Serialize(fallbackPayload);
 
         var fallbackRequest = primaryRequest with { ContextJson = fallbackContext };
         var fallback = await agentExecutor.ExecuteAsync(fallbackRequest, ct);

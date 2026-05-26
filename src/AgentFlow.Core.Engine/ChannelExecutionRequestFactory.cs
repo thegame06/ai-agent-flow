@@ -94,7 +94,21 @@ public sealed class ChannelExecutionRequestFactory : IChannelExecutionRequestFac
                 ChannelId = channel.Id,
                 SessionId = incomingMessage.SessionId,
                 From = incomingMessage.From,
-                IntentCatalog = intentCatalogJson
+                IntentCatalog = intentCatalogJson,
+                conversationState = new
+                {
+                    intent = (string?)null,
+                    stage = "incoming_message",
+                    slots = new Dictionary<string, string>(),
+                    handoff = new
+                    {
+                        source = "channel_gateway",
+                        target = agentKey,
+                        reason = "initial_dispatch"
+                    },
+                    attachments = Array.Empty<object>(),
+                    externalContextRefs = Array.Empty<string>()
+                }
             }),
             CorrelationId = incomingMessage.SessionId,
             ThreadId = session?.ThreadId,
@@ -132,4 +146,3 @@ public sealed class ChannelExecutionRequestFactory : IChannelExecutionRequestFac
         }));
     }
 }
-

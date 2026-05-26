@@ -1,5 +1,6 @@
 using AgentFlow.Abstractions;
 using AgentFlow.Api.Controllers;
+using AgentFlow.Api.Connect;
 using AgentFlow.Api.Voice;
 using AgentFlow.Api.Workflow;
 using Microsoft.AspNetCore.Http;
@@ -42,6 +43,9 @@ public class TwilioVoiceWebhookControllerTests
             });
         var runtimeRegistry = new Mock<IAgentRuntimeRegistry>();
         var signatureValidator = new Mock<ITwilioWebhookSignatureValidator>();
+        var tenantConnectionStore = new Mock<ITenantConnectionStore>();
+        tenantConnectionStore.Setup(x => x.GetConnectionsAsync("tenant-a", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<TenantConnectionContract>());
         signatureValidator.Setup(x => x.IsValidAsync("tenant-a", It.IsAny<HttpRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
 
@@ -51,6 +55,7 @@ public class TwilioVoiceWebhookControllerTests
             orchestrator.Object,
             runtimeRegistry.Object,
             signatureValidator.Object,
+            tenantConnectionStore.Object,
             NullLogger<TwilioVoiceWebhookController>.Instance);
 
         var result = await controller.ReceiveStatus(
@@ -111,6 +116,9 @@ public class TwilioVoiceWebhookControllerTests
         var runtimeRegistry = new Mock<IAgentRuntimeRegistry>();
         runtimeRegistry.Setup(x => x.GetRequired(AgentRuntimeKind.Voice)).Returns(runtime.Object);
         var signatureValidator = new Mock<ITwilioWebhookSignatureValidator>();
+        var tenantConnectionStore = new Mock<ITenantConnectionStore>();
+        tenantConnectionStore.Setup(x => x.GetConnectionsAsync("tenant-a", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<TenantConnectionContract>());
         signatureValidator.Setup(x => x.IsValidAsync("tenant-a", It.IsAny<HttpRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
 
@@ -120,6 +128,7 @@ public class TwilioVoiceWebhookControllerTests
             orchestrator.Object,
             runtimeRegistry.Object,
             signatureValidator.Object,
+            tenantConnectionStore.Object,
             NullLogger<TwilioVoiceWebhookController>.Instance);
 
         var result = await controller.ReceiveIncoming(
@@ -151,6 +160,9 @@ public class TwilioVoiceWebhookControllerTests
         var orchestrator = new Mock<IVoiceSessionOrchestrator>();
         var runtimeRegistry = new Mock<IAgentRuntimeRegistry>();
         var signatureValidator = new Mock<ITwilioWebhookSignatureValidator>();
+        var tenantConnectionStore = new Mock<ITenantConnectionStore>();
+        tenantConnectionStore.Setup(x => x.GetConnectionsAsync("tenant-a", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<TenantConnectionContract>());
         signatureValidator.Setup(x => x.IsValidAsync("tenant-a", It.IsAny<HttpRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
 
@@ -160,6 +172,7 @@ public class TwilioVoiceWebhookControllerTests
             orchestrator.Object,
             runtimeRegistry.Object,
             signatureValidator.Object,
+            tenantConnectionStore.Object,
             NullLogger<TwilioVoiceWebhookController>.Instance);
 
         var payload = Convert.ToBase64String(new byte[] { 1, 2, 3, 4 });
@@ -188,6 +201,9 @@ public class TwilioVoiceWebhookControllerTests
         var orchestrator = new Mock<IVoiceSessionOrchestrator>();
         var runtimeRegistry = new Mock<IAgentRuntimeRegistry>();
         var signatureValidator = new Mock<ITwilioWebhookSignatureValidator>();
+        var tenantConnectionStore = new Mock<ITenantConnectionStore>();
+        tenantConnectionStore.Setup(x => x.GetConnectionsAsync("tenant-a", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<TenantConnectionContract>());
         signatureValidator.Setup(x => x.IsValidAsync("tenant-a", It.IsAny<HttpRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
 
@@ -197,6 +213,7 @@ public class TwilioVoiceWebhookControllerTests
             orchestrator.Object,
             runtimeRegistry.Object,
             signatureValidator.Object,
+            tenantConnectionStore.Object,
             NullLogger<TwilioVoiceWebhookController>.Instance);
 
         var result = await controller.ReceiveStatus(

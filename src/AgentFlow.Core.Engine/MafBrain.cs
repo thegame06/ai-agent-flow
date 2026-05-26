@@ -219,12 +219,17 @@ public sealed class MafBrain : IAgentBrain
             ? string.Join("\n", context.ThreadSnapshot.RecentTurns.Select(t =>
                 $"User: {t.UserMessage}\nAssistant: {t.AssistantResponse ?? string.Empty}"))
             : "No prior conversation turns.";
+        var conversationState = string.IsNullOrWhiteSpace(context.ConversationStateJson)
+            ? "No canonical conversation state provided."
+            : context.ConversationStateJson;
 
         return $$"""
             ExecutionId: {{context.ExecutionId}}
             Iteration: {{context.Iteration}}
             User request: {{context.UserMessage}}
             Working memory: {{context.WorkingMemoryJson}}
+            Conversation state:
+            {{conversationState}}
             Recent conversation:
             {{recentThread}}
             """;

@@ -17,17 +17,20 @@ public sealed class TenantConnectionsController : ControllerBase
     private readonly ITenantContextAccessor _tenantContext;
     private readonly IDataProtector _protector;
     private readonly IAuditMemory _audit;
+    private readonly IProviderRegistry _providerRegistry;
 
     public TenantConnectionsController(
         ITenantConnectionStore store,
         ITenantContextAccessor tenantContext,
         IDataProtectionProvider dataProtectionProvider,
-        IAuditMemory audit)
+        IAuditMemory audit,
+        IProviderRegistry providerRegistry)
     {
         _store = store;
         _tenantContext = tenantContext;
         _protector = dataProtectionProvider.CreateProtector("tenant-connections-secrets-v1");
         _audit = audit;
+        _providerRegistry = providerRegistry;
     }
 
     [HttpGet]
@@ -176,6 +179,48 @@ public sealed class TenantConnectionsController : ControllerBase
         }
 
         return Ok(resources);
+    }
+
+    [HttpGet("capability-matrix")]
+    public async Task<IActionResult> GetCapabilityMatrix([FromRoute] string tenantId, CancellationToken ct)
+    {
+        if (!CanAccess(tenantId, AgentFlowPermissions.ConnectRead)) return Forbid();
+
+        var connections = await _store.GetConnectionsAsync(tenantId, ct);
+        var providers = _providerRegistry.GetAll()
+            .Select(provider => new
+            {
+                provider = provider.ProviderId,
+                capabilities = provider.Capabilities
+                    .Select(cap => new
+                    {
+                        cap.Name,
+                        cap.Channel,
+                        cap.Description,
+                        cap.SupportsStreaming,
+                        boundConnections = connections
+                            .Where(connection => MatchesProvider(provider.ProviderId, connection))
+                            .Select(connection => new
+                            {
+                                connection.Id,
+                                connection.Name,
+                                connection.ConnectorId,
+                                hasCapabilityHint = CapabilitiesForConnection(connection)
+                                    .Contains(cap.Name, StringComparer.OrdinalIgnoreCase)
+                            })
+                            .ToList()
+                    })
+                    .ToList()
+            })
+            .OrderBy(x => x.provider)
+            .ToList();
+
+        return Ok(new
+        {
+            tenantId,
+            generatedAt = DateTimeOffset.UtcNow,
+            providers
+        });
     }
 
     [HttpPost("resources/{connectionId}/resolve")]
@@ -442,6 +487,24 @@ public sealed class TenantConnectionsController : ControllerBase
 
     private static bool IsAllowed(IReadOnlyList<string> allowedValues, string requested)
         => allowedValues.Count == 0 || allowedValues.Contains(requested, StringComparer.OrdinalIgnoreCase);
+
+    private static bool MatchesProvider(string providerId, TenantConnectionContract connection)
+    {
+        if (string.Equals(connection.ConnectorId, providerId, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (connection.Config.TryGetValue("provider", out var configured) &&
+            string.Equals(configured, providerId, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        return providerId switch
+        {
+            "meta" => string.Equals(connection.ConnectorId, "whatsapp-business", StringComparison.OrdinalIgnoreCase),
+            "openai" => string.Equals(connection.ConnectorId, "openai", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(connection.ConnectorId, "rest-api", StringComparison.OrdinalIgnoreCase),
+            _ => false
+        };
+    }
 
     private bool CanAccess(string tenantId, string permission)
     {

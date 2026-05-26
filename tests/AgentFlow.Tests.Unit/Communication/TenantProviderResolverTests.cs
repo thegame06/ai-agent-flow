@@ -93,4 +93,58 @@ public class TenantProviderResolverTests
                 Channel = "voice"
             }));
     }
+
+    [Fact]
+    public async Task ResolveRequiredAsync_WithPreferredProviderAndFallbackCandidates_UsesNextAvailableProvider()
+    {
+        var store = new Mock<ITenantConnectionStore>();
+        store.Setup(x => x.GetConnectionsAsync("tenant-a", It.IsAny<CancellationToken>()))
+            .ReturnsAsync([
+                new TenantConnectionContract
+                {
+                    Id = "conn-meta",
+                    TenantId = "tenant-a",
+                    Name = "Meta Main",
+                    Type = TenantConnectionType.Messaging,
+                    ConnectorId = "whatsapp-business",
+                    Config = new Dictionary<string, string>
+                    {
+                        ["provider"] = "meta",
+                        ["phoneNumberId"] = "123456789"
+                    }
+                }
+            ]);
+
+        var dataProtection = DataProtectionProvider.Create("agentflow-tests");
+        var protector = dataProtection.CreateProtector("tenant-connections-secrets-v1");
+        var cipherText = protector.Protect("{\"apiToken\":\"meta-token\"}");
+
+        store.Setup(x => x.GetSecretAsync("tenant-a", "conn-meta", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TenantConnectionSecretContract
+            {
+                ConnectionId = "conn-meta",
+                TenantId = "tenant-a",
+                CipherText = cipherText
+            });
+
+        var registry = new InMemoryProviderRegistry();
+        registry.Register(new TwilioWhatsAppProviderAdapter());
+        registry.Register(new MetaWhatsAppProviderAdapter());
+
+        var resolver = new TenantProviderResolver(store.Object, dataProtection, registry);
+        var result = await resolver.ResolveRequiredAsync<IMessageSendProviderAdapter>(new ProviderResolutionContext
+        {
+            TenantId = "tenant-a",
+            Capability = CommunicationCapabilities.TextSend,
+            Channel = "whatsapp",
+            PreferredProviderId = "twilio",
+            Metadata = new Dictionary<string, string>
+            {
+                ["providerCandidates"] = "twilio,meta"
+            }
+        });
+
+        Assert.Equal("meta", result.Adapter.ProviderId);
+        Assert.Equal("conn-meta", result.Connection.ConnectionId);
+    }
 }

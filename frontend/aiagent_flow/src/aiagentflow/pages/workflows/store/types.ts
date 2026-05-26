@@ -10,6 +10,7 @@ import type {
   WorkflowActivityNode,
   ConnectTemplateOption,
   WorkflowRuntimeMetrics,
+  AssistantWizardMetrics,
   WorkflowIntegrationStatus,
   WorkflowActivityCatalogEntry,
 } from '../types';
@@ -38,6 +39,7 @@ export type WorkflowRuntimeState = {
   steps: WorkflowStep[];
   stepsOpen: boolean;
   metrics: WorkflowRuntimeMetrics | null;
+  wizardMetrics: AssistantWizardMetrics | null;
   auditEvents: WorkflowAuditEvent[];
   activityCatalog: WorkflowActivityCatalogEntry[];
   availableModels: ModelOption[];

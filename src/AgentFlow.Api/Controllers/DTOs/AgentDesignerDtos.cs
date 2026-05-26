@@ -41,6 +41,7 @@ public sealed record BrainConfigDto
 {
     public string PrimaryModel { get; init; } = "gpt-4o";
     public string FallbackModel { get; init; } = "gpt-4o-mini";
+    public string ReasoningModelCandidatesCsv { get; init; } = string.Empty;
     public string Provider { get; init; } = "OpenAI";
     public string SystemPrompt { get; init; } = string.Empty;
     public float Temperature { get; init; } = 0.7f;
@@ -72,6 +73,7 @@ public sealed record MemoryConfigDto
 
 public sealed record SessionConfigDto
 {
+    public string RuntimeKind { get; init; } = "Text";
     public bool EnableThreads { get; init; } = false;
     public int DefaultThreadTtlHours { get; init; } = 168; // 7 days default
     public int MaxTurnsPerThread { get; init; } = 100;
@@ -137,6 +139,8 @@ public sealed record AgentListItemDto
     public bool IsSystemAgent { get; init; }
     /// <summary>System role: Router | WorkflowBrain | ConfigAssistant | null for user agents.</summary>
     public string? SystemRole { get; init; }
+    /// <summary>Runtime modality: Text | Voice | MultimodalRealtime.</summary>
+    public string RuntimeKind { get; init; } = "Text";
 }
 
 /// <summary>

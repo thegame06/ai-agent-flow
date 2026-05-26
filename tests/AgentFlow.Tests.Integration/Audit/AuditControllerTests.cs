@@ -1,5 +1,8 @@
 using AgentFlow.Api.Controllers;
+using AgentFlow.Abstractions;
 using AgentFlow.Application.Memory;
+using AgentFlow.Domain.Repositories;
+using AgentFlow.Events;
 using AgentFlow.Security;
 using Microsoft.AspNetCore.Mvc;
 using Moq;
@@ -38,8 +41,8 @@ public sealed class AuditControllerTests
                 }
             });
 
-        var controller = new AuditController(audit.Object, tenantContext);
-        var result = await controller.GetAuditLogs("tenant-1", 100, "corr-1", null, CancellationToken.None);
+        var controller = BuildController(audit.Object, tenantContext);
+        var result = await controller.GetAuditLogs("tenant-1", 100, "corr-1", null, null, null, CancellationToken.None);
 
         var ok = Assert.IsType<OkObjectResult>(result);
         Assert.NotNull(ok.Value);
@@ -70,7 +73,7 @@ public sealed class AuditControllerTests
                 new() { TenantId = "tenant-1", AgentId = "manager", UserId = "u1", EventType = AuditEventType.RoutingDecision, CorrelationId = "corr-2", EventJson = "{}", ExecutionId = "e3" },
             });
 
-        var controller = new AuditController(audit.Object, tenantContext);
+        var controller = BuildController(audit.Object, tenantContext);
         var result = await controller.GetCorrelationSummary("tenant-1", 20, CancellationToken.None);
 
         var ok = Assert.IsType<OkObjectResult>(result);
@@ -101,12 +104,26 @@ public sealed class AuditControllerTests
                 new() { TenantId = "tenant-1", AgentId = "a1", UserId = "u1", EventType = AuditEventType.HandoffCompleted, CorrelationId = "c1", EventJson = "{}", ExecutionId = "e2" }
             });
 
-        var controller = new AuditController(audit.Object, tenantContext);
-        var result = await controller.GetAuditLogs("tenant-1", 100, null, "RoutingDecision", CancellationToken.None);
+        var controller = BuildController(audit.Object, tenantContext);
+        var result = await controller.GetAuditLogs("tenant-1", 100, null, "RoutingDecision", null, null, CancellationToken.None);
 
         var ok = Assert.IsType<OkObjectResult>(result);
         var json = System.Text.Json.JsonSerializer.Serialize(ok.Value);
         Assert.Contains("RoutingDecision", json);
         Assert.DoesNotContain("HandoffCompleted", json);
     }
+
+    private static AuditController BuildController(IAuditMemory audit, ITenantContextAccessor tenantContext)
+        => new(
+            audit,
+            tenantContext,
+            Mock.Of<IChannelSessionRepository>(),
+            Mock.Of<IChannelMessageRepository>(),
+            Mock.Of<IChannelDefinitionRepository>(),
+            Mock.Of<IConversationThreadRepository>(),
+            Mock.Of<IAgentExecutionRepository>(),
+            Mock.Of<IAgentDefinitionRepository>(),
+            Mock.Of<IDeadLetterStore>(),
+            Mock.Of<IAgentEventTransport>(),
+            commerce: null);
 }

@@ -3,7 +3,9 @@ import axios, { endpoints } from 'src/lib/axios';
 export const workflowStudioApi = {
   getDefinitions: (tenantId: string) => axios.get(endpoints.agentflow.workflows.list(tenantId)),
   getExecutions: (tenantId: string) => axios.get(endpoints.agentflow.workflows.executions(tenantId)),
-  getMetrics: (tenantId: string) => axios.get(endpoints.agentflow.workflows.metrics(tenantId)),
+  getMetrics: (tenantId: string, window: '24h' | '7d' | '30d' = '24h') =>
+    axios.get(endpoints.agentflow.workflows.metrics(tenantId), { params: { window } }),
+  getWizardMetrics: (tenantId: string) => axios.get(endpoints.agentflow.assistant.wizardMetrics(tenantId)),
   getAuditEvents: (tenantId: string) => axios.get(endpoints.agentflow.workflows.auditEvents(tenantId)),
   getCatalogActivities: (tenantId: string) =>
     axios.get(endpoints.agentflow.workflows.catalogActivities(tenantId)).catch(() => ({ data: [] })),

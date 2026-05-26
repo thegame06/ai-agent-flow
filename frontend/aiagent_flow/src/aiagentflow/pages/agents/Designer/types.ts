@@ -48,12 +48,14 @@ export interface AgentModelConfig {
   provider: string;
   primaryModel: string;
   fallbackModel: string;
+  reasoningModelCandidatesCsv: string;
   temperature: number;
   maxResponseTokens: number;
 }
 
 export interface AgentDefinitionDraft {
   id?: string;
+  runtimeKind: 'Text' | 'Voice' | 'MultimodalRealtime';
   name: string;
   description: string;
   version: string;
@@ -98,6 +100,7 @@ export const DEFAULT_ENGINE_STEPS: AgentStep[] = [
 ];
 
 export const DEFAULT_AGENT_DRAFT: AgentDefinitionDraft = {
+  runtimeKind: 'Text',
   name: '',
   description: '',
   version: '1.0.0',
@@ -131,6 +134,7 @@ export const DEFAULT_AGENT_DRAFT: AgentDefinitionDraft = {
     provider: 'OpenAI',
     primaryModel: '',
     fallbackModel: '',
+    reasoningModelCandidatesCsv: '',
     temperature: 0.7,
     maxResponseTokens: 4096,
   },

@@ -1,5 +1,6 @@
 import '@xyflow/react/dist/style.css';
 
+import type { SelectChangeEvent } from '@mui/material/Select';
 import type { Edge, Node, NodeProps, Connection } from '@xyflow/react';
 
 import { useMemo, useState, useEffect, useCallback } from 'react';
@@ -25,6 +26,7 @@ import Alert from '@mui/material/Alert';
 import Stack from '@mui/material/Stack';
 import Button from '@mui/material/Button';
 import Drawer from '@mui/material/Drawer';
+import Select from '@mui/material/Select';
 import Divider from '@mui/material/Divider';
 import Tooltip from '@mui/material/Tooltip';
 import MenuItem from '@mui/material/MenuItem';
@@ -34,6 +36,8 @@ import TextField from '@mui/material/TextField';
 import Accordion from '@mui/material/Accordion';
 import IconButton from '@mui/material/IconButton';
 import Typography from '@mui/material/Typography';
+import InputLabel from '@mui/material/InputLabel';
+import FormControl from '@mui/material/FormControl';
 import AccordionSummary from '@mui/material/AccordionSummary';
 import AccordionDetails from '@mui/material/AccordionDetails';
 import FormControlLabel from '@mui/material/FormControlLabel';
@@ -65,6 +69,7 @@ type Props = {
   allowedTypes: string[];
   requiredConfigByType: Record<string, string[]>;
   validationErrors: string[];
+  runtimeKind: 'Text' | 'Voice' | 'MultimodalRealtime';
   triggerEventName: string;
   startIntents: WorkflowStartIntent[];
   availableModels: ModelOption[];
@@ -74,6 +79,7 @@ type Props = {
   integrations: WorkflowIntegrationStatus[];
   connectTemplates: ConnectTemplateOption[];
   onAddActivity: (activityType?: string, patch?: Partial<WorkflowActivityNode>) => void;
+  onChangeRuntimeKind: (value: 'Text' | 'Voice' | 'MultimodalRealtime') => void;
   onChangeTriggerEvent: (value: string) => void;
   onUpdateStartIntents: (intents: WorkflowStartIntent[]) => void;
   onUpdateActivity: (index: number, patch: Partial<WorkflowActivityNode>) => void;
@@ -592,6 +598,7 @@ export function WorkflowVisualDesigner({
   allowedTypes,
   requiredConfigByType,
   validationErrors,
+  runtimeKind,
   triggerEventName,
   startIntents,
   availableModels,
@@ -601,6 +608,7 @@ export function WorkflowVisualDesigner({
   integrations,
   connectTemplates,
   onAddActivity,
+  onChangeRuntimeKind,
   onChangeTriggerEvent,
   onUpdateStartIntents,
   onUpdateActivity,
@@ -1122,6 +1130,20 @@ export function WorkflowVisualDesigner({
               size="small"
               helperText="Ejemplo: connect.message.received. El backend ejecuta workflows publicados con este evento."
             />
+            <FormControl size="small">
+              <InputLabel>Runtime</InputLabel>
+              <Select
+                label="Runtime"
+                value={runtimeKind}
+                onChange={(e: SelectChangeEvent) =>
+                  onChangeRuntimeKind(e.target.value as 'Text' | 'Voice' | 'MultimodalRealtime')
+                }
+              >
+                <MenuItem value="Text">Text runtime</MenuItem>
+                <MenuItem value="Voice">Voice runtime</MenuItem>
+                <MenuItem value="MultimodalRealtime">Multimodal runtime</MenuItem>
+              </Select>
+            </FormControl>
             <Alert severity="info">
               Un usuario sin conocimiento tecnico solo define intenciones con nombre y ejemplos. El sistema las usa para
               mapear mensajes, botones o webhooks al evento interno.
@@ -1987,6 +2009,10 @@ export function WorkflowVisualDesigner({
                     <Alert severity="info">
                       Este nodo no redefine el agente. Ejecuta el agente seleccionado con el contexto del workflow.
                     </Alert>
+                    <Alert severity="warning">
+                      Wiring runtime activo: se inyectan `input`, `context`, `externalContextRefs` y `conversationState` canonico.
+                      Si no ves estos campos en auditoria de ejecucion, la configuracion no esta conectada correctamente.
+                    </Alert>
                     {selectedAgent && (
                       <Box sx={{ p: 1, borderRadius: 1, border: '1px dashed #93c5fd', bgcolor: '#f8fbff' }}>
                         <Typography variant="caption" fontWeight={800}>
@@ -2245,4 +2271,3 @@ export function WorkflowVisualDesigner({
     </Card>
   );
 }
-

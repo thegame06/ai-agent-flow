@@ -49,6 +49,7 @@ public sealed class AgentsController : ControllerBase
         [FromRoute] string tenantId,
         [FromQuery] int skip = 0,
         [FromQuery] int limit = 50,
+        [FromQuery] string? runtimeKind = null,
         CancellationToken ct = default)
     {
         // 🔧 Development mode: Allow anonymous access
@@ -57,6 +58,13 @@ public sealed class AgentsController : ControllerBase
             return Forbid();
 
         var agents = await _agentRepository.GetAllAsync(tenantId, skip, limit, ct);
+        if (!string.IsNullOrWhiteSpace(runtimeKind)
+            && Enum.TryParse<AgentRuntimeKind>(runtimeKind, true, out var parsedRuntime))
+        {
+            agents = agents
+                .Where(a => a.Session.RuntimeKind == parsedRuntime)
+                .ToList();
+        }
 
         var result = agents.Select(a => new AgentListItemDto
         {
@@ -74,6 +82,7 @@ public sealed class AgentsController : ControllerBase
             Provider = a.Brain.Provider,
             IsSystemAgent = a.IsSystemAgent,
             SystemRole = a.SystemRole == AgentSystemRole.Custom ? null : a.SystemRole.ToString(),
+            RuntimeKind = a.Session.RuntimeKind.ToString(),
         });
 
         return Ok(result);
@@ -117,6 +126,7 @@ public sealed class AgentsController : ControllerBase
         var brain = new BrainConfiguration
         {
             ModelId = request.Brain.PrimaryModel,
+            ReasoningModelCandidatesCsv = BuildReasoningCandidatesCsv(request.Brain.FallbackModel, request.Brain.ReasoningModelCandidatesCsv),
             Provider = request.Brain.Provider,
             SystemPromptTemplate = MergeGlobalGuardrails(request.Brain.SystemPrompt),
             Temperature = request.Brain.Temperature,
@@ -143,6 +153,7 @@ public sealed class AgentsController : ControllerBase
 
         var session = new SessionConfig
         {
+            RuntimeKind = ParseAgentRuntimeKind(request.Session.RuntimeKind),
             EnableThreads = request.Session.EnableThreads,
             DefaultThreadTtl = TimeSpan.FromHours(request.Session.DefaultThreadTtlHours),
             MaxTurnsPerThread = request.Session.MaxTurnsPerThread,
@@ -217,6 +228,7 @@ public sealed class AgentsController : ControllerBase
         var brain = new BrainConfiguration
         {
             ModelId = request.Brain.PrimaryModel,
+            ReasoningModelCandidatesCsv = BuildReasoningCandidatesCsv(request.Brain.FallbackModel, request.Brain.ReasoningModelCandidatesCsv),
             Provider = request.Brain.Provider,
             SystemPromptTemplate = MergeGlobalGuardrails(request.Brain.SystemPrompt),
             Temperature = request.Brain.Temperature,
@@ -253,6 +265,7 @@ public sealed class AgentsController : ControllerBase
             .AsReadOnly();
         var session = new SessionConfig
         {
+            RuntimeKind = ParseAgentRuntimeKind(request.Session.RuntimeKind),
             EnableThreads = request.Session.EnableThreads,
             DefaultThreadTtl = TimeSpan.FromHours(request.Session.DefaultThreadTtlHours),
             MaxTurnsPerThread = request.Session.MaxTurnsPerThread,
@@ -403,6 +416,10 @@ public sealed class AgentsController : ControllerBase
         Brain = new BrainConfigDto
         {
             PrimaryModel = agent.Brain.ModelId,
+            FallbackModel = (agent.Brain.ReasoningModelCandidatesCsv ?? string.Empty)
+                .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+                .FirstOrDefault() ?? string.Empty,
+            ReasoningModelCandidatesCsv = agent.Brain.ReasoningModelCandidatesCsv ?? string.Empty,
             Provider = agent.Brain.Provider,
             SystemPrompt = agent.Brain.SystemPromptTemplate,
             Temperature = agent.Brain.Temperature,
@@ -431,6 +448,7 @@ public sealed class AgentsController : ControllerBase
         },
         Session = new SessionConfigDto
         {
+            RuntimeKind = agent.Session.RuntimeKind.ToString(),
             EnableThreads = agent.Session.EnableThreads,
             DefaultThreadTtlHours = (int)agent.Session.DefaultThreadTtl.TotalHours,
             MaxTurnsPerThread = agent.Session.MaxTurnsPerThread,
@@ -519,6 +537,9 @@ public sealed class AgentsController : ControllerBase
     private static RuntimeMode ParseRuntimeMode(string? value)
         => Enum.TryParse<RuntimeMode>(value, true, out var parsed) ? parsed : RuntimeMode.Autonomous;
 
+    private static AgentRuntimeKind ParseAgentRuntimeKind(string? value)
+        => Enum.TryParse<AgentRuntimeKind>(value, true, out var parsed) ? parsed : AgentRuntimeKind.Text;
+
     private static string MergeGlobalGuardrails(string? prompt)
     {
         var basePrompt = string.IsNullOrWhiteSpace(prompt)
@@ -529,5 +550,27 @@ public sealed class AgentsController : ControllerBase
             return basePrompt;
 
         return $"{basePrompt}\n{GlobalConversationGuardrails}";
+    }
+
+    private static string BuildReasoningCandidatesCsv(string? fallbackModel, string? explicitCandidatesCsv)
+    {
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var ordered = new List<string>();
+
+        void add(string? raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw))
+                return;
+
+            foreach (var item in raw.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (set.Add(item))
+                    ordered.Add(item);
+            }
+        }
+
+        add(fallbackModel);
+        add(explicitCandidatesCsv);
+        return string.Join(",", ordered);
     }
 }

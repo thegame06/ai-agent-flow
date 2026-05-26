@@ -208,52 +208,61 @@ public sealed class VoiceRuntimeEventDispatcher : BackgroundService
             using var scope = _scopeFactory.CreateScope();
             var resolver = scope.ServiceProvider.GetRequiredService<IProviderResolver>();
             audit = scope.ServiceProvider.GetRequiredService<IWorkflowAuditService>();
-            var preferred = evt.Headers.TryGetValue("sttProvider", out var configuredProvider)
-                ? configuredProvider
-                : "openai";
+            var preferred = GetPreferredProvider(evt.Headers, "sttProvider", "openai");
+            var providerChain = BuildProviderChain(evt.Headers, "stt", preferred, "openai");
             var channel = evt.Headers.TryGetValue("channel", out var ch) ? ch : "voice";
-            Exception? lastError = null;
-            foreach (var providerCandidate in BuildProviderCandidates(preferred, "openai"))
+            var resolved = await resolver.ResolveRequiredAsync<IAudioTranscriptionProviderAdapter>(
+                new ProviderResolutionContext
+                {
+                    TenantId = evt.TenantId,
+                    Capability = CommunicationCapabilities.AudioTranscribe,
+                    Channel = channel,
+                    PreferredProviderId = preferred,
+                    Metadata = new Dictionary<string, string>
+                    {
+                        ["providerCandidates"] = providerChain
+                    }
+                },
+                ct);
+
+            var result = await resolved.Adapter.TranscribeAsync(
+                resolved.Connection,
+                new ProviderTranscriptionRequest
+                {
+                    AudioBytes = chunk.Payload,
+                    ContentType = chunk.ContentType,
+                    Metadata = new Dictionary<string, string>
+                    {
+                        ["sessionId"] = chunk.SessionId,
+                        ["streamId"] = chunk.StreamId
+                    }
+                },
+                ct);
+
+            if (audit is not null)
             {
-                try
-                {
-                    var resolved = await resolver.ResolveRequiredAsync<IAudioTranscriptionProviderAdapter>(
-                        new ProviderResolutionContext
-                        {
-                            TenantId = evt.TenantId,
-                            Capability = CommunicationCapabilities.AudioTranscribe,
-                            Channel = channel,
-                            PreferredProviderId = providerCandidate
-                        },
-                        ct);
-
-                    var result = await resolved.Adapter.TranscribeAsync(
-                        resolved.Connection,
-                        new ProviderTranscriptionRequest
-                        {
-                            AudioBytes = chunk.Payload,
-                            ContentType = chunk.ContentType,
-                            Metadata = new Dictionary<string, string>
-                            {
-                                ["sessionId"] = chunk.SessionId,
-                                ["streamId"] = chunk.StreamId
-                            }
-                        },
-                        ct);
-
-                    return (result.Transcript, resolved.Adapter.ProviderId);
-                }
-                catch (Exception ex)
-                {
-                    lastError = ex;
-                }
+                await audit.RecordStudioActionAsync(
+                    evt.TenantId,
+                    "voice-runtime",
+                    "voice.stt.provider.selected",
+                    chunk.SessionId,
+                    new
+                    {
+                        policy = "voice_stt_provider_chain",
+                        decision = string.Equals(resolved.Adapter.ProviderId, preferred, StringComparison.OrdinalIgnoreCase) ? "primary" : "fallback",
+                        provider = resolved.Adapter.ProviderId,
+                        preferredProvider = preferred,
+                        providerChain
+                    },
+                    evt.CorrelationId,
+                    ct);
             }
 
-            throw lastError ?? new InvalidOperationException("No STT provider candidate available.");
+            return (result.Transcript, resolved.Adapter.ProviderId);
         }
         catch (Exception ex)
         {
-            var attemptedProvider = evt.Headers.TryGetValue("sttProvider", out var providerHint) ? providerHint : "openai";
+            var attemptedProvider = GetPreferredProvider(evt.Headers, "sttProvider", "openai");
             _governancePolicy.RecordFallback(
                 "voice_stt_fallback",
                 "fallback",
@@ -297,50 +306,59 @@ public sealed class VoiceRuntimeEventDispatcher : BackgroundService
             using var scope = _scopeFactory.CreateScope();
             var resolver = scope.ServiceProvider.GetRequiredService<IProviderResolver>();
             audit = scope.ServiceProvider.GetRequiredService<IWorkflowAuditService>();
-            var preferred = evt.Headers.TryGetValue("ttsProvider", out var configuredProvider)
-                ? configuredProvider
-                : "openai";
+            var preferred = GetPreferredProvider(evt.Headers, "ttsProvider", "openai");
+            var providerChain = BuildProviderChain(evt.Headers, "tts", preferred, "openai");
             var channel = evt.Headers.TryGetValue("channel", out var ch) ? ch : "voice";
-            Exception? lastError = null;
-            foreach (var providerCandidate in BuildProviderCandidates(preferred, "openai"))
+            var resolved = await resolver.ResolveRequiredAsync<IAudioSynthesisProviderAdapter>(
+                new ProviderResolutionContext
+                {
+                    TenantId = evt.TenantId,
+                    Capability = CommunicationCapabilities.AudioSynthesize,
+                    Channel = channel,
+                    PreferredProviderId = preferred,
+                    Metadata = new Dictionary<string, string>
+                    {
+                        ["providerCandidates"] = providerChain
+                    }
+                },
+                ct);
+
+            var result = await resolved.Adapter.SynthesizeAsync(
+                resolved.Connection,
+                new ProviderSynthesisRequest
+                {
+                    Text = text,
+                    Metadata = new Dictionary<string, string>
+                    {
+                        ["sessionId"] = evt.SessionId ?? string.Empty
+                    }
+                },
+                ct);
+
+            if (audit is not null)
             {
-                try
-                {
-                    var resolved = await resolver.ResolveRequiredAsync<IAudioSynthesisProviderAdapter>(
-                        new ProviderResolutionContext
-                        {
-                            TenantId = evt.TenantId,
-                            Capability = CommunicationCapabilities.AudioSynthesize,
-                            Channel = channel,
-                            PreferredProviderId = providerCandidate
-                        },
-                        ct);
-
-                    var result = await resolved.Adapter.SynthesizeAsync(
-                        resolved.Connection,
-                        new ProviderSynthesisRequest
-                        {
-                            Text = text,
-                            Metadata = new Dictionary<string, string>
-                            {
-                                ["sessionId"] = evt.SessionId ?? string.Empty
-                            }
-                        },
-                        ct);
-
-                    return (result.AudioBytes, result.ContentType, resolved.Adapter.ProviderId);
-                }
-                catch (Exception ex)
-                {
-                    lastError = ex;
-                }
+                await audit.RecordStudioActionAsync(
+                    evt.TenantId,
+                    "voice-runtime",
+                    "voice.tts.provider.selected",
+                    evt.SessionId ?? "voice",
+                    new
+                    {
+                        policy = "voice_tts_provider_chain",
+                        decision = string.Equals(resolved.Adapter.ProviderId, preferred, StringComparison.OrdinalIgnoreCase) ? "primary" : "fallback",
+                        provider = resolved.Adapter.ProviderId,
+                        preferredProvider = preferred,
+                        providerChain
+                    },
+                    evt.CorrelationId,
+                    ct);
             }
 
-            throw lastError ?? new InvalidOperationException("No TTS provider candidate available.");
+            return (result.AudioBytes, result.ContentType, resolved.Adapter.ProviderId);
         }
         catch (Exception ex)
         {
-            var attemptedProvider = evt.Headers.TryGetValue("ttsProvider", out var providerHint) ? providerHint : "openai";
+            var attemptedProvider = GetPreferredProvider(evt.Headers, "ttsProvider", "openai");
             _governancePolicy.RecordFallback(
                 "voice_tts_fallback",
                 "fallback",
@@ -373,21 +391,48 @@ public sealed class VoiceRuntimeEventDispatcher : BackgroundService
         }
     }
 
-    private static IReadOnlyList<string> BuildProviderCandidates(string preferredProvider, params string[] fallbackProviders)
+    private static string GetPreferredProvider(IReadOnlyDictionary<string, string> headers, string key, string fallback)
     {
-        var candidates = new List<string>();
+        if (headers.TryGetValue(key, out var configured) && !string.IsNullOrWhiteSpace(configured))
+            return configured.Trim();
+        return fallback;
+    }
 
-        if (!string.IsNullOrWhiteSpace(preferredProvider))
-            candidates.Add(preferredProvider);
+    private static string BuildProviderChain(
+        IReadOnlyDictionary<string, string> headers,
+        string role,
+        string preferredProvider,
+        params string[] defaultFallbacks)
+    {
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var chain = new List<string>();
 
-        foreach (var fallbackProvider in fallbackProviders)
+        void add(string? raw)
         {
-            if (!string.IsNullOrWhiteSpace(fallbackProvider))
-                candidates.Add(fallbackProvider);
+            if (string.IsNullOrWhiteSpace(raw))
+                return;
+
+            foreach (var value in raw.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (set.Add(value))
+                    chain.Add(value);
+            }
         }
 
-        return candidates
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        add(preferredProvider);
+        if (headers.TryGetValue($"{role}Providers", out var scopedProviders))
+            add(scopedProviders);
+        if (headers.TryGetValue($"{role}ProvidersCsv", out var scopedProvidersCsv))
+            add(scopedProvidersCsv);
+        if (headers.TryGetValue($"providerCandidates.{role}", out var roleCandidates))
+            add(roleCandidates);
+        if (headers.TryGetValue("providerCandidates", out var genericCandidates))
+            add(genericCandidates);
+        if (headers.TryGetValue("providerCandidatesCsv", out var genericCandidatesCsv))
+            add(genericCandidatesCsv);
+        foreach (var fallback in defaultFallbacks)
+            add(fallback);
+
+        return string.Join(",", chain);
     }
 }

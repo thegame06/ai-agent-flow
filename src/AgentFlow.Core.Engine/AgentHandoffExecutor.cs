@@ -72,6 +72,7 @@ public sealed class AgentHandoffExecutor : IAgentHandoffExecutor
             AgentKey = request.TargetAgentKey,
             UserId = request.SourceAgentKey,
             UserMessage = request.PayloadJson,
+            ContextJson = BuildHandoffContextJson(request),
             SessionId = request.SessionId,
             ThreadId = request.ThreadId,
             CorrelationId = request.CorrelationId,
@@ -123,5 +124,36 @@ public sealed class AgentHandoffExecutor : IAgentHandoffExecutor
                 ["threadId"] = request.ThreadId
             }
         };
+    }
+
+    private static string BuildHandoffContextJson(AgentHandoffRequest request)
+    {
+        var baseContext = new Dictionary<string, object?>
+        {
+            ["conversationState"] = new
+            {
+                stage = "handoff_received",
+                handoff = new
+                {
+                    source = request.SourceAgentKey,
+                    target = request.TargetAgentKey,
+                    reason = request.Intent
+                }
+            },
+            ["handoff"] = new
+            {
+                request.Intent,
+                request.SourceAgentKey,
+                request.TargetAgentKey,
+                request.SessionId,
+                request.ThreadId,
+                request.CorrelationId
+            }
+        };
+
+        if (!string.IsNullOrWhiteSpace(request.PayloadJson))
+            baseContext["payload"] = request.PayloadJson;
+
+        return System.Text.Json.JsonSerializer.Serialize(baseContext);
     }
 }

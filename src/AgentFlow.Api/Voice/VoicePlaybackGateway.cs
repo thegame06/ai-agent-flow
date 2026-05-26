@@ -101,85 +101,63 @@ public sealed class VoicePlaybackGateway : BackgroundService
         {
             var resolver = scope.ServiceProvider.GetRequiredService<IProviderResolver>();
             var channel = evt.Headers.TryGetValue("channel", out var ch) ? ch : "voice";
-            var preferredProvider = evt.Headers.TryGetValue("provider", out var p) ? p : "twilio";
-            var providerCandidates = BuildProviderCandidates(preferredProvider);
-            Exception? lastException = null;
-            var delivered = false;
-
-            foreach (var provider in providerCandidates)
-            {
-                try
+            var preferredProvider = GetPreferredProvider(evt.Headers, "provider", "twilio");
+            var providerChain = BuildProviderChain(evt.Headers, "callControl", preferredProvider, "twilio");
+            var resolved = await resolver.ResolveRequiredAsync<IVoiceCallControlProviderAdapter>(
+                new ProviderResolutionContext
                 {
-                    var resolved = await resolver.ResolveRequiredAsync<IVoiceCallControlProviderAdapter>(
-                        new ProviderResolutionContext
-                        {
-                            TenantId = evt.TenantId,
-                            Capability = CommunicationCapabilities.CallControl,
-                            Channel = channel,
-                            PreferredProviderId = provider
-                        },
-                        ct);
-
-                    var twiml = BuildPlaybackTwiml(evt, text);
-                    await RetryAsync(async token =>
+                    TenantId = evt.TenantId,
+                    Capability = CommunicationCapabilities.CallControl,
+                    Channel = channel,
+                    PreferredProviderId = preferredProvider,
+                    Metadata = new Dictionary<string, string>
                     {
-                        await resolved.Adapter.UpdateCallAsync(
-                            resolved.Connection,
-                            new ProviderVoiceCallControlRequest
-                            {
-                                CallId = callId!,
-                                Twiml = twiml,
-                                Metadata = new Dictionary<string, string>
-                                {
-                                    ["sessionId"] = synthesized.SessionId,
-                                    ["eventId"] = evt.EventId
-                                }
-                            },
-                            token);
-                    }, ct);
+                        ["providerCandidates"] = providerChain
+                    }
+                },
+                ct);
 
-                    _logger.LogInformation(
-                        "Delivered synthesized playback to provider. Tenant={TenantId} SessionId={SessionId} CallId={CallId} Provider={Provider}",
-                        evt.TenantId,
-                        synthesized.SessionId,
-                        callId,
-                        resolved.Adapter.ProviderId);
-                    await audit.RecordStudioActionAsync(
-                        evt.TenantId,
-                        "voice-playback",
-                        "voice.playback.delivered",
-                        synthesized.SessionId,
-                        new
+            var twiml = BuildPlaybackTwiml(evt, text);
+            await RetryAsync(async token =>
+            {
+                await resolved.Adapter.UpdateCallAsync(
+                    resolved.Connection,
+                    new ProviderVoiceCallControlRequest
+                    {
+                        CallId = callId!,
+                        Twiml = twiml,
+                        Metadata = new Dictionary<string, string>
                         {
-                            policy = "voice_playback_provider_chain",
-                            decision = provider.Equals(preferredProvider, StringComparison.OrdinalIgnoreCase) ? "primary" : "fallback",
-                            provider = resolved.Adapter.ProviderId,
-                            providerAttempted = provider,
-                            synthesized.ContentType,
-                            usedPlay = ShouldUsePlayTwiml(evt, synthesized),
-                            evt.EventId
-                        },
-                        evt.CorrelationId,
-                        ct);
+                            ["sessionId"] = synthesized.SessionId,
+                            ["eventId"] = evt.EventId
+                        }
+                    },
+                    token);
+            }, ct);
 
-                    delivered = true;
-                    break;
-                }
-                catch (Exception ex)
+            _logger.LogInformation(
+                "Delivered synthesized playback to provider. Tenant={TenantId} SessionId={SessionId} CallId={CallId} Provider={Provider}",
+                evt.TenantId,
+                synthesized.SessionId,
+                callId,
+                resolved.Adapter.ProviderId);
+            await audit.RecordStudioActionAsync(
+                evt.TenantId,
+                "voice-playback",
+                "voice.playback.delivered",
+                synthesized.SessionId,
+                new
                 {
-                    lastException = ex;
-                    _logger.LogWarning(
-                        ex,
-                        "Playback provider attempt failed. Tenant={TenantId} SessionId={SessionId} Provider={Provider} EventId={EventId}",
-                        evt.TenantId,
-                        synthesized.SessionId,
-                        provider,
-                        evt.EventId);
-                }
-            }
-
-            if (!delivered && lastException is not null)
-                throw lastException;
+                    policy = "voice_playback_provider_chain",
+                    decision = string.Equals(resolved.Adapter.ProviderId, preferredProvider, StringComparison.OrdinalIgnoreCase) ? "primary" : "fallback",
+                    provider = resolved.Adapter.ProviderId,
+                    providerChain,
+                    synthesized.ContentType,
+                    usedPlay = ShouldUsePlayTwiml(evt, synthesized),
+                    evt.EventId
+                },
+                evt.CorrelationId,
+                ct);
         }
         catch (Exception ex)
         {
@@ -223,14 +201,49 @@ public sealed class VoicePlaybackGateway : BackgroundService
         return string.Empty;
     }
 
-    private static IReadOnlyList<string> BuildProviderCandidates(string preferredProvider)
+    private static string GetPreferredProvider(IReadOnlyDictionary<string, string> headers, string key, string fallback)
     {
-        if (string.IsNullOrWhiteSpace(preferredProvider))
-            return new[] { "twilio" };
+        if (headers.TryGetValue(key, out var configured) && !string.IsNullOrWhiteSpace(configured))
+            return configured.Trim();
+        return fallback;
+    }
 
-        return new[] { preferredProvider, "twilio" }
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
+    private static string BuildProviderChain(
+        IReadOnlyDictionary<string, string> headers,
+        string role,
+        string preferredProvider,
+        params string[] defaultFallbacks)
+    {
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var chain = new List<string>();
+
+        void add(string? raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw))
+                return;
+
+            foreach (var value in raw.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (set.Add(value))
+                    chain.Add(value);
+            }
+        }
+
+        add(preferredProvider);
+        if (headers.TryGetValue($"{role}Providers", out var scopedProviders))
+            add(scopedProviders);
+        if (headers.TryGetValue($"{role}ProvidersCsv", out var scopedProvidersCsv))
+            add(scopedProvidersCsv);
+        if (headers.TryGetValue($"providerCandidates.{role}", out var roleCandidates))
+            add(roleCandidates);
+        if (headers.TryGetValue("providerCandidates", out var genericCandidates))
+            add(genericCandidates);
+        if (headers.TryGetValue("providerCandidatesCsv", out var genericCandidatesCsv))
+            add(genericCandidatesCsv);
+        foreach (var fallback in defaultFallbacks)
+            add(fallback);
+
+        return string.Join(",", chain);
     }
 
     private static bool ShouldUsePlayTwiml(AgentEvent evt, AudioSynthesizedEvent synthesized)

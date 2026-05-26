@@ -91,6 +91,9 @@ export const endpoints = {
   // AgentFlow API Endpoints (Multi-tenant)
   // ─────────────────────────────────────────────
   agentflow: {
+    assistant: {
+      wizardMetrics: (tenantId: string) => `/api/v1/assistant/wizard/metrics?tenantId=${encodeURIComponent(tenantId)}`,
+    },
     channels: {
       list: (tenantId: string) => `/api/v1/tenants/${tenantId}/channels`,
       create: (tenantId: string) => `/api/v1/tenants/${tenantId}/channels`,

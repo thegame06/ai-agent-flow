@@ -259,6 +259,9 @@ public sealed class WorkflowStudioController : ControllerBase
             TenantId = tenantId,
             Name = request.Name,
             TriggerEventName = request.TriggerEventName,
+            RuntimeKind = string.IsNullOrWhiteSpace(request.RuntimeKind)
+                ? existing?.RuntimeKind ?? "Text"
+                : request.RuntimeKind,
             Version = version,
             Status = request.Status ?? existing?.Status ?? WorkflowDefinitionStatus.Draft,
             DefinitionJson = request.DefinitionJson,
@@ -689,6 +692,7 @@ public sealed record UpsertWorkflowDefinitionRequest
 {
     public string Name { get; init; } = string.Empty;
     public string TriggerEventName { get; init; } = string.Empty;
+    public string RuntimeKind { get; init; } = "Text";
     public string DefinitionJson { get; init; } = "{}";
     public WorkflowDefinitionStatus? Status { get; init; }
     public int? Version { get; init; }

@@ -396,6 +396,26 @@ public sealed class AgentExecutionEngine : IAgentExecutor
                                 })
                             }, CancellationToken.None);
 
+                            if (fallbackTurn > 0)
+                            {
+                                await _memory.Audit.RecordAsync(new AuditEntry
+                                {
+                                    ExecutionId = executionId,
+                                    AgentId = string.IsNullOrWhiteSpace(fallbackAgentId) ? request.AgentKey : fallbackAgentId,
+                                    TenantId = request.TenantId,
+                                    UserId = request.UserId,
+                                    EventType = AuditEventType.RoutingDecision,
+                                    CorrelationId = request.CorrelationId ?? string.Empty,
+                                    EventJson = JsonSerializer.Serialize(new
+                                    {
+                                        action = "fallback.loop_detected",
+                                        strategy = "clarify_then_route",
+                                        fallbackTurn,
+                                        maxClarificationTurns
+                                    })
+                                }, CancellationToken.None);
+                            }
+
                             if (nextQuestion is not null)
                             {
                                 await _memory.Audit.RecordAsync(new AuditEntry
@@ -586,7 +606,7 @@ public sealed class AgentExecutionEngine : IAgentExecutor
             tenantId: request.TenantId,
             agentDefinitionId: agentDef.Id.ToString(),
             triggeredBy: request.UserId,
-            input: new ExecutionInput { UserMessage = request.UserMessage },
+            input: new ExecutionInput { UserMessage = request.UserMessage, ContextJson = request.ContextJson },
             maxIterations: agentDef.LoopConfig.MaxIterations,
             correlationId: request.CorrelationId ?? Guid.NewGuid().ToString(),
             parentExecutionId: request.ParentExecutionId,
@@ -653,7 +673,8 @@ public sealed class AgentExecutionEngine : IAgentExecutor
             {
                 agentName = agentDef.Name,
                 userMessage = request.UserMessage,
-                maxIterations = agentDef.LoopConfig.MaxIterations
+                maxIterations = agentDef.LoopConfig.MaxIterations,
+                providerRouting = BuildProviderRoutingSnapshot(request.Metadata)
             })
         }, ct);
 
@@ -1099,6 +1120,7 @@ public sealed class AgentExecutionEngine : IAgentExecutor
                 WorkingMemoryJson = memorySummary ?? "{}",
                 AvailableTools = availableTools,
                 Metadata = request.Metadata,
+                ConversationStateJson = ExtractConversationStateJson(request.ContextJson),
                 ThreadSnapshot = threadSnapshot // ✅ NEW: Pass thread history to LLM
             };
 
@@ -1165,9 +1187,32 @@ public sealed class AgentExecutionEngine : IAgentExecutor
             switch (thinkResult.Decision)
             {
                 case ThinkDecision.ProvideFinalAnswer:
+                    var originalFinalAnswer = thinkResult.FinalAnswer ?? string.Empty;
+                    var adjustedFinalAnswer = ApplyFilledSlotRepromptGuardrail(
+                        originalFinalAnswer,
+                        request.ContextJson);
+                    if (!string.Equals(originalFinalAnswer, adjustedFinalAnswer, StringComparison.Ordinal))
+                    {
+                        await _memory.Audit.RecordAsync(new AuditEntry
+                        {
+                            ExecutionId = execution.Id,
+                            AgentId = agentDef.Id.ToString(),
+                            TenantId = request.TenantId,
+                            UserId = request.UserId,
+                            EventType = AuditEventType.RoutingDecision,
+                            CorrelationId = request.CorrelationId ?? string.Empty,
+                            EventJson = JsonSerializer.Serialize(new
+                            {
+                                action = "conversation.guardrail.slot_reprompt_blocked",
+                                stage = "final_answer",
+                                reason = "slot_already_filled"
+                            }),
+                            OccurredAt = DateTimeOffset.UtcNow
+                        }, CancellationToken.None);
+                    }
                     var output = new ExecutionOutput
                     {
-                        FinalResponse = thinkResult.FinalAnswer ?? string.Empty,
+                        FinalResponse = adjustedFinalAnswer,
                         TotalTokensUsed = execution.Steps.Sum(s => s.TokensUsed ?? 0),
                         TotalToolCalls = execution.Steps.Count(s => s.StepType == StepType.Act),
                         TotalIterations = execution.CurrentIteration
@@ -1385,28 +1430,34 @@ if (!preResponsePolicy.IsSuccess) return Result<string?>.Failure(preResponsePoli
                             ?? GetConfigString(currentStep.Config, "instruction")
                             ?? currentMessage;
 
-                        var thinkResult = await brain.ThinkAsync(new ThinkContext
-                        {
-                            TenantId = request.TenantId,
-                            UserId = request.UserId,
-                            ExecutionId = execution.Id,
-                            CorrelationId = request.CorrelationId ?? execution.Id,
-                            ModelId = agentDef.Brain.ModelId,
-                            SystemPrompt = agentDef.Brain.SystemPromptTemplate,
-                            UserMessage = prompt,
-                            Iteration = execution.CurrentIteration,
-                            History = execution.Steps.Cast<object>().ToList(),
-                            WorkingMemoryJson = latestPayload ?? "{}",
-                            AvailableTools = agentDef.AuthorizedTools.Where(t => t.IsEnabled)
-                                .Select(t => new AvailableToolDescriptor
-                                {
-                                    ToolId = t.ToolId,
-                                    Name = t.ToolName,
-                                    Description = t.ToolName
-                                })
-                                .ToList(),
-                            Metadata = request.Metadata
-                        }, ct);
+                        var thinkResult = await ExecuteThinkWithModelFallbackAsync(
+                            brain,
+                            request,
+                            BuildReasoningModelChain(agentDef.Brain.ModelId, agentDef.Brain.ReasoningModelCandidatesCsv, request.Metadata),
+                            new ThinkContext
+                            {
+                                TenantId = request.TenantId,
+                                UserId = request.UserId,
+                                ExecutionId = execution.Id,
+                                CorrelationId = request.CorrelationId ?? execution.Id,
+                                ModelId = agentDef.Brain.ModelId,
+                                SystemPrompt = agentDef.Brain.SystemPromptTemplate,
+                                UserMessage = prompt,
+                                Iteration = execution.CurrentIteration,
+                                History = execution.Steps.Cast<object>().ToList(),
+                                WorkingMemoryJson = latestPayload ?? "{}",
+                                AvailableTools = agentDef.AuthorizedTools.Where(t => t.IsEnabled)
+                                    .Select(t => new AvailableToolDescriptor
+                                    {
+                                        ToolId = t.ToolId,
+                                        Name = t.ToolName,
+                                        Description = t.ToolName
+                                    })
+                                    .ToList(),
+                                Metadata = request.Metadata,
+                                ConversationStateJson = ExtractConversationStateJson(request.ContextJson)
+                            },
+                            ct);
 
                         latestPayload = thinkResult.FinalAnswer ?? thinkResult.Rationale ?? prompt;
                         currentMessage = latestPayload;
@@ -1492,16 +1543,21 @@ if (!preResponsePolicy.IsSuccess) return Result<string?>.Failure(preResponsePoli
                 case "observe":
                 case "aggregate":
                     {
-                        var observe = await brain.ObserveAsync(new ObserveContext
-                        {
-                            TenantId = request.TenantId,
-                            ModelId = agentDef.Brain.ModelId,
-                            ToolName = currentStep.Label,
-                            ToolOutputJson = latestPayload ?? "{}",
-                            ToolSucceeded = true,
-                            UserGoal = request.UserMessage,
-                            History = execution.Steps.Cast<object>().ToList()
-                        }, ct);
+                        var observe = await ExecuteObserveWithModelFallbackAsync(
+                            brain,
+                            request,
+                            BuildReasoningModelChain(agentDef.Brain.ModelId, agentDef.Brain.ReasoningModelCandidatesCsv, request.Metadata),
+                            new ObserveContext
+                            {
+                                TenantId = request.TenantId,
+                                ModelId = agentDef.Brain.ModelId,
+                                ToolName = currentStep.Label,
+                                ToolOutputJson = latestPayload ?? "{}",
+                                ToolSucceeded = true,
+                                UserGoal = request.UserMessage,
+                                History = execution.Steps.Cast<object>().ToList()
+                            },
+                            ct);
 
                         latestPayload = observe.Summary;
                         currentMessage = observe.Summary;
@@ -1805,6 +1861,116 @@ if (!preResponsePolicy.IsSuccess) return Result<string?>.Failure(preResponsePoli
         return (totalTokens / 1000d) * usdPer1kTokens;
     }
 
+    private static IReadOnlyList<string> BuildReasoningModelChain(
+        string primaryModelId,
+        string? configuredCandidatesCsv,
+        IReadOnlyDictionary<string, string> metadata)
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var models = new List<string>();
+
+        void add(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return;
+
+            foreach (var item in value.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (seen.Add(item))
+                    models.Add(item);
+            }
+        }
+
+        add(primaryModelId);
+        add(configuredCandidatesCsv);
+        if (metadata.TryGetValue("reasoningModel", out var reasoningModel))
+            add(reasoningModel);
+        if (metadata.TryGetValue("reasoningFallbackModel", out var reasoningFallback))
+            add(reasoningFallback);
+        if (metadata.TryGetValue("fallbackModel", out var fallbackModel))
+            add(fallbackModel);
+        if (metadata.TryGetValue("reasoningModelCandidates", out var candidates))
+            add(candidates);
+        if (metadata.TryGetValue("reasoningModelCandidatesCsv", out var candidatesCsv))
+            add(candidatesCsv);
+
+        return models;
+    }
+
+    private async Task<ThinkResult> ExecuteThinkWithModelFallbackAsync(
+        IAgentBrain brain,
+        AgentExecutionRequest request,
+        IReadOnlyList<string> modelChain,
+        ThinkContext baseContext,
+        CancellationToken ct)
+    {
+        Exception? last = null;
+        for (var i = 0; i < modelChain.Count; i++)
+        {
+            var modelId = modelChain[i];
+            try
+            {
+                return await brain.ThinkAsync(baseContext with { ModelId = modelId }, ct);
+            }
+            catch (Exception ex)
+            {
+                last = ex;
+                _governancePolicy.RecordFallback(
+                    "reasoning_model_chain",
+                    i == 0 ? "primary_failed" : "fallback_failed",
+                    tenantId: request.TenantId,
+                    flow: "reasoning.think",
+                    model: modelId);
+                _logger.LogWarning(
+                    ex,
+                    "Reasoning model attempt failed. Tenant={TenantId} Model={ModelId} Step=think Attempt={Attempt}/{Total}",
+                    request.TenantId,
+                    modelId,
+                    i + 1,
+                    modelChain.Count);
+            }
+        }
+
+        throw last ?? new InvalidOperationException("No reasoning model candidate available for think execution.");
+    }
+
+    private async Task<ObserveResult> ExecuteObserveWithModelFallbackAsync(
+        IAgentBrain brain,
+        AgentExecutionRequest request,
+        IReadOnlyList<string> modelChain,
+        ObserveContext baseContext,
+        CancellationToken ct)
+    {
+        Exception? last = null;
+        for (var i = 0; i < modelChain.Count; i++)
+        {
+            var modelId = modelChain[i];
+            try
+            {
+                return await brain.ObserveAsync(baseContext with { ModelId = modelId }, ct);
+            }
+            catch (Exception ex)
+            {
+                last = ex;
+                _governancePolicy.RecordFallback(
+                    "reasoning_model_chain",
+                    i == 0 ? "primary_failed" : "fallback_failed",
+                    tenantId: request.TenantId,
+                    flow: "reasoning.observe",
+                    model: modelId);
+                _logger.LogWarning(
+                    ex,
+                    "Reasoning model attempt failed. Tenant={TenantId} Model={ModelId} Step=observe Attempt={Attempt}/{Total}",
+                    request.TenantId,
+                    modelId,
+                    i + 1,
+                    modelChain.Count);
+            }
+        }
+
+        throw last ?? new InvalidOperationException("No reasoning model candidate available for observe execution.");
+    }
+
     private async Task<Result<ObserveResult>> ObserveAsync(
         AgentExecution execution,
         AgentDefinition agentDef,
@@ -1819,16 +1985,21 @@ if (!preResponsePolicy.IsSuccess) return Result<string?>.Failure(preResponsePoli
             ?.SetTag("agentflow.execution_id", execution.Id)
             ?.SetTag("agentflow.tool_name", toolName);
 
-        var observeResult = await brain.ObserveAsync(new ObserveContext
-        {
-            TenantId = request.TenantId,
-            ModelId = agentDef.Brain.ModelId,
-            ToolName = toolName,
-            ToolOutputJson = toolResult.OutputJson ?? "{}",
-            ToolSucceeded = toolResult.IsSuccess,
-            UserGoal = request.UserMessage,
-            History = execution.Steps.Cast<object>().ToList()
-        }, ct);
+        var observeResult = await ExecuteObserveWithModelFallbackAsync(
+            brain,
+            request,
+            BuildReasoningModelChain(agentDef.Brain.ModelId, agentDef.Brain.ReasoningModelCandidatesCsv, request.Metadata),
+            new ObserveContext
+            {
+                TenantId = request.TenantId,
+                ModelId = agentDef.Brain.ModelId,
+                ToolName = toolName,
+                ToolOutputJson = toolResult.OutputJson ?? "{}",
+                ToolSucceeded = toolResult.IsSuccess,
+                UserGoal = request.UserMessage,
+                History = execution.Steps.Cast<object>().ToList()
+            },
+            ct);
 
         observeSw.Stop();
 
@@ -2106,7 +2277,8 @@ Rules:
                 ModelId = routerAgent.Brain.ModelId,
                 SystemPrompt = systemPrompt,
                 UserMessage = $"Message: {request.UserMessage}\nIntentCatalog: {catalogEl.GetString()}",
-                Iteration = 1
+                Iteration = 1,
+                ConversationStateJson = ExtractConversationStateJson(request.ContextJson)
             }, ct);
 
             var rawJson = think.FinalAnswer ?? think.Rationale ?? string.Empty;
@@ -2232,6 +2404,129 @@ Rules:
     }
 
     private sealed record FallbackQuestion(string Text, bool Active, string Field, bool Required);
+
+    private static string? ExtractConversationStateJson(string? contextJson)
+    {
+        if (string.IsNullOrWhiteSpace(contextJson))
+            return null;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(contextJson);
+            if (doc.RootElement.ValueKind != JsonValueKind.Object)
+                return null;
+
+            if (doc.RootElement.TryGetProperty("conversationState", out var state))
+                return state.GetRawText();
+
+            if (doc.RootElement.TryGetProperty("ConversationState", out var statePascal))
+                return statePascal.GetRawText();
+        }
+        catch
+        {
+            // Keep backward compatibility on malformed context payloads.
+        }
+
+        return null;
+    }
+
+    private static string ApplyFilledSlotRepromptGuardrail(string finalResponse, string? contextJson)
+    {
+        if (string.IsNullOrWhiteSpace(finalResponse) || string.IsNullOrWhiteSpace(contextJson))
+            return finalResponse;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(contextJson);
+            if (!doc.RootElement.TryGetProperty("conversationState", out var state) || state.ValueKind != JsonValueKind.Object)
+                return finalResponse;
+            if (!state.TryGetProperty("slots", out var slots) || slots.ValueKind != JsonValueKind.Object)
+                return finalResponse;
+
+            var hasProduct = slots.TryGetProperty("producto", out var productoEl) && !string.IsNullOrWhiteSpace(productoEl.GetString())
+                || slots.TryGetProperty("product", out var productEl) && !string.IsNullOrWhiteSpace(productEl.GetString());
+            var hasPayment = slots.TryGetProperty("modalidad_pago", out var pagoEl) && !string.IsNullOrWhiteSpace(pagoEl.GetString())
+                || slots.TryGetProperty("payment_mode", out var paymentEl) && !string.IsNullOrWhiteSpace(paymentEl.GetString());
+            var hasQuantity = slots.TryGetProperty("cantidad", out var cantidadEl) && !string.IsNullOrWhiteSpace(cantidadEl.GetString())
+                || slots.TryGetProperty("quantity", out var quantityEl) && !string.IsNullOrWhiteSpace(quantityEl.GetString());
+
+            var lower = finalResponse.ToLowerInvariant();
+            var repeatsProductAsk = lower.Contains("que producto") || lower.Contains("qué producto");
+            if (repeatsProductAsk && hasProduct)
+            {
+                var safeProduct = slots.TryGetProperty("producto", out var p1) ? p1.GetString() : slots.TryGetProperty("product", out var p2) ? p2.GetString() : "el producto seleccionado";
+                return $"Perfecto, ya tengo el producto ({safeProduct}). ¿Deseas que avancemos con cotizacion, disponibilidad o confirmacion del pedido?";
+            }
+
+            var repeatsPaymentAsk = lower.Contains("contado o credito") || lower.Contains("contado o crédito");
+            if (repeatsPaymentAsk && hasPayment)
+                return "Gracias, ya tengo la modalidad de pago. ¿Te comparto el siguiente paso para cerrar la compra?";
+
+            var repeatsQuantityAsk = lower.Contains("cuantas unidades") || lower.Contains("cuántas unidades");
+            if (repeatsQuantityAsk && hasQuantity)
+                return "Cantidad confirmada. ¿Continuo con el resumen final para completar la solicitud?";
+        }
+        catch
+        {
+            // Keep original answer on parsing issues.
+        }
+
+        return finalResponse;
+    }
+
+    private static object? BuildProviderRoutingSnapshot(IReadOnlyDictionary<string, string> metadata)
+    {
+        if (metadata.Count == 0)
+            return null;
+
+        static string? Read(IReadOnlyDictionary<string, string> source, params string[] keys)
+        {
+            foreach (var key in keys)
+            {
+                if (source.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value))
+                    return value.Trim();
+            }
+
+            return null;
+        }
+
+        var preferred = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var chains = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        void AddPreferred(string role, params string[] keys)
+        {
+            var value = Read(metadata, keys);
+            if (!string.IsNullOrWhiteSpace(value))
+                preferred[role] = value!;
+        }
+
+        void AddChain(string role, params string[] keys)
+        {
+            var value = Read(metadata, keys);
+            if (!string.IsNullOrWhiteSpace(value))
+                chains[role] = value!;
+        }
+
+        AddPreferred("callControl", "provider", "callControlProvider");
+        AddPreferred("stt", "sttProvider", "transcriptProvider");
+        AddPreferred("tts", "ttsProvider");
+        AddPreferred("reasoning", "reasoningProvider", "brainProvider");
+
+        AddChain("callControl", "providerCandidates.callControl", "callControlProvidersCsv");
+        AddChain("stt", "providerCandidates.stt", "sttProvidersCsv");
+        AddChain("tts", "providerCandidates.tts", "ttsProvidersCsv");
+        AddChain("reasoning", "reasoningModelCandidatesCsv", "providerCandidates.reasoning");
+        AddChain("default", "providerCandidates", "providerCandidatesCsv");
+
+        if (preferred.Count == 0 && chains.Count == 0)
+            return null;
+
+        return new
+        {
+            preferredProviders = preferred,
+            providerChains = chains
+        };
+    }
 }
 
 

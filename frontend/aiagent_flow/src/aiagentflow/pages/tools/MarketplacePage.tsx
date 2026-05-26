@@ -11,6 +11,7 @@ import Paper from '@mui/material/Paper';
 import Avatar from '@mui/material/Avatar';
 import Button from '@mui/material/Button';
 import Dialog from '@mui/material/Dialog';
+import Divider from '@mui/material/Divider';
 import MenuItem from '@mui/material/MenuItem';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
@@ -281,6 +282,55 @@ export default function MarketplacePage() {
               onChange={(e) => updateConfigValue('statusCallbackUrl', e.target.value)}
               fullWidth
             />
+            <Divider />
+            <Typography variant="subtitle2">Cadena de providers (voz)</Typography>
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.2}>
+              <TextField
+                label="STT preferido"
+                value={readConfigValue('sttProvider') || 'openai'}
+                onChange={(e) => updateConfigValue('sttProvider', e.target.value)}
+                fullWidth
+                helperText="Ej: openai, deepgram"
+              />
+              <TextField
+                label="TTS preferido"
+                value={readConfigValue('ttsProvider') || 'openai'}
+                onChange={(e) => updateConfigValue('ttsProvider', e.target.value)}
+                fullWidth
+                helperText="Ej: openai, elevenlabs"
+              />
+              <TextField
+                label="Call control preferido"
+                value={readConfigValue('callControlProvider') || 'twilio'}
+                onChange={(e) => updateConfigValue('callControlProvider', e.target.value)}
+                fullWidth
+                helperText="Ej: twilio"
+              />
+            </Stack>
+            <TextField
+              label="STT providers (CSV)"
+              value={readConfigValue('sttProvidersCsv')}
+              onChange={(e) => updateConfigValue('sttProvidersCsv', e.target.value)}
+              fullWidth
+              placeholder="openai,deepgram"
+              helperText="Orden de fallback para transcripción."
+            />
+            <TextField
+              label="TTS providers (CSV)"
+              value={readConfigValue('ttsProvidersCsv')}
+              onChange={(e) => updateConfigValue('ttsProvidersCsv', e.target.value)}
+              fullWidth
+              placeholder="openai,elevenlabs"
+              helperText="Orden de fallback para síntesis."
+            />
+            <TextField
+              label="Call control providers (CSV)"
+              value={readConfigValue('callControlProvidersCsv')}
+              onChange={(e) => updateConfigValue('callControlProvidersCsv', e.target.value)}
+              fullWidth
+              placeholder="twilio"
+              helperText="Orden de fallback para control de llamada."
+            />
             <TextField
               label="Auth token"
               value={readSecretValue('authToken')}
@@ -410,6 +460,32 @@ export default function MarketplacePage() {
     } catch {
       setError('La configuracion debe ser JSON valido.');
       return;
+    }
+
+    if (connectionForm.connectorId === 'twilio') {
+      const accountSid = (config.accountSid ?? '').trim();
+      const fromPhone = (config.fromPhoneNumber ?? '').trim();
+      if (!accountSid || !fromPhone) {
+        setError('Twilio requiere accountSid y fromPhoneNumber.');
+        return;
+      }
+
+      const normalizeCsv = (value: string) =>
+        value
+          .split(',')
+          .map((item) => item.trim())
+          .filter(Boolean)
+          .join(',');
+
+      const sttPreferred = (config.sttProvider ?? 'openai').trim();
+      const ttsPreferred = (config.ttsProvider ?? 'openai').trim();
+      const callPreferred = (config.callControlProvider ?? 'twilio').trim();
+      config.sttProvider = sttPreferred;
+      config.ttsProvider = ttsPreferred;
+      config.callControlProvider = callPreferred;
+      config.sttProvidersCsv = normalizeCsv(config.sttProvidersCsv || sttPreferred);
+      config.ttsProvidersCsv = normalizeCsv(config.ttsProvidersCsv || ttsPreferred);
+      config.callControlProvidersCsv = normalizeCsv(config.callControlProvidersCsv || callPreferred);
     }
 
     await axios.put(endpoints.agentflow.connections.upsert(tenantId, connectionForm.id), {

@@ -4,7 +4,9 @@ using AgentFlow.Domain.Aggregates;
 using AgentFlow.Domain.Common;
 using AgentFlow.Domain.Repositories;
 using AgentFlow.Security;
+using AgentFlow.Intents.Catalog;
 using Microsoft.AspNetCore.Mvc;
+using Moq;
 
 namespace AgentFlow.Tests.Integration.Channels;
 
@@ -32,7 +34,12 @@ public class ChannelStatusTests
             IsPlatformAdmin = false
         });
 
-        var controller = new ChannelsController(channelRepo, gateway, tenantContext);
+        var controller = new ChannelsController(
+            channelRepo,
+            gateway,
+            tenantContext,
+            Mock.Of<IIntentCatalogService>(),
+            Mock.Of<IIntentRoutingStore>());
 
         var result = await controller.GetQr(tenantId, channel.Id, CancellationToken.None);
 
@@ -65,7 +72,12 @@ public class ChannelStatusTests
             IsPlatformAdmin = false
         });
 
-        var controller = new ChannelsController(channelRepo, gateway, tenantContext);
+        var controller = new ChannelsController(
+            channelRepo,
+            gateway,
+            tenantContext,
+            Mock.Of<IIntentCatalogService>(),
+            Mock.Of<IIntentRoutingStore>());
 
         // Act
         var result = await controller.GetStatus(tenantId, channel.Id, CancellationToken.None);

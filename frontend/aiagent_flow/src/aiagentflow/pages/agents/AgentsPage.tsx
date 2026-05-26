@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Helmet } from 'react-helmet-async';
+import { useSearchParams } from 'react-router';
 import { usePopover } from 'minimal-shared/hooks';
 
 import Box from '@mui/material/Box';
@@ -75,7 +76,25 @@ export default function AgentsPage() {
   const theme = useTheme();
   const router = useRouter();
   const tenantId = useTenantId();
-  const { agents, loading, clone, remove } = useAgents(tenantId);
+  const [searchParams] = useSearchParams();
+  const runtimeStorageKey = `af:agent:runtimeKind:${tenantId}`;
+  const resolveRuntime = (value?: string | null): 'Text' | 'Voice' | 'MultimodalRealtime' | null => {
+    if (!value) return null;
+    const normalized = value.toLowerCase();
+    if (normalized === 'text') return 'Text';
+    if (normalized === 'voice') return 'Voice';
+    if (normalized === 'multimodal' || normalized === 'multimodalrealtime') return 'MultimodalRealtime';
+    return null;
+  };
+  const runtimeFromQuery = resolveRuntime(searchParams.get('runtimeKind'));
+  const runtimeFromStorage =
+    typeof window !== 'undefined' ? resolveRuntime(localStorage.getItem(runtimeStorageKey)) : null;
+  const runtimeKind = (runtimeFromQuery ?? runtimeFromStorage ?? null) as string | null;
+  const { agents, loading, clone, remove } = useAgents(tenantId, runtimeKind);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (runtimeKind) localStorage.setItem(runtimeStorageKey, runtimeKind);
+  }, [runtimeKind, runtimeStorageKey]);
   const [executeDialog, setExecuteDialog] = useState<{
     open: boolean;
     agent: { id: string; name: string; description?: string } | null;
@@ -194,6 +213,7 @@ export default function AgentsPage() {
                     Asistentes reutilizables
                   </Typography>
                   <Typography variant="h3">Asistentes IA</Typography>
+                  {runtimeKind && <Chip size="small" color="info" label={`Runtime ${runtimeKind}`} sx={{ mt: 0.5 }} />}
                   <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
                     Disena asistentes reutilizables para canales y flujos automatizados. Cada asistente puede tener modelo,
                     memoria, herramientas, integraciones externas y reglas de seguridad.

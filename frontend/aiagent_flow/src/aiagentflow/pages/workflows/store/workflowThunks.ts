@@ -7,6 +7,7 @@ type RuntimePayload = {
   workflows: any[];
   executions: any[];
   metrics: any;
+  wizardMetrics: any;
   auditEvents: any[];
   activityCatalog: any[];
   availableModels: any[];
@@ -38,7 +39,11 @@ const apiErrorMessage = (error: any, fallback: string) => {
 
 export const fetchWorkflowRuntimeData = createAsyncThunk(
   'workflowRuntime/fetchRuntimeData',
-  async (tenantId: string, { rejectWithValue }): Promise<RuntimePayload> => {
+  async (
+    payload: { tenantId: string; metricsWindow?: '24h' | '7d' | '30d' },
+    { rejectWithValue }
+  ): Promise<RuntimePayload> => {
+    const { tenantId, metricsWindow = '24h' } = payload;
     const safe = async <T>(request: Promise<{ data: T }>, fallback: T) => {
       try {
         return await request;
@@ -53,10 +58,11 @@ export const fetchWorkflowRuntimeData = createAsyncThunk(
     } catch (error: any) {
       return rejectWithValue(apiErrorMessage(error, 'No se pudieron cargar los workflows.')) as never;
     }
-    const [exRes, metRes, auditRes, catalogRes, modelsRes, toolsRes, agentsRes, channelsRes, integrationsRes, templatesRes] =
+    const [exRes, metRes, wizRes, auditRes, catalogRes, modelsRes, toolsRes, agentsRes, channelsRes, integrationsRes, templatesRes] =
       await Promise.all([
         safe(workflowStudioApi.getExecutions(tenantId), []),
-        safe(workflowStudioApi.getMetrics(tenantId), null),
+        safe(workflowStudioApi.getMetrics(tenantId, metricsWindow), null),
+        safe(workflowStudioApi.getWizardMetrics(tenantId), null),
         safe(workflowStudioApi.getAuditEvents(tenantId), []),
         safe(workflowStudioApi.getCatalogActivities(tenantId), []),
         safe(workflowStudioApi.getModels(), []),
@@ -72,6 +78,7 @@ export const fetchWorkflowRuntimeData = createAsyncThunk(
       workflows: asArray(wfRes.data),
       executions: asArray(exRes.data),
       metrics: metRes.data ?? null,
+      wizardMetrics: wizRes.data ?? null,
       auditEvents: asArray(auditRes.data),
       activityCatalog: asArray(catalogRes.data),
       availableModels: asArray(modelsRes.data),
@@ -96,6 +103,7 @@ export const saveWorkflowDraft = createAsyncThunk(
       name: string;
       triggerEventName: string;
       definitionJson: string;
+      runtimeKind?: string;
     };
   }, { rejectWithValue }) => {
     try {
@@ -108,6 +116,7 @@ export const saveWorkflowDraft = createAsyncThunk(
       const response = await workflowStudioApi.upsertDefinition(tenantId, workflow.id, {
         name: workflow.name.trim(),
         triggerEventName: workflow.triggerEventName.trim(),
+        runtimeKind: workflow.runtimeKind ?? 'Text',
         definitionJson: workflow.definitionJson,
         metadata: {
           designType: (workflow as any).designType ?? 'workflow',

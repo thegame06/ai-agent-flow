@@ -1,5 +1,6 @@
 using System.Text.Json;
 using AgentFlow.Abstractions;
+using AgentFlow.Api.Connect;
 using AgentFlow.Api.Voice;
 using AgentFlow.Api.Workflow;
 using Microsoft.AspNetCore.Authorization;
@@ -17,6 +18,7 @@ public sealed class TwilioVoiceWebhookController : ControllerBase
     private readonly IVoiceSessionOrchestrator _voiceSessionOrchestrator;
     private readonly IAgentRuntimeRegistry _runtimeRegistry;
     private readonly ITwilioWebhookSignatureValidator _signatureValidator;
+    private readonly ITenantConnectionStore _tenantConnectionStore;
     private readonly ILogger<TwilioVoiceWebhookController> _logger;
 
     public TwilioVoiceWebhookController(
@@ -25,6 +27,7 @@ public sealed class TwilioVoiceWebhookController : ControllerBase
         IVoiceSessionOrchestrator voiceSessionOrchestrator,
         IAgentRuntimeRegistry runtimeRegistry,
         ITwilioWebhookSignatureValidator signatureValidator,
+        ITenantConnectionStore tenantConnectionStore,
         ILogger<TwilioVoiceWebhookController> logger)
     {
         _eventTransport = eventTransport;
@@ -32,6 +35,7 @@ public sealed class TwilioVoiceWebhookController : ControllerBase
         _voiceSessionOrchestrator = voiceSessionOrchestrator;
         _runtimeRegistry = runtimeRegistry;
         _signatureValidator = signatureValidator;
+        _tenantConnectionStore = tenantConnectionStore;
         _logger = logger;
     }
 
@@ -49,6 +53,7 @@ public sealed class TwilioVoiceWebhookController : ControllerBase
         var channel = string.Equals(form.Channel, "callcenter", StringComparison.OrdinalIgnoreCase)
             ? "callcenter"
             : "voice";
+        var providerDefaults = await ResolveVoiceProviderDefaultsAsync(tenantId, channel, ct);
         var session = await _voiceSessionOrchestrator.HandleStatusCallbackAsync(
             new VoiceStatusCallbackRequest
             {
@@ -94,8 +99,11 @@ public sealed class TwilioVoiceWebhookController : ControllerBase
             CorrelationId = form.CallSid,
             Headers = new Dictionary<string, string>
             {
-                ["provider"] = "twilio",
-                ["channel"] = channel
+                ["provider"] = providerDefaults.CallControlPreferredProvider,
+                ["channel"] = channel,
+                ["providerCandidates.callControl"] = providerDefaults.CallControlProvidersCsv,
+                ["providerCandidates.stt"] = providerDefaults.SttProvidersCsv,
+                ["providerCandidates.tts"] = providerDefaults.TtsProvidersCsv
             },
             Payload = JsonSerializer.Serialize(typedEvent)
         }, ct);
@@ -114,7 +122,22 @@ public sealed class TwilioVoiceWebhookController : ControllerBase
                 form.To,
                 channel,
                 form.Direction,
-                form.CallDuration
+                form.CallDuration,
+                providerRouting = new
+                {
+                    preferredProviders = new
+                    {
+                        callControl = providerDefaults.CallControlPreferredProvider,
+                        stt = providerDefaults.SttPreferredProvider,
+                        tts = providerDefaults.TtsPreferredProvider
+                    },
+                    providerChains = new
+                    {
+                        callControl = providerDefaults.CallControlProvidersCsv,
+                        stt = providerDefaults.SttProvidersCsv,
+                        tts = providerDefaults.TtsProvidersCsv
+                    }
+                }
             },
             form.CallSid,
             ct);
@@ -143,6 +166,7 @@ public sealed class TwilioVoiceWebhookController : ControllerBase
         var channel = string.Equals(form.Channel, "callcenter", StringComparison.OrdinalIgnoreCase)
             ? "callcenter"
             : "voice";
+        var providerDefaults = await ResolveVoiceProviderDefaultsAsync(tenantId, channel, ct);
 
         var session = await _voiceSessionOrchestrator.HandleStatusCallbackAsync(
             new VoiceStatusCallbackRequest
@@ -177,8 +201,11 @@ public sealed class TwilioVoiceWebhookController : ControllerBase
             CorrelationId = form.CallSid,
             Headers = new Dictionary<string, string>
             {
-                ["provider"] = "twilio",
-                ["channel"] = channel
+                ["provider"] = providerDefaults.CallControlPreferredProvider,
+                ["channel"] = channel,
+                ["providerCandidates.callControl"] = providerDefaults.CallControlProvidersCsv,
+                ["providerCandidates.stt"] = providerDefaults.SttProvidersCsv,
+                ["providerCandidates.tts"] = providerDefaults.TtsProvidersCsv
             },
             Payload = JsonSerializer.Serialize(callReceived)
         }, ct);
@@ -195,7 +222,22 @@ public sealed class TwilioVoiceWebhookController : ControllerBase
                 form.From,
                 form.To,
                 channel,
-                form.Direction
+                form.Direction,
+                providerRouting = new
+                {
+                    preferredProviders = new
+                    {
+                        callControl = providerDefaults.CallControlPreferredProvider,
+                        stt = providerDefaults.SttPreferredProvider,
+                        tts = providerDefaults.TtsPreferredProvider
+                    },
+                    providerChains = new
+                    {
+                        callControl = providerDefaults.CallControlProvidersCsv,
+                        stt = providerDefaults.SttProvidersCsv,
+                        tts = providerDefaults.TtsProvidersCsv
+                    }
+                }
             },
             form.CallSid,
             ct);
@@ -218,7 +260,11 @@ public sealed class TwilioVoiceWebhookController : ControllerBase
                 ["eventType"] = "connect.call.received",
                 ["channel"] = channel,
                 ["from"] = form.From ?? string.Empty,
-                ["to"] = form.To ?? string.Empty
+                ["to"] = form.To ?? string.Empty,
+                ["provider"] = providerDefaults.CallControlPreferredProvider,
+                ["providerCandidates.callControl"] = providerDefaults.CallControlProvidersCsv,
+                ["providerCandidates.stt"] = providerDefaults.SttProvidersCsv,
+                ["providerCandidates.tts"] = providerDefaults.TtsProvidersCsv
             }
         }, ct);
 
@@ -255,6 +301,7 @@ public sealed class TwilioVoiceWebhookController : ControllerBase
         var channel = string.Equals(form.Channel, "callcenter", StringComparison.OrdinalIgnoreCase)
             ? "callcenter"
             : "voice";
+        var providerDefaults = await ResolveVoiceProviderDefaultsAsync(tenantId, channel, ct);
         var sessionId = string.IsNullOrWhiteSpace(form.SessionId)
             ? (form.CallSid ?? form.StreamSid!)
             : form.SessionId!;
@@ -277,17 +324,74 @@ public sealed class TwilioVoiceWebhookController : ControllerBase
             CorrelationId = form.CallSid ?? form.StreamSid,
             Headers = new Dictionary<string, string>
             {
-                ["provider"] = "twilio",
+                ["provider"] = providerDefaults.CallControlPreferredProvider,
                 ["channel"] = channel,
                 ["track"] = form.Track ?? "inbound",
-                ["sttProvider"] = string.IsNullOrWhiteSpace(form.SttProvider) ? "openai" : form.SttProvider!
+                ["sttProvider"] = string.IsNullOrWhiteSpace(form.SttProvider) ? providerDefaults.SttPreferredProvider : form.SttProvider!,
+                ["ttsProvider"] = providerDefaults.TtsPreferredProvider,
+                ["providerCandidates.callControl"] = providerDefaults.CallControlProvidersCsv,
+                ["providerCandidates.stt"] = providerDefaults.SttProvidersCsv,
+                ["providerCandidates.tts"] = providerDefaults.TtsProvidersCsv
             },
             Payload = JsonSerializer.Serialize(evt)
         }, ct);
 
         return Ok(new { status = "accepted", bytes = payload.Length });
     }
+
+    private async Task<VoiceProviderDefaults> ResolveVoiceProviderDefaultsAsync(
+        string tenantId,
+        string channel,
+        CancellationToken ct)
+    {
+        var connections = await _tenantConnectionStore.GetConnectionsAsync(tenantId, ct);
+        var twilio = connections.FirstOrDefault(connection =>
+            string.Equals(connection.ConnectorId, "twilio", StringComparison.OrdinalIgnoreCase) &&
+            connection.Type == TenantConnectionType.Messaging);
+
+        static string? get(IReadOnlyDictionary<string, string>? config, string key)
+            => config is not null && config.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value)
+                ? value.Trim()
+                : null;
+
+        var cfg = twilio?.Config;
+        var sttPreferred = get(cfg, "sttProvider")
+            ?? get(cfg, $"sttProvider.{channel}")
+            ?? "openai";
+        var ttsPreferred = get(cfg, "ttsProvider")
+            ?? get(cfg, $"ttsProvider.{channel}")
+            ?? "openai";
+        var callPreferred = get(cfg, "callControlProvider")
+            ?? get(cfg, $"callControlProvider.{channel}")
+            ?? "twilio";
+
+        var sttCsv = get(cfg, "sttProvidersCsv")
+            ?? get(cfg, $"sttProvidersCsv.{channel}")
+            ?? sttPreferred;
+        var ttsCsv = get(cfg, "ttsProvidersCsv")
+            ?? get(cfg, $"ttsProvidersCsv.{channel}")
+            ?? ttsPreferred;
+        var callCsv = get(cfg, "callControlProvidersCsv")
+            ?? get(cfg, $"callControlProvidersCsv.{channel}")
+            ?? callPreferred;
+
+        return new VoiceProviderDefaults(
+            SttPreferredProvider: sttPreferred,
+            TtsPreferredProvider: ttsPreferred,
+            CallControlPreferredProvider: callPreferred,
+            SttProvidersCsv: sttCsv,
+            TtsProvidersCsv: ttsCsv,
+            CallControlProvidersCsv: callCsv);
+    }
 }
+
+public sealed record VoiceProviderDefaults(
+    string SttPreferredProvider,
+    string TtsPreferredProvider,
+    string CallControlPreferredProvider,
+    string SttProvidersCsv,
+    string TtsProvidersCsv,
+    string CallControlProvidersCsv);
 
 public sealed record TwilioVoiceStatusForm
 {

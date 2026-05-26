@@ -186,6 +186,7 @@ public sealed record ThinkContext
     public IReadOnlyList<AvailableToolDescriptor> AvailableTools { get; init; } = [];
     public IReadOnlyDictionary<string, string> Metadata { get; init; } = new Dictionary<string, string>();
     public string? RuntimeMode { get; init; }
+    public string? ConversationStateJson { get; init; }
     
     // ✅ NEW: Thread context for multi-turn conversations
     public ChatHistorySnapshot? ThreadSnapshot { get; init; }
@@ -855,6 +856,74 @@ public sealed record LlmResponse
     public string? FinishReason { get; init; }
     public string ModelId { get; init; } = string.Empty;
     public double? EstimatedCostUsd { get; init; }
+}
+
+public sealed record CanonicalConversationState
+{
+    public string? Intent { get; init; }
+    public string? Stage { get; init; }
+    public IReadOnlyDictionary<string, string> Slots { get; init; } = new Dictionary<string, string>();
+    public CanonicalHandoffState? Handoff { get; init; }
+    public IReadOnlyList<CanonicalAttachmentState> Attachments { get; init; } = [];
+    public IReadOnlyList<string> ExternalContextRefs { get; init; } = [];
+}
+
+public sealed record CanonicalHandoffState
+{
+    public string? Source { get; init; }
+    public string? Target { get; init; }
+    public string? Reason { get; init; }
+}
+
+public sealed record CanonicalAttachmentState
+{
+    public string Id { get; init; } = string.Empty;
+    public string Name { get; init; } = string.Empty;
+    public string Type { get; init; } = string.Empty;
+    public string Summary { get; init; } = string.Empty;
+    public string StorageRef { get; init; } = string.Empty;
+}
+
+public sealed record WizardSession
+{
+    public string Id { get; init; } = Guid.NewGuid().ToString("N");
+    public string Stage { get; init; } = "start";
+    public IReadOnlyDictionary<string, string> Artifact { get; init; } = new Dictionary<string, string>();
+}
+
+public sealed record AssistantBuildRequest
+{
+    public required string Name { get; init; }
+    public required string FirstMessage { get; init; }
+    public string Channel { get; init; } = "voice";
+    public required AssistantReasoningModelConfig Reasoning { get; init; }
+    public required AssistantVoiceConfig Voice { get; init; }
+    public required AssistantTranscriberConfig Transcriber { get; init; }
+    public AssistantReasoningModelConfig? ReasoningFallback { get; init; }
+}
+
+public sealed record AssistantReasoningModelConfig
+{
+    public required string Provider { get; init; }
+    public required string Model { get; init; }
+    public int MaxTokens { get; init; } = 250;
+}
+
+public sealed record AssistantVoiceConfig
+{
+    public required string Provider { get; init; }
+    public required string VoiceId { get; init; }
+    public required string Model { get; init; }
+    public required string Language { get; init; }
+    public string? Codec { get; init; }
+}
+
+public sealed record AssistantTranscriberConfig
+{
+    public required string Provider { get; init; }
+    public required string Model { get; init; }
+    public required string Language { get; init; }
+    public string? Codec { get; init; }
 }
 
 public interface IModelCredentialResolver

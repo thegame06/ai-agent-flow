@@ -35,12 +35,7 @@ public sealed class TenantProviderResolver : IProviderResolver
         if (!string.IsNullOrWhiteSpace(context.ConnectionId))
             connections = connections.Where(x => x.Id == context.ConnectionId).ToList();
 
-        if (!string.IsNullOrWhiteSpace(context.PreferredProviderId))
-        {
-            candidates = candidates
-                .Where(x => string.Equals(x.ProviderId, context.PreferredProviderId, StringComparison.OrdinalIgnoreCase))
-                .ToList();
-        }
+        candidates = OrderCandidates(candidates, context);
 
         foreach (var adapter in candidates)
         {
@@ -66,6 +61,67 @@ public sealed class TenantProviderResolver : IProviderResolver
 
         throw new InvalidOperationException(
             $"No tenant connection matched capability '{context.Capability}' on channel '{context.Channel}' for tenant '{context.TenantId}'.");
+    }
+
+    private static IReadOnlyList<TAdapter> OrderCandidates<TAdapter>(
+        IReadOnlyList<TAdapter> candidates,
+        ProviderResolutionContext context)
+        where TAdapter : class, IProviderAdapter
+    {
+        var preferred = BuildPreferredProviderChain(context);
+        if (preferred.Count == 0)
+            return candidates;
+
+        var byProvider = candidates
+            .GroupBy(x => x.ProviderId, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.OrdinalIgnoreCase);
+
+        var ordered = new List<TAdapter>(candidates.Count);
+        foreach (var providerId in preferred)
+        {
+            if (!byProvider.TryGetValue(providerId, out var list))
+                continue;
+
+            ordered.AddRange(list);
+            byProvider.Remove(providerId);
+        }
+
+        // Keep deterministic order for the remaining providers.
+        foreach (var providerId in byProvider.Keys.OrderBy(x => x, StringComparer.OrdinalIgnoreCase))
+            ordered.AddRange(byProvider[providerId]);
+
+        return ordered;
+    }
+
+    private static IReadOnlyList<string> BuildPreferredProviderChain(ProviderResolutionContext context)
+    {
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var ordered = new List<string>();
+
+        void add(string? raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw))
+                return;
+
+            if (set.Add(raw.Trim()))
+                ordered.Add(raw.Trim());
+        }
+
+        add(context.PreferredProviderId);
+
+        if (context.Metadata.TryGetValue("providerCandidates", out var csv))
+        {
+            foreach (var value in csv.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+                add(value);
+        }
+
+        if (context.Metadata.TryGetValue("providerCandidatesCsv", out var csvLegacy))
+        {
+            foreach (var value in csvLegacy.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+                add(value);
+        }
+
+        return ordered;
     }
 
     private static void ValidateContext(ProviderResolutionContext context)

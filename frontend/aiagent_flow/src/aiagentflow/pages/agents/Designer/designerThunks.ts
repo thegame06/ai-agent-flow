@@ -98,6 +98,7 @@ function mapDraftToPayload(draft: AgentDefinitionDraft) {
     brain: {
       primaryModel: draft.model.primaryModel,
       fallbackModel: draft.model.fallbackModel,
+      reasoningModelCandidatesCsv: draft.model.reasoningModelCandidatesCsv,
       provider: draft.model.provider,
       systemPrompt: draft.systemPrompt,
       temperature: draft.model.temperature,
@@ -121,6 +122,16 @@ function mapDraftToPayload(draft: AgentDefinitionDraft) {
       longTermMemory: draft.memory.longTermMemory,
       vectorMemory: draft.memory.vectorMemory,
       auditMemory: draft.memory.auditMemory,
+    },
+    session: {
+      runtimeKind: draft.runtimeKind,
+      enableThreads: false,
+      defaultThreadTtlHours: 168,
+      maxTurnsPerThread: 100,
+      contextWindowSize: 10,
+      autoCreateThread: true,
+      enableSummarization: false,
+      threadKeyPattern: '{agentName}-{guid}',
     },
     steps: draft.steps.map((s) => ({
       id: s.id,
@@ -147,9 +158,11 @@ export function mapResponseToDraft(data: Record<string, unknown>): AgentDefiniti
   const brain = (data.brain ?? {}) as Record<string, unknown>;
   const loop = (data.loop ?? {}) as Record<string, unknown>;
   const memory = (data.memory ?? {}) as Record<string, unknown>;
+  const session = (data.session ?? {}) as Record<string, unknown>;
 
   return {
     id: data.id as string,
+    runtimeKind: (session.runtimeKind as AgentDefinitionDraft['runtimeKind']) ?? 'Text',
     name: (data.name as string) ?? '',
     description: (data.description as string) ?? '',
     version: String(data.version ?? '1.0.0'),
@@ -160,6 +173,7 @@ export function mapResponseToDraft(data: Record<string, unknown>): AgentDefiniti
       provider: (brain.provider as string) ?? 'OpenAI',
       primaryModel: (brain.primaryModel as string) ?? '',
       fallbackModel: (brain.fallbackModel as string) ?? '',
+      reasoningModelCandidatesCsv: (brain.reasoningModelCandidatesCsv as string) ?? '',
       temperature: (brain.temperature as number) ?? 0.7,
       maxResponseTokens: (brain.maxResponseTokens as number) ?? 4096,
     },

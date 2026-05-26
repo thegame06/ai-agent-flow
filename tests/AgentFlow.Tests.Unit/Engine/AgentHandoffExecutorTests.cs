@@ -47,7 +47,10 @@ public sealed class AgentHandoffExecutorTests
                 r.AgentKey == "collections-bot" &&
                 r.SessionId == "sess-1" &&
                 r.ThreadId == "thread-1" &&
-                r.CorrelationId == "corr-1"),
+                r.CorrelationId == "corr-1" &&
+                r.ContextJson != null &&
+                r.ContextJson.Contains("conversationState") &&
+                r.ContextJson.Contains("handoff")),
             It.IsAny<CancellationToken>()), Times.Once);
     }
 }

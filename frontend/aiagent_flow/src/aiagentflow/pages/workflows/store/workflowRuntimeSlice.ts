@@ -21,6 +21,7 @@ import type {
   WorkflowDefinition,
   ConnectTemplateOption,
   WorkflowRuntimeMetrics,
+  AssistantWizardMetrics,
   WorkflowActivityCatalogEntry,
 } from '../types';
 
@@ -34,6 +35,7 @@ const initialState: WorkflowRuntimeState = {
   steps: [],
   stepsOpen: false,
   metrics: null,
+  wizardMetrics: null,
   auditEvents: [],
   activityCatalog: [],
   availableModels: [],
@@ -66,6 +68,7 @@ const workflowRuntimeSlice = createSlice({
         state.workflows = action.payload.workflows as WorkflowDefinition[];
         state.executions = action.payload.executions as WorkflowExecution[];
         state.metrics = action.payload.metrics as WorkflowRuntimeMetrics | null;
+        state.wizardMetrics = action.payload.wizardMetrics as AssistantWizardMetrics | null;
         state.auditEvents = action.payload.auditEvents as WorkflowAuditEvent[];
         state.activityCatalog = action.payload.activityCatalog as WorkflowActivityCatalogEntry[];
         state.availableModels = (action.payload.availableModels as any[]).map((m) => ({

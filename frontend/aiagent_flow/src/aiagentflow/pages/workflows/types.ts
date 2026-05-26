@@ -2,6 +2,7 @@ export type WorkflowDefinition = {
   id: string;
   name: string;
   triggerEventName: string;
+  runtimeKind?: string;
   version: number;
   status: 'Draft' | 'Published' | 'Archived' | string;
   definitionJson: string;
@@ -53,7 +54,56 @@ export type WorkflowRuntimeMetrics = {
   successRate: number;
   failureRate: number;
   avgLatencyMs: number;
+  window?: '24h' | '7d' | '30d' | string;
+  windowStart?: string;
   activityMetrics: WorkflowRuntimeActivityMetric[];
+  continuitySignals?: {
+    windowSize: number;
+    loopDetected: number;
+    repromptBlocked: number;
+    contextWiring: number;
+    escalatedHuman: number;
+    providerResolutionByRole?: {
+      stt?: ProviderResolutionSignal;
+      tts?: ProviderResolutionSignal;
+      callControl?: ProviderResolutionSignal;
+      reasoning?: ProviderResolutionSignal;
+    };
+    rates?: {
+      loopPerContext: number;
+      escalationPerContext: number;
+      repromptBlockedPerContext: number;
+    };
+  };
+};
+
+export type ProviderResolutionSignal = {
+  primary: number;
+  fallback: number;
+  failed: number;
+  providers: string[];
+};
+
+export type AssistantWizardMetrics = {
+  tenantId: string;
+  generatedAt: string;
+  windowSize: number;
+  funnel: {
+    sessionsCreated: number;
+    questionsAnswered: number;
+    sessionsCompleted: number;
+    sessionsMaterialized: number;
+  };
+  conversion: {
+    completionRate: number;
+    materializationRate: number;
+  };
+  dropoff?: {
+    language: number;
+    task: number;
+    audience: number;
+    tone: number;
+  };
 };
 
 export type AiAgentNodeConfig = {

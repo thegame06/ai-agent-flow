@@ -13,7 +13,7 @@ import {
   fetchWorkflowExecutionSteps,
 } from '../store/workflowThunks';
 
-export function useWorkflowStudioRuntime(tenantId: string) {
+export function useWorkflowStudioRuntime(tenantId: string, metricsWindow: '24h' | '7d' | '30d' = '24h') {
   const dispatch = useAppDispatch();
 
   const loading = useAppSelector((state) => state.workflowRuntime.loading);
@@ -25,6 +25,7 @@ export function useWorkflowStudioRuntime(tenantId: string) {
   const steps = useAppSelector((state) => state.workflowRuntime.steps);
   const stepsOpen = useAppSelector((state) => state.workflowRuntime.stepsOpen);
   const metrics = useAppSelector((state) => state.workflowRuntime.metrics);
+  const wizardMetrics = useAppSelector((state) => state.workflowRuntime.wizardMetrics);
   const auditEvents = useAppSelector((state) => state.workflowRuntime.auditEvents);
   const activityCatalog = useAppSelector((state) => state.workflowRuntime.activityCatalog);
   const availableModels = useAppSelector((state) => state.workflowRuntime.availableModels);
@@ -35,8 +36,8 @@ export function useWorkflowStudioRuntime(tenantId: string) {
   const connectTemplates = useAppSelector((state) => state.workflowRuntime.connectTemplates);
 
   const loadAll = useCallback(async () => {
-    await dispatch(fetchWorkflowRuntimeData(tenantId));
-  }, [dispatch, tenantId]);
+    await dispatch(fetchWorkflowRuntimeData({ tenantId, metricsWindow }));
+  }, [dispatch, tenantId, metricsWindow]);
 
   useEffect(() => {
     loadAll();
@@ -49,6 +50,7 @@ export function useWorkflowStudioRuntime(tenantId: string) {
       triggerEventName: string;
       definitionJson: string;
       designType?: 'workflow' | 'tool';
+      runtimeKind?: string;
     },
     _validationErrors: string[]
   ) => {
@@ -56,7 +58,7 @@ export function useWorkflowStudioRuntime(tenantId: string) {
     const result = await dispatch(saveWorkflowDraft({ tenantId, workflow }));
     if (saveWorkflowDraft.fulfilled.match(result)) {
       dispatch(markSaved());
-      await dispatch(fetchWorkflowRuntimeData(tenantId));
+      await dispatch(fetchWorkflowRuntimeData({ tenantId, metricsWindow }));
     }
   };
 
@@ -72,21 +74,21 @@ export function useWorkflowStudioRuntime(tenantId: string) {
     }
     const result = await dispatch(publishWorkflowDefinition({ tenantId, workflowId }));
     if (publishWorkflowDefinition.fulfilled.match(result)) {
-      await dispatch(fetchWorkflowRuntimeData(tenantId));
+      await dispatch(fetchWorkflowRuntimeData({ tenantId, metricsWindow }));
     }
   };
 
   const runEvent = async (eventName: string) => {
     const result = await dispatch(runWorkflowEvent({ tenantId, eventName }));
     if (runWorkflowEvent.fulfilled.match(result)) {
-      await dispatch(fetchWorkflowRuntimeData(tenantId));
+      await dispatch(fetchWorkflowRuntimeData({ tenantId, metricsWindow }));
     }
   };
 
   const retryExecution = async (executionId: string) => {
     const result = await dispatch(retryWorkflowExecution({ tenantId, executionId }));
     if (retryWorkflowExecution.fulfilled.match(result)) {
-      await dispatch(fetchWorkflowRuntimeData(tenantId));
+      await dispatch(fetchWorkflowRuntimeData({ tenantId, metricsWindow }));
     }
   };
 
@@ -104,6 +106,7 @@ export function useWorkflowStudioRuntime(tenantId: string) {
     steps,
     stepsOpen,
     metrics,
+    wizardMetrics,
     auditEvents,
     activityCatalog,
     availableModels,

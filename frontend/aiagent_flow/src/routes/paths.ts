@@ -60,6 +60,8 @@ export const paths = {
     evaluations: `${ROOTS.DASHBOARD}/evaluations`,
     kycPayments: `${ROOTS.DASHBOARD}/kyc-payments`,
     workflows: `${ROOTS.DASHBOARD}/studio/workflows`,
+    runtimeStudio: (runtimeKind: 'text' | 'voice' | 'multimodal' = 'text') =>
+      `${ROOTS.DASHBOARD}/runtime/${runtimeKind}`,
     // Intent Routing
     intents: `${ROOTS.DASHBOARD}/intents`,
     intentsPlayground: `${ROOTS.DASHBOARD}/intents/playground`,

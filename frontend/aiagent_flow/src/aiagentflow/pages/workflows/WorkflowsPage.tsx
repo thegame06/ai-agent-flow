@@ -1,4 +1,5 @@
 import { Helmet } from 'react-helmet-async';
+import { useSearchParams } from 'react-router';
 import { useMemo, useState, useEffect } from 'react';
 
 import Box from '@mui/material/Box';
@@ -118,6 +119,32 @@ export default function WorkflowsPage() {
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [routingRules, setRoutingRules] = useState<any[]>([]);
   const tenantId = useTenantId();
+  const [searchParams] = useSearchParams();
+  const runtimeQueryKind = searchParams.get('runtimeKind');
+  const runtimeStorageKey = `af:workflow:runtimeKind:${tenantId}`;
+  const resolveRuntimeFromString = (value?: string | null): 'Text' | 'Voice' | 'MultimodalRealtime' | null => {
+    if (!value) return null;
+    const normalized = value.toLowerCase();
+    if (normalized === 'text') return 'Text';
+    if (normalized === 'voice') return 'Voice';
+    if (normalized === 'multimodal' || normalized === 'multimodalrealtime') return 'MultimodalRealtime';
+    return null;
+  };
+  const initialRuntime = resolveRuntimeFromString(runtimeQueryKind)
+    ?? (typeof window !== 'undefined' ? resolveRuntimeFromString(localStorage.getItem(runtimeStorageKey)) : null)
+    ?? 'Text';
+  const [selectedRuntimeKind, setSelectedRuntimeKind] = useState<'Text' | 'Voice' | 'MultimodalRealtime'>(
+    initialRuntime
+  );
+  const [metricsWindow, setMetricsWindow] = useState<'24h' | '7d' | '30d'>('24h');
+  useEffect(() => {
+    const resolved = resolveRuntimeFromString(runtimeQueryKind);
+    if (resolved) setSelectedRuntimeKind(resolved);
+  }, [runtimeQueryKind]);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem(runtimeStorageKey, selectedRuntimeKind);
+  }, [runtimeStorageKey, selectedRuntimeKind]);
   const {
     saving,
     running,
@@ -127,6 +154,7 @@ export default function WorkflowsPage() {
     steps,
     stepsOpen,
     metrics,
+    wizardMetrics,
     auditEvents,
     activityCatalog,
     availableModels,
@@ -143,7 +171,14 @@ export default function WorkflowsPage() {
     runEvent,
     retryExecution,
     openSteps,
-  } = useWorkflowStudioRuntime(tenantId);
+  } = useWorkflowStudioRuntime(tenantId, metricsWindow);
+  const scopedWorkflows = useMemo(
+    () =>
+      workflows.filter(
+        (workflow) => (workflow.runtimeKind ?? 'Text').toLowerCase() === selectedRuntimeKind.toLowerCase()
+      ),
+    [selectedRuntimeKind, workflows]
+  );
 
   const {
     editor,
@@ -188,21 +223,21 @@ export default function WorkflowsPage() {
           .map((a) => `El nodo ${a.id || a.type} no esta permitido en modo Tool tecnica.`)
       : []),
   ];
-  const publishedCount = workflows.filter((wf) => wf.status === 'Published').length;
+  const publishedCount = scopedWorkflows.filter((wf) => wf.status === 'Published').length;
   const failedExecutions = executions.filter((execution) => execution.status === 'Failed').length;
   const readyToPublish = hasSelection && designValidationErrors.length === 0;
   const selectedWorkflow = useMemo(
-    () => workflows.find((wf) => wf.id === selectedWorkflowId) ?? null,
-    [selectedWorkflowId, workflows]
+    () => scopedWorkflows.find((wf) => wf.id === selectedWorkflowId) ?? null,
+    [selectedWorkflowId, scopedWorkflows]
   );
   const filteredWorkflows = useMemo(
     () =>
-      workflows.filter((workflow) =>
+      scopedWorkflows.filter((workflow) =>
         `${workflow.name} ${workflow.id} ${workflow.triggerEventName}`
           .toLowerCase()
           .includes(workflowSearch.toLowerCase())
       ),
-    [workflowSearch, workflows]
+    [workflowSearch, scopedWorkflows]
   );
   const startIntents = useMemo(
     () => readStartIntents(editor.definitionJson, editor.triggerEventName),
@@ -283,7 +318,7 @@ export default function WorkflowsPage() {
     setSelectedWorkflowId(null);
     setEditorField('id', `wf_${Date.now()}`);
     setEditorField('name', 'Nuevo flujo');
-    setEditorField('triggerEventName', 'connect.message.received');
+    setEditorField('triggerEventName', selectedRuntimeKind === 'Voice' ? 'connect.call.received' : 'connect.message.received');
     setDefinitionJson(JSON.stringify({ activities: [] }, null, 2));
     setActivePanel('none');
     setMainTab(0);
@@ -413,6 +448,19 @@ export default function WorkflowsPage() {
             <Typography variant="body2" color="text.secondary">
               Diseña el recorrido completo del caso: entrada del cliente, validaciones, respuestas, pagos, revisión humana y cierre.
             </Typography>
+            <Stack direction="row" spacing={1} sx={{ mt: 1 }} alignItems="center">
+              <Chip size="small" color="info" label={`Runtime ${selectedRuntimeKind}`} />
+              <ToggleButtonGroup
+                size="small"
+                value={selectedRuntimeKind}
+                exclusive
+                onChange={(_, value) => value && setSelectedRuntimeKind(value)}
+              >
+                <ToggleButton value="Text">Text</ToggleButton>
+                <ToggleButton value="Voice">Voice</ToggleButton>
+                <ToggleButton value="MultimodalRealtime">Multimodal</ToggleButton>
+              </ToggleButtonGroup>
+            </Stack>
           </Box>
           <Stack direction="row" spacing={1} flexWrap="wrap">
             <Button variant="contained" startIcon={<Iconify icon="mingcute:add-line" />} onClick={handleCreateBlank}>
@@ -436,7 +484,7 @@ export default function WorkflowsPage() {
           />
           <Tab
             label={
-              <Badge badgeContent={workflows.length} color="primary" max={99}>
+              <Badge badgeContent={scopedWorkflows.length} color="primary" max={99}>
                 <Box sx={{ pr: 1.5 }}>Mis flujos</Box>
               </Badge>
             }
@@ -507,7 +555,7 @@ export default function WorkflowsPage() {
                 <Button
                   size="small"
                   variant="contained"
-                  onClick={() => saveWorkflow({ ...editor, designType }, designValidationErrors)}
+                  onClick={() => saveWorkflow({ ...editor, designType, runtimeKind: selectedRuntimeKind }, designValidationErrors)}
                   disabled={saving || !editor.id}
                   startIcon={<Iconify icon="mdi:content-save-outline" />}
                 >
@@ -659,6 +707,7 @@ export default function WorkflowsPage() {
           allowedTypes={uiAllowedTypes}
           requiredConfigByType={requiredConfigByType}
           validationErrors={designValidationErrors}
+          runtimeKind={selectedRuntimeKind}
           triggerEventName={editor.triggerEventName}
           startIntents={startIntents}
           availableModels={availableModels}
@@ -668,6 +717,7 @@ export default function WorkflowsPage() {
           integrations={integrations}
           connectTemplates={connectTemplates}
           onAddActivity={addActivity}
+          onChangeRuntimeKind={setSelectedRuntimeKind}
           onChangeTriggerEvent={(value) => setEditorField('triggerEventName', value)}
           onUpdateStartIntents={updateStartIntents}
           onUpdateActivity={updateActivity}
@@ -693,7 +743,7 @@ export default function WorkflowsPage() {
                 sx={{ maxWidth: 440 }}
                 fullWidth
               />
-              <Chip size="small" label={`${filteredWorkflows.length} de ${workflows.length} flujos`} />
+              <Chip size="small" label={`${filteredWorkflows.length} de ${scopedWorkflows.length} flujos`} />
               <Stack direction="row" spacing={1} sx={{ ml: { md: 'auto' } }}>
                 <Button variant="contained" startIcon={<Iconify icon="mingcute:add-line" />} onClick={handleCreateBlank}>
                   Crear desde cero
@@ -752,9 +802,9 @@ export default function WorkflowsPage() {
                 <Grid item xs={12}>
                   <Card variant="outlined" sx={{ p: 4, textAlign: 'center', borderRadius: 3 }}>
                     <Iconify icon="mdi:graph-outline" width={42} sx={{ color: 'primary.main', mb: 1 }} />
-                    <Typography variant="h6">{workflows.length === 0 ? 'No hay flujos creados' : 'Sin resultados'}</Typography>
+                    <Typography variant="h6">{scopedWorkflows.length === 0 ? 'No hay flujos creados' : 'Sin resultados'}</Typography>
                     <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                      {workflows.length === 0 ? 'Crea tu primer flujo automatizado.' : 'Cambia la búsqueda.'}
+                      {scopedWorkflows.length === 0 ? 'Crea tu primer flujo automatizado.' : 'Cambia la búsqueda.'}
                     </Typography>
                     <Button variant="contained" onClick={handleCreateBlank}>Crear flujo</Button>
                   </Card>
@@ -766,9 +816,23 @@ export default function WorkflowsPage() {
 
         {mainTab === 2 && (
           <Stack spacing={2.5}>
+            <Stack direction="row" justifyContent="flex-end">
+              <TextField
+                size="small"
+                select
+                label="Ventana metrica"
+                value={metricsWindow}
+                onChange={(event) => setMetricsWindow(event.target.value as '24h' | '7d' | '30d')}
+                sx={{ minWidth: 180 }}
+              >
+                <MenuItem value="24h">24 horas</MenuItem>
+                <MenuItem value="7d">7 dias</MenuItem>
+                <MenuItem value="30d">30 dias</MenuItem>
+              </TextField>
+            </Stack>
             <Grid container spacing={2}>
               {[
-                { label: 'Flujos', value: workflows.length, helper: `${publishedCount} publicados`, icon: 'mdi:source-branch' },
+                { label: 'Flujos', value: scopedWorkflows.length, helper: `${publishedCount} publicados`, icon: 'mdi:source-branch' },
                 { label: 'Ejecuciones', value: executions.length, helper: `${failedExecutions} fallidas`, icon: 'mdi:play-circle-outline' },
                 { label: 'Nodos activos', value: activities.length, helper: hasSelection ? 'en diseno' : 'sin flujo activo', icon: 'mdi:graph-outline' },
                 { label: 'Asistentes en uso', value: availableAgents.filter((a) => !a.isSystemAgent).length, helper: 'asistentes personalizados', icon: 'mdi:robot-outline' },
@@ -789,7 +853,7 @@ export default function WorkflowsPage() {
               ))}
             </Grid>
 
-            <RuntimeMetricsCard metrics={metrics} auditEvents={auditEvents} />
+            <RuntimeMetricsCard metrics={metrics} wizardMetrics={wizardMetrics} auditEvents={auditEvents} />
             <WorkflowExecutionsCard executions={executions} onOpenSteps={openSteps} onRetryExecution={retryExecution} />
           </Stack>
         )}

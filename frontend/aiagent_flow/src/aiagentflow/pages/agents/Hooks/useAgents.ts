@@ -14,15 +14,15 @@ import {
   clearSelectedAgent,
 } from '../Redux/Slice';
 
-export function useAgents(tenantId: string) {
+export function useAgents(tenantId: string, runtimeKind?: string | null) {
   const dispatch = useDispatch();
   const { items, selectedAgent, loading, error } = useSelector((state: RootState) => state.agents);
 
   useEffect(() => {
     if (tenantId) {
-      dispatch(fetchAgents(tenantId) as any);
+      dispatch(fetchAgents({ tenantId, runtimeKind }) as any);
     }
-  }, [dispatch, tenantId]);
+  }, [dispatch, tenantId, runtimeKind]);
 
   // ── CRUD Operations ──
 

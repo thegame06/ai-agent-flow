@@ -4,10 +4,14 @@ import axios from 'src/lib/axios';
 
 // ── THUNKS (API calls) ──
 
-export const fetchAgents = createAsyncThunk('agents/fetchAll', async (tenantId: string) => {
-  const response = await axios.get(`/api/v1/tenants/${tenantId}/agents`);
-  return response.data;
-});
+export const fetchAgents = createAsyncThunk(
+  'agents/fetchAll',
+  async ({ tenantId, runtimeKind }: { tenantId: string; runtimeKind?: string | null }) => {
+    const query = runtimeKind ? `?runtimeKind=${encodeURIComponent(runtimeKind)}` : '';
+    const response = await axios.get(`/api/v1/tenants/${tenantId}/agents${query}`);
+    return response.data;
+  }
+);
 
 export const fetchAgentById = createAsyncThunk(
   'agents/fetchById',
