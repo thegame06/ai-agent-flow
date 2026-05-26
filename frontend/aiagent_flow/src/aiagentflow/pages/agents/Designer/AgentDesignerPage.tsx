@@ -551,7 +551,12 @@ const TAB_ICONS = [
   'mdi:chip',
 ];
 
-export default function AgentDesignerPage() {
+type AgentDesignerPageProps = {
+  embedded?: boolean;
+  embeddedAgentId?: string;
+};
+
+export default function AgentDesignerPage({ embedded = false, embeddedAgentId }: AgentDesignerPageProps = {}) {
   const dispatch = useDispatch<AppDispatch>();
   const { draft, activeTab, isDirty, saving, errors } = useSelector(
     (state: RootState) => state.designer
@@ -559,6 +564,7 @@ export default function AgentDesignerPage() {
   const theme = useTheme();
   const router = useRouter();
   const { agentId } = useParams<{ agentId: string }>();
+  const resolvedAgentId = embeddedAgentId ?? agentId;
   const [availableModels, setAvailableModels] = useState<ModelOption[]>([]);
   const [availableTools, setAvailableTools] = useState<ToolOption[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(false);
@@ -566,13 +572,13 @@ export default function AgentDesignerPage() {
 
   // Load agent when editing an existing one
   useEffect(() => {
-    if (agentId) {
+    if (resolvedAgentId) {
       setAgentLoading(true);
-      dispatch(fetchAgentDetail(agentId)).finally(() => setAgentLoading(false));
+      dispatch(fetchAgentDetail(resolvedAgentId)).finally(() => setAgentLoading(false));
     } else {
       dispatch(resetDraft());
     }
-  }, [agentId, dispatch]);
+  }, [resolvedAgentId, dispatch]);
 
   useEffect(() => {
     const loadCatalog = async () => {
@@ -664,9 +670,11 @@ export default function AgentDesignerPage() {
 
   return (
     <>
-      <Helmet>
-        <title>{draft.name || 'Nuevo Agente'} — Agent Studio | {CONFIG.appName}</title>
-      </Helmet>
+      {!embedded && (
+        <Helmet>
+          <title>{draft.name || 'Nuevo Agente'} — Agent Studio | {CONFIG.appName}</title>
+        </Helmet>
+      )}
 
       <DashboardContent maxWidth="lg">
         {/* Loading bar */}
@@ -681,11 +689,13 @@ export default function AgentDesignerPage() {
 
         {/* ── Header ── */}
         <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 0.5 }}>
-          <Tooltip title="Volver a Agentes">
-            <IconButton onClick={() => router.push(paths.dashboard.agents)} size="small">
-              <Iconify icon="mdi:arrow-left" width={22} />
-            </IconButton>
-          </Tooltip>
+          {!embedded && (
+            <Tooltip title="Volver a Agentes">
+              <IconButton onClick={() => router.push(paths.dashboard.agents)} size="small">
+                <Iconify icon="mdi:arrow-left" width={22} />
+              </IconButton>
+            </Tooltip>
+          )}
           <Box sx={{ flex: 1, minWidth: 0 }}>
             <Stack direction="row" spacing={1} alignItems="center">
               <Typography variant="h4" noWrap>

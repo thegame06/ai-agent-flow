@@ -4,7 +4,6 @@ import { useMemo, useState, useEffect } from 'react';
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import Stack from '@mui/material/Stack';
-import Alert from '@mui/material/Alert';
 import Button from '@mui/material/Button';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
@@ -22,6 +21,7 @@ import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
 import { Iconify } from 'src/components/iconify';
 
 import { useAgents } from './Hooks/useAgents';
+import AgentDesignerPage from './Designer/AgentDesignerPage';
 
 export default function AgentsListDetailPage() {
   const tenantId = useTenantId();
@@ -30,7 +30,6 @@ export default function AgentsListDetailPage() {
   const { agents, loading } = useAgents(tenantId, runtimeKind);
   const [query, setQuery] = useState('');
   const [selectedAgentId, setSelectedAgentId] = useState('');
-  const [error, setError] = useState('');
 
   const filteredAgents = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -70,8 +69,6 @@ export default function AgentsListDetailPage() {
             </Button>
           </Stack>
         </Stack>
-
-        {error ? <Alert severity="error" sx={{ mb: 1.5 }}>{error}</Alert> : null}
 
         <Box
           sx={{
@@ -123,17 +120,9 @@ export default function AgentsListDetailPage() {
             />
             <CardContent sx={{ p: 0, height: '72vh' }}>
               {selectedAgent ? (
-                <Box
-                  component="iframe"
-                  src={paths.dashboard.agentEdit(selectedAgent.id)}
-                  title={`Agent Designer ${selectedAgent.id}`}
-                  sx={{
-                    width: '100%',
-                    height: '100%',
-                    border: 0,
-                    backgroundColor: 'background.default',
-                  }}
-                />
+                <Box sx={{ height: '100%', overflow: 'auto' }}>
+                  <AgentDesignerPage embedded embeddedAgentId={selectedAgent.id} />
+                </Box>
               ) : (
                 <Stack alignItems="center" justifyContent="center" sx={{ height: '100%' }}>
                   <Typography variant="body2" color="text.secondary">Selecciona un asistente para abrir su Designer.</Typography>
