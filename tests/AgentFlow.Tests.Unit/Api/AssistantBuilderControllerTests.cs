@@ -37,7 +37,6 @@ public sealed class AssistantBuilderControllerTests
         };
 
         var result = controller.ValidateAssistantConfig(request);
-
         Assert.IsType<OkObjectResult>(result);
     }
 
@@ -71,7 +70,6 @@ public sealed class AssistantBuilderControllerTests
         };
 
         var result = controller.ValidateAssistantConfig(request);
-
         Assert.IsType<BadRequestObjectResult>(result);
     }
 
@@ -106,7 +104,6 @@ public sealed class AssistantBuilderControllerTests
         };
 
         var result = controller.ValidateAssistantConfig(request);
-
         Assert.IsType<BadRequestObjectResult>(result);
     }
 
@@ -141,7 +138,6 @@ public sealed class AssistantBuilderControllerTests
         };
 
         var result = controller.ValidateAssistantConfig(request);
-
         Assert.IsType<BadRequestObjectResult>(result);
     }
 
@@ -149,7 +145,6 @@ public sealed class AssistantBuilderControllerTests
     public async Task WizardSession_AdvancesOneQuestionAtATime_AndCompletes()
     {
         var controller = new AssistantBuilderController();
-
         var created = await controller.CreateWizardSession(null) as OkObjectResult;
         Assert.NotNull(created);
         using var createdJson = JsonDocument.Parse(JsonSerializer.Serialize(created!.Value));
@@ -157,7 +152,6 @@ public sealed class AssistantBuilderControllerTests
         Assert.False(string.IsNullOrWhiteSpace(sessionId));
 
         var step1 = await controller.AnswerWizardQuestion(sessionId!, new AssistantBuilderController.WizardSessionAnswerRequest { Answer = "Spanish" }) as OkObjectResult;
-        Assert.NotNull(step1);
         using var step1Json = JsonDocument.Parse(JsonSerializer.Serialize(step1!.Value));
         Assert.Equal("task", step1Json.RootElement.GetProperty("stage").GetString());
 
@@ -173,6 +167,41 @@ public sealed class AssistantBuilderControllerTests
         using var step4Json = JsonDocument.Parse(JsonSerializer.Serialize(step4!.Value));
         Assert.Equal("completed", step4Json.RootElement.GetProperty("stage").GetString());
         Assert.True(step4Json.RootElement.GetProperty("completed").GetBoolean());
+    }
+
+    [Fact]
+    public async Task WizardSession_InvalidAnswer_ReturnsBadRequest()
+    {
+        var controller = new AssistantBuilderController();
+        var created = await controller.CreateWizardSession(null) as OkObjectResult;
+        using var createdJson = JsonDocument.Parse(JsonSerializer.Serialize(created!.Value));
+        var sessionId = createdJson.RootElement.GetProperty("sessionId").GetString()!;
+
+        var invalid = await controller.AnswerWizardQuestion(
+            sessionId,
+            new AssistantBuilderController.WizardSessionAnswerRequest { Answer = "Deutsch" }) as BadRequestObjectResult;
+
+        Assert.NotNull(invalid);
+        using var invalidJson = JsonDocument.Parse(JsonSerializer.Serialize(invalid!.Value));
+        Assert.Equal("wizard_invalid_answer", invalidJson.RootElement.GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public async Task WizardSession_GetStatus_ReturnsNextQuestion()
+    {
+        var controller = new AssistantBuilderController();
+        var created = await controller.CreateWizardSession(null) as OkObjectResult;
+        using var createdJson = JsonDocument.Parse(JsonSerializer.Serialize(created!.Value));
+        var sessionId = createdJson.RootElement.GetProperty("sessionId").GetString()!;
+
+        await controller.AnswerWizardQuestion(sessionId, new AssistantBuilderController.WizardSessionAnswerRequest { Answer = "Spanish" });
+        var status = await controller.GetWizardSession(sessionId) as OkObjectResult;
+
+        Assert.NotNull(status);
+        using var statusJson = JsonDocument.Parse(JsonSerializer.Serialize(status!.Value));
+        Assert.Equal("task", statusJson.RootElement.GetProperty("stage").GetString());
+        Assert.True(statusJson.RootElement.TryGetProperty("question", out var questionEl));
+        Assert.False(string.IsNullOrWhiteSpace(questionEl.GetProperty("question").GetString()));
     }
 
     [Fact]
@@ -205,7 +234,7 @@ public sealed class AssistantBuilderControllerTests
 
         await controller.AnswerWizardQuestion(sessionId, new AssistantBuilderController.WizardSessionAnswerRequest { Answer = "Spanish" });
         await controller.AnswerWizardQuestion(sessionId, new AssistantBuilderController.WizardSessionAnswerRequest { Answer = "Seguimiento de leads" });
-        await controller.AnswerWizardQuestion(sessionId, new AssistantBuilderController.WizardSessionAnswerRequest { Answer = "Prospectos en negociaciÃ³n" });
+        await controller.AnswerWizardQuestion(sessionId, new AssistantBuilderController.WizardSessionAnswerRequest { Answer = "Prospectos en negociación" });
         await controller.AnswerWizardQuestion(sessionId, new AssistantBuilderController.WizardSessionAnswerRequest { Answer = "Amigable" });
         await controller.MaterializeWizardSession(sessionId);
 
@@ -215,5 +244,29 @@ public sealed class AssistantBuilderControllerTests
         Assert.Equal("tenant-metrics", metricsJson.RootElement.GetProperty("tenantId").GetString());
         Assert.True(metricsJson.RootElement.GetProperty("funnel").GetProperty("sessionsCreated").GetInt32() >= 1);
         Assert.True(metricsJson.RootElement.GetProperty("funnel").GetProperty("sessionsMaterialized").GetInt32() >= 1);
+    }
+
+    [Fact]
+    public async Task WizardSession_MaterializeThenValidateAssistantConfig_ReturnsOk()
+    {
+        var controller = new AssistantBuilderController();
+        var created = await controller.CreateWizardSession(new AssistantBuilderController.WizardSessionCreateRequest { TenantId = "tenant-e2e" }) as OkObjectResult;
+        using var createdJson = JsonDocument.Parse(JsonSerializer.Serialize(created!.Value));
+        var sessionId = createdJson.RootElement.GetProperty("sessionId").GetString()!;
+
+        await controller.AnswerWizardQuestion(sessionId, new AssistantBuilderController.WizardSessionAnswerRequest { Answer = "Spanish" });
+        await controller.AnswerWizardQuestion(sessionId, new AssistantBuilderController.WizardSessionAnswerRequest { Answer = "Seguimiento de leads" });
+        await controller.AnswerWizardQuestion(sessionId, new AssistantBuilderController.WizardSessionAnswerRequest { Answer = "Prospectos en negociación" });
+        await controller.AnswerWizardQuestion(sessionId, new AssistantBuilderController.WizardSessionAnswerRequest { Answer = "Amigable" });
+
+        var materialized = await controller.MaterializeWizardSession(sessionId) as OkObjectResult;
+        Assert.NotNull(materialized);
+        using var materializedJson = JsonDocument.Parse(JsonSerializer.Serialize(materialized!.Value));
+        var assistantElement = materializedJson.RootElement.GetProperty("assistant");
+        var assistant = JsonSerializer.Deserialize<AssistantBuildRequest>(assistantElement.GetRawText());
+        Assert.NotNull(assistant);
+
+        var validation = controller.ValidateAssistantConfig(assistant!);
+        Assert.IsType<OkObjectResult>(validation);
     }
 }

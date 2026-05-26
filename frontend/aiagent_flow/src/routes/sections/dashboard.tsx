@@ -71,7 +71,7 @@ export const dashboardRoutes: RouteObject[] = [
     path: 'dashboard',
     element: CONFIG.auth.skip ? dashboardLayout() : <AuthGuard>{dashboardLayout()}</AuthGuard>,
     children: [
-      { element: <OverviewPage />, index: true },
+      { element: <Navigate to="/dashboard/threads" replace />, index: true },
       { path: 'overview', element: <OverviewPage /> },
       { path: 'agents', element: <AgentsPage /> },
       { path: 'agents/:id', element: <AgentDetailPage /> },

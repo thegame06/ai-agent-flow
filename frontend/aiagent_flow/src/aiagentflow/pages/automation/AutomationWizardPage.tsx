@@ -14,7 +14,11 @@ export default function AutomationWizardPage() {
   const channelId = searchParams.get('channelId') ?? undefined;
   const wizardParam = searchParams.get('wizard');
   const [wizardId, setWizardId] = useState<WizardId>(
-    wizardParam === 'agentSubflow' ? 'agentSubflow' : 'automation'
+    wizardParam === 'agentSubflow'
+      ? 'agentSubflow'
+      : wizardParam === 'outboundVoice'
+        ? 'outboundVoice'
+        : 'automation'
   );
 
   return (

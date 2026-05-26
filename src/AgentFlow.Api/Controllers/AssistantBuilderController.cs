@@ -80,7 +80,27 @@ public sealed class AssistantBuilderController : ControllerBase
             sessionId = session.Id,
             stage = session.Stage,
             completed = false,
-            question = BuildQuestion("language")
+            question = BuildQuestion("language"),
+            artifact = session.Artifact
+        });
+    }
+
+    [HttpGet("wizard/sessions/{sessionId}")]
+    public async Task<IActionResult> GetWizardSession([FromRoute] string sessionId, CancellationToken ct = default)
+    {
+        var session = await LoadSessionAsync(sessionId, ct);
+        if (session is null)
+            return NotFound(new { error = "wizard_session_not_found" });
+
+        var completed = string.Equals(session.Stage, "completed", StringComparison.OrdinalIgnoreCase);
+        return Ok(new
+        {
+            sessionId = session.Id,
+            tenantId = session.TenantId,
+            stage = session.Stage,
+            completed,
+            artifact = session.Artifact,
+            question = completed ? null : BuildQuestion(session.Stage)
         });
     }
 
@@ -96,6 +116,16 @@ public sealed class AssistantBuilderController : ControllerBase
 
         var stage = session.Stage;
         var answer = request.Answer.Trim();
+        if (GetAcceptedAnswers(stage) is { Length: > 0 } accepted
+            && !accepted.Contains(answer, StringComparer.OrdinalIgnoreCase))
+        {
+            return BadRequest(new
+            {
+                error = "wizard_invalid_answer",
+                stage,
+                acceptedAnswers = accepted
+            });
+        }
 
         switch (stage)
         {
@@ -365,6 +395,16 @@ public sealed class AssistantBuilderController : ControllerBase
         return c is "pcm16" or "mulaw" or "opus";
     }
 
+    private static string[]? GetAcceptedAnswers(string stage)
+        => stage switch
+        {
+            "language" => ["English", "Spanish", "French", "Multilingual"],
+            "task" => ["Calificar prospectos", "Agendar demos/citas", "Seguimiento de leads", "Encuestas"],
+            "audience" => ["Leads fríos", "Leads recientes", "Prospectos en negociación", "Clientes existentes"],
+            "tone" => ["Profesional", "Amigable", "Empático", "Seguro"],
+            _ => null
+        };
+
     private static object BuildQuestion(string stage)
     {
         return stage switch
@@ -378,7 +418,7 @@ public sealed class AssistantBuilderController : ControllerBase
                     new { label = "English", description = "English only" },
                     new { label = "Spanish", description = "Spanish only" },
                     new { label = "French", description = "French only" },
-                    new { label = "Multilingual", description = "Speaks multiple languages — switches based on the callee" }
+                    new { label = "Multilingual", description = "Speaks multiple languages - switches based on the callee" }
                 }
             },
             "task" => new
@@ -540,7 +580,7 @@ public sealed class AssistantBuilderController : ControllerBase
     private static string BuildFirstMessage(WizardSessionState session)
     {
         var role = session.Artifact.GetValueOrDefault("Role") ?? "asistente";
-        return $"Hola, soy tu {role}. ¿Tienes un minuto para continuar?";
+        return $"Hola, soy tu {role}. \u00bfTienes un minuto para continuar?";
     }
 
     private static string MapLanguageToCode(string language)

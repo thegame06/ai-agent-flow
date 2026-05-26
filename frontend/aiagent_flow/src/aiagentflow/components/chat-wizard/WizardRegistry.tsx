@@ -3,8 +3,9 @@ import Stack from '@mui/material/Stack';
 
 import { AutomationChatWizard } from './AutomationChatWizard';
 import { AgentSubflowChatWizard } from './AgentSubflowChatWizard';
+import { OutboundVoiceAssistantWizard } from './OutboundVoiceAssistantWizard';
 
-export type WizardId = 'automation' | 'agentSubflow';
+export type WizardId = 'automation' | 'agentSubflow' | 'outboundVoice';
 
 type WizardEntry = {
   id: WizardId;
@@ -22,6 +23,11 @@ export const wizardRegistry: WizardEntry[] = [
     id: 'agentSubflow',
     label: 'Wizard de subflujo de agente',
     render: () => <AgentSubflowChatWizard />,
+  },
+  {
+    id: 'outboundVoice',
+    label: 'Wizard outbound voz',
+    render: () => <OutboundVoiceAssistantWizard />,
   },
 ];
 
@@ -50,4 +56,3 @@ export function WizardLauncher({ value, onChange, initialChannelId }: WizardLaun
     </Stack>
   );
 }
-

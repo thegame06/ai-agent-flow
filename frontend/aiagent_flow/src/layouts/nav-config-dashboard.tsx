@@ -30,11 +30,11 @@ const ICONS = {
 
 export const navData: NavSectionProps['data'] = [
   {
-    subheader: 'Inicio',
+    subheader: 'AnnonAI',
     items: [
       {
-        title: 'Inicio',
-        path: paths.dashboard.overview,
+        title: 'Configuracion asistida',
+        path: paths.dashboard.threads,
         icon: ICONS.dashboard,
       },
     ],

@@ -93,6 +93,10 @@ export const endpoints = {
   agentflow: {
     assistant: {
       wizardMetrics: (tenantId: string) => `/api/v1/assistant/wizard/metrics?tenantId=${encodeURIComponent(tenantId)}`,
+      wizardCreateSession: '/api/v1/assistant/wizard/sessions',
+      wizardSession: (sessionId: string) => `/api/v1/assistant/wizard/sessions/${encodeURIComponent(sessionId)}`,
+      wizardAnswer: (sessionId: string) => `/api/v1/assistant/wizard/sessions/${encodeURIComponent(sessionId)}/answers`,
+      wizardMaterialize: (sessionId: string) => `/api/v1/assistant/wizard/sessions/${encodeURIComponent(sessionId)}/materialize`,
     },
     channels: {
       list: (tenantId: string) => `/api/v1/tenants/${tenantId}/channels`,
