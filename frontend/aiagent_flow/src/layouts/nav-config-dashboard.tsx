@@ -34,7 +34,7 @@ export const navData: NavSectionProps['data'] = [
     items: [
       {
         title: 'Configuracion asistida',
-        path: paths.dashboard.threads,
+        path: paths.dashboard.annonai,
         icon: ICONS.dashboard,
       },
     ],

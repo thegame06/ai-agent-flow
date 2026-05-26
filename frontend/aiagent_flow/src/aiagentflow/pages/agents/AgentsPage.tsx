@@ -1,365 +1,521 @@
+import { useState, useEffect } from 'react';
 import { Helmet } from 'react-helmet-async';
-import { useMemo, useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router';
+import { usePopover } from 'minimal-shared/hooks';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import Chip from '@mui/material/Chip';
+import Grid from '@mui/material/Grid';
 import Stack from '@mui/material/Stack';
-import Alert from '@mui/material/Alert';
+import Paper from '@mui/material/Paper';
+import Avatar from '@mui/material/Avatar';
 import Button from '@mui/material/Button';
 import Divider from '@mui/material/Divider';
-import TextField from '@mui/material/TextField';
-import IconButton from '@mui/material/IconButton';
+import MenuItem from '@mui/material/MenuItem';
 import Typography from '@mui/material/Typography';
-import CardHeader from '@mui/material/CardHeader';
+import IconButton from '@mui/material/IconButton';
 import CardContent from '@mui/material/CardContent';
-import CircularProgress from '@mui/material/CircularProgress';
+import CardActions from '@mui/material/CardActions';
+import { alpha, useTheme } from '@mui/material/styles';
+import LinearProgress from '@mui/material/LinearProgress';
 
 import { paths } from 'src/routes/paths';
 import { useRouter } from 'src/routes/hooks';
+import { RouterLink } from 'src/routes/components';
 
-import axios from 'src/lib/axios';
 import { CONFIG } from 'src/global-config';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
 
+import { Label } from 'src/components/label';
 import { Iconify } from 'src/components/iconify';
+import { CustomPopover } from 'src/components/custom-popover';
 
 import { useAgents } from './Hooks/useAgents';
+import { CloneAgentDialog } from './components/CloneAgentDialog';
+import { DeleteAgentDialog } from './components/DeleteAgentDialog';
+import { ExecuteAgentDialog } from './components/ExecuteAgentDialog';
 
-type ViewMode = 'classic' | 'list-detail';
+// ----------------------------------------------------------------------
 
-type ThreadSummary = {
-  threadId: string;
-  threadKey: string;
-  turnCount: number;
-  createdAt?: string;
-  updatedAt?: string;
+const statusColor = (status: string) => {
+  switch (status) {
+    case 'Published':
+      return 'success';
+    case 'Draft':
+      return 'warning';
+    case 'Archived':
+      return 'error';
+    default:
+      return 'default';
+  }
 };
 
-type ThreadTurn = {
-  userMessage?: string;
-  assistantResponse?: string;
-  timestamp?: string;
+const systemRoleLabel = (role?: string) => {
+  switch (role) {
+    case 'Router': return 'ROUTER';
+    case 'ConfigAssistant': return 'CONFIG';
+    case 'WorkflowBrain': return 'BRAIN';
+    default: return null;
+  }
 };
+
+const systemRoleColor = (role?: string) => {
+  switch (role) {
+    case 'Router': return 'primary';
+    case 'ConfigAssistant': return 'warning';
+    case 'WorkflowBrain': return 'info';
+    default: return 'default';
+  }
+};
+
+// ----------------------------------------------------------------------
 
 export default function AgentsPage() {
-  const tenantId = useTenantId();
+  const theme = useTheme();
   const router = useRouter();
-  const { agents, loading } = useAgents(tenantId, null);
-  const [viewMode, setViewMode] = useState<ViewMode>('list-detail');
+  const tenantId = useTenantId();
+  const [searchParams] = useSearchParams();
+  const runtimeStorageKey = `af:agent:runtimeKind:${tenantId}`;
+  const resolveRuntime = (value?: string | null): 'Text' | 'Voice' | 'MultimodalRealtime' | null => {
+    if (!value) return null;
+    const normalized = value.toLowerCase();
+    if (normalized === 'text') return 'Text';
+    if (normalized === 'voice') return 'Voice';
+    if (normalized === 'multimodal' || normalized === 'multimodalrealtime') return 'MultimodalRealtime';
+    return null;
+  };
+  const runtimeFromQuery = resolveRuntime(searchParams.get('runtimeKind'));
+  const runtimeFromStorage =
+    typeof window !== 'undefined' ? resolveRuntime(localStorage.getItem(runtimeStorageKey)) : null;
+  const runtimeKind = (runtimeFromQuery ?? runtimeFromStorage ?? null) as string | null;
+  const { agents, loading, clone, remove } = useAgents(tenantId, runtimeKind);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (runtimeKind) localStorage.setItem(runtimeStorageKey, runtimeKind);
+  }, [runtimeKind, runtimeStorageKey]);
+  const [executeDialog, setExecuteDialog] = useState<{
+    open: boolean;
+    agent: { id: string; name: string; description?: string } | null;
+  }>({
+    open: false,
+    agent: null,
+  });
+  const [cloneDialog, setCloneDialog] = useState<{
+    open: boolean;
+    agent: { id: string; name: string } | null;
+  }>({
+    open: false,
+    agent: null,
+  });
+  const [deleteDialog, setDeleteDialog] = useState<{
+    open: boolean;
+    agent: { id: string; name: string } | null;
+  }>({
+    open: false,
+    agent: null,
+  });
+
+  const handleEdit = (agentId: string) => {
+    router.push(`${paths.dashboard.agentDesigner}/${agentId}`);
+  };
+
+  const handleChat = (agentId: string) => {
+    router.push(`${paths.dashboard.agents}/${agentId}/chat`);
+  };
+
+  const handleViewDetail = (agentId: string) => {
+    router.push(`${paths.dashboard.agents}/${agentId}`);
+  };
+
+  const handleExecute = (agentId: string) => {
+    const agent = agents.find((a) => a.id === agentId);
+    if (agent) {
+      setExecuteDialog({
+        open: true,
+        agent: {
+          id: agent.id,
+          name: agent.name,
+          description: agent.description,
+        },
+      });
+    }
+  };
+
+  const handleCloseExecuteDialog = () => {
+    setExecuteDialog({ open: false, agent: null });
+  };
+
+  const handleClone = (agentId: string) => {
+    const agent = agents.find((a) => a.id === agentId);
+    if (agent) {
+      setCloneDialog({
+        open: true,
+        agent: { id: agent.id, name: agent.name },
+      });
+    }
+  };
+
+  const handleConfirmClone = async (newName: string, newDescription?: string) => {
+    if (cloneDialog.agent) {
+      await clone(cloneDialog.agent.id, newName, newDescription);
+      setCloneDialog({ open: false, agent: null });
+    }
+  };
+
+  const handleDelete = (agentId: string) => {
+    const agent = agents.find((a) => a.id === agentId);
+    if (agent) {
+      setDeleteDialog({
+        open: true,
+        agent: { id: agent.id, name: agent.name },
+      });
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    if (deleteDialog.agent) {
+      await remove(deleteDialog.agent.id);
+      setDeleteDialog({ open: false, agent: null });
+    }
+  };
+
+  const publishedAgents = agents.filter((agent) => agent.status === 'Published').length;
+  const toolReadyAgents = agents.filter((agent) => (agent.availableTools?.length ?? agent.tools?.length ?? 0) > 0).length;
+  const systemAgents = agents.filter((agent) => agent.isSystemAgent).length;
 
   return (
     <>
       <Helmet>
-        <title>Assistants | {CONFIG.appName}</title>
+        <title>Asistentes IA | {CONFIG.appName}</title>
       </Helmet>
 
-      <DashboardContent maxWidth={false}>
-        <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}>
-          <Typography variant="h4">Assistants</Typography>
-          <Stack direction="row" spacing={1}>
-            <Button variant={viewMode === 'classic' ? 'contained' : 'outlined'} onClick={() => setViewMode('classic')}>
-              Vista actual
-            </Button>
-            <Button variant={viewMode === 'list-detail' ? 'contained' : 'outlined'} onClick={() => setViewMode('list-detail')}>
-              Lista detalle
-            </Button>
-          </Stack>
-        </Stack>
+      <DashboardContent maxWidth="xl">
+        <Paper
+          variant="outlined"
+          sx={{
+            mb: 3,
+            p: { xs: 2.5, md: 3 },
+            borderRadius: 4,
+            background:
+              'radial-gradient(circle at 8% 18%, rgba(14,124,90,0.16), transparent 30%), linear-gradient(135deg, #FBFDF9 0%, #F3F9F5 100%)',
+          }}
+        >
+          <Grid container spacing={3} alignItems="center">
+            <Grid item xs={12} md={7}>
+              <Stack direction="row" spacing={1.5} alignItems="center">
+                <Avatar sx={{ width: 56, height: 56, bgcolor: 'primary.lighter', color: 'primary.main' }}>
+                  <Iconify icon="mdi:robot-happy-outline" width={30} />
+                </Avatar>
+                <Box>
+                  <Typography variant="overline" color="text.secondary">
+                    Asistentes reutilizables
+                  </Typography>
+                  <Typography variant="h3">Asistentes IA</Typography>
+                  {runtimeKind && <Chip size="small" color="info" label={`Runtime ${runtimeKind}`} sx={{ mt: 0.5 }} />}
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                    Disena asistentes reutilizables para canales y flujos automatizados. Cada asistente puede tener modelo,
+                    memoria, herramientas, integraciones externas y reglas de seguridad.
+                  </Typography>
+                </Box>
+              </Stack>
+            </Grid>
+            <Grid item xs={12} md={5}>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent={{ md: 'flex-end' }}>
+                <Button
+                  component={RouterLink}
+                  href={paths.dashboard.workflows}
+                  variant="outlined"
+                  startIcon={<Iconify icon="mdi:source-branch" />}
+                >
+                  Usar en flujo
+                </Button>
+                <Button
+                  component={RouterLink}
+                  href={paths.dashboard.agentDesigner}
+                  variant="contained"
+                  startIcon={<Iconify icon="mingcute:add-line" />}
+                >
+                  Nuevo asistente
+                </Button>
+              </Stack>
+            </Grid>
+          </Grid>
+        </Paper>
 
-        {viewMode === 'classic' ? (
-          <ClassicAssistantsView
-            loading={loading}
-            agents={agents}
-            onEdit={(id) => router.push(paths.dashboard.agentEdit(id))}
-            onChat={(id) => router.push(`${paths.dashboard.agents}/${id}/chat`)}
-            onView={(id) => router.push(`${paths.dashboard.agents}/${id}`)}
-            onCreate={() => router.push(paths.dashboard.agentDesigner)}
-          />
+        <Grid container spacing={2} sx={{ mb: 3 }}>
+          {[
+            ['Total', agents.length, 'mdi:robot-outline'],
+            ['Publicados', publishedAgents, 'mdi:check-decagram-outline'],
+            ['Sistema', systemAgents, 'mdi:shield-lock-outline'],
+            ['Con herramientas', toolReadyAgents, 'mdi:tools'],
+          ].map(([label, value, icon]) => (
+            <Grid key={String(label)} item xs={12} sm={6} md={3}>
+              <Card variant="outlined" sx={{ p: 2 }}>
+                <Stack direction="row" spacing={1.5} alignItems="center">
+                  <Avatar sx={{ width: 38, height: 38, bgcolor: 'background.neutral', color: 'primary.main' }}>
+                    <Iconify icon={String(icon)} width={21} />
+                  </Avatar>
+                  <Box>
+                    <Typography variant="h5">{String(value)}</Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {label}
+                    </Typography>
+                  </Box>
+                </Stack>
+              </Card>
+            </Grid>
+          ))}
+        </Grid>
+
+        {loading ? (
+          <LinearProgress />
+        ) : agents.length === 0 ? (
+          <Card sx={{ p: 5, textAlign: 'center' }}>
+            <Iconify icon="mdi:robot-outline" width={80} sx={{ color: 'text.disabled', mb: 2 }} />
+            <Typography variant="h6" color="text.secondary">
+              No hay asistentes creados
+            </Typography>
+            <Typography variant="body2" color="text.disabled" sx={{ mb: 3 }}>
+              Crea tu primer asistente para usarlo en canales o como paso dentro de flujos automatizados.
+            </Typography>
+            <Button
+              component={RouterLink}
+              href={paths.dashboard.agentDesigner}
+              variant="contained"
+              startIcon={<Iconify icon="mingcute:add-line" />}
+            >
+              Crear asistente
+            </Button>
+          </Card>
         ) : (
-          <ListDetailAssistantsView
-            tenantId={tenantId}
-            loading={loading}
-            agents={agents}
-            onEdit={(id) => router.push(paths.dashboard.agentEdit(id))}
-            onChat={(id) => router.push(`${paths.dashboard.agents}/${id}/chat`)}
-            onCreate={() => router.push(paths.dashboard.agentDesigner)}
-          />
+          <Grid container spacing={3}>
+            {agents.map((agent) => (
+              <Grid key={agent.id} item xs={12} sm={6} md={4}>
+                <Card
+                  sx={{
+                    height: '100%',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    border: `1px solid ${alpha(theme.palette.grey[500], 0.12)}`,
+                    transition: 'all 0.3s ease',
+                    '&:hover': {
+                      boxShadow: theme.shadows[12],
+                      transform: 'translateY(-4px)',
+                    },
+                  }}
+                >
+                  <CardContent sx={{ flexGrow: 1 }}>
+                    <Stack spacing={2}>
+                      {/* Header */}
+                      <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                        <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                          <Typography variant="h6" noWrap sx={{ mb: 0.5 }}>
+                            {agent.name}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary" noWrap>
+                            v{agent.version}
+                          </Typography>
+                        </Box>
+                        <AgentMenu
+                          agentId={agent.id}
+                          isSystemAgent={agent.isSystemAgent}
+                          systemRole={agent.systemRole}
+                          onEdit={handleEdit}
+                          onChat={handleChat}
+                          onClone={handleClone}
+                          onDelete={handleDelete}
+                        />
+                      </Box>
+
+                      {/* Status & Tags */}
+                      <Stack direction="row" spacing={1} flexWrap="wrap" alignItems="center">
+                        <Label color={statusColor(agent.status)} variant="soft">
+                          {agent.status}
+                        </Label>
+                        {agent.isSystemAgent && systemRoleLabel(agent.systemRole) && (
+                          <Chip
+                            size="small"
+                            label={systemRoleLabel(agent.systemRole)}
+                            color={systemRoleColor(agent.systemRole) as any}
+                            icon={<Iconify icon="mdi:shield-lock-outline" width={14} />}
+                          />
+                        )}
+                        {agent.tags?.slice(0, 2).map((tag: string) => (
+                          <Chip key={tag} label={tag} size="small" variant="outlined" />
+                        ))}
+                      </Stack>
+
+                      {/* Description */}
+                      <Typography
+                        variant="body2"
+                        color="text.secondary"
+                        sx={{
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical',
+                          minHeight: 40,
+                        }}
+                      >
+                        {agent.description || 'No description'}
+                      </Typography>
+
+                      <Divider />
+
+                      {/* Stats */}
+                      <Stack spacing={1}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <Typography variant="caption" color="text.secondary">
+                            <Iconify icon="mdi:calendar" width={14} sx={{ mr: 0.5, verticalAlign: 'text-bottom' }} />
+                            Creado
+                          </Typography>
+                          <Typography variant="caption" fontWeight={600}>
+                            {new Date(agent.createdAt).toLocaleDateString()}
+                          </Typography>
+                        </Box>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <Typography variant="caption" color="text.secondary">
+                            <Iconify icon="mdi:update" width={14} sx={{ mr: 0.5, verticalAlign: 'text-bottom' }} />
+                            Actualizado
+                          </Typography>
+                          <Typography variant="caption" fontWeight={600}>
+                            {new Date(agent.updatedAt).toLocaleDateString()}
+                          </Typography>
+                        </Box>
+                      </Stack>
+                    </Stack>
+                  </CardContent>
+
+                  <CardActions sx={{ px: 2, pb: 2 }}>
+                    <Button
+                      fullWidth
+                      variant="outlined"
+                      startIcon={<Iconify icon="mdi:eye-outline" />}
+                      onClick={() => handleViewDetail(agent.id)}
+                    >
+                      Ver detalle
+                    </Button>
+                    <Button
+                      fullWidth
+                      variant="contained"
+                      startIcon={<Iconify icon="mdi:play" />}
+                      onClick={() => handleExecute(agent.id)}
+                      disabled={agent.isSystemAgent === true}
+                    >
+                      Ejecutar
+                    </Button>
+                  </CardActions>
+                </Card>
+              </Grid>
+            ))}
+          </Grid>
         )}
       </DashboardContent>
+
+      {/* Execute Agent Dialog */}
+      {executeDialog.agent && (
+        <ExecuteAgentDialog
+          open={executeDialog.open}
+          onClose={handleCloseExecuteDialog}
+          agent={executeDialog.agent}
+        />
+      )}
+
+      {/* Clone Agent Dialog */}
+      {cloneDialog.agent && (
+        <CloneAgentDialog
+          open={cloneDialog.open}
+          onClose={() => setCloneDialog({ open: false, agent: null })}
+          agent={cloneDialog.agent}
+          onConfirm={handleConfirmClone}
+        />
+      )}
+
+      {/* Delete Agent Dialog */}
+      {deleteDialog.agent && (
+        <DeleteAgentDialog
+          open={deleteDialog.open}
+          onClose={() => setDeleteDialog({ open: false, agent: null })}
+          agent={deleteDialog.agent}
+          onConfirm={handleConfirmDelete}
+        />
+      )}
     </>
   );
 }
 
-function ClassicAssistantsView({
-  loading,
-  agents,
-  onEdit,
-  onChat,
-  onView,
-  onCreate,
-}: {
-  loading: boolean;
-  agents: any[];
+// ----------------------------------------------------------------------
+
+interface AgentMenuProps {
+  agentId: string;
+  isSystemAgent?: boolean;
+  systemRole?: string;
   onEdit: (id: string) => void;
   onChat: (id: string) => void;
-  onView: (id: string) => void;
-  onCreate: () => void;
-}) {
-  if (loading) {
-    return (
-      <Stack alignItems="center" sx={{ py: 6 }}>
-        <CircularProgress />
-      </Stack>
-    );
-  }
-
-  if (agents.length === 0) {
-    return (
-      <Card>
-        <CardContent>
-          <Stack spacing={1.5}>
-            <Typography variant="h6">No assistants yet</Typography>
-            <Button variant="contained" onClick={onCreate}>
-              Create assistant
-            </Button>
-          </Stack>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  return (
-    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2,1fr)', xl: 'repeat(3,1fr)' }, gap: 1.5 }}>
-      {agents.map((agent) => (
-        <Card key={agent.id}>
-          <CardContent>
-            <Stack spacing={1.2}>
-              <Stack direction="row" justifyContent="space-between" alignItems="center">
-                <Typography variant="subtitle1" noWrap>{agent.name}</Typography>
-                <Chip size="small" label={agent.status} />
-              </Stack>
-              <Typography variant="body2" color="text.secondary">
-                {agent.description || 'No description'}
-              </Typography>
-              <Stack direction="row" spacing={1}>
-                <Button size="small" variant="outlined" onClick={() => onView(agent.id)}>Detail</Button>
-                <Button size="small" variant="outlined" onClick={() => onEdit(agent.id)}>Edit</Button>
-                <Button size="small" variant="contained" onClick={() => onChat(agent.id)}>Chat</Button>
-              </Stack>
-            </Stack>
-          </CardContent>
-        </Card>
-      ))}
-    </Box>
-  );
+  onClone: (id: string) => void;
+  onDelete: (id: string) => void;
 }
 
-function ListDetailAssistantsView({
-  tenantId,
-  loading,
-  agents,
-  onEdit,
-  onChat,
-  onCreate,
-}: {
-  tenantId: string;
-  loading: boolean;
-  agents: any[];
-  onEdit: (id: string) => void;
-  onChat: (id: string) => void;
-  onCreate: () => void;
-}) {
-  const [agentQuery, setAgentQuery] = useState('');
-  const [threadQuery, setThreadQuery] = useState('');
-  const [selectedAgentId, setSelectedAgentId] = useState('');
-  const [threads, setThreads] = useState<ThreadSummary[]>([]);
-  const [selectedThreadId, setSelectedThreadId] = useState('');
-  const [threadTurns, setThreadTurns] = useState<ThreadTurn[]>([]);
-  const [threadsLoading, setThreadsLoading] = useState(false);
-  const [threadDetailLoading, setThreadDetailLoading] = useState(false);
-  const [error, setError] = useState('');
-
-  const filteredAgents = useMemo(() => {
-    const q = agentQuery.trim().toLowerCase();
-    if (!q) return agents;
-    return agents.filter((a) => `${a.name} ${a.description || ''}`.toLowerCase().includes(q));
-  }, [agentQuery, agents]);
-
-  const selectedAgent = useMemo(
-    () => agents.find((a) => a.id === selectedAgentId) ?? filteredAgents[0] ?? null,
-    [agents, filteredAgents, selectedAgentId]
-  );
-
-  const filteredThreads = useMemo(() => {
-    const q = threadQuery.trim().toLowerCase();
-    if (!q) return threads;
-    return threads.filter((t) => `${t.threadKey} ${t.threadId}`.toLowerCase().includes(q));
-  }, [threadQuery, threads]);
-
-  const selectedThread = useMemo(
-    () => threads.find((t) => t.threadId === selectedThreadId) ?? filteredThreads[0] ?? null,
-    [threads, filteredThreads, selectedThreadId]
-  );
-
-  useEffect(() => {
-    if (!selectedAgent && filteredAgents.length > 0) setSelectedAgentId(filteredAgents[0].id);
-  }, [selectedAgent, filteredAgents]);
-
-  useEffect(() => {
-    const loadThreads = async () => {
-      if (!selectedAgent) {
-        setThreads([]);
-        return;
-      }
-      try {
-        setThreadsLoading(true);
-        setError('');
-        const res = await axios.get(`/api/v1/tenants/${tenantId}/threads?agentId=${selectedAgent.id}&limit=100`);
-        const next = (res.data ?? []) as ThreadSummary[];
-        setThreads(next);
-        setSelectedThreadId((current) => (next.some((t) => t.threadId === current) ? current : next[0]?.threadId ?? ''));
-      } catch (e: any) {
-        setError(e?.message ?? 'No se pudo cargar conversaciones');
-      } finally {
-        setThreadsLoading(false);
-      }
-    };
-    loadThreads();
-  }, [tenantId, selectedAgent]);
-
-  useEffect(() => {
-    const loadThreadDetail = async () => {
-      if (!selectedThread) {
-        setThreadTurns([]);
-        return;
-      }
-      try {
-        setThreadDetailLoading(true);
-        const res = await axios.get(`/api/v1/tenants/${tenantId}/threads/${selectedThread.threadId}/history?limit=50`);
-        setThreadTurns((res.data?.turns ?? []) as ThreadTurn[]);
-      } catch (e: any) {
-        setError(e?.message ?? 'No se pudo cargar detalle');
-      } finally {
-        setThreadDetailLoading(false);
-      }
-    };
-    loadThreadDetail();
-  }, [tenantId, selectedThread]);
+function AgentMenu({ agentId, isSystemAgent, systemRole, onEdit, onChat, onClone, onDelete }: AgentMenuProps) {
+  const isReadOnly = isSystemAgent === true && systemRole !== 'WorkflowBrain';
+  const { open, anchorEl, onClose, onOpen } = usePopover();
 
   return (
     <>
-      {error ? <Alert severity="error" sx={{ mb: 1.5 }}>{error}</Alert> : null}
-      <Box
-        sx={{
-          display: 'grid',
-          gridTemplateColumns: { xs: '1fr', lg: '320px 360px minmax(0, 1fr)' },
-          gap: 1.5,
-          minHeight: 'calc(100vh - 200px)',
-        }}
-      >
-        <Card>
-          <CardHeader
-            title={`Assistants ${agents.length}`}
-            action={<Button size="small" variant="contained" onClick={onCreate}>Create</Button>}
-          />
-          <CardContent sx={{ pt: 0 }}>
-            <TextField fullWidth size="small" placeholder="Search assistants" value={agentQuery} onChange={(e) => setAgentQuery(e.target.value)} />
-            <Stack spacing={1} sx={{ mt: 1.5, maxHeight: '65vh', overflow: 'auto' }}>
-              {loading ? <CircularProgress size={20} /> : filteredAgents.map((agent) => (
-                <Box
-                  key={agent.id}
-                  onClick={() => setSelectedAgentId(agent.id)}
-                  sx={{
-                    border: '1px solid',
-                    borderColor: selectedAgent?.id === agent.id ? 'primary.main' : 'divider',
-                    borderRadius: 1.25,
-                    p: 1.1,
-                    cursor: 'pointer',
-                    bgcolor: selectedAgent?.id === agent.id ? 'action.selected' : 'background.paper',
-                  }}
-                >
-                  <Typography variant="subtitle2" noWrap>{agent.name}</Typography>
-                  <Typography variant="caption" color="text.secondary">{agent.status}</Typography>
-                </Box>
-              ))}
-            </Stack>
-          </CardContent>
-        </Card>
+      <IconButton onClick={onOpen}>
+        <Iconify icon="eva:more-vertical-fill" />
+      </IconButton>
 
-        <Card>
-          <CardHeader
-            title={`Conversations ${threads.length}`}
-            action={
-              <Button size="small" variant="outlined" disabled={!selectedAgent} onClick={() => selectedAgent && onChat(selectedAgent.id)}>
-                New
-              </Button>
-            }
-          />
-          <CardContent sx={{ pt: 0 }}>
-            <TextField fullWidth size="small" placeholder="Search conversations" value={threadQuery} onChange={(e) => setThreadQuery(e.target.value)} />
-            <Stack spacing={1} sx={{ mt: 1.5, maxHeight: '65vh', overflow: 'auto' }}>
-              {threadsLoading ? <CircularProgress size={20} /> : filteredThreads.map((thread) => (
-                <Box
-                  key={thread.threadId}
-                  onClick={() => setSelectedThreadId(thread.threadId)}
-                  sx={{
-                    border: '1px solid',
-                    borderColor: selectedThread?.threadId === thread.threadId ? 'primary.main' : 'divider',
-                    borderRadius: 1.25,
-                    p: 1.1,
-                    cursor: 'pointer',
-                    bgcolor: selectedThread?.threadId === thread.threadId ? 'action.selected' : 'background.paper',
-                  }}
-                >
-                  <Typography variant="subtitle2" noWrap>{thread.threadKey || thread.threadId.slice(0, 14)}</Typography>
-                  <Typography variant="caption" color="text.secondary">{thread.turnCount ?? 0} turns</Typography>
-                </Box>
-              ))}
-            </Stack>
-          </CardContent>
-        </Card>
+      <CustomPopover open={open} anchorEl={anchorEl} onClose={onClose}>
+        <MenuItem
+          disabled={isReadOnly}
+          onClick={() => {
+            onClose();
+            onEdit(agentId);
+          }}
+        >
+          <Iconify icon="mdi:pencil-outline" />
+          Editar
+        </MenuItem>
 
-        <Card>
-          <CardHeader
-            title={selectedAgent?.name || 'Detail'}
-            subheader={selectedThread ? `Thread ${selectedThread.threadKey || selectedThread.threadId.slice(0, 10)}` : 'No thread selected'}
-            action={
-              selectedAgent ? (
-                <Stack direction="row" spacing={1}>
-                  <Button size="small" variant="outlined" onClick={() => onEdit(selectedAgent.id)}>Tabs Editor</Button>
-                  <Button size="small" variant="contained" onClick={() => onChat(selectedAgent.id)}>Open Chat</Button>
-                </Stack>
-              ) : null
-            }
-          />
-          <Divider />
-          <CardContent sx={{ maxHeight: '68vh', overflow: 'auto' }}>
-            {threadDetailLoading ? (
-              <CircularProgress size={22} />
-            ) : threadTurns.length === 0 ? (
-              <Typography variant="body2" color="text.secondary">No messages yet.</Typography>
-            ) : (
-              <Stack spacing={1.1}>
-                {threadTurns.map((turn, idx) => (
-                  <Box key={idx} sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 1 }}>
-                    {turn.userMessage ? <Typography variant="body2"><strong>User:</strong> {turn.userMessage}</Typography> : null}
-                    {turn.assistantResponse ? <Typography variant="body2" color="text.secondary"><strong>Assistant:</strong> {turn.assistantResponse}</Typography> : null}
-                    {turn.timestamp ? <Typography variant="caption" color="text.disabled">{new Date(turn.timestamp).toLocaleString()}</Typography> : null}
-                  </Box>
-                ))}
-              </Stack>
-            )}
-          </CardContent>
-        </Card>
-      </Box>
-      <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
-        <IconButton size="small"><Iconify icon="mdi:view-column-outline" width={16} /></IconButton>
-        <Typography variant="caption" color="text.secondary">
-          En lista-detalle, el botón `Tabs Editor` abre los tabs actuales de edición del asistente.
-        </Typography>
-      </Stack>
+        <MenuItem
+          disabled={isSystemAgent === true}
+          onClick={() => {
+            onClose();
+            onChat(agentId);
+          }}
+        >
+          <Iconify icon="mdi:message-text-outline" />
+          Chat
+        </MenuItem>
+
+        <MenuItem
+          onClick={() => {
+            onClose();
+            onClone(agentId);
+          }}
+        >
+          <Iconify icon="mdi:content-copy" />
+          Clonar
+        </MenuItem>
+
+        <Divider sx={{ borderStyle: 'dashed' }} />
+
+        <MenuItem
+          disabled={isReadOnly}
+          onClick={() => {
+            onClose();
+            onDelete(agentId);
+          }}
+          sx={{ color: isReadOnly ? 'text.disabled' : 'error.main' }}
+        >
+          <Iconify icon="mdi:delete-outline" />
+          Eliminar
+        </MenuItem>
+      </CustomPopover>
     </>
   );
 }

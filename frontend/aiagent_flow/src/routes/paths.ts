@@ -43,6 +43,7 @@ export const paths = {
   // DASHBOARD
   dashboard: {
     root: ROOTS.DASHBOARD,
+    annonai: `${ROOTS.DASHBOARD}/annonai`,
     overview: `${ROOTS.DASHBOARD}/overview`,
     agents: `${ROOTS.DASHBOARD}/agents`,
     agentDesigner: `${ROOTS.DASHBOARD}/agents/designer`,
