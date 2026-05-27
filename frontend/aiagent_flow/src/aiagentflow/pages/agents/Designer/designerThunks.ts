@@ -12,11 +12,15 @@ const resolveTenantId = () => {
   return (import.meta.env.VITE_DEFAULT_TENANT_ID as string | undefined) || 'tenant-1';
 };
 
+const resolveTenant = (tenantId?: string) => tenantId || resolveTenantId();
+
 // ── Fetch single agent for Designer ──
 export const fetchAgentDetail = createAsyncThunk(
   'designer/fetchAgentDetail',
-  async (agentId: string) => {
-    const response = await axios.get(`/api/v1/tenants/${resolveTenantId()}/agents/${agentId}`);
+  async (input: string | { agentId: string; tenantId?: string }) => {
+    const agentId = typeof input === 'string' ? input : input.agentId;
+    const tenantId = typeof input === 'string' ? undefined : input.tenantId;
+    const response = await axios.get(`/api/v1/tenants/${resolveTenant(tenantId)}/agents/${agentId}`);
     return response.data;
   }
 );
@@ -24,20 +28,22 @@ export const fetchAgentDetail = createAsyncThunk(
 // ── Save agent (Create or Update) ──
 export const saveAgent = createAsyncThunk(
   'designer/saveAgent',
-  async (draft: AgentDefinitionDraft) => {
+  async (input: AgentDefinitionDraft | { draft: AgentDefinitionDraft; tenantId?: string }) => {
+    const draft = 'draft' in input ? input.draft : input;
+    const tenantId = 'draft' in input ? input.tenantId : undefined;
     const payload = mapDraftToPayload(draft);
 
     if (draft.id) {
       // UPDATE
       const response = await axios.put(
-        `/api/v1/tenants/${resolveTenantId()}/agents/${draft.id}`,
+        `/api/v1/tenants/${resolveTenant(tenantId)}/agents/${draft.id}`,
         payload
       );
       return response.data;
     }
     // CREATE
     const response = await axios.post(
-      `/api/v1/tenants/${resolveTenantId()}/agents`,
+      `/api/v1/tenants/${resolveTenant(tenantId)}/agents`,
       payload
     );
     return response.data;
@@ -47,9 +53,11 @@ export const saveAgent = createAsyncThunk(
 // ── Publish agent ──
 export const publishAgent = createAsyncThunk(
   'designer/publishAgent',
-  async (agentId: string) => {
+  async (input: string | { agentId: string; tenantId?: string }) => {
+    const agentId = typeof input === 'string' ? input : input.agentId;
+    const tenantId = typeof input === 'string' ? undefined : input.tenantId;
     const response = await axios.post(
-      `/api/v1/tenants/${resolveTenantId()}/agents/${agentId}/publish`
+      `/api/v1/tenants/${resolveTenant(tenantId)}/agents/${agentId}/publish`
     );
     return response.data;
   }

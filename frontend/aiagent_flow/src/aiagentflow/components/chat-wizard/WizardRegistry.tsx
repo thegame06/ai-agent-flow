@@ -1,5 +1,6 @@
 import Chip from '@mui/material/Chip';
 import Stack from '@mui/material/Stack';
+import { alpha, useTheme } from '@mui/material/styles';
 
 import { AutomationChatWizard } from './AutomationChatWizard';
 import { AgentSubflowChatWizard } from './AgentSubflowChatWizard';
@@ -38,6 +39,7 @@ type WizardLauncherProps = {
 };
 
 export function WizardLauncher({ value, onChange, initialChannelId }: WizardLauncherProps) {
+  const theme = useTheme();
   const selected = wizardRegistry.find((entry) => entry.id === value) ?? wizardRegistry[0];
 
   return (
@@ -48,6 +50,16 @@ export function WizardLauncher({ value, onChange, initialChannelId }: WizardLaun
             key={entry.id}
             label={entry.label}
             color={value === entry.id ? 'primary' : 'default'}
+            variant={value === entry.id ? 'filled' : 'outlined'}
+            sx={{
+              borderColor: value === entry.id ? 'transparent' : alpha(theme.palette.text.primary, theme.palette.mode === 'dark' ? 0.24 : 0.18),
+              bgcolor:
+                value === entry.id
+                  ? undefined
+                  : theme.palette.mode === 'dark'
+                    ? alpha(theme.palette.background.paper, 0.62)
+                    : alpha(theme.palette.background.paper, 0.92),
+            }}
             onClick={() => onChange(entry.id)}
           />
         ))}

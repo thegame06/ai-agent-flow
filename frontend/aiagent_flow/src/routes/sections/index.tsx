@@ -17,6 +17,10 @@ export const routesSection: RouteObject[] = [
     path: '/',
     element: <Navigate to={CONFIG.auth.redirectPath} replace />,
   },
+  {
+    path: '/system/settings',
+    element: <Navigate to="/dashboard/system/settings" replace />,
+  },
 
   // Auth
   ...authRoutes,

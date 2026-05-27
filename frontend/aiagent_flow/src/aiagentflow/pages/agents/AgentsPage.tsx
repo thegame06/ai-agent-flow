@@ -198,8 +198,17 @@ export default function AgentsPage() {
             mb: 3,
             p: { xs: 2.5, md: 3 },
             borderRadius: 4,
+            borderColor:
+              theme.palette.mode === 'dark'
+                ? alpha(theme.palette.primary.light, 0.22)
+                : alpha(theme.palette.primary.main, 0.16),
             background:
-              'radial-gradient(circle at 8% 18%, rgba(14,124,90,0.16), transparent 30%), linear-gradient(135deg, #FBFDF9 0%, #F3F9F5 100%)',
+              theme.palette.mode === 'dark'
+                ? `radial-gradient(circle at 8% 18%, ${alpha(theme.palette.primary.main, 0.22)}, transparent 34%), linear-gradient(135deg, ${alpha(
+                    theme.palette.background.paper,
+                    0.96
+                  )} 0%, ${alpha(theme.palette.grey[900], 0.9)} 100%)`
+                : 'radial-gradient(circle at 8% 18%, rgba(14,124,90,0.16), transparent 30%), linear-gradient(135deg, #FBFDF9 0%, #F3F9F5 100%)',
           }}
         >
           <Grid container spacing={3} alignItems="center">
@@ -260,7 +269,14 @@ export default function AgentsPage() {
             ['Con herramientas', toolReadyAgents, 'mdi:tools'],
           ].map(([label, value, icon]) => (
             <Grid key={String(label)} item xs={12} sm={6} md={3}>
-              <Card variant="outlined" sx={{ p: 2 }}>
+              <Card
+                variant="outlined"
+                sx={{
+                  p: 2,
+                  bgcolor: theme.palette.mode === 'dark' ? alpha(theme.palette.background.paper, 0.86) : 'background.paper',
+                  borderColor: theme.palette.mode === 'dark' ? alpha(theme.palette.common.white, 0.08) : 'divider',
+                }}
+              >
                 <Stack direction="row" spacing={1.5} alignItems="center">
                   <Avatar sx={{ width: 38, height: 38, bgcolor: 'background.neutral', color: 'primary.main' }}>
                     <Iconify icon={String(icon)} width={21} />
@@ -306,6 +322,7 @@ export default function AgentsPage() {
                     height: '100%',
                     display: 'flex',
                     flexDirection: 'column',
+                    bgcolor: theme.palette.mode === 'dark' ? alpha(theme.palette.background.paper, 0.92) : 'background.paper',
                     border: `1px solid ${alpha(theme.palette.grey[500], 0.12)}`,
                     transition: 'all 0.3s ease',
                     '&:hover': {

@@ -10,6 +10,7 @@ import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import CardHeader from '@mui/material/CardHeader';
 import CardContent from '@mui/material/CardContent';
+import { alpha, useTheme } from '@mui/material/styles';
 import CircularProgress from '@mui/material/CircularProgress';
 
 import { CONFIG } from 'src/global-config';
@@ -53,6 +54,7 @@ type TimelineMessage = {
 };
 
 export default function AutomationWizardPage() {
+  const theme = useTheme();
   const tenantId = useTenantId();
   const [searchParams] = useSearchParams();
   const channelId = searchParams.get('channelId') ?? undefined;
@@ -192,7 +194,13 @@ export default function AutomationWizardPage() {
             </Stack>
           ) : (
             <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '340px minmax(0,1fr)' }, gap: 1.5 }}>
-              <Card>
+              <Card
+                variant="outlined"
+                sx={{
+                  bgcolor: theme.palette.mode === 'dark' ? alpha(theme.palette.background.paper, 0.9) : 'background.paper',
+                  borderColor: theme.palette.mode === 'dark' ? alpha(theme.palette.common.white, 0.1) : 'divider',
+                }}
+              >
                 <CardHeader title={`Conversaciones ${threads.length}`} />
                 <CardContent sx={{ pt: 0 }}>
                   <TextField
@@ -213,7 +221,12 @@ export default function AutomationWizardPage() {
                           borderRadius: 1.25,
                           p: 1.1,
                           cursor: 'pointer',
-                          bgcolor: selectedThread?.threadId === thread.threadId ? 'action.selected' : 'background.paper',
+                          bgcolor:
+                            selectedThread?.threadId === thread.threadId
+                              ? 'action.selected'
+                              : theme.palette.mode === 'dark'
+                                ? alpha(theme.palette.background.paper, 0.86)
+                                : 'background.paper',
                         }}
                       >
                         <Typography variant="subtitle2" noWrap>{thread.threadKey || thread.threadId.slice(0, 14)}</Typography>
@@ -226,7 +239,13 @@ export default function AutomationWizardPage() {
                 </CardContent>
               </Card>
 
-              <Card>
+              <Card
+                variant="outlined"
+                sx={{
+                  bgcolor: theme.palette.mode === 'dark' ? alpha(theme.palette.background.paper, 0.9) : 'background.paper',
+                  borderColor: theme.palette.mode === 'dark' ? alpha(theme.palette.common.white, 0.1) : 'divider',
+                }}
+              >
                 <CardHeader
                   title="Detalle conversacion"
                   subheader={selectedThread ? `Thread ${selectedThread.threadKey || selectedThread.threadId.slice(0, 10)}` : 'Selecciona una conversacion'}

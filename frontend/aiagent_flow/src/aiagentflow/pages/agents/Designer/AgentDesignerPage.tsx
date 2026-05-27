@@ -35,6 +35,7 @@ import { useRouter } from 'src/routes/hooks';
 import axios from 'src/lib/axios';
 import { CONFIG } from 'src/global-config';
 import { DashboardContent } from 'src/layouts/dashboard';
+import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
 import { normalizeToolLabel } from 'src/aiagentflow/utils/toolLabels';
 
 import { Iconify } from 'src/components/iconify';
@@ -557,6 +558,7 @@ type AgentDesignerPageProps = {
 };
 
 export default function AgentDesignerPage({ embedded = false, embeddedAgentId }: AgentDesignerPageProps = {}) {
+  const tenantId = useTenantId();
   const dispatch = useDispatch<AppDispatch>();
   const { draft, activeTab, isDirty, saving, errors } = useSelector(
     (state: RootState) => state.designer
@@ -574,11 +576,11 @@ export default function AgentDesignerPage({ embedded = false, embeddedAgentId }:
   useEffect(() => {
     if (resolvedAgentId) {
       setAgentLoading(true);
-      dispatch(fetchAgentDetail(resolvedAgentId)).finally(() => setAgentLoading(false));
+      dispatch(fetchAgentDetail({ agentId: resolvedAgentId, tenantId })).finally(() => setAgentLoading(false));
     } else {
       dispatch(resetDraft());
     }
-  }, [resolvedAgentId, dispatch]);
+  }, [resolvedAgentId, tenantId, dispatch]);
 
   useEffect(() => {
     const loadCatalog = async () => {
@@ -619,12 +621,12 @@ export default function AgentDesignerPage({ embedded = false, embeddedAgentId }:
   }, []);
 
   const handleSave = () => {
-    dispatch(saveAgent(draft));
+    dispatch(saveAgent({ draft, tenantId }));
   };
 
   const handlePublish = () => {
     if (draft.id) {
-      dispatch(publishAgent(draft.id));
+      dispatch(publishAgent({ agentId: draft.id, tenantId }));
     }
   };
 
