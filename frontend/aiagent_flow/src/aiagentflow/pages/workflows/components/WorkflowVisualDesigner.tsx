@@ -1121,6 +1121,8 @@ export function WorkflowVisualDesigner({
         anchor="right"
         open={selected !== null || selectedStart}
         onClose={() => setSelectedIndex(null)}
+        hideBackdrop
+        ModalProps={{ keepMounted: true }}
         PaperProps={{ sx: { width: 420, p: 2 } }}
       >
         {selectedStart && (
@@ -2267,6 +2269,8 @@ export function WorkflowVisualDesigner({
         anchor="right"
         open={showValidation}
         onClose={() => setShowValidation(false)}
+        hideBackdrop
+        ModalProps={{ keepMounted: true }}
         PaperProps={{ sx: { width: 360, p: 2 } }}
       >
         <Typography variant="subtitle1" sx={{ mb: 1 }}>Validaciones</Typography>

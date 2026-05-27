@@ -9,7 +9,6 @@ import Link from '@mui/material/Link';
 import Alert from '@mui/material/Alert';
 import Stack from '@mui/material/Stack';
 import Button from '@mui/material/Button';
-import Collapse from '@mui/material/Collapse';
 import Typography from '@mui/material/Typography';
 import IconButton from '@mui/material/IconButton';
 import LoadingButton from '@mui/lab/LoadingButton';
@@ -43,7 +42,6 @@ export const SignInSchema = zod.object({
 
 export function JwtSignInView() {
   const router = useRouter();
-  const loginOpen = useBoolean(false);
   const showPassword = useBoolean();
   const { checkUserSession } = useAuthContext();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -86,12 +84,7 @@ export function JwtSignInView() {
         backdropFilter: 'blur(16px)',
       }}
     >
-      <Stack
-        direction="row"
-        spacing={1}
-        alignItems="center"
-        sx={{ p: 1, minHeight: 56 }}
-      >
+      <Stack direction="row" spacing={1} alignItems="center" sx={{ p: 2, pb: 1, minHeight: 56 }}>
         <Box
           component="img"
           src="/logo/logo-single.svg"
@@ -101,104 +94,91 @@ export function JwtSignInView() {
 
         <Box sx={{ minWidth: 0, flex: '1 1 auto' }}>
           <Typography variant="subtitle2" sx={{ color: '#10231D', fontWeight: 800, lineHeight: 1 }}>
-            Acceso clientes
+            Iniciar sesión
           </Typography>
           <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-            Panel privado Annonai
+            Accede al panel de operación Annonai
           </Typography>
         </Box>
 
         <Button
           size="small"
-          variant="text"
-          href="mailto:sales@annonai.com"
-          sx={{ display: { xs: 'none', sm: 'inline-flex' }, color: '#0E7E57', fontWeight: 800 }}
+          variant="outlined"
+          endIcon={<Iconify icon="solar:arrow-right-up-outline" />}
+          href="https://annonai.com"
+          target="_blank"
+          rel="noreferrer"
+          sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
         >
-          Ventas
-        </Button>
-
-        <Button
-          size="small"
-          variant="contained"
-          onClick={loginOpen.onToggle}
-          endIcon={
-            <Iconify icon={loginOpen.value ? 'solar:alt-arrow-up-bold' : 'solar:login-3-bold'} />
-          }
-          sx={{ minWidth: 92, bgcolor: '#10231D', '&:hover': { bgcolor: '#0E7E57' } }}
-        >
-          {loginOpen.value ? 'Cerrar' : 'Entrar'}
+          Sitio web
         </Button>
       </Stack>
 
-      <Collapse in={loginOpen.value} unmountOnExit>
-        <Box sx={{ px: 1.5, pb: 1.5 }}>
-          <Box
-            sx={{
-              p: 2,
-              borderRadius: 1,
-              bgcolor: '#FFFFFF',
-              border: '1px solid',
-              borderColor: 'divider',
-            }}
-          >
-            <Stack spacing={2}>
-              {!!errorMessage && <Alert severity="error">{errorMessage}</Alert>}
+      <Box sx={{ px: 2, pb: 2 }}>
+        <Box
+          sx={{
+            p: 2,
+            borderRadius: 1,
+            bgcolor: '#FFFFFF',
+            border: '1px solid',
+            borderColor: 'divider',
+          }}
+        >
+          <Stack spacing={2}>
+            {!!errorMessage && <Alert severity="error">{errorMessage}</Alert>}
 
-              <Form methods={methods} onSubmit={onSubmit}>
-                <Box sx={{ gap: 1.5, display: 'flex', flexDirection: 'column' }}>
-                  <Field.Text
-                    name="email"
-                    label="Email corporativo"
-                    slotProps={{ inputLabel: { shrink: true } }}
-                  />
+            <Form methods={methods} onSubmit={onSubmit}>
+              <Box sx={{ gap: 1.5, display: 'flex', flexDirection: 'column' }}>
+                <Field.Text
+                  name="email"
+                  label="Email corporativo"
+                  slotProps={{ inputLabel: { shrink: true } }}
+                />
 
-                  <Field.Text
-                    name="password"
-                    label="Contraseña"
-                    type={showPassword.value ? 'text' : 'password'}
-                    slotProps={{
-                      inputLabel: { shrink: true },
-                      input: {
-                        endAdornment: (
-                          <InputAdornment position="end">
-                            <IconButton onClick={showPassword.onToggle} edge="end">
-                              <Iconify
-                                icon={
-                                  showPassword.value ? 'solar:eye-bold' : 'solar:eye-closed-bold'
-                                }
-                              />
-                            </IconButton>
-                          </InputAdornment>
-                        ),
-                      },
-                    }}
-                  />
+                <Field.Text
+                  name="password"
+                  label="Contraseña"
+                  type={showPassword.value ? 'text' : 'password'}
+                  slotProps={{
+                    inputLabel: { shrink: true },
+                    input: {
+                      endAdornment: (
+                        <InputAdornment position="end">
+                          <IconButton onClick={showPassword.onToggle} edge="end">
+                            <Iconify
+                              icon={showPassword.value ? 'solar:eye-bold' : 'solar:eye-closed-bold'}
+                            />
+                          </IconButton>
+                        </InputAdornment>
+                      ),
+                    },
+                  }}
+                />
 
-                  <LoadingButton
-                    fullWidth
-                    size="large"
-                    type="submit"
-                    variant="contained"
-                    loading={isSubmitting}
-                    loadingIndicator="Iniciando sesión..."
-                    startIcon={!isSubmitting ? <Iconify icon="mdi:login" /> : undefined}
-                    sx={{ bgcolor: '#10231D', '&:hover': { bgcolor: '#0E7E57' } }}
-                  >
-                    Iniciar sesión
-                  </LoadingButton>
-                </Box>
-              </Form>
+                <LoadingButton
+                  fullWidth
+                  size="large"
+                  type="submit"
+                  variant="contained"
+                  loading={isSubmitting}
+                  loadingIndicator="Iniciando sesión..."
+                  startIcon={!isSubmitting ? <Iconify icon="mdi:login" /> : undefined}
+                  sx={{ bgcolor: '#10231D', '&:hover': { bgcolor: '#0E7E57' } }}
+                >
+                  Iniciar sesión
+                </LoadingButton>
+              </Box>
+            </Form>
 
-              <Typography variant="caption" sx={{ textAlign: 'center', color: 'text.disabled' }}>
-                Contacto comercial:{' '}
-                <Link href="mailto:sales@annonai.com" color="inherit" underline="always">
-                  sales@annonai.com
-                </Link>
-              </Typography>
-            </Stack>
-          </Box>
+            <Typography variant="caption" sx={{ textAlign: 'center', color: 'text.disabled' }}>
+              Contacto comercial:{' '}
+              <Link href="mailto:sales@annonai.com" color="inherit" underline="always">
+                sales@annonai.com
+              </Link>
+            </Typography>
+          </Stack>
         </Box>
-      </Collapse>
+      </Box>
     </Box>
   );
 }

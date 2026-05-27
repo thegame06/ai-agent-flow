@@ -9,7 +9,7 @@ import { Iconify } from 'src/components/iconify';
 const icon = (name: string) => <Iconify icon={name} width={24} />;
 
 const ICONS = {
-  dashboard: icon('mdi:view-dashboard-outline'),
+  dashboard: icon('mdi:assistant'),
   workflow: icon('mdi:source-branch'),
   runtime: icon('mdi:layers-triple-outline'),
   automation: icon('mdi:auto-fix'),
