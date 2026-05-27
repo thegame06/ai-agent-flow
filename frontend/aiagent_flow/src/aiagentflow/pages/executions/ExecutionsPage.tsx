@@ -9,6 +9,7 @@ import Paper from '@mui/material/Paper';
 import Avatar from '@mui/material/Avatar';
 import { DataGrid } from '@mui/x-data-grid';
 import Typography from '@mui/material/Typography';
+import { alpha, useTheme } from '@mui/material/styles';
 
 import { paths } from 'src/routes/paths';
 
@@ -24,6 +25,7 @@ import { useExecutions } from './Hooks/useExecutions';
 // ----------------------------------------------------------------------
 
 export default function ExecutionsPage() {
+  const theme = useTheme();
   const tenantId = useTenantId();
   const { executions, loading } = useExecutions(tenantId);
   const navigate = useNavigate();
@@ -41,8 +43,17 @@ export default function ExecutionsPage() {
             mb: 3,
             p: { xs: 2.5, md: 3 },
             borderRadius: 4,
+            borderColor:
+              theme.palette.mode === 'dark'
+                ? alpha(theme.palette.primary.light, 0.22)
+                : alpha(theme.palette.primary.main, 0.16),
             background:
-              'radial-gradient(circle at 8% 18%, rgba(14,124,90,0.14), transparent 30%), linear-gradient(135deg, #FBFDF9 0%, #F3F9F5 100%)',
+              theme.palette.mode === 'dark'
+                ? `radial-gradient(circle at 8% 18%, ${alpha(theme.palette.primary.main, 0.2)}, transparent 34%), linear-gradient(135deg, ${alpha(
+                    theme.palette.background.paper,
+                    0.96
+                  )} 0%, ${alpha(theme.palette.grey[900], 0.9)} 100%)`
+                : 'radial-gradient(circle at 8% 18%, rgba(14,124,90,0.14), transparent 30%), linear-gradient(135deg, #FBFDF9 0%, #F3F9F5 100%)',
           }}
         >
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between" alignItems={{ md: 'center' }}>

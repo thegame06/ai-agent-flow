@@ -86,9 +86,20 @@ export default function OverviewPage() {
             p: { xs: 3, md: 4 },
             borderRadius: 4,
             overflow: 'hidden',
-            borderColor: alpha(theme.palette.primary.main, 0.16),
+            borderColor:
+              theme.palette.mode === 'dark'
+                ? alpha(theme.palette.primary.light, 0.22)
+                : alpha(theme.palette.primary.main, 0.16),
             background:
-              'radial-gradient(circle at 6% 18%, rgba(14,124,90,0.18), transparent 28%), radial-gradient(circle at 94% 0%, rgba(0,167,181,0.18), transparent 26%), linear-gradient(135deg, #FBFDF9 0%, #F3F9F5 100%)',
+              theme.palette.mode === 'dark'
+                ? `radial-gradient(circle at 6% 18%, ${alpha(theme.palette.primary.main, 0.2)}, transparent 30%), radial-gradient(circle at 94% 0%, ${alpha(
+                    theme.palette.secondary.main,
+                    0.16
+                  )}, transparent 28%), linear-gradient(135deg, ${alpha(theme.palette.background.paper, 0.96)} 0%, ${alpha(
+                    theme.palette.grey[900],
+                    0.9
+                  )} 100%)`
+                : 'radial-gradient(circle at 6% 18%, rgba(14,124,90,0.18), transparent 28%), radial-gradient(circle at 94% 0%, rgba(0,167,181,0.18), transparent 26%), linear-gradient(135deg, #FBFDF9 0%, #F3F9F5 100%)',
           }}
         >
           <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 2.5 }}>

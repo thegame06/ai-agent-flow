@@ -33,7 +33,7 @@ export function WorkflowExecutionsCard({ executions, onOpenSteps, onRetryExecuti
         <TableHead>
           <TableRow>
             <TableCell>Ejecucion</TableCell>
-            <TableCell>Workflow</TableCell>
+            <TableCell>Flujo</TableCell>
             <TableCell>Estado</TableCell>
             <TableCell>Creado</TableCell>
             <TableCell align="right">Acciones</TableCell>

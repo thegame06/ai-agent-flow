@@ -45,30 +45,30 @@ export function AiAgentConfigDialog({
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
-      <DialogTitle>AI Agent Node Configuration</DialogTitle>
+      <DialogTitle>Configuración del Nodo de Agente IA</DialogTitle>
       <DialogContent>
         {!aiTarget ? (
           <Alert severity="info" sx={{ mt: 1 }}>
-            Select an AI Agent node first.
+            Selecciona primero un nodo de Agente IA.
           </Alert>
         ) : (
           <Stack spacing={2} sx={{ mt: 1 }}>
             <Tabs value={aiTab} onChange={(_, v) => onTabChange(v)}>
               <Tab label="General" />
-              <Tab label="Tools" />
-              <Tab label="Knowledge" />
-              <Tab label="Advanced" />
+              <Tab label="Herramientas" />
+              <Tab label="Conocimiento" />
+              <Tab label="Avanzado" />
             </Tabs>
 
             {aiTab === 0 && (
               <Stack spacing={2}>
                 <TextField
-                  label="Model"
+                  label="Modelo"
                   select
                   value={aiTarget.aiAgent?.model ?? DEFAULT_AI_AGENT_CONFIG.model}
                   onChange={(e) => onUpdate({ model: e.target.value })}
                   disabled={modelIds.length === 0}
-                  helperText={modelIds.length === 0 ? 'No configured models are available.' : undefined}
+                  helperText={modelIds.length === 0 ? 'No hay modelos configurados disponibles.' : undefined}
                   fullWidth
                 >
                   {modelIds.map((m) => (
@@ -78,7 +78,7 @@ export function AiAgentConfigDialog({
                   ))}
                 </TextField>
                 <TextField
-                  label="Instructions"
+                  label="Instrucciones"
                   multiline
                   minRows={8}
                   value={aiTarget.aiAgent?.instructions ?? ''}
@@ -92,7 +92,7 @@ export function AiAgentConfigDialog({
               <FormGroup>
                 {(availableTools.length > 0
                   ? availableTools
-                  : [{ key: 'http.request', displayName: 'HTTP Request' }]
+                  : [{ key: 'http.request', displayName: 'Solicitud HTTP' }]
                 ).map((tool) => {
                   const selectedToolsSet = new Set(aiTarget.aiAgent?.tools ?? []);
                   const checked = selectedToolsSet.has(tool.key);
@@ -120,7 +120,7 @@ export function AiAgentConfigDialog({
             {aiTab === 2 && (
               <Stack spacing={2}>
                 <TextField
-                  label="Knowledge Sources (URLs/docs/datastore IDs comma separated)"
+                  label="Fuentes de conocimiento (URLs/docs/IDs de datastore separados por coma)"
                   multiline
                   minRows={4}
                   value={(aiTarget.aiAgent?.knowledge ?? []).join(',')}
@@ -128,7 +128,7 @@ export function AiAgentConfigDialog({
                   fullWidth
                 />
                 <TextField
-                  label="Context"
+                  label="Contexto"
                   multiline
                   minRows={4}
                   value={aiTarget.aiAgent?.context ?? ''}
@@ -142,7 +142,7 @@ export function AiAgentConfigDialog({
               <Grid container spacing={2}>
                 <Grid item xs={12} md={6}>
                   <TextField
-                    label="Temperature"
+                    label="Temperatura"
                     type="number"
                     value={aiTarget.aiAgent?.temperature ?? DEFAULT_AI_AGENT_CONFIG.temperature}
                     onChange={(e) => onUpdate({ temperature: Number(e.target.value || DEFAULT_AI_AGENT_CONFIG.temperature) })}
@@ -151,7 +151,7 @@ export function AiAgentConfigDialog({
                 </Grid>
                 <Grid item xs={12} md={6}>
                   <TextField
-                    label="Max Tokens"
+                    label="Máximo de tokens"
                     type="number"
                     value={aiTarget.aiAgent?.maxTokens ?? DEFAULT_AI_AGENT_CONFIG.maxTokens}
                     onChange={(e) => onUpdate({ maxTokens: Number(e.target.value || DEFAULT_AI_AGENT_CONFIG.maxTokens) })}
@@ -160,16 +160,16 @@ export function AiAgentConfigDialog({
                 </Grid>
                 <Grid item xs={12} md={6}>
                   <TextField
-                    label="Fallback Model"
+                    label="Modelo de respaldo"
                     value={aiTarget.aiAgent?.fallbackModel ?? DEFAULT_AI_AGENT_CONFIG.fallbackModel}
                     onChange={(e) => onUpdate({ fallbackModel: e.target.value })}
-                    helperText="Optional. Use a model id from Model Routing if you need a fallback."
+                    helperText="Opcional. Usa un ID de modelo de Enrutamiento de Modelos si necesitas respaldo."
                     fullWidth
                   />
                 </Grid>
                 <Grid item xs={12} md={6}>
                   <TextField
-                    label="Max Latency (ms)"
+                    label="Latencia máxima (ms)"
                     type="number"
                     value={aiTarget.aiAgent?.maxLatencyMs ?? DEFAULT_AI_AGENT_CONFIG.maxLatencyMs}
                     onChange={(e) => onUpdate({ maxLatencyMs: Number(e.target.value || DEFAULT_AI_AGENT_CONFIG.maxLatencyMs) })}
@@ -178,7 +178,7 @@ export function AiAgentConfigDialog({
                 </Grid>
                 <Grid item xs={12} md={6}>
                   <TextField
-                    label="Max Cost (USD)"
+                    label="Costo máximo (USD)"
                     type="number"
                     value={aiTarget.aiAgent?.maxCostUsd ?? DEFAULT_AI_AGENT_CONFIG.maxCostUsd}
                     onChange={(e) => onUpdate({ maxCostUsd: Number(e.target.value || DEFAULT_AI_AGENT_CONFIG.maxCostUsd) })}
@@ -193,7 +193,7 @@ export function AiAgentConfigDialog({
                         onChange={(e) => onUpdate({ dlpEnabled: e.target.checked })}
                       />
                     }
-                    label="Enable basic DLP response policy"
+                    label="Habilitar política básica DLP de respuesta"
                   />
                 </Grid>
               </Grid>
@@ -202,7 +202,7 @@ export function AiAgentConfigDialog({
         )}
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose}>Close</Button>
+        <Button onClick={onClose}>Cerrar</Button>
       </DialogActions>
     </Dialog>
   );

@@ -95,8 +95,8 @@ function TabGeneral({ draft, dispatch }: { draft: any; dispatch: any }) {
             label="Runtime de agente"
             onChange={(e) => dispatch(updateField({ field: 'runtimeKind', value: e.target.value }))}
           >
-            <MenuItem value="Text">Text runtime</MenuItem>
-            <MenuItem value="Voice">Voice runtime</MenuItem>
+            <MenuItem value="Text">Runtime de texto</MenuItem>
+            <MenuItem value="Voice">Runtime de voz</MenuItem>
             <MenuItem value="MultimodalRealtime">Multimodal runtime</MenuItem>
           </Select>
         </FormControl>
@@ -113,8 +113,8 @@ function TabGeneral({ draft, dispatch }: { draft: any; dispatch: any }) {
             label="Estado"
             onChange={(e) => dispatch(updateField({ field: 'status', value: e.target.value }))}
           >
-            <MenuItem value="Draft">Draft</MenuItem>
-            <MenuItem value="Published">Published</MenuItem>
+            <MenuItem value="Draft">Borrador</MenuItem>
+            <MenuItem value="Published">Publicado</MenuItem>
             <MenuItem value="Archived">Archived</MenuItem>
           </Select>
         </FormControl>
@@ -224,7 +224,7 @@ function TabGuardrails({ draft, dispatch }: { draft: any; dispatch: any }) {
 
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Box>
-          <Typography variant="subtitle2">Tools en paralelo</Typography>
+          <Typography variant="subtitle2">Herramientas en paralelo</Typography>
           <Typography variant="caption" color="text.secondary">Permite fan-out/fan-in cuando un paso de tool define varios nombres.</Typography>
         </Box>
         <Switch
@@ -372,7 +372,7 @@ function TabTools({
 
       <Paper variant="outlined" sx={{ p: 2 }}>
         <Typography variant="subtitle2" sx={{ mb: 1.5 }}>
-          Tools vinculadas ({draft.tools.length})
+          Herramientas vinculadas ({draft.tools.length})
         </Typography>
         {draft.tools.length === 0 ? (
           <Alert severity="warning" variant="outlined">
@@ -400,13 +400,13 @@ function TabTools({
 
       <Paper variant="outlined" sx={{ p: 2 }}>
         <Typography variant="subtitle2" sx={{ mb: 1.5 }}>
-          Tools disponibles en la plataforma
+          Herramientas disponibles en la plataforma
         </Typography>
         {loading ? (
           <Typography variant="body2" color="text.secondary">Cargando tools...</Typography>
         ) : availableTools.length === 0 ? (
           <Alert severity="info" variant="outlined">
-            No se detectaron tools desde Extensions API.
+            No se detectaron herramientas desde Extensions API.
           </Alert>
         ) : (
           <Stack spacing={1}>
@@ -460,7 +460,7 @@ function TabModel({
     <Stack spacing={3}>
       <Typography variant="subtitle1" fontWeight={700}>Configuracion del modelo IA</Typography>
       <Alert severity="info" variant="outlined">
-        Los modelos se cargan desde Model Routing API. Si no hay modelos configurados, primero registra uno en Configuracion / Modelos.
+        Los modelos se cargan desde la API de Enrutamiento de Modelos. Si no hay modelos configurados, primero registra uno en Configuración / Modelos.
       </Alert>
       {loading && (
         <Typography variant="body2" color="text.secondary">Cargando catalogo de modelos...</Typography>

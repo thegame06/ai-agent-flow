@@ -364,7 +364,13 @@ export default function AgentFlowCanvas({ steps, agentName }: AgentFlowCanvasPro
       </Stack>
       <Divider />
 
-      <Box sx={{ position: 'relative', height: 640, bgcolor: '#fff' }}>
+      <Box
+        sx={{
+          position: 'relative',
+          height: 640,
+          bgcolor: theme.palette.mode === 'dark' ? alpha(theme.palette.background.paper, 0.7) : '#fff',
+        }}
+      >
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -380,11 +386,15 @@ export default function AgentFlowCanvas({ steps, agentName }: AgentFlowCanvasPro
           snapToGrid
           snapGrid={[15, 15]}
         >
-          <Background gap={16} size={1} color="#dbeafe" />
+          <Background
+            gap={16}
+            size={1}
+            color={theme.palette.mode === 'dark' ? alpha(theme.palette.common.white, 0.12) : '#dbeafe'}
+          />
           <Controls />
           <MiniMap
             nodeColor={(node) => stepMeta((node.data as AgentNodeData).type).color}
-            maskColor="rgba(255,255,255,0.72)"
+            maskColor={theme.palette.mode === 'dark' ? alpha(theme.palette.common.black, 0.48) : 'rgba(255,255,255,0.72)'}
           />
         </ReactFlow>
 
@@ -399,7 +409,10 @@ export default function AgentFlowCanvas({ steps, agentName }: AgentFlowCanvasPro
               p: 2,
               textAlign: 'center',
               transform: 'translate(-50%, -50%)',
-              bgcolor: 'rgba(255,255,255,0.96)',
+              bgcolor:
+                theme.palette.mode === 'dark'
+                  ? alpha(theme.palette.background.paper, 0.94)
+                  : 'rgba(255,255,255,0.96)',
               boxShadow: '0 16px 42px rgba(15,23,42,0.12)',
             }}
           >
@@ -436,7 +449,10 @@ export default function AgentFlowCanvas({ steps, agentName }: AgentFlowCanvasPro
             maxHeight: 500,
             overflow: 'auto',
             p: 1,
-            bgcolor: 'rgba(255,255,255,0.94)',
+            bgcolor:
+              theme.palette.mode === 'dark'
+                ? alpha(theme.palette.background.paper, 0.9)
+                : 'rgba(255,255,255,0.94)',
             backdropFilter: 'blur(8px)',
           }}
         >
@@ -475,7 +491,10 @@ export default function AgentFlowCanvas({ steps, agentName }: AgentFlowCanvasPro
             px: 1,
             py: 0.8,
             borderRadius: 2,
-            bgcolor: 'rgba(255,255,255,0.95)',
+            bgcolor:
+              theme.palette.mode === 'dark'
+                ? alpha(theme.palette.background.paper, 0.92)
+                : 'rgba(255,255,255,0.95)',
             boxShadow: '0 10px 28px rgba(15,23,42,0.12)',
           }}
         >

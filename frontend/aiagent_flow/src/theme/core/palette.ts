@@ -97,7 +97,7 @@ export const text = {
 // Background color
 export const background = {
   light: createPaletteChannel({ paper: '#FFFFFF', default: '#FBFDF9', neutral: '#F4F8F3' }),
-  dark: createPaletteChannel({ paper: grey[800], default: grey[900], neutral: '#28323D' }),
+  dark: createPaletteChannel({ paper: '#121917', default: '#090F0D', neutral: '#1A2420' }),
 };
 
 // Base action color

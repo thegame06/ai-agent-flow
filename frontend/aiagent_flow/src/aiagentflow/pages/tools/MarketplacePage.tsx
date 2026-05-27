@@ -17,6 +17,7 @@ import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import DialogTitle from '@mui/material/DialogTitle';
 import CardContent from '@mui/material/CardContent';
+import { alpha, useTheme } from '@mui/material/styles';
 import DialogActions from '@mui/material/DialogActions';
 import DialogContent from '@mui/material/DialogContent';
 
@@ -144,6 +145,7 @@ const QUICK_CONNECTIONS = [
 ] as const;
 
 export default function MarketplacePage() {
+  const theme = useTheme();
   const tenantId = useTenantId();
   const [query, setQuery] = useState('');
   const [entries, setEntries] = useState<Entry[]>([]);
@@ -565,8 +567,17 @@ export default function MarketplacePage() {
             sx={{
               p: { xs: 2.5, md: 3 },
               borderRadius: 4,
+              borderColor:
+                theme.palette.mode === 'dark'
+                  ? alpha(theme.palette.primary.light, 0.22)
+                  : alpha(theme.palette.primary.main, 0.16),
               background:
-                'radial-gradient(circle at 8% 18%, rgba(14,124,90,0.14), transparent 30%), linear-gradient(135deg, #FBFDF9 0%, #F3F9F5 100%)',
+                theme.palette.mode === 'dark'
+                  ? `radial-gradient(circle at 8% 18%, ${alpha(theme.palette.primary.main, 0.2)}, transparent 34%), linear-gradient(135deg, ${alpha(
+                      theme.palette.background.paper,
+                      0.96
+                    )} 0%, ${alpha(theme.palette.grey[900], 0.9)} 100%)`
+                  : 'radial-gradient(circle at 8% 18%, rgba(14,124,90,0.14), transparent 30%), linear-gradient(135deg, #FBFDF9 0%, #F3F9F5 100%)',
             }}
           >
             <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between" alignItems={{ md: 'center' }}>

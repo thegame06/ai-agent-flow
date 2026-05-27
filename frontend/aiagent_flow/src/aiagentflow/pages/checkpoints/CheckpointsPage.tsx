@@ -301,8 +301,17 @@ export default function CheckpointsPage() {
             mb: 3,
             p: { xs: 2.5, md: 3 },
             borderRadius: 4,
+            borderColor:
+              theme.palette.mode === 'dark'
+                ? alpha(theme.palette.warning.light, 0.24)
+                : alpha(theme.palette.warning.main, 0.2),
             background:
-              'radial-gradient(circle at 8% 18%, rgba(255,171,0,0.16), transparent 30%), linear-gradient(135deg, #FBFDF9 0%, #F3F9F5 100%)',
+              theme.palette.mode === 'dark'
+                ? `radial-gradient(circle at 8% 18%, ${alpha(theme.palette.warning.main, 0.2)}, transparent 34%), linear-gradient(135deg, ${alpha(
+                    theme.palette.background.paper,
+                    0.96
+                  )} 0%, ${alpha(theme.palette.grey[900], 0.9)} 100%)`
+                : 'radial-gradient(circle at 8% 18%, rgba(255,171,0,0.16), transparent 30%), linear-gradient(135deg, #FBFDF9 0%, #F3F9F5 100%)',
           }}
         >
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between" alignItems={{ md: 'center' }}>

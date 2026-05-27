@@ -22,15 +22,15 @@ type Props = {
 export function ExecutionStepsDialog({ open, steps, onClose }: Props) {
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
-      <DialogTitle>Execution Steps</DialogTitle>
+      <DialogTitle>Pasos de Ejecución</DialogTitle>
       <DialogContent>
         <Table size="small">
           <TableHead>
             <TableRow>
-              <TableCell>Activity</TableCell>
-              <TableCell>Status</TableCell>
-              <TableCell>Started</TableCell>
-              <TableCell>Completed</TableCell>
+              <TableCell>Actividad</TableCell>
+              <TableCell>Estado</TableCell>
+              <TableCell>Inicio</TableCell>
+              <TableCell>Completado</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -57,7 +57,7 @@ export function ExecutionStepsDialog({ open, steps, onClose }: Props) {
         </Table>
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose}>Close</Button>
+        <Button onClick={onClose}>Cerrar</Button>
       </DialogActions>
     </Dialog>
   );

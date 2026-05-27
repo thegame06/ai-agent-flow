@@ -165,8 +165,8 @@ export function OutboundVoiceAssistantWizard() {
         <Box sx={{ p: 1.25, border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
           <Stack spacing={1}>
             <Stack direction="row" spacing={1}>
-              <Chip label="Text" color={wizardMode === 'text' ? 'primary' : 'default'} onClick={() => setWizardMode('text')} />
-              <Chip label="Voice" color={wizardMode === 'voice' ? 'primary' : 'default'} onClick={() => setWizardMode('voice')} />
+              <Chip label="Texto" color={wizardMode === 'text' ? 'primary' : 'default'} onClick={() => setWizardMode('text')} />
+              <Chip label="Voz" color={wizardMode === 'voice' ? 'primary' : 'default'} onClick={() => setWizardMode('voice')} />
               <Chip label="Multimodal" color={wizardMode === 'video_voice' ? 'primary' : 'default'} onClick={() => setWizardMode('video_voice')} />
             </Stack>
             <Stack direction="row" spacing={1}>
@@ -180,11 +180,11 @@ export function OutboundVoiceAssistantWizard() {
                 Materializar
               </Button>
               <Button variant="outlined" onClick={createVoiceAgent} disabled={loading || !assistantPayload}>
-                Crear agente voice
+                Crear agente de voz
               </Button>
             </Stack>
             <Typography variant="caption" color="text.secondary">
-              Session: {sessionId || '-'} | Stage: {stage || '-'} | Completed: {completed ? 'si' : 'no'}
+              Sesión: {sessionId || '-'} | Etapa: {stage || '-'} | Completado: {completed ? 'si' : 'no'}
             </Typography>
 
             {question && (
@@ -203,7 +203,7 @@ export function OutboundVoiceAssistantWizard() {
             {Object.keys(artifact).length > 0 && (
               <Box sx={{ p: 1, borderRadius: 1, bgcolor: 'background.neutral' }}>
                 <Typography variant="caption" color="text.secondary">
-                  Artifact:
+                  Artefacto:
                 </Typography>
                 {Object.entries(artifact).map(([k, v]) => (
                   <Typography key={k} variant="body2">
@@ -216,7 +216,7 @@ export function OutboundVoiceAssistantWizard() {
             {assistantPayload && (
               <Box sx={{ p: 1, borderRadius: 1, border: '1px solid', borderColor: 'divider', maxHeight: 240, overflow: 'auto' }}>
                 <Typography variant="caption" color="text.secondary">
-                  Assistant payload (POST /assistant):
+                  Payload del asistente (POST /assistant):
                 </Typography>
                 <pre style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{JSON.stringify(assistantPayload, null, 2)}</pre>
               </Box>

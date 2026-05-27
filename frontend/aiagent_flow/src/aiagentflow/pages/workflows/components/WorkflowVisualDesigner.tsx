@@ -38,6 +38,7 @@ import IconButton from '@mui/material/IconButton';
 import Typography from '@mui/material/Typography';
 import InputLabel from '@mui/material/InputLabel';
 import FormControl from '@mui/material/FormControl';
+import { alpha, useTheme } from '@mui/material/styles';
 import AccordionSummary from '@mui/material/AccordionSummary';
 import AccordionDetails from '@mui/material/AccordionDetails';
 import FormControlLabel from '@mui/material/FormControlLabel';
@@ -619,6 +620,7 @@ export function WorkflowVisualDesigner({
   onUpdateActivityConfig,
   onRemoveActivityConfig,
 }: Props) {
+  const theme = useTheme();
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [aiTab, setAiTab] = useState(0);
   const [showValidation, setShowValidation] = useState(false);
@@ -904,7 +906,7 @@ export function WorkflowVisualDesigner({
   return (
     <Card variant="outlined" sx={{ p: 1.5, borderRadius: 2, boxShadow: '0 2px 10px rgba(15,23,42,0.06)' }}>
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
-        <Typography variant="subtitle1">Workflow Studio</Typography>
+        <Typography variant="subtitle1">Estudio de Flujos</Typography>
         <Stack direction="row" spacing={1}>
           <TextField
             select
@@ -940,7 +942,7 @@ export function WorkflowVisualDesigner({
           borderColor: 'divider',
           borderRadius: 1.5,
           overflow: 'hidden',
-          bgcolor: '#fff',
+          bgcolor: theme.palette.mode === 'dark' ? alpha(theme.palette.background.paper, 0.72) : '#fff',
         }}
       >
         <ReactFlow
@@ -976,7 +978,11 @@ export function WorkflowVisualDesigner({
         >
           <MiniMap />
           <Controls />
-          <Background gap={18} size={1} color="#d9dee8" />
+          <Background
+            gap={18}
+            size={1}
+            color={theme.palette.mode === 'dark' ? alpha(theme.palette.common.white, 0.12) : '#d9dee8'}
+          />
         </ReactFlow>
 
         {activities.length === 0 && (
@@ -991,7 +997,10 @@ export function WorkflowVisualDesigner({
               p: 2,
               transform: 'translate(-50%, -50%)',
               textAlign: 'center',
-              bgcolor: 'rgba(255,255,255,0.96)',
+              bgcolor:
+                theme.palette.mode === 'dark'
+                  ? alpha(theme.palette.background.paper, 0.94)
+                  : 'rgba(255,255,255,0.96)',
               boxShadow: '0 16px 42px rgba(15,23,42,0.12)',
             }}
           >
@@ -1049,9 +1058,12 @@ export function WorkflowVisualDesigner({
             transform: 'translateX(-50%)',
             p: 0.8,
             borderRadius: 2,
-            bgcolor: 'rgba(255,255,255,0.96)',
+            bgcolor:
+              theme.palette.mode === 'dark'
+                ? alpha(theme.palette.background.paper, 0.92)
+                : 'rgba(255,255,255,0.96)',
             boxShadow: '0 12px 32px rgba(15,23,42,0.14)',
-            border: '1px solid #e5e7eb',
+            border: `1px solid ${theme.palette.divider}`,
           }}
         >
           {Object.entries(dockGroups).map(([group, items]) => (
@@ -1131,16 +1143,16 @@ export function WorkflowVisualDesigner({
               helperText="Ejemplo: connect.message.received. El backend ejecuta workflows publicados con este evento."
             />
             <FormControl size="small">
-              <InputLabel>Runtime</InputLabel>
+              <InputLabel>Modo runtime</InputLabel>
               <Select
-                label="Runtime"
+                label="Modo runtime"
                 value={runtimeKind}
                 onChange={(e: SelectChangeEvent) =>
                   onChangeRuntimeKind(e.target.value as 'Text' | 'Voice' | 'MultimodalRealtime')
                 }
               >
-                <MenuItem value="Text">Text runtime</MenuItem>
-                <MenuItem value="Voice">Voice runtime</MenuItem>
+                <MenuItem value="Text">Runtime de texto</MenuItem>
+                <MenuItem value="Voice">Runtime de voz</MenuItem>
                 <MenuItem value="MultimodalRealtime">Multimodal runtime</MenuItem>
               </Select>
             </FormControl>
@@ -1324,7 +1336,7 @@ export function WorkflowVisualDesigner({
                 <Typography variant="caption" color="text.secondary">
                   {selected.type === 'ai.agent'
                     ? 'Selecciona un agente publicado y define que datos del flujo recibe.'
-                    : 'Configura solo lo esencial. Lo tecnico esta en Runtime y Debug.'}
+                    : 'Configura solo lo esencial. Lo técnico está en Runtime y Depuración.'}
                 </Typography>
               </Box>
               <Chip size="small" label={activityTypeLabel(selected.type)} />

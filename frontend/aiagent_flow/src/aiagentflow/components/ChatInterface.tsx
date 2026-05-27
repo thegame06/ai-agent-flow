@@ -207,7 +207,7 @@ export function ChatInterface({ agentId, agentName, tenantId }: ChatInterfacePro
         await loadExecutions(newThreadId);
       } catch (err: any) {
         console.error('Failed to initialize thread:', err);
-        setError('Failed to initialize conversation');
+        setError('No se pudo inicializar la conversación');
       }
     };
 
@@ -318,13 +318,13 @@ export function ChatInterface({ agentId, agentName, tenantId }: ChatInterfacePro
             <Typography variant="h6">{agentName}</Typography>
             {threadInfo && (
               <Typography variant="caption">
-                {threadInfo.turnCount} turns • {threadInfo.totalTokens.toLocaleString()} tokens • {executions.length} execs
+                {threadInfo.turnCount} turnos • {threadInfo.totalTokens.toLocaleString()} tokens • {executions.length} ejecuciones
               </Typography>
             )}
           </Box>
           {threadInfo && (
             <Chip
-              label={`Thread: ${threadInfo.threadKey.slice(0, 16)}...`}
+              label={`Hilo: ${threadInfo.threadKey.slice(0, 16)}...`}
               size="small"
               variant="outlined"
               sx={{ color: 'inherit', borderColor: 'inherit' }}
@@ -367,11 +367,11 @@ export function ChatInterface({ agentId, agentName, tenantId }: ChatInterfacePro
                 const listResponse = await axios.get(`/api/v1/tenants/${tenantId}/threads?agentId=${agentId}`);
                 setThreads((listResponse.data ?? []) as ThreadSummary[]);
               } catch {
-                setError('Failed to refresh threads');
+                setError('No se pudieron actualizar los hilos');
               }
             }}
           >
-            Refresh
+            Actualizar
           </Button>
           <IconButton
             color="inherit"
@@ -382,7 +382,7 @@ export function ChatInterface({ agentId, agentName, tenantId }: ChatInterfacePro
                 const newThreadId = localStorage.getItem(activeThreadStorageKey) ?? undefined;
                 await loadExecutions(newThreadId);
               } catch (err: any) {
-                setError(err?.message || 'Failed to start a new thread');
+                setError(err?.message || 'No se pudo iniciar un hilo nuevo');
               } finally {
                 setLoading(false);
               }
@@ -405,7 +405,7 @@ export function ChatInterface({ agentId, agentName, tenantId }: ChatInterfacePro
         {threads.length > 0 && (
           <Box sx={{ mb: 2 }}>
             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-              Conversation threads
+              Hilos de conversación
             </Typography>
             <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
               {threads.slice(0, 10).map((t) => (
@@ -436,7 +436,7 @@ export function ChatInterface({ agentId, agentName, tenantId }: ChatInterfacePro
         {executions.length > 0 && (
           <Box sx={{ mb: 2 }}>
             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-              Recent executions
+              Ejecuciones recientes
             </Typography>
             <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
               {executions.slice(0, 6).map((e) => (
@@ -455,14 +455,14 @@ export function ChatInterface({ agentId, agentName, tenantId }: ChatInterfacePro
 
         {selectedExecution && (
           <Alert severity={selectedExecution.status === 'Failed' ? 'error' : 'info'} sx={{ mb: 2 }}>
-            <Typography variant="subtitle2">Execution {selectedExecution.id.slice(0, 8)}</Typography>
+            <Typography variant="subtitle2">Ejecución {selectedExecution.id.slice(0, 8)}</Typography>
             <Typography variant="body2" sx={{ mt: 0.5, mb: 1 }}>
               {selectedExecution.output?.finalResponse
                 || selectedExecution.reviewReason
                 || selectedExecution.errorMessage
                 || selectedExecution.steps?.find((s) => s.errorMessage)?.errorMessage
                 || selectedExecution.steps?.find((s) => s.thinkingRationale)?.thinkingRationale
-                || 'No detail available'}
+                || 'No hay detalle disponible'}
             </Typography>
             <Stack direction="row" spacing={1}>
               <Button
@@ -495,8 +495,8 @@ export function ChatInterface({ agentId, agentName, tenantId }: ChatInterfacePro
             }}
           >
             <Iconify icon="mdi:robot-outline" sx={{ fontSize: 64, mb: 2, opacity: 0.3 }} />
-            <Typography variant="h6">Start a conversation</Typography>
-            <Typography variant="body2">Ask me anything!</Typography>
+            <Typography variant="h6">Inicia una conversación</Typography>
+            <Typography variant="body2">Escribe tu mensaje para comenzar.</Typography>
           </Box>
         )}
 
@@ -529,7 +529,7 @@ export function ChatInterface({ agentId, agentName, tenantId }: ChatInterfacePro
                   <Iconify icon="mdi:robot-outline" width={20} />
                 )}
                 <Typography variant="caption" fontWeight="bold">
-                  {msg.role === 'user' ? 'You' : agentName}
+                  {msg.role === 'user' ? 'Tú' : agentName}
                 </Typography>
               </Stack>
               <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>
@@ -547,7 +547,7 @@ export function ChatInterface({ agentId, agentName, tenantId }: ChatInterfacePro
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <CircularProgress size={20} />
             <Typography variant="body2" color="text.secondary">
-              {agentName} is thinking...
+              {agentName} está pensando...
             </Typography>
           </Box>
         )}

@@ -248,7 +248,7 @@ export default function AutomationWizardPage() {
               >
                 <CardHeader
                   title="Detalle conversacion"
-                  subheader={selectedThread ? `Thread ${selectedThread.threadKey || selectedThread.threadId.slice(0, 10)}` : 'Selecciona una conversacion'}
+                  subheader={selectedThread ? `Hilo ${selectedThread.threadKey || selectedThread.threadId.slice(0, 10)}` : 'Selecciona una conversacion'}
                 />
                 <CardContent>
                   {error ? <Typography color="error" variant="body2" sx={{ mb: 1 }}>{error}</Typography> : null}

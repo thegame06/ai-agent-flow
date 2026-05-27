@@ -26,6 +26,7 @@ import IconButton from '@mui/material/IconButton';
 import InputLabel from '@mui/material/InputLabel';
 import DialogTitle from '@mui/material/DialogTitle';
 import FormControl from '@mui/material/FormControl';
+import { alpha, useTheme } from '@mui/material/styles';
 import DialogActions from '@mui/material/DialogActions';
 import DialogContent from '@mui/material/DialogContent';
 import OutlinedInput from '@mui/material/OutlinedInput';
@@ -116,6 +117,7 @@ const getErrorMessage = (err: any, fallback: string) =>
   err?.response?.data?.message || err?.response?.data?.error || err?.message || fallback;
 
 export default function ChannelsPage() {
+  const theme = useTheme();
   const TENANT_ID = useTenantId();
   const [channels, setChannels] = useState<Channel[]>([]);
   const [sessions, setSessions] = useState<ChannelSession[]>([]);
@@ -180,7 +182,7 @@ export default function ChannelsPage() {
 
   const channelTypes = [
     { value: 'WhatsApp', label: 'WhatsApp', icon: 'mdi:whatsapp' },
-    { value: 'WebChat', label: 'Web Chat', icon: 'mdi:web' },
+    { value: 'WebChat', label: 'Chat web', icon: 'mdi:web' },
     { value: 'Api', label: 'API Direct', icon: 'mdi:api' },
     { value: 'Voice', label: 'Voz / Twilio', icon: 'mdi:phone-in-talk-outline' },
     { value: 'CallCenter', label: 'Call Center', icon: 'mdi:account-voice' },
@@ -536,8 +538,17 @@ export default function ChannelsPage() {
             mb: 3,
             p: { xs: 2.5, md: 3 },
             borderRadius: 4,
+            borderColor:
+              theme.palette.mode === 'dark'
+                ? alpha(theme.palette.primary.light, 0.22)
+                : alpha(theme.palette.primary.main, 0.16),
             background:
-              'radial-gradient(circle at 8% 18%, rgba(0,167,181,0.14), transparent 30%), linear-gradient(135deg, #FBFDF9 0%, #F3F9F5 100%)',
+              theme.palette.mode === 'dark'
+                ? `radial-gradient(circle at 8% 18%, ${alpha(theme.palette.secondary.main, 0.2)}, transparent 34%), linear-gradient(135deg, ${alpha(
+                    theme.palette.background.paper,
+                    0.96
+                  )} 0%, ${alpha(theme.palette.grey[900], 0.9)} 100%)`
+                : 'radial-gradient(circle at 8% 18%, rgba(0,167,181,0.14), transparent 30%), linear-gradient(135deg, #FBFDF9 0%, #F3F9F5 100%)',
           }}
         >
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between" alignItems={{ md: 'center' }}>
@@ -941,7 +952,7 @@ export default function ChannelsPage() {
                   value={form.sessionWindowHours}
                   onChange={(e) => setForm((p) => ({ ...p, sessionWindowHours: e.target.value }))}
                   fullWidth
-                  helperText="Horas en que la conversacion de WhatsApp sigue abierta para responder sin reactivar el caso. Default: 24."
+                  helperText="Horas en que la conversacion de WhatsApp sigue abierta para responder sin reactivar el caso. Predeterminado: 24."
                   inputProps={{ min: 1, max: 168 }}
                 />
                 <TextField
@@ -1275,10 +1286,10 @@ export default function ChannelsPage() {
                   setQrCode(qr);
                   setError(null);
                 } else {
-                  setError('QR still not available. Check bridge connection and try again.');
+                  setError('El QR aun no esta disponible. Revisa la conexion del bridge e intenta de nuevo.');
                 }
               } catch {
-                setError('QR still not available. Check bridge connection and try again.');
+                setError('El QR aun no esta disponible. Revisa la conexion del bridge e intenta de nuevo.');
               }
             }}
             disabled={qrPolling}
@@ -1318,7 +1329,7 @@ export default function ChannelsPage() {
                       <TableCell>Direccion</TableCell>
                       <TableCell>Actor</TableCell>
                       <TableCell>Contenido</TableCell>
-                      <TableCell>Status</TableCell>
+                      <TableCell>Estado</TableCell>
                       <TableCell>Entrega</TableCell>
                       <TableCell>Creado</TableCell>
                     </TableRow>

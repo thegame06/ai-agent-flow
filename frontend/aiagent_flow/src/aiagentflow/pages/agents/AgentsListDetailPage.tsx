@@ -79,9 +79,9 @@ export default function AgentsListDetailPage() {
           }}
         >
           <Card>
-            <CardHeader title={`Assistants ${agents.length}`} />
+            <CardHeader title={`Asistentes ${agents.length}`} />
             <CardContent sx={{ pt: 0 }}>
-              <TextField fullWidth size="small" placeholder="Search assistants" value={query} onChange={(e) => setQuery(e.target.value)} />
+              <TextField fullWidth size="small" placeholder="Buscar asistentes" value={query} onChange={(e) => setQuery(e.target.value)} />
               <Stack spacing={1} sx={{ mt: 1.5, maxHeight: '70vh', overflow: 'auto' }}>
                 {loading ? <CircularProgress size={20} /> : filteredAgents.map((agent) => (
                   <Box
@@ -97,7 +97,7 @@ export default function AgentsListDetailPage() {
                     }}
                   >
                     <Typography variant="subtitle2" noWrap>{agent.name}</Typography>
-                    <Typography variant="caption" color="text.secondary">{agent.runtimeKind || 'Text'} · {agent.status}</Typography>
+                    <Typography variant="caption" color="text.secondary">{agent.runtimeKind || 'Texto'} · {agent.status}</Typography>
                   </Box>
                 ))}
               </Stack>
@@ -112,7 +112,7 @@ export default function AgentsListDetailPage() {
                 selectedAgent ? (
                   <Stack direction="row" spacing={1}>
                     <Button size="small" variant="contained" component={RouterLink} href={`${paths.dashboard.agents}/${selectedAgent.id}/chat`}>
-                      Talk
+                      Hablar
                     </Button>
                   </Stack>
                 ) : null
@@ -125,7 +125,7 @@ export default function AgentsListDetailPage() {
                 </Box>
               ) : (
                 <Stack alignItems="center" justifyContent="center" sx={{ height: '100%' }}>
-                  <Typography variant="body2" color="text.secondary">Selecciona un asistente para abrir su Designer.</Typography>
+                  <Typography variant="body2" color="text.secondary">Selecciona un asistente para abrir su Diseñador.</Typography>
                 </Stack>
               )}
             </CardContent>
