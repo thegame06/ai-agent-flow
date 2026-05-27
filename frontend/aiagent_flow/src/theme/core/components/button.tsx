@@ -84,7 +84,7 @@ const MuiButton: Components<Theme>['MuiButton'] = {
   /** **************************************
    * DEFAULT PROPS
    *************************************** */
-  defaultProps: { color: 'inherit', disableElevation: true },
+  defaultProps: { color: 'primary', disableElevation: true },
 
   /** **************************************
    * STYLE
@@ -108,15 +108,15 @@ const MuiButton: Components<Theme>['MuiButton'] = {
           ...(ownerState.color === 'inherit' &&
             !ownerState.disabled && {
               color: theme.vars.palette.common.white,
-              backgroundColor: theme.vars.palette.grey[800],
+              backgroundColor: theme.vars.palette.primary.main,
               '&:hover': {
-                boxShadow: theme.vars.customShadows.z8,
-                backgroundColor: theme.vars.palette.grey[700],
+                boxShadow: theme.vars.customShadows.primary,
+                backgroundColor: theme.vars.palette.primary.dark,
               },
               ...theme.applyStyles('dark', {
-                color: theme.vars.palette.grey[800],
-                backgroundColor: theme.vars.palette.common.white,
-                '&:hover': { backgroundColor: theme.vars.palette.grey[400] },
+                color: theme.vars.palette.common.white,
+                backgroundColor: theme.vars.palette.primary.main,
+                '&:hover': { backgroundColor: theme.vars.palette.primary.dark },
               }),
             }),
         },
