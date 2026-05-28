@@ -56,6 +56,7 @@ export interface AgentModelConfig {
 export interface AgentDefinitionDraft {
   id?: string;
   runtimeKind: 'Text' | 'Voice' | 'MultimodalRealtime';
+  runtimeModelProfileId?: string;
   name: string;
   description: string;
   version: string;
@@ -101,6 +102,7 @@ export const DEFAULT_ENGINE_STEPS: AgentStep[] = [
 
 export const DEFAULT_AGENT_DRAFT: AgentDefinitionDraft = {
   runtimeKind: 'Text',
+  runtimeModelProfileId: '',
   name: '',
   description: '',
   version: '1.0.0',

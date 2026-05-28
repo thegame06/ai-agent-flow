@@ -134,6 +134,12 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
                 }
 
                 var resolvedConfig = ResolveConfig(current.Config, context);
+                var workflowProfileId = ResolveWorkflowRuntimeProfileId(definition, runtime);
+                if (!string.IsNullOrWhiteSpace(workflowProfileId) &&
+                    !resolvedConfig.ContainsKey("workflowRuntimeModelProfileId"))
+                {
+                    resolvedConfig["workflowRuntimeModelProfileId"] = workflowProfileId!;
+                }
                 var stepId = Guid.NewGuid().ToString("N");
                 await store.CreateStepLogAsync(new WorkflowExecutionStepLogContract
                 {
@@ -445,6 +451,12 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
 
             var primaryModel = GetConfig(resolvedConfig, "model");
             var fallbackModel = GetConfig(resolvedConfig, "fallbackModel");
+            var inferredRuntime = RuntimeCompatibilityPolicy.TryParseRuntimeKind(
+                InferRuntimeFromTrigger(execution.TriggerEventName),
+                out var parsedRuntime,
+                out _)
+                ? parsedRuntime
+                : AgentRuntimeKind.Text;
             // Resolve agentId: use explicit config, fallback to first published NON-SYSTEM agent in tenant
             var configuredAgentId = GetConfig(resolvedConfig, "agentId", null);
             var resolvedAgentKey = configuredAgentId;
@@ -452,11 +464,12 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
             {
                 var firstAgent = (await agentRepo.GetAllAsync(tenantId, 0, 50, ct))
                     .FirstOrDefault(a => a.Status == AgentFlow.Domain.Enums.AgentStatus.Published
-                                      && !a.IsSystemAgent);
+                                      && !a.IsSystemAgent
+                                      && RuntimeCompatibilityPolicy.IsAgentCompatible(inferredRuntime, a.Session.RuntimeKind));
                 resolvedAgentKey = firstAgent?.Id.ToString()
                     ?? throw new InvalidOperationException(
-                        $"Activity ai.agent has no agentId configured and no published custom agent found in tenant '{tenantId}'. " +
-                        "Create a custom agent (or clone the Workflow Brain Default) and assign it to this node.");
+                        $"Activity ai.agent has no compatible agent configured for runtime '{inferredRuntime}'. " +
+                        $"Create/publish a custom {inferredRuntime} agent and assign it to this node.");
             }
             else
             {
@@ -467,6 +480,17 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
                     throw new InvalidOperationException(
                         $"Agent '{configuredAgent.Name}' (id: {resolvedAgentKey}) is a system-managed agent " +
                         "and cannot be used in a workflow node. Assign a custom agent instead.");
+
+                if (configuredAgent is not null &&
+                    !RuntimeCompatibilityPolicy.IsAgentCompatible(inferredRuntime, configuredAgent.Session.RuntimeKind))
+                {
+                    throw new InvalidOperationException(
+                        RuntimeCompatibilityPolicy.BuildAgentRuntimeError(
+                            configuredAgent.Name,
+                            resolvedAgentKey,
+                            inferredRuntime,
+                            configuredAgent.Session.RuntimeKind));
+                }
             }
 
             var canonicalStateJson = BuildCanonicalConversationStateJson(
@@ -474,6 +498,12 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
                 resolvedConfig,
                 execution.CorrelationId,
                 execution.WorkflowDefinitionId);
+            var runtimeProfileStore = serviceProvider.GetService<AgentFlow.Api.AuthProfiles.IRuntimeModelProfileStore>();
+            var explicitRuntimeProfileId = GetConfig(resolvedConfig, "runtimeModelProfileId")
+                ?? GetConfig(resolvedConfig, "workflowRuntimeModelProfileId");
+            var runtimeProfile = !string.IsNullOrWhiteSpace(explicitRuntimeProfileId)
+                ? runtimeProfileStore?.Get(tenantId, explicitRuntimeProfileId!)
+                : runtimeProfileStore?.GetDefault(tenantId, inferredRuntime.ToString());
             var externalContextRefs = ParseCsvList(GetConfig(resolvedConfig, "externalContextRefs", string.Empty));
             var attachmentRefs = ParseCsvList(GetConfig(resolvedConfig, "attachmentRefs", string.Empty));
             var resolvedExternalContexts = await ResolveContextReferencesAsync(database, tenantId, externalContextRefs, ct);
@@ -509,10 +539,32 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
                         attachmentsCount,
                         attachmentsResolvedCount = resolvedAttachments.Count,
                         hasConversationState = true,
-                        stage = GetConfig(resolvedConfig, "stage", "workflow_runtime")
+                        stage = GetConfig(resolvedConfig, "stage", "workflow_runtime"),
+                        runtimeModelProfileId = runtimeProfile?.Id
                     },
                     execution.CorrelationId,
                     ct);
+            }
+
+            var metadata = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["runtimeKind"] = inferredRuntime.ToString(),
+                ["workflowDefinitionId"] = execution.WorkflowDefinitionId,
+                ["workflowExecutionId"] = execution.Id,
+                ["channel"] = InferChannelFromTrigger(execution.TriggerEventName)
+            };
+
+            if (runtimeProfile?.Roles is not null)
+            {
+                if (runtimeProfile.Roles.TryGetValue("brain", out var brainModel) && !string.IsNullOrWhiteSpace(brainModel))
+                {
+                    metadata["reasoningModelCandidatesCsv"] = brainModel;
+                    metadata["providerCandidates.reasoning"] = brainModel;
+                }
+                if (runtimeProfile.Roles.TryGetValue("stt", out var sttModel) && !string.IsNullOrWhiteSpace(sttModel))
+                    metadata["sttModelId"] = sttModel;
+                if (runtimeProfile.Roles.TryGetValue("tts", out var ttsModel) && !string.IsNullOrWhiteSpace(ttsModel))
+                    metadata["ttsModelId"] = ttsModel;
             }
 
             var request = new AgentExecutionRequest
@@ -521,6 +573,7 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
                 AgentKey = resolvedAgentKey,
                 UserId = execution.RequestedBy,
                 UserMessage = input!,
+                Metadata = metadata,
                 ContextJson = JsonSerializer.Serialize(new
                 {
                     workflowExecutionId = execution.Id,
@@ -532,7 +585,8 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
                     externalContextRefs,
                     externalContext = resolvedExternalContexts,
                     attachments = resolvedAttachments,
-                    conversationState = JsonSerializer.Deserialize<JsonElement>(canonicalStateJson)
+                    conversationState = JsonSerializer.Deserialize<JsonElement>(canonicalStateJson),
+                    runtimeModelProfileId = runtimeProfile?.Id
                 }),
                 CorrelationId = execution.CorrelationId,
                 ThreadId = execution.Id,
@@ -1410,6 +1464,22 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
         return redacted.Length > maxLength ? redacted[..maxLength] : redacted;
     }
 
+    private static string? ResolveWorkflowRuntimeProfileId(
+        WorkflowDefinitionContract definition,
+        WorkflowRuntimeDefinition runtime)
+    {
+        if (!string.IsNullOrWhiteSpace(runtime.RuntimeModelProfileId))
+            return runtime.RuntimeModelProfileId;
+
+        if (definition.Metadata.TryGetValue("runtimeModelProfileId", out var metadataProfileId) &&
+            !string.IsNullOrWhiteSpace(metadataProfileId))
+        {
+            return metadataProfileId;
+        }
+
+        return null;
+    }
+
     private static Dictionary<string, string> ParseExecutionContextDictionary(string? contextJson)
     {
         if (string.IsNullOrWhiteSpace(contextJson))
@@ -1430,6 +1500,31 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
     private static bool ParseBool(string? raw, bool fallback) => bool.TryParse(raw, out var value) ? value : fallback;
     private static decimal ParseDecimal(string? raw, decimal fallback) => decimal.TryParse(raw, out var value) ? value : fallback;
     private static double ParseDouble(string? raw, double fallback) => double.TryParse(raw, out var value) ? value : fallback;
+    private static string InferRuntimeFromTrigger(string? triggerEventName)
+    {
+        if (string.IsNullOrWhiteSpace(triggerEventName))
+            return "Text";
+
+        var lower = triggerEventName.ToLowerInvariant();
+        if (lower.Contains("call.", StringComparison.Ordinal))
+            return "Voice";
+        if (lower.Contains("realtime", StringComparison.Ordinal) || lower.Contains("video", StringComparison.Ordinal))
+            return "MultimodalRealtime";
+        return "Text";
+    }
+
+    private static string InferChannelFromTrigger(string? triggerEventName)
+    {
+        if (string.IsNullOrWhiteSpace(triggerEventName))
+            return "webchat";
+        var lower = triggerEventName.ToLowerInvariant();
+        if (lower.Contains("call.", StringComparison.Ordinal))
+            return "voice";
+        if (lower.Contains("video", StringComparison.Ordinal))
+            return "video";
+        return "webchat";
+    }
+
     private static double EstimateTokenCostUsd(int totalTokens)
     {
         const double estimatedUsdPer1KTokens = 0.005d;
@@ -1494,6 +1589,7 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
 
     private sealed record WorkflowRuntimeDefinition
     {
+        public string? RuntimeModelProfileId { get; init; }
         public List<WorkflowRuntimeActivity> Activities { get; init; } = [];
     }
 

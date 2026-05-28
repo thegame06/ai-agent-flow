@@ -1,4 +1,5 @@
 using AgentFlow.Abstractions;
+using AgentFlow.Api.AuthProfiles;
 using AgentFlow.Api.Controllers;
 using AgentFlow.Domain.Aggregates;
 using AgentFlow.Domain.Repositories;
@@ -103,6 +104,7 @@ public class ConversationThreadsControllerAuthTests
             new StubChannelSessionRepository(),
             new StubChannelDefinitionRepository(),
             new StubAgentExecutor(),
+            new StubRuntimeModelProfileStore(),
             NullLogger<ConversationThreadsController>.Instance)
         {
             ControllerContext = new ControllerContext
@@ -263,5 +265,19 @@ public class ConversationThreadsControllerAuthTests
 
         public Task<Result> DeleteAsync(string id, string tenantId, CancellationToken ct = default)
             => Task.FromResult(Result.Success());
+    }
+
+    private sealed class StubRuntimeModelProfileStore : IRuntimeModelProfileStore
+    {
+        public IReadOnlyList<RuntimeModelProfile> List(string tenantId, string? runtimeKind = null)
+            => Array.Empty<RuntimeModelProfile>();
+
+        public RuntimeModelProfile? Get(string tenantId, string profileId) => null;
+
+        public RuntimeModelProfile? GetDefault(string tenantId, string runtimeKind) => null;
+
+        public void Upsert(RuntimeModelProfile profile) { }
+
+        public bool Delete(string tenantId, string profileId) => false;
     }
 }

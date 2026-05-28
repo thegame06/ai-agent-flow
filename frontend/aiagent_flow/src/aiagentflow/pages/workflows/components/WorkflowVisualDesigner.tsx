@@ -942,7 +942,7 @@ export function WorkflowVisualDesigner({
           borderColor: 'divider',
           borderRadius: 1.5,
           overflow: 'hidden',
-          bgcolor: theme.palette.mode === 'dark' ? alpha(theme.palette.background.paper, 0.72) : '#fff',
+          bgcolor: 'background.paper',
         }}
       >
         <ReactFlow
@@ -999,7 +999,7 @@ export function WorkflowVisualDesigner({
               textAlign: 'center',
               bgcolor:
                 theme.palette.mode === 'dark'
-                  ? alpha(theme.palette.background.paper, 0.94)
+                  ? theme.palette.background.paper
                   : 'rgba(255,255,255,0.96)',
               boxShadow: '0 16px 42px rgba(15,23,42,0.12)',
             }}
@@ -1060,7 +1060,7 @@ export function WorkflowVisualDesigner({
             borderRadius: 2,
             bgcolor:
               theme.palette.mode === 'dark'
-                ? alpha(theme.palette.background.paper, 0.92)
+                ? theme.palette.background.neutral
                 : 'rgba(255,255,255,0.96)',
             boxShadow: '0 12px 32px rgba(15,23,42,0.14)',
             border: `1px solid ${theme.palette.divider}`,
@@ -1087,7 +1087,7 @@ export function WorkflowVisualDesigner({
                             minWidth: 86,
                             height: 74,
                             px: 1,
-                            color: '#0f172a',
+                            color: 'text.primary',
                             borderRadius: 1.5,
                             opacity: disabled ? 0.55 : 1,
                             textTransform: 'none',
@@ -1123,7 +1123,16 @@ export function WorkflowVisualDesigner({
         onClose={() => setSelectedIndex(null)}
         hideBackdrop
         ModalProps={{ keepMounted: true }}
-        PaperProps={{ sx: { width: 420, p: 2 } }}
+        PaperProps={{
+          sx: {
+            width: 420,
+            p: 2,
+            bgcolor: 'background.paper',
+            color: 'text.primary',
+            borderLeft: '1px solid',
+            borderColor: 'divider',
+          },
+        }}
       >
         {selectedStart && (
           <Stack spacing={1.4}>
@@ -2271,7 +2280,16 @@ export function WorkflowVisualDesigner({
         onClose={() => setShowValidation(false)}
         hideBackdrop
         ModalProps={{ keepMounted: true }}
-        PaperProps={{ sx: { width: 360, p: 2 } }}
+        PaperProps={{
+          sx: {
+            width: 360,
+            p: 2,
+            bgcolor: 'background.paper',
+            color: 'text.primary',
+            borderLeft: '1px solid',
+            borderColor: 'divider',
+          },
+        }}
       >
         <Typography variant="subtitle1" sx={{ mb: 1 }}>Validaciones</Typography>
         {validationErrors.length === 0 ? (

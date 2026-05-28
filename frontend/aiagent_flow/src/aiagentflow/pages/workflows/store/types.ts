@@ -13,6 +13,7 @@ import type {
   AssistantWizardMetrics,
   WorkflowIntegrationStatus,
   WorkflowActivityCatalogEntry,
+  RuntimeModelProfileOption,
 } from '../types';
 
 export type WorkflowEditorDraft = {
@@ -48,4 +49,5 @@ export type WorkflowRuntimeState = {
   availableChannels: ChannelOption[];
   integrations: WorkflowIntegrationStatus[];
   connectTemplates: ConnectTemplateOption[];
+  runtimeProfiles: RuntimeModelProfileOption[];
 };

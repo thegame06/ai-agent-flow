@@ -104,6 +104,12 @@ public sealed class TextAgentRuntime : IAgentRuntime
         {
             RuntimeKind = Kind,
             Status = execution.Status,
+            TenantId = request.TenantId,
+            ConversationId = request.ConversationId,
+            ThreadId = request.ThreadId ?? request.TextExecutionRequest?.ThreadId,
+            AgentId = request.AgentId,
+            CorrelationId = request.CorrelationId,
+            Channel = request.Channel,
             Response = execution.FinalResponse,
             ExecutionId = execution.ExecutionId,
             SessionId = request.SessionId
@@ -144,6 +150,12 @@ public sealed class VoiceAgentRuntime : IRealtimeSessionRuntime
         {
             RuntimeKind = Kind,
             Status = ExecutionStatus.Completed,
+            TenantId = request.TenantId,
+            ConversationId = request.ConversationId,
+            ThreadId = request.ThreadId,
+            AgentId = request.AgentId,
+            CorrelationId = request.CorrelationId,
+            Channel = request.Channel ?? channel,
             SessionId = request.SessionId,
             Response = response
         });
@@ -189,6 +201,12 @@ public sealed class MultimodalRealtimeRuntime : IRealtimeSessionRuntime
         {
             RuntimeKind = Kind,
             Status = ExecutionStatus.Completed,
+            TenantId = request.TenantId,
+            ConversationId = request.ConversationId,
+            ThreadId = request.ThreadId,
+            AgentId = request.AgentId,
+            CorrelationId = request.CorrelationId,
+            Channel = request.Channel,
             SessionId = request.SessionId,
             Response = response
         });

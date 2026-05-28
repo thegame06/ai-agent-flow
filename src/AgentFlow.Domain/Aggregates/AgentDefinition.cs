@@ -227,6 +227,7 @@ public sealed class AgentDefinition : AggregateRoot
             Brain = source.Brain,
             LoopConfig = source.LoopConfig,
             Memory = source.Memory,
+            Session = source.Session,
             WorkflowSteps = new List<WorkflowStep>(source.WorkflowSteps).AsReadOnly(),
             AuthorizedTools = new List<ToolBinding>(source.AuthorizedTools).AsReadOnly(),
             Tags = new List<string>(source.Tags).AsReadOnly(),

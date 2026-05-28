@@ -2,6 +2,7 @@ using AgentFlow.Abstractions;
 using AgentFlow.Core.Engine;
 using AgentFlow.Observability;
 using AgentFlow.Api.Workflow;
+using AgentFlow.Api.AuthProfiles;
 using System.Text.Json;
 
 namespace AgentFlow.Api.Voice;
@@ -71,17 +72,32 @@ public sealed class VoiceRuntimeEventDispatcher : BackgroundService
         {
             using var scope = _scopeFactory.CreateScope();
             var runtimeRegistry = scope.ServiceProvider.GetRequiredService<IAgentRuntimeRegistry>();
+            var runtimeProfileStore = scope.ServiceProvider.GetService<IRuntimeModelProfileStore>();
+            var runtimeProfile = runtimeProfileStore?.GetDefault(evt.TenantId, AgentRuntimeKind.Voice.ToString());
             var runtime = runtimeRegistry.GetRequired(AgentRuntimeKind.Voice);
+            var metadata = new Dictionary<string, string>(evt.Headers)
+            {
+                ["eventType"] = evt.EventType,
+                ["eventId"] = evt.EventId
+            };
+            if (runtimeProfile?.Roles is not null)
+            {
+                if (runtimeProfile.Roles.TryGetValue("brain", out var brainModel) && !string.IsNullOrWhiteSpace(brainModel))
+                    metadata["reasoningModelCandidatesCsv"] = brainModel;
+                if (runtimeProfile.Roles.TryGetValue("stt", out var sttModel) && !string.IsNullOrWhiteSpace(sttModel))
+                    metadata["sttModelId"] = sttModel;
+                if (runtimeProfile.Roles.TryGetValue("tts", out var ttsModel) && !string.IsNullOrWhiteSpace(ttsModel))
+                    metadata["ttsModelId"] = ttsModel;
+            }
             var result = await runtime.ExecuteAsync(new AgentRuntimeRequest
             {
                 TenantId = evt.TenantId,
                 RuntimeKind = AgentRuntimeKind.Voice,
                 SessionId = evt.SessionId,
-                Metadata = new Dictionary<string, string>(evt.Headers)
-                {
-                    ["eventType"] = evt.EventType,
-                    ["eventId"] = evt.EventId
-                }
+                CorrelationId = evt.CorrelationId,
+                ThreadId = evt.ThreadId,
+                Channel = evt.Headers.TryGetValue("channel", out var channelValue) ? channelValue : "voice",
+                Metadata = metadata
                 }, ct);
 
             _logger.LogInformation(
@@ -157,6 +173,9 @@ public sealed class VoiceRuntimeEventDispatcher : BackgroundService
                 TenantId = evt.TenantId,
                 RuntimeKind = AgentRuntimeKind.Voice,
                 SessionId = evt.SessionId,
+                CorrelationId = evt.CorrelationId,
+                ThreadId = evt.ThreadId,
+                Channel = evt.Headers.TryGetValue("channel", out var channelValue) ? channelValue : "voice",
                 Metadata = new Dictionary<string, string>(evt.Headers)
                 {
                     ["eventType"] = evt.EventType,
@@ -207,8 +226,13 @@ public sealed class VoiceRuntimeEventDispatcher : BackgroundService
         {
             using var scope = _scopeFactory.CreateScope();
             var resolver = scope.ServiceProvider.GetRequiredService<IProviderResolver>();
+            var modelCatalog = scope.ServiceProvider.GetService<IModelCatalogStore>();
             audit = scope.ServiceProvider.GetRequiredService<IWorkflowAuditService>();
-            var preferred = GetPreferredProvider(evt.Headers, "sttProvider", "openai");
+            var sttModelId = evt.Headers.TryGetValue("sttModelId", out var sttModel) ? sttModel : null;
+            var catalogPreferred = !string.IsNullOrWhiteSpace(sttModelId) ? modelCatalog?.Get(evt.TenantId, sttModelId!)?.ProviderId : null;
+            var preferred = !string.IsNullOrWhiteSpace(catalogPreferred)
+                ? catalogPreferred!
+                : GetPreferredProvider(evt.Headers, "sttProvider", "openai");
             var providerChain = BuildProviderChain(evt.Headers, "stt", preferred, "openai");
             var channel = evt.Headers.TryGetValue("channel", out var ch) ? ch : "voice";
             var resolved = await resolver.ResolveRequiredAsync<IAudioTranscriptionProviderAdapter>(
@@ -305,8 +329,13 @@ public sealed class VoiceRuntimeEventDispatcher : BackgroundService
         {
             using var scope = _scopeFactory.CreateScope();
             var resolver = scope.ServiceProvider.GetRequiredService<IProviderResolver>();
+            var modelCatalog = scope.ServiceProvider.GetService<IModelCatalogStore>();
             audit = scope.ServiceProvider.GetRequiredService<IWorkflowAuditService>();
-            var preferred = GetPreferredProvider(evt.Headers, "ttsProvider", "openai");
+            var ttsModelId = evt.Headers.TryGetValue("ttsModelId", out var ttsModel) ? ttsModel : null;
+            var catalogPreferred = !string.IsNullOrWhiteSpace(ttsModelId) ? modelCatalog?.Get(evt.TenantId, ttsModelId!)?.ProviderId : null;
+            var preferred = !string.IsNullOrWhiteSpace(catalogPreferred)
+                ? catalogPreferred!
+                : GetPreferredProvider(evt.Headers, "ttsProvider", "openai");
             var providerChain = BuildProviderChain(evt.Headers, "tts", preferred, "openai");
             var channel = evt.Headers.TryGetValue("channel", out var ch) ? ch : "voice";
             var resolved = await resolver.ResolveRequiredAsync<IAudioSynthesisProviderAdapter>(

@@ -197,6 +197,11 @@ public sealed record AgentRuntimeRequest
     public required string TenantId { get; init; }
     public required AgentRuntimeKind RuntimeKind { get; init; }
     public string? SessionId { get; init; }
+    public string? ConversationId { get; init; }
+    public string? ThreadId { get; init; }
+    public string? AgentId { get; init; }
+    public string? CorrelationId { get; init; }
+    public string? Channel { get; init; }
     public AgentExecutionRequest? TextExecutionRequest { get; init; }
     public IReadOnlyDictionary<string, string> Metadata { get; init; } = new Dictionary<string, string>();
 }
@@ -205,6 +210,12 @@ public sealed record AgentRuntimeResult
 {
     public required AgentRuntimeKind RuntimeKind { get; init; }
     public required ExecutionStatus Status { get; init; }
+    public string? TenantId { get; init; }
+    public string? ConversationId { get; init; }
+    public string? ThreadId { get; init; }
+    public string? AgentId { get; init; }
+    public string? CorrelationId { get; init; }
+    public string? Channel { get; init; }
     public string? Response { get; init; }
     public string? ExecutionId { get; init; }
     public string? SessionId { get; init; }

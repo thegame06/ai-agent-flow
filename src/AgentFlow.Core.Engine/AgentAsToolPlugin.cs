@@ -202,6 +202,12 @@ public sealed class AgentAsToolPlugin : ToolSDK.IToolPlugin
                     "Delegating to agent '{AgentKey}'. Parent: {ParentExecutionId}, CallDepth: {CallDepth}, ChildBudget: {ChildBudget}",
                     agentKey, context.ExecutionId, currentCallDepth + 1, childBudget);
 
+                var mergedMetadata = new Dictionary<string, string>(context.Metadata, StringComparer.OrdinalIgnoreCase);
+                foreach (var variable in variables)
+                {
+                    mergedMetadata[variable.Key] = variable.Value;
+                }
+
                 var delegationRequest = new AgentExecutionRequest
                 {
                     TenantId = context.TenantId,
@@ -210,7 +216,7 @@ public sealed class AgentAsToolPlugin : ToolSDK.IToolPlugin
                     UserMessage = message,
                     ParentExecutionId = context.ExecutionId, // Link parent-child relationship
                     CorrelationId = context.Metadata.TryGetValue("CorrelationId", out var corrId) ? corrId : Guid.NewGuid().ToString(),
-                    Metadata = variables.AsReadOnly(),
+                    Metadata = mergedMetadata.AsReadOnly(),
                     CallDepth = currentCallDepth + 1, // Increment depth
                     TokenBudget = childBudget
                 };

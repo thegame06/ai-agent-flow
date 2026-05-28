@@ -1,4 +1,5 @@
 using AgentFlow.Abstractions;
+using AgentFlow.Api.AuthProfiles;
 using AgentFlow.Domain.Aggregates;
 using AgentFlow.Domain.Repositories;
 using Microsoft.AspNetCore.Mvc;
@@ -20,6 +21,7 @@ public sealed class ConversationThreadsController : ControllerBase
     private readonly IChannelSessionRepository _sessionRepo;
     private readonly IChannelDefinitionRepository _channelRepo;
     private readonly IAgentExecutor _executor;
+    private readonly IRuntimeModelProfileStore _runtimeProfiles;
     private readonly ILogger<ConversationThreadsController> _logger;
     
     public ConversationThreadsController(
@@ -28,6 +30,7 @@ public sealed class ConversationThreadsController : ControllerBase
         IChannelSessionRepository sessionRepo,
         IChannelDefinitionRepository channelRepo,
         IAgentExecutor executor,
+        IRuntimeModelProfileStore runtimeProfiles,
         ILogger<ConversationThreadsController> logger)
     {
         _threadRepo = threadRepo;
@@ -35,6 +38,7 @@ public sealed class ConversationThreadsController : ControllerBase
         _sessionRepo = sessionRepo;
         _channelRepo = channelRepo;
         _executor = executor;
+        _runtimeProfiles = runtimeProfiles;
         _logger = logger;
     }
     
@@ -116,6 +120,13 @@ public sealed class ConversationThreadsController : ControllerBase
             return Forbid("You do not own this thread");
         
         // Execute agent with thread context
+        var agent = await _agentRepo.GetByIdAsync(thread.AgentDefinitionId, tenantId, ct);
+        if (agent is null)
+            return NotFound($"Agent '{thread.AgentDefinitionId}' not found");
+
+        var metadata = new Dictionary<string, string>();
+        ApplyRuntimeProfileMetadata(agent, metadata);
+
         var executionRequest = new AgentExecutionRequest
         {
             TenantId = tenantId,
@@ -125,7 +136,8 @@ public sealed class ConversationThreadsController : ControllerBase
             ContextJson = request.Context,
             CorrelationId = thread.Id,
             ThreadId = thread.Id,
-            Priority = ExecutionPriority.Normal
+            Priority = ExecutionPriority.Normal,
+            Metadata = metadata
         };
         
         var executionResult = await _executor.ExecuteAsync(executionRequest, ct);
@@ -511,6 +523,39 @@ public sealed class ConversationThreadsController : ControllerBase
             LastActivityAt = thread.LastActivityAt,
             Metadata = metadata
         };
+    }
+
+    private void ApplyRuntimeProfileMetadata(AgentDefinition agentDef, Dictionary<string, string> metadata)
+    {
+        var profileId = agentDef.Session.RuntimeModelProfileId;
+        RuntimeModelProfile? profile = null;
+        var profileSource = "runtime-default";
+
+        if (!string.IsNullOrWhiteSpace(profileId))
+        {
+            profile = _runtimeProfiles.Get(agentDef.TenantId, profileId!);
+            if (profile is not null)
+                profileSource = "agent-explicit";
+        }
+
+        profile ??= _runtimeProfiles.GetDefault(agentDef.TenantId, agentDef.Session.RuntimeKind.ToString());
+        if (profile is null)
+        {
+            metadata["runtimeModelProfileSource"] = "none";
+            return;
+        }
+
+        metadata["runtimeModelProfileId"] = profile.Id;
+        metadata["runtimeModelProfileSource"] = profileSource;
+
+        if (profile.Roles.TryGetValue("reasoning", out var reasoningModel) && !string.IsNullOrWhiteSpace(reasoningModel))
+            metadata["reasoningModelCandidatesCsv"] = reasoningModel;
+
+        if (profile.Roles.TryGetValue("stt", out var sttModel) && !string.IsNullOrWhiteSpace(sttModel))
+            metadata["sttModelId"] = sttModel;
+
+        if (profile.Roles.TryGetValue("tts", out var ttsModel) && !string.IsNullOrWhiteSpace(ttsModel))
+            metadata["ttsModelId"] = ttsModel;
     }
 }
 

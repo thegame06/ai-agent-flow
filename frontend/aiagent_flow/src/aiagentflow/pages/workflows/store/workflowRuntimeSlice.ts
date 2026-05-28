@@ -23,6 +23,7 @@ import type {
   WorkflowRuntimeMetrics,
   AssistantWizardMetrics,
   WorkflowActivityCatalogEntry,
+  RuntimeModelProfileOption,
 } from '../types';
 
 const initialState: WorkflowRuntimeState = {
@@ -44,6 +45,7 @@ const initialState: WorkflowRuntimeState = {
   availableChannels: [],
   integrations: [],
   connectTemplates: [],
+  runtimeProfiles: [],
 };
 
 const workflowRuntimeSlice = createSlice({
@@ -126,6 +128,16 @@ const workflowRuntimeSlice = createSlice({
               channel: template.channel,
               body: template.body,
             }) as ConnectTemplateOption
+        );
+        state.runtimeProfiles = ((action.payload.runtimeProfiles as any[]) ?? []).map(
+          (profile) =>
+            ({
+              id: profile.id,
+              name: profile.name,
+              runtimeKind: profile.runtimeKind ?? 'Text',
+              roles: profile.roles ?? {},
+              isDefault: profile.isDefault ?? false,
+            }) as RuntimeModelProfileOption
         );
       })
       .addCase(fetchWorkflowRuntimeData.rejected, (state, action) => {

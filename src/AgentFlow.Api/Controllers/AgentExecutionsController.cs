@@ -1,6 +1,7 @@
 using AgentFlow.Abstractions;
 using AgentFlow.Abstractions.Workflow;
 using AgentFlow.Application.Memory;
+using AgentFlow.Api.AuthProfiles;
 using AgentFlow.Api.Workflow;
 using AgentFlow.Domain.Repositories;
 using AgentFlow.Evaluation;
@@ -26,6 +27,7 @@ public sealed class AgentExecutionsController : ControllerBase
     private readonly IAuditMemory _auditMemory;
     private readonly IWorkflowStudioStore _workflowStore;
     private readonly ITenantContextAccessor _tenantContext;
+    private readonly IRuntimeModelProfileStore _runtimeModelProfiles;
     private readonly ILogger<AgentExecutionsController> _logger;
 
     public AgentExecutionsController(
@@ -40,6 +42,7 @@ public sealed class AgentExecutionsController : ControllerBase
         IAuditMemory auditMemory,
         IWorkflowStudioStore workflowStore,
         ITenantContextAccessor tenantContext,
+        IRuntimeModelProfileStore runtimeModelProfiles,
         ILogger<AgentExecutionsController> logger)
     {
         _executor = executor;
@@ -53,6 +56,7 @@ public sealed class AgentExecutionsController : ControllerBase
         _auditMemory = auditMemory;
         _workflowStore = workflowStore;
         _tenantContext = tenantContext;
+        _runtimeModelProfiles = runtimeModelProfiles;
         _logger = logger;
     }
 
@@ -331,6 +335,7 @@ public sealed class AgentExecutionsController : ControllerBase
             ["permissions"] = string.Join(",", context.Permissions),
             ["mcp.policy.allow_actions"] = "tools.execute"
         };
+        ApplyRuntimeProfileMetadata(agentDef, metadata);
 
         var request = new AgentExecutionRequest
         {
@@ -473,6 +478,13 @@ public sealed class AgentExecutionsController : ControllerBase
         if (!TryValidateHandoffPayload(body, out var validationError))
             return BadRequest(new { error = validationError });
 
+        var handoffMetadata = new Dictionary<string, string>(body.Metadata ?? new Dictionary<string, string>());
+        var targetAgentDef = await _agentRepository.GetByIdAsync(body.TargetAgentId, tenantId, ct);
+        if (targetAgentDef is not null)
+        {
+            ApplyRuntimeProfileMetadata(targetAgentDef, handoffMetadata);
+        }
+
         var handoff = new AgentHandoffRequest
         {
             TenantId = tenantId,
@@ -485,7 +497,7 @@ public sealed class AgentExecutionsController : ControllerBase
             Intent = body.Intent,
             PayloadJson = body.PayloadJson,
             PolicyContext = body.PolicyContext ?? new Dictionary<string, string>(),
-            Metadata = body.Metadata ?? new Dictionary<string, string>()
+            Metadata = handoffMetadata
         };
 
         await _auditMemory.RecordAsync(new AuditEntry
@@ -501,7 +513,9 @@ public sealed class AgentExecutionsController : ControllerBase
                 sourceAgent = handoff.SourceAgentKey,
                 targetAgent = handoff.TargetAgentKey,
                 handoff.Intent,
-                handoff.SessionId
+                handoff.SessionId,
+                runtimeModelProfileId = handoff.Metadata.GetValueOrDefault("runtimeModelProfileId"),
+                runtimeModelProfileSource = handoff.Metadata.GetValueOrDefault("runtimeModelProfileSource")
             })
         }, ct);
 
@@ -542,6 +556,39 @@ public sealed class AgentExecutionsController : ControllerBase
         });
     }
 
+
+    private void ApplyRuntimeProfileMetadata(Domain.Aggregates.AgentDefinition agentDef, Dictionary<string, string> metadata)
+    {
+        var profileId = agentDef.Session.RuntimeModelProfileId;
+        RuntimeModelProfile? profile = null;
+        var profileSource = "runtime-default";
+
+        if (!string.IsNullOrWhiteSpace(profileId))
+        {
+            profile = _runtimeModelProfiles.Get(agentDef.TenantId, profileId!);
+            if (profile is not null)
+                profileSource = "agent-explicit";
+        }
+
+        profile ??= _runtimeModelProfiles.GetDefault(agentDef.TenantId, agentDef.Session.RuntimeKind.ToString());
+        if (profile is null)
+        {
+            metadata["runtimeModelProfileSource"] = "none";
+            return;
+        }
+
+        metadata["runtimeModelProfileId"] = profile.Id;
+        metadata["runtimeModelProfileSource"] = profileSource;
+
+        if (profile.Roles.TryGetValue("reasoning", out var reasoningModel) && !string.IsNullOrWhiteSpace(reasoningModel))
+            metadata["reasoningModelCandidatesCsv"] = reasoningModel;
+
+        if (profile.Roles.TryGetValue("stt", out var sttModel) && !string.IsNullOrWhiteSpace(sttModel))
+            metadata["sttModelId"] = sttModel;
+
+        if (profile.Roles.TryGetValue("tts", out var ttsModel) && !string.IsNullOrWhiteSpace(ttsModel))
+            metadata["ttsModelId"] = ttsModel;
+    }
 
     private static bool TryValidateHandoffPayload(HandoffExecutionRequest body, out string? error)
     {
@@ -665,6 +712,7 @@ public sealed class AgentExecutionsController : ControllerBase
             ["PreviewMode"] = "dry-run",
             ["OriginalAgentId"] = agentId
         };
+        ApplyRuntimeProfileMetadata(agentDef, metadata);
 
         var request = new AgentExecutionRequest
         {

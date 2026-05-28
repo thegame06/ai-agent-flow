@@ -1,4 +1,5 @@
 using AgentFlow.Api.Controllers.DTOs;
+using AgentFlow.Api.AuthProfiles;
 using AgentFlow.Domain.Aggregates;
 using AgentFlow.Domain.Enums;
 using AgentFlow.Domain.Repositories;
@@ -27,15 +28,18 @@ public sealed class AgentsController : ControllerBase
 [/GLOBAL_GUARDRAILS_V1]";
 
     private readonly IAgentDefinitionRepository _agentRepository;
+    private readonly IRuntimeModelProfileStore _runtimeProfiles;
     private readonly ITenantContextAccessor _tenantContext;
     private readonly ILogger<AgentsController> _logger;
 
     public AgentsController(
         IAgentDefinitionRepository agentRepository,
+        IRuntimeModelProfileStore runtimeProfiles,
         ITenantContextAccessor tenantContext,
         ILogger<AgentsController> logger)
     {
         _agentRepository = agentRepository;
+        _runtimeProfiles = runtimeProfiles;
         _tenantContext = tenantContext;
         _logger = logger;
     }
@@ -122,6 +126,8 @@ public sealed class AgentsController : ControllerBase
     {
         var ctx = _tenantContext.Current!;
         if (ctx.TenantId != tenantId && !ctx.IsPlatformAdmin) return Forbid();
+        if (!TryValidateRuntimeProfile(tenantId, request.Session.RuntimeKind, request.Session.RuntimeModelProfileId, out var createValidationError))
+            return BadRequest(new { error = createValidationError });
 
         var brain = new BrainConfiguration
         {
@@ -154,6 +160,7 @@ public sealed class AgentsController : ControllerBase
         var session = new SessionConfig
         {
             RuntimeKind = ParseAgentRuntimeKind(request.Session.RuntimeKind),
+            RuntimeModelProfileId = NormalizeOptional(request.Session.RuntimeModelProfileId),
             EnableThreads = request.Session.EnableThreads,
             DefaultThreadTtl = TimeSpan.FromHours(request.Session.DefaultThreadTtlHours),
             MaxTurnsPerThread = request.Session.MaxTurnsPerThread,
@@ -220,6 +227,8 @@ public sealed class AgentsController : ControllerBase
     {
         var ctx = _tenantContext.Current!;
         if (ctx.TenantId != tenantId && !ctx.IsPlatformAdmin) return Forbid();
+        if (!TryValidateRuntimeProfile(tenantId, request.Session.RuntimeKind, request.Session.RuntimeModelProfileId, out var updateValidationError))
+            return BadRequest(new { error = updateValidationError });
 
         var existing = await _agentRepository.GetByIdAsync(id, tenantId, ct);
         if (existing is null) return NotFound();
@@ -266,6 +275,7 @@ public sealed class AgentsController : ControllerBase
         var session = new SessionConfig
         {
             RuntimeKind = ParseAgentRuntimeKind(request.Session.RuntimeKind),
+            RuntimeModelProfileId = NormalizeOptional(request.Session.RuntimeModelProfileId),
             EnableThreads = request.Session.EnableThreads,
             DefaultThreadTtl = TimeSpan.FromHours(request.Session.DefaultThreadTtlHours),
             MaxTurnsPerThread = request.Session.MaxTurnsPerThread,
@@ -449,6 +459,7 @@ public sealed class AgentsController : ControllerBase
         Session = new SessionConfigDto
         {
             RuntimeKind = agent.Session.RuntimeKind.ToString(),
+            RuntimeModelProfileId = agent.Session.RuntimeModelProfileId,
             EnableThreads = agent.Session.EnableThreads,
             DefaultThreadTtlHours = (int)agent.Session.DefaultThreadTtl.TotalHours,
             MaxTurnsPerThread = agent.Session.MaxTurnsPerThread,
@@ -572,5 +583,36 @@ public sealed class AgentsController : ControllerBase
         add(fallbackModel);
         add(explicitCandidatesCsv);
         return string.Join(",", ordered);
+    }
+
+    private static string? NormalizeOptional(string? value)
+        => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private bool TryValidateRuntimeProfile(string tenantId, string? runtimeKindRaw, string? runtimeModelProfileId, out string? error)
+    {
+        error = null;
+        if (string.IsNullOrWhiteSpace(runtimeModelProfileId))
+            return true;
+
+        if (!Enum.TryParse<AgentRuntimeKind>(runtimeKindRaw, true, out var runtimeKind))
+        {
+            error = $"runtimeKind '{runtimeKindRaw}' no es valido.";
+            return false;
+        }
+
+        var profile = _runtimeProfiles.Get(tenantId, runtimeModelProfileId.Trim());
+        if (profile is null)
+        {
+            error = $"El perfil de runtime '{runtimeModelProfileId}' no existe para este tenant.";
+            return false;
+        }
+
+        if (!string.Equals(profile.RuntimeKind, runtimeKind.ToString(), StringComparison.OrdinalIgnoreCase))
+        {
+            error = $"El perfil '{runtimeModelProfileId}' es de runtime '{profile.RuntimeKind}' y no coincide con '{runtimeKind}'.";
+            return false;
+        }
+
+        return true;
     }
 }

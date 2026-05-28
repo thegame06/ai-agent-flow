@@ -15,6 +15,10 @@ export const workflowStudioApi = {
     axios.get(`/api/v1/tenants/${tenantId}/connect/templates`).catch(() => ({ data: [] })),
   getAgents: (tenantId: string) =>
     axios.get(endpoints.agentflow.agents.list(tenantId)).catch(() => ({ data: [] })),
+  getRuntimeProfiles: (tenantId: string, runtimeKind?: string) =>
+    axios
+      .get(endpoints.agentflow.runtimeModelProfiles.list(tenantId), { params: runtimeKind ? { runtimeKind } : {} })
+      .catch(() => ({ data: [] })),
   getChannels: (tenantId: string) =>
     axios.get(endpoints.agentflow.channels.list(tenantId)).catch(() => ({ data: [] })),
   getIntegrationStatus: (tenantId: string) =>

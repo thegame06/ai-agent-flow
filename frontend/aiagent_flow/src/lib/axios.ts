@@ -155,6 +155,10 @@ export const endpoints = {
       list: '/api/v1/model-routing/models',
       healthy: '/api/v1/model-routing/models/healthy',
     },
+    runtimeModelProfiles: {
+      list: (tenantId: string) => `/api/v1/tenants/${tenantId}/runtime-model-profiles`,
+      byId: (tenantId: string, profileId: string) => `/api/v1/tenants/${tenantId}/runtime-model-profiles/${profileId}`,
+    },
     // Policies
     policies: {
       list: (tenantId: string) => `/api/v1/tenants/${tenantId}/policies`,

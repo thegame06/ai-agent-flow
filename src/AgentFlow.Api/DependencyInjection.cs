@@ -66,6 +66,7 @@ public static class DependencyInjection
             .AddCommunicationPlatform()
             .AddSingleton<IAuthProfilesStore, MongoAuthProfilesStore>()
             .AddSingleton<IModelCatalogStore, MongoModelCatalogStore>()
+            .AddSingleton<IRuntimeModelProfileStore, MongoRuntimeModelProfileStore>()
             .AddScoped<IModelCredentialResolver, AuthProfileModelCredentialResolver>()
             .AddScoped<IConnectStore, MongoConnectStore>()
             .AddScoped<IHumanEscalationNotifier, WorkforceHumanEscalationNotifier>()

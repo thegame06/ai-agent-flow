@@ -255,6 +255,9 @@ public sealed class TwilioVoiceWebhookController : ControllerBase
             TenantId = tenantId,
             RuntimeKind = AgentRuntimeKind.Voice,
             SessionId = session.SessionId,
+            CorrelationId = form.CallSid,
+            ThreadId = session.SessionId,
+            Channel = channel,
             Metadata = new Dictionary<string, string>
             {
                 ["eventType"] = "connect.call.received",

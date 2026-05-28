@@ -114,6 +114,12 @@ public sealed record SessionConfig
     public bool EnableSummarization { get; init; } = false;
 
     /// <summary>
+    /// Optional runtime model profile assigned at agent level.
+    /// Used to resolve reasoning/STT/TTS model roles for direct executions.
+    /// </summary>
+    public string? RuntimeModelProfileId { get; init; }
+
+    /// <summary>
     /// Thread naming pattern. Variables: {agentName}, {userId}, {date}, {guid}
     /// Example: "{agentName}-{userId}-{date}" → "support-agent-user123-2026-02-22"
     /// </summary>

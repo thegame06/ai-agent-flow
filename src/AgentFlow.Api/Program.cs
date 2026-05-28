@@ -98,5 +98,6 @@ app.MapGet("/health", () => Results.Ok(new { status = "healthy", timestamp = Dat
 
 // System agents always seed (guarded internally — skips if already exists)
 await SeedData.SeedSystemAgentsAsync(app.Services);
+await SeedData.SeedRuntimeModelProfilesAsync(app.Services);
 
 app.Run();

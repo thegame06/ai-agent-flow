@@ -1,5 +1,6 @@
 using AgentFlow.Abstractions;
 using AgentFlow.Api.Controllers;
+using AgentFlow.Api.AuthProfiles;
 using AgentFlow.Api.Workflow;
 using AgentFlow.Application.Memory;
 using AgentFlow.Domain.Repositories;
@@ -149,6 +150,7 @@ public sealed class HandoffEndpointTests
         var handoffPolicy = new Mock<IManagerHandoffPolicy>();
         var audit = new Mock<IAuditMemory>();
         var workflowStore = new Mock<IWorkflowStudioStore>();
+        var runtimeProfiles = new Mock<IRuntimeModelProfileStore>();
         var tenantContext = new TenantContextAccessor();
 
         tenantContext.Set(new TenantContext
@@ -191,6 +193,7 @@ public sealed class HandoffEndpointTests
             audit.Object,
             workflowStore.Object,
             tenantContext,
+            runtimeProfiles.Object,
             NullLogger<AgentExecutionsController>.Instance);
     }
 }

@@ -16,6 +16,7 @@ type RuntimePayload = {
   availableChannels: any[];
   integrations: any[];
   connectTemplates: any[];
+  runtimeProfiles: any[];
 };
 
 const asArray = (value: any): any[] => {
@@ -58,7 +59,7 @@ export const fetchWorkflowRuntimeData = createAsyncThunk(
     } catch (error: any) {
       return rejectWithValue(apiErrorMessage(error, 'No se pudieron cargar los workflows.')) as never;
     }
-    const [exRes, metRes, wizRes, auditRes, catalogRes, modelsRes, toolsRes, agentsRes, channelsRes, integrationsRes, templatesRes] =
+    const [exRes, metRes, wizRes, auditRes, catalogRes, modelsRes, toolsRes, agentsRes, channelsRes, integrationsRes, templatesRes, runtimeProfilesRes] =
       await Promise.all([
         safe(workflowStudioApi.getExecutions(tenantId), []),
         safe(workflowStudioApi.getMetrics(tenantId, metricsWindow), null),
@@ -71,6 +72,7 @@ export const fetchWorkflowRuntimeData = createAsyncThunk(
         safe(workflowStudioApi.getChannels(tenantId), []),
         safe(workflowStudioApi.getIntegrationStatus(tenantId), []),
         safe(workflowStudioApi.getConnectTemplates(tenantId), []),
+        safe(workflowStudioApi.getRuntimeProfiles(tenantId), []),
       ]);
     const integrations = asArray(integrationsRes.data);
 
@@ -87,6 +89,7 @@ export const fetchWorkflowRuntimeData = createAsyncThunk(
       availableChannels: asArray(channelsRes.data),
       integrations,
       connectTemplates: asArray(templatesRes.data),
+      runtimeProfiles: asArray(runtimeProfilesRes.data),
     };
   }
 );
@@ -104,6 +107,7 @@ export const saveWorkflowDraft = createAsyncThunk(
       triggerEventName: string;
       definitionJson: string;
       runtimeKind?: string;
+      runtimeModelProfileId?: string | null;
     };
   }, { rejectWithValue }) => {
     try {
@@ -120,6 +124,7 @@ export const saveWorkflowDraft = createAsyncThunk(
         definitionJson: workflow.definitionJson,
         metadata: {
           designType: (workflow as any).designType ?? 'workflow',
+          runtimeModelProfileId: workflow.runtimeModelProfileId ?? '',
         },
       });
       return response.data ?? workflow;

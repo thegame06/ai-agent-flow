@@ -133,6 +133,7 @@ function mapDraftToPayload(draft: AgentDefinitionDraft) {
     },
     session: {
       runtimeKind: draft.runtimeKind,
+      runtimeModelProfileId: draft.runtimeModelProfileId || null,
       enableThreads: false,
       defaultThreadTtlHours: 168,
       maxTurnsPerThread: 100,
@@ -171,6 +172,7 @@ export function mapResponseToDraft(data: Record<string, unknown>): AgentDefiniti
   return {
     id: data.id as string,
     runtimeKind: (session.runtimeKind as AgentDefinitionDraft['runtimeKind']) ?? 'Text',
+    runtimeModelProfileId: (session.runtimeModelProfileId as string) ?? '',
     name: (data.name as string) ?? '',
     description: (data.description as string) ?? '',
     version: String(data.version ?? '1.0.0'),

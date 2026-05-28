@@ -163,6 +163,7 @@ export default function WorkflowsPage() {
     availableChannels,
     integrations,
     connectTemplates,
+    runtimeProfiles,
     setError,
     setStepsOpen,
     loadAll,
@@ -179,6 +180,14 @@ export default function WorkflowsPage() {
       ),
     [selectedRuntimeKind, workflows]
   );
+  const scopedRuntimeProfiles = useMemo(
+    () =>
+      (runtimeProfiles ?? []).filter(
+        (profile: any) => (profile.runtimeKind ?? 'Text').toLowerCase() === selectedRuntimeKind.toLowerCase()
+      ),
+    [runtimeProfiles, selectedRuntimeKind]
+  );
+  const [selectedRuntimeProfileId, setSelectedRuntimeProfileId] = useState<string>('');
 
   const {
     editor,
@@ -230,6 +239,14 @@ export default function WorkflowsPage() {
     () => scopedWorkflows.find((wf) => wf.id === selectedWorkflowId) ?? null,
     [selectedWorkflowId, scopedWorkflows]
   );
+  useEffect(() => {
+    if (!selectedWorkflow) {
+      setSelectedRuntimeProfileId('');
+      return;
+    }
+    const profileId = selectedWorkflow.metadata?.runtimeModelProfileId ?? '';
+    setSelectedRuntimeProfileId(profileId);
+  }, [selectedWorkflow]);
   const filteredWorkflows = useMemo(
     () =>
       scopedWorkflows.filter((workflow) =>
@@ -555,7 +572,7 @@ export default function WorkflowsPage() {
                 <Button
                   size="small"
                   variant="contained"
-                  onClick={() => saveWorkflow({ ...editor, designType, runtimeKind: selectedRuntimeKind }, designValidationErrors)}
+                  onClick={() => saveWorkflow({ ...editor, designType, runtimeKind: selectedRuntimeKind, runtimeModelProfileId: selectedRuntimeProfileId || null }, designValidationErrors)}
                   disabled={saving || !editor.id}
                   startIcon={<Iconify icon="mdi:content-save-outline" />}
                 >
@@ -564,7 +581,7 @@ export default function WorkflowsPage() {
                 <Button
                   size="small"
                   variant="outlined"
-                  onClick={() => publishWorkflow(editor.id, hasSelection, designValidationErrors)}
+                  onClick={() => publishWorkflow(editor.id, hasSelection, designValidationErrors, { definitionJson: editor.definitionJson, runtimeKind: selectedRuntimeKind, triggerEventName: editor.triggerEventName })}
                   disabled={!hasSelection || designValidationErrors.length > 0}
                   startIcon={<Iconify icon="mdi:cloud-upload-outline" />}
                 >
@@ -595,6 +612,21 @@ export default function WorkflowsPage() {
                 size="small"
                 sx={{ flex: 1, minWidth: 200 }}
               />
+                <TextField
+                  label="Perfil de modelos runtime"
+                  select
+                  value={selectedRuntimeProfileId}
+                  onChange={(e) => setSelectedRuntimeProfileId(e.target.value)}
+                  size="small"
+                  sx={{ minWidth: 260 }}
+                >
+                  <MenuItem value="">Default del runtime</MenuItem>
+                  {scopedRuntimeProfiles.map((profile: any) => (
+                    <MenuItem key={profile.id} value={profile.id}>
+                      {profile.name} ({profile.id})
+                    </MenuItem>
+                  ))}
+                </TextField>
                 <TextField
                   label="Que activa este flujo"
                   select

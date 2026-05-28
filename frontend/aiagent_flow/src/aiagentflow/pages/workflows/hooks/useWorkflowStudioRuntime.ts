@@ -34,6 +34,43 @@ export function useWorkflowStudioRuntime(tenantId: string, metricsWindow: '24h' 
   const availableChannels = useAppSelector((state) => state.workflowRuntime.availableChannels);
   const integrations = useAppSelector((state) => state.workflowRuntime.integrations);
   const connectTemplates = useAppSelector((state) => state.workflowRuntime.connectTemplates);
+  const runtimeProfiles = useAppSelector((state) => state.workflowRuntime.runtimeProfiles);
+
+  const validateRuntimeCompatibility = (
+    workflow: { definitionJson: string; runtimeKind?: string; triggerEventName?: string }
+  ): string | null => {
+    const runtime = (workflow.runtimeKind ?? 'Text').toLowerCase();
+    const trigger = (workflow.triggerEventName ?? '').toLowerCase();
+    if (trigger.includes('call.') && runtime !== 'voice') {
+      return "El flujo usa evento de llamada y debe usar runtime 'Voice'.";
+    }
+    if ((trigger.includes('realtime') || trigger.includes('video')) && runtime !== 'multimodalrealtime') {
+      return "El flujo usa evento realtime/video y debe usar runtime 'MultimodalRealtime'.";
+    }
+    if (trigger.includes('message.') && runtime !== 'text') {
+      return "El flujo usa evento de mensaje y debe usar runtime 'Text'.";
+    }
+
+    try {
+      const parsed = JSON.parse(workflow.definitionJson || '{}');
+      const nodes = Array.isArray(parsed?.activities) ? parsed.activities : [];
+      const aiNodes = nodes.filter((n: any) => String(n?.type || '').toLowerCase() === 'ai.agent');
+      for (const node of aiNodes) {
+        const agentId = node?.config?.agentId || node?.aiAgent?.agentId;
+        if (!agentId) continue;
+        const agent = (availableAgents || []).find((a: any) => a.id === agentId);
+        if (!agent) continue;
+        const agentRuntime = String(agent.runtimeKind ?? 'Text').toLowerCase();
+        if (agentRuntime !== runtime) {
+          return `El agente '${agent.name}' usa runtime '${agent.runtimeKind}' y no coincide con el runtime del flujo '${workflow.runtimeKind ?? 'Text'}'.`;
+        }
+      }
+    } catch {
+      return 'El JSON del flujo no es válido para validar compatibilidad.';
+    }
+
+    return null;
+  };
 
   const loadAll = useCallback(async () => {
     await dispatch(fetchWorkflowRuntimeData({ tenantId, metricsWindow }));
@@ -51,10 +88,16 @@ export function useWorkflowStudioRuntime(tenantId: string, metricsWindow: '24h' 
       definitionJson: string;
       designType?: 'workflow' | 'tool';
       runtimeKind?: string;
+      runtimeModelProfileId?: string | null;
     },
     _validationErrors: string[]
   ) => {
     if (!workflow.id || !workflow.name.trim()) return;
+    const runtimeError = validateRuntimeCompatibility(workflow);
+    if (runtimeError) {
+      dispatch(setWorkflowRuntimeError(runtimeError));
+      return;
+    }
     const result = await dispatch(saveWorkflowDraft({ tenantId, workflow }));
     if (saveWorkflowDraft.fulfilled.match(result)) {
       dispatch(markSaved());
@@ -65,12 +108,20 @@ export function useWorkflowStudioRuntime(tenantId: string, metricsWindow: '24h' 
   const publishWorkflow = async (
     workflowId: string,
     hasSelection: boolean,
-    validationErrors: string[]
+    validationErrors: string[],
+    workflow?: { definitionJson: string; runtimeKind?: string; triggerEventName?: string }
   ) => {
     if (!hasSelection) return;
     if (validationErrors.length > 0) {
       dispatch(setWorkflowRuntimeError(`Validation failed: ${validationErrors[0]}`));
       return;
+    }
+    if (workflow) {
+      const runtimeError = validateRuntimeCompatibility(workflow);
+      if (runtimeError) {
+        dispatch(setWorkflowRuntimeError(runtimeError));
+        return;
+      }
     }
     const result = await dispatch(publishWorkflowDefinition({ tenantId, workflowId }));
     if (publishWorkflowDefinition.fulfilled.match(result)) {
@@ -115,6 +166,7 @@ export function useWorkflowStudioRuntime(tenantId: string, metricsWindow: '24h' 
     availableChannels,
     integrations,
     connectTemplates,
+    runtimeProfiles,
     setError: (value: string | null) => dispatch(setWorkflowRuntimeError(value)),
     setStepsOpen: (value: boolean) => dispatch(setWorkflowStepsOpen(value)),
     loadAll,

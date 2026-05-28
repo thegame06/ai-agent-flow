@@ -14,6 +14,7 @@ import TableBody from '@mui/material/TableBody';
 import TableCell from '@mui/material/TableCell';
 import TableHead from '@mui/material/TableHead';
 import TextField from '@mui/material/TextField';
+import MenuItem from '@mui/material/MenuItem';
 import Typography from '@mui/material/Typography';
 import { alpha, useTheme } from '@mui/material/styles';
 import LinearProgress from '@mui/material/LinearProgress';
@@ -201,8 +202,44 @@ export default function AuditPage() {
   const [limit, setLimit] = useState(150);
   const [fromAt, setFromAt] = useState('');
   const [toAt, setToAt] = useState('');
+  const [runtimeFilter, setRuntimeFilter] = useState<'all' | 'Text' | 'Voice' | 'MultimodalRealtime'>('all');
+  const [modelRoleFilter, setModelRoleFilter] = useState<'all' | 'brain' | 'stt' | 'tts'>('all');
   const [correlations, setCorrelations] = useState<any[]>([]);
   const [journey, setJourney] = useState<JourneyResponse | null>(null);
+
+  const parseEventJson = (raw: string) => {
+    try {
+      return JSON.parse(raw || '{}') as Record<string, any>;
+    } catch {
+      return {} as Record<string, any>;
+    }
+  };
+
+  const matchesRuntime = (entry: AuditLogEntry) => {
+    if (runtimeFilter === 'all') return true;
+    const payload = parseEventJson(entry.eventJson);
+    const eventRuntime =
+      payload?.runtimeKind
+      ?? payload?.metadata?.runtimeKind
+      ?? payload?.context?.runtimeKind
+      ?? '';
+    return String(eventRuntime).toLowerCase() === runtimeFilter.toLowerCase();
+  };
+
+  const matchesRole = (entry: AuditLogEntry) => {
+    if (modelRoleFilter === 'all') return true;
+    const payload = parseEventJson(entry.eventJson);
+    const asText = JSON.stringify(payload).toLowerCase();
+    if (modelRoleFilter === 'brain') return asText.includes('reasoning') || asText.includes('brain');
+    if (modelRoleFilter === 'stt') return asText.includes('stt') || asText.includes('speech');
+    if (modelRoleFilter === 'tts') return asText.includes('tts') || asText.includes('synth');
+    return true;
+  };
+
+  const filteredLogs = useMemo(
+    () => logs.filter((entry) => matchesRuntime(entry) && matchesRole(entry)),
+    [logs, runtimeFilter, modelRoleFilter]
+  );
 
   const fetchJourney = useCallback(async (targetCorrelationId: string) => {
     if (!targetCorrelationId.trim()) {
@@ -288,13 +325,13 @@ export default function AuditPage() {
   }, [fetchLogs]);
 
   const issueCount = useMemo(
-    () => logs.filter((e) => e.severity === 'critical' || e.severity === 'error').length,
-    [logs]
+    () => filteredLogs.filter((e) => e.severity === 'critical' || e.severity === 'error').length,
+    [filteredLogs]
   );
 
   const warningsCount = useMemo(
-    () => logs.filter((e) => e.severity === 'warning').length,
-    [logs]
+    () => filteredLogs.filter((e) => e.severity === 'warning').length,
+    [filteredLogs]
   );
 
   const summary = journey?.summary;
@@ -356,6 +393,30 @@ export default function AuditPage() {
             InputLabelProps={{ shrink: true }}
             sx={{ minWidth: 220 }}
           />
+          <TextField
+            label="Runtime"
+            select
+            value={runtimeFilter}
+            onChange={(e) => setRuntimeFilter(e.target.value as any)}
+            sx={{ minWidth: 180 }}
+          >
+            <MenuItem value="all">Todos</MenuItem>
+            <MenuItem value="Text">Text</MenuItem>
+            <MenuItem value="Voice">Voice</MenuItem>
+            <MenuItem value="MultimodalRealtime">MultimodalRealtime</MenuItem>
+          </TextField>
+          <TextField
+            label="Rol modelo"
+            select
+            value={modelRoleFilter}
+            onChange={(e) => setModelRoleFilter(e.target.value as any)}
+            sx={{ minWidth: 170 }}
+          >
+            <MenuItem value="all">Todos</MenuItem>
+            <MenuItem value="brain">Brain</MenuItem>
+            <MenuItem value="stt">STT</MenuItem>
+            <MenuItem value="tts">TTS</MenuItem>
+          </TextField>
           <Button variant="contained" onClick={() => void fetchLogs()}>
             Aplicar
           </Button>
@@ -368,7 +429,7 @@ export default function AuditPage() {
         </Stack>
 
         <Stack direction="row" spacing={2} sx={{ mb: 3, flexWrap: 'wrap' }} useFlexGap>
-          <Chip label={`${logs.length} eventos`} color="primary" variant="soft" />
+          <Chip label={`${filteredLogs.length} eventos`} color="primary" variant="soft" />
           <Chip label={`${issueCount} errores`} color="error" variant="soft" />
           <Chip label={`${warningsCount} alertas`} color="warning" variant="soft" />
         </Stack>
@@ -627,7 +688,7 @@ export default function AuditPage() {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {logs.map((entry) => (
+                  {filteredLogs.map((entry) => (
                     <TableRow key={entry.id} hover>
                       <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>
                         {new Date(entry.occurredAt).toLocaleString()}

@@ -67,8 +67,24 @@ interface ToolOption {
   description: string;
 }
 
+interface RuntimeModelProfileOption {
+  id: string;
+  name: string;
+  runtimeKind: 'Text' | 'Voice' | 'MultimodalRealtime';
+  isDefault: boolean;
+}
 
-function TabGeneral({ draft, dispatch }: { draft: any; dispatch: any }) {
+function TabGeneral({
+  draft,
+  dispatch,
+  runtimeProfiles,
+  runtimeProfilesLoading,
+}: {
+  draft: any;
+  dispatch: any;
+  runtimeProfiles: RuntimeModelProfileOption[];
+  runtimeProfilesLoading: boolean;
+}) {
   return (
     <Stack spacing={3}>
       <TextField
@@ -119,6 +135,31 @@ function TabGeneral({ draft, dispatch }: { draft: any; dispatch: any }) {
           </Select>
         </FormControl>
       </Stack>
+      <FormControl fullWidth>
+        <InputLabel>Perfil de modelos por runtime</InputLabel>
+        <Select
+          value={draft.runtimeModelProfileId || ''}
+          label="Perfil de modelos por runtime"
+          onChange={(e) => dispatch(updateField({ field: 'runtimeModelProfileId', value: e.target.value }))}
+        >
+          <MenuItem value="">Default del runtime ({draft.runtimeKind})</MenuItem>
+          {runtimeProfiles.map((profile) => (
+            <MenuItem key={profile.id} value={profile.id}>
+              {profile.name}{profile.isDefault ? ' (Default)' : ''}
+            </MenuItem>
+          ))}
+        </Select>
+        {runtimeProfilesLoading && (
+          <Typography variant="caption" color="text.secondary">
+            Cargando perfiles...
+          </Typography>
+        )}
+      </FormControl>
+      {!runtimeProfilesLoading && runtimeProfiles.length === 0 && (
+        <Alert severity="info" variant="outlined">
+          No hay perfiles configurados para este runtime. Se usará el default global del runtime.
+        </Alert>
+      )}
       <TextField
         fullWidth
         multiline
@@ -569,7 +610,9 @@ export default function AgentDesignerPage({ embedded = false, embeddedAgentId }:
   const resolvedAgentId = embeddedAgentId ?? agentId;
   const [availableModels, setAvailableModels] = useState<ModelOption[]>([]);
   const [availableTools, setAvailableTools] = useState<ToolOption[]>([]);
+  const [runtimeProfiles, setRuntimeProfiles] = useState<RuntimeModelProfileOption[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(false);
+  const [runtimeProfilesLoading, setRuntimeProfilesLoading] = useState(false);
   const [agentLoading, setAgentLoading] = useState(false);
 
   // Load agent when editing an existing one
@@ -620,6 +663,44 @@ export default function AgentDesignerPage({ embedded = false, embeddedAgentId }:
     loadCatalog();
   }, []);
 
+  useEffect(() => {
+    const loadRuntimeProfiles = async () => {
+      setRuntimeProfilesLoading(true);
+      try {
+        const response = await axios.get(
+          `/api/v1/tenants/${tenantId}/runtime-model-profiles`,
+          { params: { runtimeKind: draft.runtimeKind } }
+        );
+        if (Array.isArray(response.data)) {
+          setRuntimeProfiles(
+            response.data.map((item: any) => ({
+              id: item.id,
+              name: item.name,
+              runtimeKind: item.runtimeKind,
+              isDefault: Boolean(item.isDefault),
+            }))
+          );
+        } else {
+          setRuntimeProfiles([]);
+        }
+      } catch {
+        setRuntimeProfiles([]);
+      } finally {
+        setRuntimeProfilesLoading(false);
+      }
+    };
+
+    loadRuntimeProfiles();
+  }, [tenantId, draft.runtimeKind]);
+
+  useEffect(() => {
+    if (!draft.runtimeModelProfileId) return;
+    const stillValid = runtimeProfiles.some((p) => p.id === draft.runtimeModelProfileId);
+    if (!stillValid) {
+      dispatch(updateField({ field: 'runtimeModelProfileId', value: '' }));
+    }
+  }, [draft.runtimeModelProfileId, runtimeProfiles, dispatch]);
+
   const handleSave = () => {
     dispatch(saveAgent({ draft, tenantId }));
   };
@@ -633,7 +714,14 @@ export default function AgentDesignerPage({ embedded = false, embeddedAgentId }:
   const renderTabContent = () => {
     switch (activeTab) {
       case 0:
-        return <TabGeneral draft={draft} dispatch={dispatch} />;
+        return (
+          <TabGeneral
+            draft={draft}
+            dispatch={dispatch}
+            runtimeProfiles={runtimeProfiles}
+            runtimeProfilesLoading={runtimeProfilesLoading}
+          />
+        );
       case 1:
         return (
           <Stack spacing={2}>

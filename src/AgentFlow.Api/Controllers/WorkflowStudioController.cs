@@ -1,6 +1,8 @@
 using AgentFlow.Abstractions.Workflow;
+using AgentFlow.Abstractions;
 using AgentFlow.Api.Connect;
 using AgentFlow.Api.Workflow;
+using AgentFlow.Api.AuthProfiles;
 using AgentFlow.Domain.Aggregates;
 using AgentFlow.Domain.Repositories;
 using AgentFlow.Extensions;
@@ -26,6 +28,7 @@ public sealed class WorkflowStudioController : ControllerBase
     private readonly ITenantContextAccessor _tenantContext;
     private readonly IAgentDefinitionRepository _agentRepo;
     private readonly IIntentRoutingStore _intentRoutingStore;
+    private readonly IRuntimeModelProfileStore _runtimeProfiles;
 
     public WorkflowStudioController(
         IWorkflowStudioStore store,
@@ -37,7 +40,8 @@ public sealed class WorkflowStudioController : ControllerBase
         IExtensionRegistry extensionRegistry,
         ITenantContextAccessor tenantContext,
         IAgentDefinitionRepository agentRepo,
-        IIntentRoutingStore intentRoutingStore)
+        IIntentRoutingStore intentRoutingStore,
+        IRuntimeModelProfileStore runtimeProfiles)
     {
         _store = store;
         _triggerService = triggerService;
@@ -49,6 +53,7 @@ public sealed class WorkflowStudioController : ControllerBase
         _tenantContext = tenantContext;
         _agentRepo = agentRepo;
         _intentRoutingStore = intentRoutingStore;
+        _runtimeProfiles = runtimeProfiles;
     }
 
     [HttpGet("catalog/activities")]
@@ -252,6 +257,22 @@ public sealed class WorkflowStudioController : ControllerBase
 
         var existing = await _store.GetDefinitionAsync(tenantId, workflowId, ct);
         var version = existing is null ? 1 : Math.Max(existing.Version, request.Version ?? existing.Version);
+        var requestedRuntime = string.IsNullOrWhiteSpace(request.RuntimeKind)
+            ? existing?.RuntimeKind ?? "Text"
+            : request.RuntimeKind;
+        if (!RuntimeCompatibilityPolicy.TryParseRuntimeKind(requestedRuntime, out var runtimeKind, out var normalizedRuntime))
+            return BadRequest(new { message = $"RuntimeKind inválido: '{requestedRuntime}'. Valores permitidos: Text, Voice, MultimodalRealtime." });
+
+        if (!RuntimeCompatibilityPolicy.IsTriggerEventCompatible(runtimeKind, request.TriggerEventName))
+            return BadRequest(new { message = RuntimeCompatibilityPolicy.BuildTriggerError(runtimeKind, request.TriggerEventName) });
+
+        var agentValidationError = await ValidateAiAgentNodesAsync(tenantId, request.DefinitionJson, runtimeKind, ct);
+        if (agentValidationError is not null)
+            return BadRequest(new { message = agentValidationError });
+
+        var profileValidationError = ValidateRuntimeProfileMetadata(tenantId, normalizedRuntime, request.Metadata);
+        if (profileValidationError is not null)
+            return BadRequest(new { message = profileValidationError });
 
         var saved = await _store.UpsertDefinitionAsync(new WorkflowDefinitionContract
         {
@@ -259,9 +280,7 @@ public sealed class WorkflowStudioController : ControllerBase
             TenantId = tenantId,
             Name = request.Name,
             TriggerEventName = request.TriggerEventName,
-            RuntimeKind = string.IsNullOrWhiteSpace(request.RuntimeKind)
-                ? existing?.RuntimeKind ?? "Text"
-                : request.RuntimeKind,
+            RuntimeKind = normalizedRuntime,
             Version = version,
             Status = request.Status ?? existing?.Status ?? WorkflowDefinitionStatus.Draft,
             DefinitionJson = request.DefinitionJson,
@@ -297,8 +316,14 @@ public sealed class WorkflowStudioController : ControllerBase
             return BadRequest(new { message = ex.Message });
         }
 
-        // Validate that all ai.agent nodes reference custom (non-system) agents
-        var agentValidationError = await ValidateAiAgentNodesAsync(tenantId, existing.DefinitionJson, ct);
+        if (!RuntimeCompatibilityPolicy.TryParseRuntimeKind(existing.RuntimeKind, out var runtimeKind, out _))
+            return BadRequest(new { message = $"RuntimeKind inválido en workflow: '{existing.RuntimeKind}'." });
+
+        if (!RuntimeCompatibilityPolicy.IsTriggerEventCompatible(runtimeKind, existing.TriggerEventName))
+            return BadRequest(new { message = RuntimeCompatibilityPolicy.BuildTriggerError(runtimeKind, existing.TriggerEventName) });
+
+        // Validate that all ai.agent nodes reference custom (non-system) agents and runtime-compatible agents
+        var agentValidationError = await ValidateAiAgentNodesAsync(tenantId, existing.DefinitionJson, runtimeKind, ct);
         if (agentValidationError is not null)
             return BadRequest(new { message = agentValidationError });
 
@@ -426,7 +451,7 @@ public sealed class WorkflowStudioController : ControllerBase
     /// reference agents that exist, are published, and are NOT system agents.
     /// Returns an error message string if invalid, null if OK.
     /// </summary>
-    private async Task<string?> ValidateAiAgentNodesAsync(string tenantId, string definitionJson, CancellationToken ct)
+    private async Task<string?> ValidateAiAgentNodesAsync(string tenantId, string definitionJson, AgentRuntimeKind workflowRuntimeKind, CancellationToken ct)
     {
         JsonDocument doc;
         try { doc = JsonDocument.Parse(definitionJson); }
@@ -468,12 +493,19 @@ public sealed class WorkflowStudioController : ControllerBase
             foreach (var agentId in agentIds)
             {
                 if (!publishedById.TryGetValue(agentId, out var agent))
-                    return $"Agent '{agentId}' referenced in an ai.agent node was not found or is not published in this tenant.";
+                    return $"El agente '{agentId}' referenciado en un nodo ai.agent no existe o no está publicado en este tenant.";
 
                 if (agent.IsSystemAgent)
-                    return $"Agent '{agent.Name}' (id: {agentId}) is a system-managed agent and cannot be assigned to a workflow node. " +
-                           "Only custom agents created by your team can be used as WorkflowBrain. " +
-                           "Create a new agent or clone the Workflow Brain Default template.";
+                    return $"El agente '{agent.Name}' (id: {agentId}) es administrado por el sistema y no puede asignarse a un nodo de workflow. " +
+                           "Solo agentes personalizados de tu equipo pueden usarse como WorkflowBrain. " +
+                           "Crea un agente nuevo o clona la plantilla Workflow Brain Default.";
+
+                if (!RuntimeCompatibilityPolicy.IsAgentCompatible(workflowRuntimeKind, agent.Session.RuntimeKind))
+                    return RuntimeCompatibilityPolicy.BuildAgentRuntimeError(
+                        agent.Name,
+                        agentId,
+                        workflowRuntimeKind,
+                        agent.Session.RuntimeKind);
             }
         }
 
@@ -652,6 +684,23 @@ public sealed class WorkflowStudioController : ControllerBase
             cleaned = cleaned.Replace("__", "_", StringComparison.Ordinal);
 
         return cleaned.Trim('_');
+    }
+
+    private string? ValidateRuntimeProfileMetadata(string tenantId, string runtimeKind, IReadOnlyDictionary<string, string>? metadata)
+    {
+        if (metadata is null)
+            return null;
+        if (!metadata.TryGetValue("runtimeModelProfileId", out var profileId) || string.IsNullOrWhiteSpace(profileId))
+            return null;
+
+        var profile = _runtimeProfiles.Get(tenantId, profileId.Trim());
+        if (profile is null)
+            return $"El perfil runtime '{profileId}' no existe en este tenant.";
+
+        if (!string.Equals(profile.RuntimeKind, runtimeKind, StringComparison.OrdinalIgnoreCase))
+            return $"El perfil runtime '{profileId}' usa runtime '{profile.RuntimeKind}' y no coincide con '{runtimeKind}'.";
+
+        return null;
     }
 }
 

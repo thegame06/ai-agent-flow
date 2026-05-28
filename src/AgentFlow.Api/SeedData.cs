@@ -5,14 +5,135 @@ using AgentFlow.Domain.Repositories;
 using AgentFlow.Abstractions;
 using AgentFlow.Abstractions.Workflow;
 using AgentFlow.Api.Workflow;
+using AgentFlow.Api.AuthProfiles;
 using AgentFlow.Security;
 using Microsoft.Extensions.Configuration;
+using MongoDB.Driver;
 using System.Text.Json;
 
 namespace AgentFlow.Api;
 
 public static class SeedData
 {
+    public static async Task SeedRuntimeModelProfilesAsync(IServiceProvider services)
+    {
+        using var scope = services.CreateScope();
+        var database = scope.ServiceProvider.GetRequiredService<IMongoDatabase>();
+        var modelCatalog = scope.ServiceProvider.GetRequiredService<IModelCatalogStore>();
+        const string tenantId = "tenant-1";
+        const string actor = "platform@agentflow.dev";
+
+        // 1) Base model catalog entries used by runtime profiles.
+        modelCatalog.Upsert(new ModelCatalogEntry
+        {
+            Id = "seed-model-gpt-4o-mini",
+            TenantId = tenantId,
+            ModelId = "gpt-4o-mini",
+            ProviderId = "openai",
+            DisplayName = "GPT-4o mini",
+            CostPer1KTokens = 0.005,
+            MaxContextTokens = 128000,
+            Tier = "Primary",
+            UpdatedAt = DateTimeOffset.UtcNow
+        });
+        modelCatalog.Upsert(new ModelCatalogEntry
+        {
+            Id = "seed-model-nova-3",
+            TenantId = tenantId,
+            ModelId = "nova-3",
+            ProviderId = "deepgram",
+            DisplayName = "Deepgram Nova-3",
+            CostPer1KTokens = 0.003,
+            MaxContextTokens = 0,
+            Tier = "Primary",
+            UpdatedAt = DateTimeOffset.UtcNow
+        });
+        modelCatalog.Upsert(new ModelCatalogEntry
+        {
+            Id = "seed-model-eleven-turbo-v2-5",
+            TenantId = tenantId,
+            ModelId = "eleven_turbo_v2_5",
+            ProviderId = "11labs",
+            DisplayName = "ElevenLabs Turbo v2.5",
+            CostPer1KTokens = 0.004,
+            MaxContextTokens = 0,
+            Tier = "Primary",
+            UpdatedAt = DateTimeOffset.UtcNow
+        });
+
+        // 2) Runtime profiles by modality and role segregation (brain / stt / tts).
+        var profiles = database.GetCollection<RuntimeModelProfileDocument>("runtime_model_profiles");
+        await UpsertRuntimeProfileAsync(profiles, new RuntimeModelProfileDocument
+        {
+            Id = "runtime-text-default-v1",
+            TenantId = tenantId,
+            Name = "Runtime Text Default v1",
+            RuntimeKind = "Text",
+            Roles = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["brain"] = "gpt-4o-mini"
+            },
+            Metadata = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["seed"] = "true",
+                ["owner"] = actor
+            },
+            UpdatedBy = actor,
+            UpdatedAt = DateTimeOffset.UtcNow
+        });
+
+        await UpsertRuntimeProfileAsync(profiles, new RuntimeModelProfileDocument
+        {
+            Id = "runtime-voice-default-v1",
+            TenantId = tenantId,
+            Name = "Runtime Voice Default v1",
+            RuntimeKind = "Voice",
+            Roles = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["brain"] = "gpt-4o-mini",
+                ["stt"] = "nova-3",
+                ["tts"] = "eleven_turbo_v2_5"
+            },
+            Metadata = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["seed"] = "true",
+                ["owner"] = actor
+            },
+            UpdatedBy = actor,
+            UpdatedAt = DateTimeOffset.UtcNow
+        });
+
+        await UpsertRuntimeProfileAsync(profiles, new RuntimeModelProfileDocument
+        {
+            Id = "runtime-multimodal-default-v1",
+            TenantId = tenantId,
+            Name = "Runtime Multimodal Default v1",
+            RuntimeKind = "MultimodalRealtime",
+            Roles = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["brain"] = "gpt-4o-mini",
+                ["stt"] = "nova-3",
+                ["tts"] = "eleven_turbo_v2_5"
+            },
+            Metadata = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["seed"] = "true",
+                ["owner"] = actor
+            },
+            UpdatedBy = actor,
+            UpdatedAt = DateTimeOffset.UtcNow
+        });
+    }
+
+    private static async Task UpsertRuntimeProfileAsync(
+        IMongoCollection<RuntimeModelProfileDocument> profiles,
+        RuntimeModelProfileDocument profile)
+    {
+        var filter = Builders<RuntimeModelProfileDocument>.Filter.Eq(x => x.Id, profile.Id)
+            & Builders<RuntimeModelProfileDocument>.Filter.Eq(x => x.TenantId, profile.TenantId);
+        await profiles.ReplaceOneAsync(filter, profile, new ReplaceOptions { IsUpsert = true });
+    }
+
     public static async Task SeedDemoDataAsync(IServiceProvider services)
     {
         using var scope = services.CreateScope();
@@ -1300,5 +1421,17 @@ Reglas:
                 UpdatedAt = DateTimeOffset.UtcNow
             }, CancellationToken.None);
         }
+    }
+
+    private sealed class RuntimeModelProfileDocument
+    {
+        public string Id { get; set; } = string.Empty;
+        public string TenantId { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+        public string RuntimeKind { get; set; } = "Text";
+        public Dictionary<string, string> Roles { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+        public Dictionary<string, string> Metadata { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+        public string UpdatedBy { get; set; } = string.Empty;
+        public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
     }
 }

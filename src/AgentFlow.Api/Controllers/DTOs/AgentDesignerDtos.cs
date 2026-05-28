@@ -74,6 +74,7 @@ public sealed record MemoryConfigDto
 public sealed record SessionConfigDto
 {
     public string RuntimeKind { get; init; } = "Text";
+    public string? RuntimeModelProfileId { get; init; }
     public bool EnableThreads { get; init; } = false;
     public int DefaultThreadTtlHours { get; init; } = 168; // 7 days default
     public int MaxTurnsPerThread { get; init; } = 100;

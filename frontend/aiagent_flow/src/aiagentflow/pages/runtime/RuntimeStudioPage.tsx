@@ -8,6 +8,7 @@ import { CONFIG } from 'src/global-config';
 import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
 
 import { RuntimeEntityCards } from './components/RuntimeEntityCards';
+import { RuntimeModelProfilesPanel } from './components/RuntimeModelProfilesPanel';
 import { RuntimeWorkspaceShell } from './components/RuntimeWorkspaceShell';
 
 const runtimeMap: Record<string, { label: 'Text' | 'Voice' | 'MultimodalRealtime'; slug: string }> = {
@@ -69,6 +70,7 @@ export default function RuntimeStudioPage() {
         ]}
       >
         <RuntimeEntityCards items={items} />
+        <RuntimeModelProfilesPanel tenantId={tenantId} runtimeKind={runtime.label} />
       </RuntimeWorkspaceShell>
     </>
   );

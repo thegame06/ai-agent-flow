@@ -3,11 +3,20 @@ export type WorkflowDefinition = {
   name: string;
   triggerEventName: string;
   runtimeKind?: string;
+  metadata?: Record<string, string>;
   version: number;
   status: 'Draft' | 'Published' | 'Archived' | string;
   definitionJson: string;
   updatedAt: string;
   updatedBy: string;
+};
+
+export type RuntimeModelProfileOption = {
+  id: string;
+  name: string;
+  runtimeKind: string;
+  roles: Record<string, string>;
+  isDefault?: boolean;
 };
 
 export type WorkflowExecution = {
@@ -188,6 +197,7 @@ export type ConnectTemplateOption = {
 export type AgentOption = {
   id: string;
   name: string;
+  runtimeKind?: string;
   description?: string;
   status: string;
   version?: string | number;
