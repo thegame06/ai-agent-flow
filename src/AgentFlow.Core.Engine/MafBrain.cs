@@ -248,9 +248,9 @@ public sealed class MafBrain : IAgentBrain
             {
                 return new ThinkResult
                 {
-                    Decision = ThinkDecision.ProvideFinalAnswer,
-                    Rationale = "MAF returned a response without a valid decision; treating it as a final answer.",
-                    FinalAnswer = json,
+                    Decision = ThinkDecision.Checkpoint,
+                    Rationale = "MAF returned a response without a valid decision; routing to checkpoint.",
+                    FinalAnswer = null,
                     TokensUsed = 0
                 };
             }
@@ -273,21 +273,21 @@ public sealed class MafBrain : IAgentBrain
             {
                 return new ThinkResult
                 {
-                    Decision = ThinkDecision.ProvideFinalAnswer,
-                    Rationale = "MAF returned non-JSON content; treating it as a final answer instead of pausing for human review.",
-                    FinalAnswer = json,
+                    Decision = ThinkDecision.Checkpoint,
+                    Rationale = "MAF returned non-JSON content; routing to checkpoint.",
+                    FinalAnswer = null,
                     TokensUsed = 0
                 };
             }
 
             return new ThinkResult
             {
-                Decision = ThinkDecision.ProvideFinalAnswer,
+                Decision = ThinkDecision.Checkpoint,
                 Rationale = BrainContractValidator.SerializeContractErrors(
                     "MAF",
                     "ThinkResult",
                     [$"Malformed JSON: {ex.Message}"]),
-                FinalAnswer = "No pude procesar la respuesta del modelo porque vino vacia o mal formada.",
+                FinalAnswer = null,
                 TokensUsed = 0
             };
         }

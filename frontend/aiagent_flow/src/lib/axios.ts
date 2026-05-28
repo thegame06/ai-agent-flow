@@ -159,6 +159,30 @@ export const endpoints = {
       list: (tenantId: string) => `/api/v1/tenants/${tenantId}/runtime-model-profiles`,
       byId: (tenantId: string, profileId: string) => `/api/v1/tenants/${tenantId}/runtime-model-profiles/${profileId}`,
     },
+    testStudio: {
+      listSessions: (tenantId: string, runtimeKind: string) =>
+        `/api/v1/tenants/${tenantId}/test-studio/${encodeURIComponent(runtimeKind)}/sessions`,
+      createSession: (tenantId: string, runtimeKind: string) =>
+        `/api/v1/tenants/${tenantId}/test-studio/${encodeURIComponent(runtimeKind)}/sessions`,
+      sendMessage: (tenantId: string, runtimeKind: string, sessionId: string) =>
+        `/api/v1/tenants/${tenantId}/test-studio/${encodeURIComponent(runtimeKind)}/sessions/${encodeURIComponent(sessionId)}/messages`,
+      timeline: (tenantId: string, runtimeKind: string, sessionId: string) =>
+        `/api/v1/tenants/${tenantId}/test-studio/${encodeURIComponent(runtimeKind)}/sessions/${encodeURIComponent(sessionId)}/timeline`,
+      transcript: (tenantId: string, runtimeKind: string, sessionId: string) =>
+        `/api/v1/tenants/${tenantId}/test-studio/${encodeURIComponent(runtimeKind)}/sessions/${encodeURIComponent(sessionId)}/transcript`,
+      metrics: (tenantId: string, runtimeKind: string) =>
+        `/api/v1/tenants/${tenantId}/test-studio/${encodeURIComponent(runtimeKind)}/metrics`,
+      close: (tenantId: string, runtimeKind: string, sessionId: string) =>
+        `/api/v1/tenants/${tenantId}/test-studio/${encodeURIComponent(runtimeKind)}/sessions/${encodeURIComponent(sessionId)}/close`,
+      updateCorrelation: (tenantId: string, runtimeKind: string, sessionId: string) =>
+        `/api/v1/tenants/${tenantId}/test-studio/${encodeURIComponent(runtimeKind)}/sessions/${encodeURIComponent(sessionId)}/correlation`,
+      registerAttachment: (tenantId: string, runtimeKind: string, sessionId: string) =>
+        `/api/v1/tenants/${tenantId}/test-studio/${encodeURIComponent(runtimeKind)}/sessions/${encodeURIComponent(sessionId)}/attachments`,
+      uploadAttachment: (tenantId: string, runtimeKind: string, sessionId: string) =>
+        `/api/v1/tenants/${tenantId}/test-studio/${encodeURIComponent(runtimeKind)}/sessions/${encodeURIComponent(sessionId)}/attachments/upload`,
+      downloadAttachment: (tenantId: string, runtimeKind: string, sessionId: string, attachmentRef: string) =>
+        `/api/v1/tenants/${tenantId}/test-studio/${encodeURIComponent(runtimeKind)}/sessions/${encodeURIComponent(sessionId)}/attachments/${encodeURIComponent(attachmentRef)}/download`,
+    },
     // Policies
     policies: {
       list: (tenantId: string) => `/api/v1/tenants/${tenantId}/policies`,

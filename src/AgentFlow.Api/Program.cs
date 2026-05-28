@@ -1,4 +1,5 @@
 using AgentFlow.Api;
+using AgentFlow.Api.TestStudio;
 using AgentFlow.Api.Middleware;
 using AgentFlow.Security;
 using Microsoft.AspNetCore.Mvc;
@@ -39,6 +40,7 @@ builder.Services.AddProblemDetails();
 
 // AgentFlow core services
 builder.Services.AddAgentFlow(builder.Configuration);
+builder.Services.AddSingleton<ITestStudioSessionStore, MongoTestStudioSessionStore>();
 
 builder.Services.AddCors(opt =>
 {

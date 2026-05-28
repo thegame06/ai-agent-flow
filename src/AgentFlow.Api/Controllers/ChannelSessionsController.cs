@@ -93,11 +93,9 @@ public sealed class ChannelSessionsController : ControllerBase
         var context = _tenantContext.Current!;
         if (context.TenantId != tenantId && !context.IsPlatformAdmin) return Forbid();
 
-        var session = await _sessionRepo.GetByIdAsync(sessionId, tenantId, ct);
-        if (session == null) return NotFound();
-
         var messageRepo = HttpContext.RequestServices.GetRequiredService<IChannelMessageRepository>();
         var threadRepo = HttpContext.RequestServices.GetService<IConversationThreadRepository>();
+        var session = await _sessionRepo.GetByIdAsync(sessionId, tenantId, ct);
         var paged = Request.Query.ContainsKey("page") || Request.Query.ContainsKey("pageSize");
         if (paged || !string.IsNullOrWhiteSpace(cursor))
         {
@@ -105,10 +103,14 @@ public sealed class ChannelSessionsController : ControllerBase
                 page = cursorPage;
 
             var result = await messageRepo.GetBySessionPagedAsync(sessionId, tenantId, page, pageSize, ct);
+            if (session == null && result.Items.Count == 0)
+                return NotFound();
             var hasMore = ((page + 1) * Math.Clamp(pageSize, 1, 100)) < result.Total;
             return Ok(new PagedResponse<ChannelMessageDto>
             {
-                Items = await BuildUnifiedMessagesAsync(session, result.Items, threadRepo, ct),
+                Items = session is null
+                    ? result.Items.Select(MapMessage).OrderBy(x => x.CreatedAt).ToList()
+                    : await BuildUnifiedMessagesAsync(session, result.Items, threadRepo, ct),
                 Total = result.Total,
                 Page = Math.Max(0, page),
                 PageSize = Math.Clamp(pageSize, 1, 100),
@@ -118,6 +120,10 @@ public sealed class ChannelSessionsController : ControllerBase
         }
 
         var messages = await messageRepo.GetBySessionAsync(sessionId, tenantId, limit, ct);
+        if (session == null && messages.Count == 0)
+            return NotFound();
+        if (session is null)
+            return Ok(messages.Select(MapMessage).OrderBy(x => x.CreatedAt).ToList());
         return Ok(await BuildUnifiedMessagesAsync(session, messages, threadRepo, ct));
     }
 

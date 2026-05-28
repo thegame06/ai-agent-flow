@@ -50,6 +50,12 @@ export default function RuntimeStudioPage() {
         href: `${paths.dashboard.automationNew}?wizard=agentSubflow&${runtimeQuery}`,
         icon: 'mdi:vector-polyline',
       },
+      {
+        title: 'Test Studio',
+        description: 'Prueba sesiones por runtime con timeline y trazabilidad.',
+        href: paths.dashboard.runtimeTestStudio(runtime.slug as 'text' | 'voice' | 'multimodal'),
+        icon: 'mdi:test-tube',
+      },
     ],
     [runtimeQuery]
   );

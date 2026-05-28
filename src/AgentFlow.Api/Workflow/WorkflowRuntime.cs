@@ -593,12 +593,14 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
                 Priority = ExecutionPriority.Normal
             };
 
-            var (result, usedFallback) = await ExecuteAgentWithFallbackAsync(
+            var executionOutcome = await ExecuteAgentWithFallbackAsync(
                 agentExecutor,
                 request,
                 fallbackModel,
                 primaryModel,
                 linked.Token);
+            var result = executionOutcome.Result;
+            var usedFallback = executionOutcome.UsedFallback;
             var estimatedCostUsd = EstimateTokenCostUsd(result.TotalTokensUsed);
             if (maxCostUsd >= 0 && estimatedCostUsd > maxCostUsd)
             {

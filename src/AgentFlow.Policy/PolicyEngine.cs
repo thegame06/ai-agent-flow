@@ -202,7 +202,9 @@ public sealed class CompositePolicyEngine : IPolicyEngine
 
             try
             {
-                var (violated, evidence) = await evaluator.EvaluateAsync(policy, context, ct);
+                var evaluation = await evaluator.EvaluateAsync(policy, context, ct);
+                var violated = evaluation.Violated;
+                var evidence = evaluation.Evidence;
 
                 if (!violated) continue;
 

@@ -15,9 +15,9 @@ internal static class BrainContractValidator
 
         return new ThinkResult
         {
-            Decision = ThinkDecision.ProvideFinalAnswer,
+            Decision = ThinkDecision.Checkpoint,
             Rationale = SerializeContractErrors(brainName, "ThinkResult", errors),
-            FinalAnswer = SerializeContractErrors(brainName, "ThinkResult", errors),
+            FinalAnswer = null,
             TokensUsed = candidate.TokensUsed
         };
     }

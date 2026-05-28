@@ -64,6 +64,8 @@ export const paths = {
     workflows: `${ROOTS.DASHBOARD}/studio/workflows`,
     runtimeStudio: (runtimeKind: 'text' | 'voice' | 'multimodal' = 'text') =>
       `${ROOTS.DASHBOARD}/runtime/${runtimeKind}`,
+    runtimeTestStudio: (runtimeKind: 'text' | 'voice' | 'multimodal' = 'text') =>
+      `${ROOTS.DASHBOARD}/runtime/${runtimeKind}/test-studio`,
     // Intent Routing
     intents: `${ROOTS.DASHBOARD}/intents`,
     intentsPlayground: `${ROOTS.DASHBOARD}/intents/playground`,

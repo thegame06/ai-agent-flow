@@ -3,6 +3,7 @@ using AgentFlow.Core.Engine;
 using AgentFlow.Observability;
 using AgentFlow.Api.Workflow;
 using AgentFlow.Api.AuthProfiles;
+using AgentFlow.Api.TestStudio;
 using System.Text.Json;
 
 namespace AgentFlow.Api.Voice;
@@ -13,17 +14,20 @@ public sealed class VoiceRuntimeEventDispatcher : BackgroundService
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<VoiceRuntimeEventDispatcher> _logger;
     private readonly IExecutionGovernancePolicy _governancePolicy;
+    private readonly ITestStudioSessionStore? _testStudioStore;
 
     public VoiceRuntimeEventDispatcher(
         IAgentEventTransport eventTransport,
         IServiceScopeFactory scopeFactory,
         ILogger<VoiceRuntimeEventDispatcher> logger,
-        IExecutionGovernancePolicy governancePolicy)
+        IExecutionGovernancePolicy governancePolicy,
+        ITestStudioSessionStore? testStudioStore = null)
     {
         _eventTransport = eventTransport;
         _scopeFactory = scopeFactory;
         _logger = logger;
         _governancePolicy = governancePolicy;
+        _testStudioStore = testStudioStore;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -95,7 +99,7 @@ public sealed class VoiceRuntimeEventDispatcher : BackgroundService
                 RuntimeKind = AgentRuntimeKind.Voice,
                 SessionId = evt.SessionId,
                 CorrelationId = evt.CorrelationId,
-                ThreadId = evt.ThreadId,
+                ThreadId = evt.SessionId,
                 Channel = evt.Headers.TryGetValue("channel", out var channelValue) ? channelValue : "voice",
                 Metadata = metadata
                 }, ct);
@@ -128,14 +132,21 @@ public sealed class VoiceRuntimeEventDispatcher : BackgroundService
             if (chunk is null)
                 return;
 
-            var (transcript, providerId) = await TranscribeWithProviderOrFallbackAsync(evt, chunk, ct);
+            var transcriptResult = await TranscribeWithProviderOrFallbackAsync(evt, chunk, ct);
             var transcriptEvent = new TranscriptProducedEvent
             {
                 TenantId = chunk.TenantId,
                 SessionId = chunk.SessionId,
-                Transcript = transcript,
-                ProviderId = providerId
+                Transcript = transcriptResult.Transcript,
+                ProviderId = transcriptResult.ProviderId
             };
+            AppendVoiceTestEvent(
+                evt,
+                stage: "stt_transcript",
+                payloadType: "transcript",
+                status: "produced",
+                message: transcriptResult.Transcript,
+                direction: "inbound");
 
             await _eventTransport.PublishAsync(new AgentEvent
             {
@@ -146,7 +157,7 @@ public sealed class VoiceRuntimeEventDispatcher : BackgroundService
                 CorrelationId = evt.CorrelationId,
                 Headers = new Dictionary<string, string>(evt.Headers)
                 {
-                    ["transcriptProvider"] = providerId
+                    ["transcriptProvider"] = transcriptResult.ProviderId
                 },
                 Payload = JsonSerializer.Serialize(transcriptEvent)
             }, ct);
@@ -174,7 +185,7 @@ public sealed class VoiceRuntimeEventDispatcher : BackgroundService
                 RuntimeKind = AgentRuntimeKind.Voice,
                 SessionId = evt.SessionId,
                 CorrelationId = evt.CorrelationId,
-                ThreadId = evt.ThreadId,
+                ThreadId = evt.SessionId,
                 Channel = evt.Headers.TryGetValue("channel", out var channelValue) ? channelValue : "voice",
                 Metadata = new Dictionary<string, string>(evt.Headers)
                 {
@@ -187,17 +198,24 @@ public sealed class VoiceRuntimeEventDispatcher : BackgroundService
                 ? "Estoy procesando tu solicitud."
                 : runtimeResult.Response!;
 
-            var (audioBytes, contentType, providerId) = await SynthesizeWithProviderOrFallbackAsync(evt, textToSpeak, ct);
+            var synthesizedResult = await SynthesizeWithProviderOrFallbackAsync(evt, textToSpeak, ct);
             var synthesized = new AudioSynthesizedEvent
             {
                 TenantId = evt.TenantId,
                 SessionId = transcript.SessionId,
                 StreamId = evt.CorrelationId ?? Guid.NewGuid().ToString("N"),
-                ContentType = contentType,
-                Payload = audioBytes,
+                ContentType = synthesizedResult.ContentType,
+                Payload = synthesizedResult.AudioBytes,
                 Text = textToSpeak,
-                ProviderId = providerId
+                ProviderId = synthesizedResult.ProviderId
             };
+            AppendVoiceTestEvent(
+                evt,
+                stage: "tts_synthesized",
+                payloadType: "audio",
+                status: "produced",
+                message: textToSpeak,
+                direction: "outbound");
 
             await _eventTransport.PublishAsync(new AgentEvent
             {
@@ -208,7 +226,7 @@ public sealed class VoiceRuntimeEventDispatcher : BackgroundService
                 CorrelationId = evt.CorrelationId,
                 Headers = new Dictionary<string, string>(evt.Headers)
                 {
-                    ["ttsProvider"] = providerId
+                    ["ttsProvider"] = synthesizedResult.ProviderId
                 },
                 Payload = JsonSerializer.Serialize(synthesized)
             }, ct);
@@ -463,5 +481,28 @@ public sealed class VoiceRuntimeEventDispatcher : BackgroundService
             add(fallback);
 
         return string.Join(",", chain);
+    }
+
+    private void AppendVoiceTestEvent(
+        AgentEvent evt,
+        string stage,
+        string payloadType,
+        string status,
+        string? message,
+        string direction)
+    {
+        if (_testStudioStore is null || string.IsNullOrWhiteSpace(evt.CorrelationId)) return;
+        var session = _testStudioStore.FindByCorrelationId(evt.TenantId, evt.CorrelationId, AgentRuntimeKind.Voice);
+        if (session is null) return;
+
+        _testStudioStore.AppendEvent(evt.TenantId, session.TestSessionId, new TestStudioEvent
+        {
+            Stage = stage,
+            Direction = direction,
+            PayloadType = payloadType,
+            Status = status,
+            CorrelationId = evt.CorrelationId,
+            Message = message
+        });
     }
 }

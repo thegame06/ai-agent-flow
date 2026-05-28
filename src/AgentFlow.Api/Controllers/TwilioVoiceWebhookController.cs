@@ -1,6 +1,7 @@
 using System.Text.Json;
 using AgentFlow.Abstractions;
 using AgentFlow.Api.Connect;
+using AgentFlow.Api.TestStudio;
 using AgentFlow.Api.Voice;
 using AgentFlow.Api.Workflow;
 using Microsoft.AspNetCore.Authorization;
@@ -19,6 +20,7 @@ public sealed class TwilioVoiceWebhookController : ControllerBase
     private readonly IAgentRuntimeRegistry _runtimeRegistry;
     private readonly ITwilioWebhookSignatureValidator _signatureValidator;
     private readonly ITenantConnectionStore _tenantConnectionStore;
+    private readonly ITestStudioSessionStore? _testStudioStore;
     private readonly ILogger<TwilioVoiceWebhookController> _logger;
 
     public TwilioVoiceWebhookController(
@@ -28,7 +30,8 @@ public sealed class TwilioVoiceWebhookController : ControllerBase
         IAgentRuntimeRegistry runtimeRegistry,
         ITwilioWebhookSignatureValidator signatureValidator,
         ITenantConnectionStore tenantConnectionStore,
-        ILogger<TwilioVoiceWebhookController> logger)
+        ILogger<TwilioVoiceWebhookController> logger,
+        ITestStudioSessionStore? testStudioStore = null)
     {
         _eventTransport = eventTransport;
         _audit = audit;
@@ -36,6 +39,7 @@ public sealed class TwilioVoiceWebhookController : ControllerBase
         _runtimeRegistry = runtimeRegistry;
         _signatureValidator = signatureValidator;
         _tenantConnectionStore = tenantConnectionStore;
+        _testStudioStore = testStudioStore;
         _logger = logger;
     }
 
@@ -150,6 +154,14 @@ public sealed class TwilioVoiceWebhookController : ControllerBase
             form.CallStatus,
             channel);
 
+        AppendVoiceTestEvent(
+            tenantId,
+            form.CallSid,
+            "call_status",
+            "voice_status",
+            normalizedStatus is "completed" or "failed" or "busy" or "no-answer" ? "completed" : "in_progress",
+            $"Twilio status: {normalizedStatus}");
+
         return Ok(new { status = "accepted" });
     }
 
@@ -249,6 +261,14 @@ public sealed class TwilioVoiceWebhookController : ControllerBase
             form.CallSid,
             channel);
 
+        AppendVoiceTestEvent(
+            tenantId,
+            form.CallSid,
+            "call_received",
+            "voice_call",
+            "received",
+            $"Incoming call from {form.From ?? "unknown"}");
+
         var runtime = _runtimeRegistry.GetRequired(AgentRuntimeKind.Voice);
         var runtimeResult = await runtime.ExecuteAsync(new AgentRuntimeRequest
         {
@@ -339,7 +359,38 @@ public sealed class TwilioVoiceWebhookController : ControllerBase
             Payload = JsonSerializer.Serialize(evt)
         }, ct);
 
+        AppendVoiceTestEvent(
+            tenantId,
+            form.CallSid ?? form.StreamSid,
+            "audio_chunk",
+            "audio",
+            "accepted",
+            $"Audio chunk accepted ({payload.Length} bytes).");
+
         return Ok(new { status = "accepted", bytes = payload.Length });
+    }
+
+    private void AppendVoiceTestEvent(
+        string tenantId,
+        string? correlationId,
+        string stage,
+        string payloadType,
+        string status,
+        string message)
+    {
+        if (_testStudioStore is null || string.IsNullOrWhiteSpace(correlationId)) return;
+        var session = _testStudioStore.FindByCorrelationId(tenantId, correlationId, AgentRuntimeKind.Voice);
+        if (session is null) return;
+
+        _testStudioStore.AppendEvent(tenantId, session.TestSessionId, new TestStudioEvent
+        {
+            Stage = stage,
+            Direction = "inbound",
+            PayloadType = payloadType,
+            Status = status,
+            CorrelationId = correlationId,
+            Message = message
+        });
     }
 
     private async Task<VoiceProviderDefaults> ResolveVoiceProviderDefaultsAsync(
