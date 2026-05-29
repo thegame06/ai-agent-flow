@@ -23,6 +23,7 @@ import { CONFIG } from 'src/global-config';
 import axios, { endpoints } from 'src/lib/axios';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
+import { useSettingsWorkspace } from 'src/aiagentflow/pages/settings/SettingsWorkspaceContext';
 
 type Bucket = { key: string; count: number };
 type AlertSignal = { severity: string; code: string; message: string };
@@ -74,6 +75,7 @@ function BucketList({ title, items }: { title: string; items: Bucket[] }) {
 }
 
 export default function OperationsPage() {
+  const { embedded } = useSettingsWorkspace();
   const tenantId = useTenantId();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -135,7 +137,7 @@ export default function OperationsPage() {
         </title>
       </Helmet>
 
-      <DashboardContent maxWidth="xl">
+      <DashboardContent maxWidth="xl" disablePadding={embedded}>
         <Stack spacing={3}>
           <Box>
             <Typography variant="h4">Operaciones IA</Typography>

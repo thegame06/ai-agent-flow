@@ -17,6 +17,7 @@ import { CONFIG } from 'src/global-config';
 import axios, { endpoints } from 'src/lib/axios';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
+import { useSettingsWorkspace } from 'src/aiagentflow/pages/settings/SettingsWorkspaceContext';
 
 const COMMON_FLAGS = [
   'evaluation.shadow.enabled',
@@ -26,6 +27,7 @@ const COMMON_FLAGS = [
 ];
 
 export default function FeatureFlagsPage() {
+  const { embedded } = useSettingsWorkspace();
   const tenantId = useTenantId();
   const [agentId, setAgentId] = useState('');
   const [userId, setUserId] = useState('demo-user');
@@ -85,7 +87,7 @@ export default function FeatureFlagsPage() {
         <title>Funciones beta | {CONFIG.appName}</title>
       </Helmet>
 
-      <DashboardContent maxWidth="xl">
+      <DashboardContent maxWidth="xl" disablePadding={embedded}>
         <Box sx={{ mb: 4 }}>
           <Typography variant="h4">Funciones beta</Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>

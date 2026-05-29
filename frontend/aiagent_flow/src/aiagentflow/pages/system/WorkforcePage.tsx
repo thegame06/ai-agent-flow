@@ -28,6 +28,7 @@ import CircularProgress from '@mui/material/CircularProgress';
 import axios, { endpoints } from 'src/lib/axios';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
+import { useSettingsWorkspace } from 'src/aiagentflow/pages/settings/SettingsWorkspaceContext';
 
 type Person = {
   id: string;
@@ -53,6 +54,7 @@ type Queue = {
 };
 
 export default function WorkforcePage() {
+  const { embedded } = useSettingsWorkspace();
   const tenantId = useTenantId();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -122,7 +124,7 @@ export default function WorkforcePage() {
   return (
     <>
       <Helmet><title>Equipos y atención | AgentFlow</title></Helmet>
-      <DashboardContent maxWidth="xl">
+      <DashboardContent maxWidth="xl" disablePadding={embedded}>
         <Stack spacing={2.5}>
           <Stack direction="row" justifyContent="space-between" alignItems="center">
             <Box>

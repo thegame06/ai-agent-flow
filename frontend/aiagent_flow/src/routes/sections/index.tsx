@@ -19,7 +19,7 @@ export const routesSection: RouteObject[] = [
   },
   {
     path: '/system/settings',
-    element: <Navigate to="/dashboard/system/settings" replace />,
+    element: <Navigate to="/dashboard/settings/general" replace />,
   },
 
   // Auth

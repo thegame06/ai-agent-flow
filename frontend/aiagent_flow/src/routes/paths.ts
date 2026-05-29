@@ -76,6 +76,17 @@ export const paths = {
       audit: `${ROOTS.DASHBOARD}/governance/audit`,
       operations: `${ROOTS.DASHBOARD}/governance/operations`,
     },
+    settings: {
+      root: `${ROOTS.DASHBOARD}/settings`,
+      general: `${ROOTS.DASHBOARD}/settings/general`,
+      models: `${ROOTS.DASHBOARD}/settings/models`,
+      authProfiles: `${ROOTS.DASHBOARD}/settings/auth-profiles`,
+      featureFlags: `${ROOTS.DASHBOARD}/settings/feature-flags`,
+      workforce: `${ROOTS.DASHBOARD}/settings/workforce`,
+      policies: `${ROOTS.DASHBOARD}/settings/policies`,
+      audit: `${ROOTS.DASHBOARD}/settings/audit`,
+      operations: `${ROOTS.DASHBOARD}/settings/operations`,
+    },
     system: {
       root: `${ROOTS.DASHBOARD}/system`,
       models: `${ROOTS.DASHBOARD}/system/models`,

@@ -128,19 +128,9 @@ export const navData: NavSectionProps['data'] = [
     subheader: 'Administracion',
     items: [
       {
-        title: 'Configuracion general',
-        path: paths.dashboard.system.settings,
+        title: 'Configuracion',
+        path: paths.dashboard.settings.general,
         icon: ICONS.settings,
-        children: [
-          { title: 'Configuracion general', path: paths.dashboard.system.settings },
-          { title: 'Modelos IA', path: paths.dashboard.system.models },
-          { title: 'Credenciales', path: paths.dashboard.system.authProfiles },
-          { title: 'Funciones beta', path: paths.dashboard.system.featureFlags },
-          { title: 'Equipos y atencion', path: paths.dashboard.system.workforce },
-          { title: 'Politicas', path: paths.dashboard.governance.policies },
-          { title: 'Auditoria', path: paths.dashboard.governance.audit },
-          { title: 'Operaciones IA', path: paths.dashboard.governance.operations },
-        ],
       },
     ],
   },

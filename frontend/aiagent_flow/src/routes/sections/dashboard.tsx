@@ -36,6 +36,7 @@ const McpPage = lazy(() => import('src/aiagentflow/pages/system/McpPage'));
 const ChannelsPage = lazy(() => import('src/aiagentflow/pages/channels/ChannelsPage'));
 const FeatureFlagsPage = lazy(() => import('src/aiagentflow/pages/system/FeatureFlagsPage'));
 const SettingsPage = lazy(() => import('src/aiagentflow/pages/settings/SettingsPage'));
+const SettingsLayoutPage = lazy(() => import('src/aiagentflow/pages/settings/SettingsLayoutPage'));
 const WorkforcePage = lazy(() => import('src/aiagentflow/pages/system/WorkforcePage'));
 const ThreadsPage = lazy(() => import('src/aiagentflow/pages/threads/ThreadsPage'));
 const CommerceAdminPage = lazy(() => import('src/aiagentflow/pages/commerce/CommerceAdminPage'));
@@ -96,6 +97,21 @@ export const dashboardRoutes: RouteObject[] = [
       { path: 'runtime/:runtimeKind', element: <RuntimeStudioPage /> },
       { path: 'runtime/:runtimeKind/test-studio', element: <RuntimeTestStudioPage /> },
       { path: 'automation/new', element: <AutomationWizardPage /> },
+      {
+        path: 'settings',
+        element: <SettingsLayoutPage />,
+        children: [
+          { element: <Navigate to="/dashboard/settings/general" replace />, index: true },
+          { path: 'general', element: <SettingsPage /> },
+          { path: 'models', element: <ModelsPage /> },
+          { path: 'auth-profiles', element: <AuthProfilesPage /> },
+          { path: 'feature-flags', element: <FeatureFlagsPage /> },
+          { path: 'workforce', element: <WorkforcePage /> },
+          { path: 'policies', element: <PoliciesPage /> },
+          { path: 'audit', element: <AuditLogPage /> },
+          { path: 'operations', element: <OperationsPage /> },
+        ],
+      },
       // Intent Routing
       { path: 'intents', element: <IntentsPage /> },
       { path: 'intents/playground', element: <PlaygroundPage /> },
@@ -103,23 +119,23 @@ export const dashboardRoutes: RouteObject[] = [
       {
         path: 'governance',
         children: [
-          { element: <PoliciesPage />, index: true },
-          { path: 'policies', element: <PoliciesPage /> },
-          { path: 'audit', element: <AuditLogPage /> },
-          { path: 'operations', element: <OperationsPage /> },
+          { element: <Navigate to="/dashboard/settings/policies" replace />, index: true },
+          { path: 'policies', element: <Navigate to="/dashboard/settings/policies" replace /> },
+          { path: 'audit', element: <Navigate to="/dashboard/settings/audit" replace /> },
+          { path: 'operations', element: <Navigate to="/dashboard/settings/operations" replace /> },
         ],
       },
       {
         path: 'system',
         children: [
-          { element: <ModelsPage />, index: true },
-          { path: 'models', element: <ModelsPage /> },
-          { path: 'auth-profiles', element: <AuthProfilesPage /> },
+          { element: <Navigate to="/dashboard/settings/models" replace />, index: true },
+          { path: 'models', element: <Navigate to="/dashboard/settings/models" replace /> },
+          { path: 'auth-profiles', element: <Navigate to="/dashboard/settings/auth-profiles" replace /> },
           { path: 'mcp', element: <McpPage /> },
           { path: 'channels', element: <ChannelsPage /> },
-          { path: 'feature-flags', element: <FeatureFlagsPage /> },
-          { path: 'settings', element: <SettingsPage /> },
-          { path: 'workforce', element: <WorkforcePage /> },
+          { path: 'feature-flags', element: <Navigate to="/dashboard/settings/feature-flags" replace /> },
+          { path: 'settings', element: <Navigate to="/dashboard/settings/general" replace /> },
+          { path: 'workforce', element: <Navigate to="/dashboard/settings/workforce" replace /> },
         ],
       },
     ],

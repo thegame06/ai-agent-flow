@@ -25,6 +25,7 @@ import axios, { endpoints } from 'src/lib/axios';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { TermHelp } from 'src/aiagentflow/components/TermHelp';
 import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
+import { useSettingsWorkspace } from 'src/aiagentflow/pages/settings/SettingsWorkspaceContext';
 
 import { Label } from 'src/components/label';
 
@@ -191,6 +192,7 @@ const sessionStatusLabel = (value?: string) => {
 const toolNameLabel = (value: string) => value.replace(/[._]/g, ' ');
 
 export default function AuditPage() {
+  const { embedded } = useSettingsWorkspace();
   const theme = useTheme();
   const tenantId = useTenantId();
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);
@@ -346,7 +348,7 @@ export default function AuditPage() {
         <title>Auditoria | {CONFIG.appName}</title>
       </Helmet>
 
-      <DashboardContent maxWidth="xl">
+      <DashboardContent maxWidth="xl" disablePadding={embedded}>
         <Box sx={{ mb: 4 }}>
           <Stack direction="row" spacing={1} alignItems="center">
             <Typography variant="h4">Auditoria explicada</Typography>

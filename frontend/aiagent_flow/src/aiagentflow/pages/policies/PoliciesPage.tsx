@@ -18,11 +18,13 @@ import axios from 'src/lib/axios';
 import { CONFIG } from 'src/global-config';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
+import { useSettingsWorkspace } from 'src/aiagentflow/pages/settings/SettingsWorkspaceContext';
 
 import { Label } from 'src/components/label';
 import { Iconify } from 'src/components/iconify';
 
 export default function PoliciesPage() {
+  const { embedded } = useSettingsWorkspace();
   const tenantId = useTenantId();
   const [policies, setPolicies] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -196,7 +198,7 @@ export default function PoliciesPage() {
         <title>Reglas de control | {CONFIG.appName}</title>
       </Helmet>
 
-      <DashboardContent maxWidth="xl">
+      <DashboardContent maxWidth="xl" disablePadding={embedded}>
         <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 3 }}>
           <Stack spacing={0.5}>
             <Typography variant="h4">Reglas de control</Typography>

@@ -32,6 +32,7 @@ import axios from 'src/lib/axios';
 import { CONFIG } from 'src/global-config';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
+import { useSettingsWorkspace } from 'src/aiagentflow/pages/settings/SettingsWorkspaceContext';
 
 import { Iconify } from 'src/components/iconify';
 
@@ -56,6 +57,7 @@ interface ModelItem {
 const providerOptions = ['OpenAI', 'Anthropic', 'Gemini', 'OpenRouter', 'Groq', 'Deepgram', '11Labs'];
 
 export default function AuthProfilesPage() {
+  const { embedded } = useSettingsWorkspace();
   const router = useRouter();
   const tenantId = useTenantId();
   const [searchParams] = useSearchParams();
@@ -177,7 +179,7 @@ export default function AuthProfilesPage() {
         <title>Provider Auth Profiles | {CONFIG.appName}</title>
       </Helmet>
 
-      <DashboardContent maxWidth="xl">
+      <DashboardContent maxWidth="xl" disablePadding={embedded}>
         <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Box>
             <Typography variant="h4">Provider Auth Profiles</Typography>
@@ -186,7 +188,7 @@ export default function AuthProfilesPage() {
             </Typography>
           </Box>
           <Stack direction="row" spacing={1}>
-            <Button variant="outlined" onClick={() => router.push(paths.dashboard.system.models)}>
+            <Button variant="outlined" onClick={() => router.push(paths.dashboard.settings.models)}>
               Ir a Modelos
             </Button>
             <Button variant="contained" startIcon={<Iconify icon="mingcute:add-line" />} onClick={() => setOpenCreate(true)}>

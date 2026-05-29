@@ -19,6 +19,7 @@ import axios from 'src/lib/axios';
 import { CONFIG } from 'src/global-config';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
+import { useSettingsWorkspace } from 'src/aiagentflow/pages/settings/SettingsWorkspaceContext';
 
 import { Iconify } from 'src/components/iconify';
 import { useSettingsContext } from 'src/components/settings';
@@ -58,6 +59,7 @@ const defaultSettings: Settings = {
 };
 
 export default function SettingsPage() {
+  const { embedded } = useSettingsWorkspace();
   const uiSettings = useSettingsContext();
   const { mode, setMode } = useColorScheme();
   const tenantId = useTenantId();
@@ -113,7 +115,7 @@ export default function SettingsPage() {
         <title>Configuracion general | {CONFIG.appName}</title>
       </Helmet>
 
-      <DashboardContent maxWidth="lg">
+      <DashboardContent maxWidth="lg" disablePadding={embedded}>
         <Box sx={{ mb: 5 }}>
           <Typography variant="h4">Configuracion general</Typography>
           <Typography variant="body2" sx={{ color: 'text.secondary', mt: 1 }}>

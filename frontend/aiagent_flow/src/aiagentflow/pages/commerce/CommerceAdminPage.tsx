@@ -9,10 +9,8 @@ import Chip from '@mui/material/Chip';
 import Grid from '@mui/material/Grid';
 import Alert from '@mui/material/Alert';
 import Stack from '@mui/material/Stack';
-import Paper from '@mui/material/Paper';
 import Button from '@mui/material/Button';
 import Dialog from '@mui/material/Dialog';
-import Avatar from '@mui/material/Avatar';
 import Divider from '@mui/material/Divider';
 import { DataGrid } from '@mui/x-data-grid';
 import MenuItem from '@mui/material/MenuItem';
@@ -28,6 +26,7 @@ import { CONFIG } from 'src/global-config';
 import axios, { endpoints } from 'src/lib/axios';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
+import { BrandPageHeader } from 'src/aiagentflow/components/BrandPageHeader';
 
 import { Iconify } from 'src/components/iconify';
 
@@ -165,6 +164,34 @@ const MODULE_IDS = {
   billing: 'billing',
 } as const;
 
+const tabMeta = {
+  customers: {
+    label: 'Clientes',
+    description: 'Clientes, leads y datos base para venta asistida.',
+    icon: 'mdi:account-group-outline',
+  },
+  inventory: {
+    label: 'Catalogo',
+    description: 'Productos y servicios disponibles para vender.',
+    icon: 'mdi:package-variant-closed',
+  },
+  movements: {
+    label: 'Movimientos',
+    description: 'Entradas, salidas y ajustes de inventario.',
+    icon: 'mdi:swap-horizontal-bold',
+  },
+  sales: {
+    label: 'Ventas',
+    description: 'Operaciones comerciales creadas por el equipo o por automatizacion.',
+    icon: 'mdi:cash-register',
+  },
+  invoices: {
+    label: 'Facturacion',
+    description: 'Facturas, estado de cobro y vista previa PDF.',
+    icon: 'mdi:receipt-text-outline',
+  },
+} as const;
+
 export default function CommerceAdminPage() {
   const tenantId = useTenantId();
 
@@ -220,12 +247,52 @@ export default function CommerceAdminPage() {
   const availableTabs = useMemo(() => {
     const tabs: Array<{ value: 'customers' | 'inventory' | 'movements' | 'sales' | 'invoices'; label: string }> = [];
     if (customersEnabled) tabs.push({ value: 'customers', label: 'Clientes' });
-    if (inventoryEnabled) tabs.push({ value: 'inventory', label: 'Inventario' });
+    if (inventoryEnabled) tabs.push({ value: 'inventory', label: 'Catalogo' });
     if (inventoryEnabled) tabs.push({ value: 'movements', label: 'Movimientos' });
     if (salesEnabled) tabs.push({ value: 'sales', label: 'Ventas' });
-    if (billingEnabled) tabs.push({ value: 'invoices', label: 'Facturas' });
+    if (billingEnabled) tabs.push({ value: 'invoices', label: 'Facturacion' });
     return tabs;
   }, [billingEnabled, customersEnabled, inventoryEnabled, salesEnabled]);
+
+  const commerceStats = useMemo(
+    () => [
+      {
+        label: 'Clientes',
+        value: customersTotal,
+        helper: customers.filter((row) => row.kind === 'lead').length > 0
+          ? `${customers.filter((row) => row.kind === 'lead').length} leads en la vista actual`
+          : 'Base comercial activa',
+        icon: 'mdi:account-group-outline',
+      },
+      {
+        label: 'Catalogo',
+        value: inventory.filter((row) => row.active).length,
+        helper: inventory.filter((row) => row.tracksInventory && row.onHand <= 5).length > 0
+          ? `${inventory.filter((row) => row.tracksInventory && row.onHand <= 5).length} con stock bajo`
+          : 'Productos activos',
+        icon: 'mdi:package-variant-closed',
+      },
+      {
+        label: 'Ventas',
+        value: salesTotal,
+        helper: sales.filter((row) => row.state === 'paid').length > 0
+          ? `${sales.filter((row) => row.state === 'paid').length} cobradas en la vista actual`
+          : 'Seguimiento comercial',
+        icon: 'mdi:cash-register',
+      },
+      {
+        label: 'Facturas',
+        value: invoicesTotal,
+        helper: invoices.filter((row) => row.status !== 'paid').length > 0
+          ? `${invoices.filter((row) => row.status !== 'paid').length} pendientes en la vista actual`
+          : 'Cartera al dia',
+        icon: 'mdi:receipt-text-outline',
+      },
+    ],
+    [customers, customersTotal, inventory, invoices, invoicesTotal, sales, salesTotal]
+  );
+
+  const activeTabMeta = tabMeta[tab];
 
   const refreshAll = async () => {
     const tasks: Array<Promise<void>> = [];
@@ -515,6 +582,12 @@ export default function CommerceAdminPage() {
     return { totalDelta };
   }, [movements]);
 
+  const gridCardSx = {
+    height: 560,
+    '& .MuiDataGrid-columnHeaders': { bgcolor: 'background.neutral' },
+    '& .MuiDataGrid-cell': { alignItems: 'center' },
+  };
+
   return (
     <>
       <Helmet>
@@ -522,35 +595,87 @@ export default function CommerceAdminPage() {
       </Helmet>
 
       <DashboardContent maxWidth="xl">
-        <Paper variant="outlined" sx={{ p: 2.5, mb: 2, borderRadius: 2 }}>
-          <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between">
-            <Stack direction="row" spacing={1.5} alignItems="center">
-              <Avatar sx={{ bgcolor: 'secondary.lighter', color: 'secondary.main' }}>
-                <Iconify icon="mdi:store-cog-outline" />
-              </Avatar>
-              <Box>
-                <Typography variant="h4">Ventas y cobros</Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Clientes, inventario, movimientos, ventas y facturas en una superficie administrativa separada del inbox.
-                </Typography>
-              </Box>
+        <BrandPageHeader
+          eyebrow="Operacion comercial"
+          title="Ventas y cobros"
+          description="Centraliza clientes, catalogo, movimientos, ventas y facturacion en una sola superficie de trabajo conectada con conversaciones y automatizaciones."
+          icon="mdi:store-cog-outline"
+          meta={
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+              <Chip size="small" color={customersEnabled ? 'success' : 'default'} label={customersEnabled ? 'CRM activo' : 'CRM pendiente'} />
+              <Chip size="small" color={inventoryEnabled ? 'success' : 'default'} label={inventoryEnabled ? 'Inventario activo' : 'Inventario pendiente'} />
+              <Chip size="small" color={salesEnabled ? 'success' : 'default'} label={salesEnabled ? 'Ventas activas' : 'Ventas pendientes'} />
+              <Chip size="small" color={billingEnabled ? 'success' : 'default'} label={billingEnabled ? 'Facturacion activa' : 'Facturacion pendiente'} />
             </Stack>
-            <Button variant="outlined" onClick={refreshAll} startIcon={<Iconify icon="solar:refresh-line-duotone" />}>
-              Actualizar
-            </Button>
-          </Stack>
-        </Paper>
+          }
+          actions={
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+              <Button variant="outlined" href={paths.dashboard.threads} startIcon={<Iconify icon="mdi:forum-outline" />}>
+                Abrir bandeja
+              </Button>
+              <Button variant="contained" onClick={refreshAll} startIcon={<Iconify icon="solar:refresh-line-duotone" />}>
+                Actualizar
+              </Button>
+            </Stack>
+          }
+        />
 
         {actionError && <Alert severity="error" sx={{ mb: 2 }}>{actionError}</Alert>}
         {actionOk && <Alert severity="success" sx={{ mb: 2 }}>{actionOk}</Alert>}
 
-        <Card sx={{ p: 2 }}>
+        <Grid container spacing={2.5} sx={{ mb: 2.5 }}>
+          {commerceStats.map((stat) => (
+            <Grid key={stat.label} item xs={12} sm={6} lg={3}>
+              <Card variant="outlined" sx={{ p: 2.25, borderRadius: 3, height: '100%' }}>
+                <Stack direction="row" spacing={1.5} alignItems="center">
+                  <Box
+                    sx={{
+                      width: 42,
+                      height: 42,
+                      borderRadius: 1.5,
+                      display: 'grid',
+                      placeItems: 'center',
+                      bgcolor: 'primary.lighter',
+                      color: 'primary.main',
+                    }}
+                  >
+                    <Iconify icon={stat.icon} width={22} />
+                  </Box>
+                  <Box sx={{ minWidth: 0 }}>
+                    <Typography variant="h5">{stat.value}</Typography>
+                    <Typography variant="subtitle2">{stat.label}</Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {stat.helper}
+                    </Typography>
+                  </Box>
+                </Stack>
+              </Card>
+            </Grid>
+          ))}
+        </Grid>
+
+        <Card variant="outlined" sx={{ p: { xs: 2, md: 2.5 }, borderRadius: 3 }}>
           {availableTabs.length > 0 ? (
-            <Tabs value={tab} onChange={(_, value) => setTab(value)} sx={{ mb: 2 }} variant="scrollable">
-              {availableTabs.map((entry) => (
-                <Tab key={entry.value} value={entry.value} label={entry.label} />
-              ))}
-            </Tabs>
+            <>
+              <Stack spacing={1.5} sx={{ mb: 2.5 }}>
+                <Tabs value={tab} onChange={(_, value) => setTab(value)} variant="scrollable" allowScrollButtonsMobile>
+                  {availableTabs.map((entry) => (
+                    <Tab key={entry.value} value={entry.value} label={entry.label} />
+                  ))}
+                </Tabs>
+                <Card variant="outlined" sx={{ p: 1.5, borderRadius: 2.5, bgcolor: 'background.neutral' }}>
+                  <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.25} justifyContent="space-between" alignItems={{ md: 'center' }}>
+                    <Box>
+                      <Typography variant="subtitle1">{activeTabMeta.label}</Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {activeTabMeta.description}
+                      </Typography>
+                    </Box>
+                    <Chip size="small" icon={<Iconify icon={activeTabMeta.icon} width={14} />} label={availableTabs.findIndex((entry) => entry.value === tab) + 1 + ' de ' + availableTabs.length} />
+                  </Stack>
+                </Card>
+              </Stack>
+            </>
           ) : (
             <Alert severity="info" sx={{ mb: 2 }}>
               No hay modulos de comercio habilitados para este tenant.
@@ -559,11 +684,34 @@ export default function CommerceAdminPage() {
 
           {tab === 'customers' && (
             <Stack spacing={2}>
+              <Grid container spacing={2}>
+                <Grid item xs={12} md={4}>
+                  <Card variant="outlined" sx={{ p: 1.75, borderRadius: 2.5 }}>
+                    <Typography variant="caption" color="text.secondary">Base de clientes</Typography>
+                    <Typography variant="h6">{customersTotal}</Typography>
+                    <Typography variant="body2" color="text.secondary">Contactos disponibles para venta, cobro y seguimiento.</Typography>
+                  </Card>
+                </Grid>
+                <Grid item xs={12} md={4}>
+                  <Card variant="outlined" sx={{ p: 1.75, borderRadius: 2.5 }}>
+                    <Typography variant="caption" color="text.secondary">Leads en pantalla</Typography>
+                    <Typography variant="h6">{customers.filter((row) => row.kind === 'lead').length}</Typography>
+                    <Typography variant="body2" color="text.secondary">Ayuda a priorizar conversion y seguimiento.</Typography>
+                  </Card>
+                </Grid>
+                <Grid item xs={12} md={4}>
+                  <Card variant="outlined" sx={{ p: 1.75, borderRadius: 2.5 }}>
+                    <Typography variant="caption" color="text.secondary">Origen conversacional</Typography>
+                    <Typography variant="h6">{new Set(customers.map((row) => row.channel).filter(Boolean)).size}</Typography>
+                    <Typography variant="body2" color="text.secondary">Canales base detectados en la vista actual.</Typography>
+                  </Card>
+                </Grid>
+              </Grid>
               <Stack direction={{ xs: 'column', md: 'row' }} spacing={1}>
                 <TextField size="small" fullWidth placeholder="Buscar por nombre, telefono o email" value={customerQuery} onChange={(e) => { setCustomerQuery(e.target.value); setCustomerPage(0); }} />
                 <Button variant="outlined" href={paths.dashboard.threads}>Abrir inbox</Button>
               </Stack>
-              <Box sx={{ height: 560 }}>
+              <Box sx={gridCardSx}>
                 <DataGrid
                   rows={customers}
                   rowCount={customersTotal}
@@ -601,11 +749,34 @@ export default function CommerceAdminPage() {
 
           {tab === 'inventory' && (
             <Stack spacing={2}>
+              <Grid container spacing={2}>
+                <Grid item xs={12} md={4}>
+                  <Card variant="outlined" sx={{ p: 1.75, borderRadius: 2.5 }}>
+                    <Typography variant="caption" color="text.secondary">Items activos</Typography>
+                    <Typography variant="h6">{inventory.filter((row) => row.active).length}</Typography>
+                    <Typography variant="body2" color="text.secondary">Catalogo listo para vender.</Typography>
+                  </Card>
+                </Grid>
+                <Grid item xs={12} md={4}>
+                  <Card variant="outlined" sx={{ p: 1.75, borderRadius: 2.5 }}>
+                    <Typography variant="caption" color="text.secondary">Con control de stock</Typography>
+                    <Typography variant="h6">{inventory.filter((row) => row.tracksInventory).length}</Typography>
+                    <Typography variant="body2" color="text.secondary">Productos que requieren entradas y salidas.</Typography>
+                  </Card>
+                </Grid>
+                <Grid item xs={12} md={4}>
+                  <Card variant="outlined" sx={{ p: 1.75, borderRadius: 2.5 }}>
+                    <Typography variant="caption" color="text.secondary">Stock bajo</Typography>
+                    <Typography variant="h6">{inventory.filter((row) => row.tracksInventory && row.onHand <= 5).length}</Typography>
+                    <Typography variant="body2" color="text.secondary">Detectado sobre la lista cargada.</Typography>
+                  </Card>
+                </Grid>
+              </Grid>
               <Stack direction={{ xs: 'column', md: 'row' }} spacing={1}>
                 <TextField size="small" fullWidth placeholder="Buscar SKU o nombre" value={inventoryQuery} onChange={(e) => setInventoryQuery(e.target.value)} />
                 <Button variant="contained" onClick={() => openInventoryDialog()}>Nuevo producto</Button>
               </Stack>
-              <Box sx={{ height: 560 }}>
+              <Box sx={gridCardSx}>
                 <DataGrid
                   rows={inventory}
                   columns={[
@@ -643,13 +814,13 @@ export default function CommerceAdminPage() {
                   <TextField size="small" fullWidth label="SKU" value={movementSku} onChange={(e) => { setMovementSku(e.target.value); setMovementPage(0); }} />
                 </Grid>
                 <Grid item xs={12} md={8}>
-                  <Paper variant="outlined" sx={{ p: 1.5, height: '100%' }}>
+                  <Card variant="outlined" sx={{ p: 1.75, height: '100%', borderRadius: 2.5 }}>
                     <Typography variant="body2" color="text.secondary">Delta acumulado de la pagina actual</Typography>
                     <Typography variant="h6">{movementSummary.totalDelta >= 0 ? '+' : ''}{movementSummary.totalDelta}</Typography>
-                  </Paper>
+                  </Card>
                 </Grid>
               </Grid>
-              <Box sx={{ height: 560 }}>
+              <Box sx={gridCardSx}>
                 <DataGrid
                   rows={movements}
                   rowCount={movementsTotal}
@@ -676,17 +847,42 @@ export default function CommerceAdminPage() {
 
           {tab === 'sales' && (
             <Stack spacing={2}>
+              <Grid container spacing={2}>
+                <Grid item xs={12} md={4}>
+                  <Card variant="outlined" sx={{ p: 1.75, borderRadius: 2.5 }}>
+                    <Typography variant="caption" color="text.secondary">Ventas registradas</Typography>
+                    <Typography variant="h6">{salesTotal}</Typography>
+                    <Typography variant="body2" color="text.secondary">Operaciones comerciales encontradas con el filtro actual.</Typography>
+                  </Card>
+                </Grid>
+                <Grid item xs={12} md={4}>
+                  <Card variant="outlined" sx={{ p: 1.75, borderRadius: 2.5 }}>
+                    <Typography variant="caption" color="text.secondary">Cobradas en la vista</Typography>
+                    <Typography variant="h6">{sales.filter((row) => row.state === 'paid').length}</Typography>
+                    <Typography variant="body2" color="text.secondary">Sirve para revisar cierre comercial.</Typography>
+                  </Card>
+                </Grid>
+                <Grid item xs={12} md={4}>
+                  <Card variant="outlined" sx={{ p: 1.75, borderRadius: 2.5 }}>
+                    <Typography variant="caption" color="text.secondary">Monto visible</Typography>
+                    <Typography variant="h6">
+                      {sales.reduce((acc, row) => acc + Number(row.total || 0), 0).toFixed(2)}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">Suma de la pagina actual.</Typography>
+                  </Card>
+                </Grid>
+              </Grid>
               <Grid container spacing={1}>
                 <Grid item xs={12} md={4}>
                   <TextField select size="small" fullWidth label="Estado" value={salesState} onChange={(e) => { setSalesState(e.target.value); setSalesPage(0); }}>
                     <MenuItem value="">Todos</MenuItem>
-                    <MenuItem value="sale_created">sale_created</MenuItem>
-                    <MenuItem value="invoiced">invoiced</MenuItem>
-                    <MenuItem value="paid">paid</MenuItem>
+                    <MenuItem value="sale_created">Creada</MenuItem>
+                    <MenuItem value="invoiced">Facturada</MenuItem>
+                    <MenuItem value="paid">Pagada</MenuItem>
                   </TextField>
                 </Grid>
               </Grid>
-              <Box sx={{ height: 560 }}>
+              <Box sx={gridCardSx}>
                 <DataGrid
                   rows={sales}
                   rowCount={salesTotal}
@@ -699,7 +895,7 @@ export default function CommerceAdminPage() {
                   pageSizeOptions={[10, 25, 50]}
                   columns={[
                     { field: 'id', headerName: 'Venta', width: 180 },
-                    { field: 'state', headerName: 'Estado', width: 130, renderCell: (params) => <Chip size="small" label={params.value} color={params.value === 'paid' ? 'success' : 'warning'} /> },
+                    { field: 'state', headerName: 'Estado', width: 130, renderCell: (params) => <Chip size="small" label={params.value === 'sale_created' ? 'Creada' : params.value === 'invoiced' ? 'Facturada' : params.value === 'paid' ? 'Pagada' : params.value} color={params.value === 'paid' ? 'success' : 'warning'} /> },
                     { field: 'paymentMethod', headerName: 'Pago', width: 120 },
                     { field: 'total', headerName: 'Total', width: 120, valueGetter: (_, row) => `${row.total} ${row.currency}` },
                     { field: 'createdAt', headerName: 'Creada', width: 180, valueFormatter: (value) => new Date(value as string).toLocaleString() },
@@ -712,17 +908,42 @@ export default function CommerceAdminPage() {
 
           {tab === 'invoices' && (
             <Stack spacing={2}>
+              <Grid container spacing={2}>
+                <Grid item xs={12} md={4}>
+                  <Card variant="outlined" sx={{ p: 1.75, borderRadius: 2.5 }}>
+                    <Typography variant="caption" color="text.secondary">Facturas registradas</Typography>
+                    <Typography variant="h6">{invoicesTotal}</Typography>
+                    <Typography variant="body2" color="text.secondary">Documentos disponibles para seguimiento y cobro.</Typography>
+                  </Card>
+                </Grid>
+                <Grid item xs={12} md={4}>
+                  <Card variant="outlined" sx={{ p: 1.75, borderRadius: 2.5 }}>
+                    <Typography variant="caption" color="text.secondary">Pendientes en la vista</Typography>
+                    <Typography variant="h6">{invoices.filter((row) => row.status !== 'paid').length}</Typography>
+                    <Typography variant="body2" color="text.secondary">Ayuda a priorizar cobros y recordatorios.</Typography>
+                  </Card>
+                </Grid>
+                <Grid item xs={12} md={4}>
+                  <Card variant="outlined" sx={{ p: 1.75, borderRadius: 2.5 }}>
+                    <Typography variant="caption" color="text.secondary">Monto visible</Typography>
+                    <Typography variant="h6">
+                      {invoices.reduce((acc, row) => acc + Number(row.total || 0), 0).toFixed(2)}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">Total acumulado de la pagina actual.</Typography>
+                  </Card>
+                </Grid>
+              </Grid>
               <Grid container spacing={1}>
                 <Grid item xs={12} md={4}>
                   <TextField select size="small" fullWidth label="Estado" value={invoiceStatusFilter} onChange={(e) => { setInvoiceStatusFilter(e.target.value); setInvoicePage(0); }}>
                     <MenuItem value="">Todos</MenuItem>
-                    <MenuItem value="issued">issued</MenuItem>
-                    <MenuItem value="paid">paid</MenuItem>
-                    <MenuItem value="void">void</MenuItem>
+                    <MenuItem value="issued">Emitida</MenuItem>
+                    <MenuItem value="paid">Pagada</MenuItem>
+                    <MenuItem value="void">Anulada</MenuItem>
                   </TextField>
                 </Grid>
               </Grid>
-              <Box sx={{ height: 560 }}>
+              <Box sx={gridCardSx}>
                 <DataGrid
                   rows={invoices}
                   rowCount={invoicesTotal}
@@ -735,7 +956,7 @@ export default function CommerceAdminPage() {
                   pageSizeOptions={[10, 25, 50]}
                   columns={[
                     { field: 'number', headerName: 'Numero', width: 210 },
-                    { field: 'status', headerName: 'Estado', width: 120, renderCell: (params) => <Chip size="small" label={params.value} color={params.value === 'paid' ? 'success' : 'secondary'} /> },
+                    { field: 'status', headerName: 'Estado', width: 120, renderCell: (params) => <Chip size="small" label={params.value === 'issued' ? 'Emitida' : params.value === 'paid' ? 'Pagada' : params.value === 'void' ? 'Anulada' : params.value} color={params.value === 'paid' ? 'success' : 'secondary'} /> },
                     { field: 'total', headerName: 'Total', width: 130, valueGetter: (_, row) => `${row.total} ${row.currency}` },
                     { field: 'issuedAt', headerName: 'Emitida', width: 180, valueFormatter: (value) => value ? new Date(value as string).toLocaleString() : '-' },
                     {
@@ -746,7 +967,7 @@ export default function CommerceAdminPage() {
                       renderCell: (params) => (
                         <Stack direction="row" spacing={1}>
                           <Button size="small" onClick={() => openInvoiceDialog(params.row)}>Editar</Button>
-                          <Button size="small" color="secondary" onClick={() => openInvoicePreview(params.row.id)}>Preview PDF</Button>
+                          <Button size="small" color="secondary" onClick={() => openInvoicePreview(params.row.id)}>Ver PDF</Button>
                         </Stack>
                       ),
                     },
@@ -760,7 +981,12 @@ export default function CommerceAdminPage() {
       </DashboardContent>
 
       <Dialog open={customerDialogOpen} onClose={() => setCustomerDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Editar cliente</DialogTitle>
+        <DialogTitle>
+          <Typography variant="h6">Editar cliente</Typography>
+          <Typography variant="body2" color="text.secondary">
+            Actualiza datos de contacto y tipo comercial.
+          </Typography>
+        </DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
             <TextField label="Alias" value={customerDraft.displayName} onChange={(e) => setCustomerDraft((prev) => ({ ...prev, displayName: e.target.value }))} />
@@ -769,7 +995,7 @@ export default function CommerceAdminPage() {
             <TextField label="Email" value={customerDraft.email} onChange={(e) => setCustomerDraft((prev) => ({ ...prev, email: e.target.value }))} />
             <TextField select label="Tipo" value={customerDraft.kind} onChange={(e) => setCustomerDraft((prev) => ({ ...prev, kind: e.target.value }))}>
               <MenuItem value="lead">Lead</MenuItem>
-              <MenuItem value="customer">Customer</MenuItem>
+              <MenuItem value="customer">Cliente</MenuItem>
             </TextField>
           </Stack>
         </DialogContent>
@@ -780,7 +1006,12 @@ export default function CommerceAdminPage() {
       </Dialog>
 
       <Dialog open={inventoryDialogOpen} onClose={() => setInventoryDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Producto</DialogTitle>
+        <DialogTitle>
+          <Typography variant="h6">Producto o servicio</Typography>
+          <Typography variant="body2" color="text.secondary">
+            Configura SKU, tipo, precio y manejo de stock.
+          </Typography>
+        </DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
             <TextField label="SKU" value={inventoryDraft.sku} onChange={(e) => setInventoryDraft((prev) => ({ ...prev, sku: e.target.value }))} />
@@ -845,7 +1076,12 @@ export default function CommerceAdminPage() {
       </Dialog>
 
       <Dialog open={inventoryAdjustmentOpen} onClose={() => setInventoryAdjustmentOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Ajustar inventario</DialogTitle>
+        <DialogTitle>
+          <Typography variant="h6">Ajustar inventario</Typography>
+          <Typography variant="body2" color="text.secondary">
+            Registra una entrada o salida manual con su referencia.
+          </Typography>
+        </DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
             <TextField label="SKU" value={inventoryAdjustmentDraft.sku} disabled />
@@ -861,7 +1097,12 @@ export default function CommerceAdminPage() {
       </Dialog>
 
       <Dialog open={invoiceDialogOpen} onClose={() => setInvoiceDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Editar factura</DialogTitle>
+        <DialogTitle>
+          <Typography variant="h6">Editar factura</Typography>
+          <Typography variant="body2" color="text.secondary">
+            Ajusta numero, monto, estado y fecha de emision.
+          </Typography>
+        </DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
             <TextField label="Numero" value={invoiceDraft.number} onChange={(e) => setInvoiceDraft((prev) => ({ ...prev, number: e.target.value }))} />
@@ -874,9 +1115,9 @@ export default function CommerceAdminPage() {
               </Grid>
             </Grid>
             <TextField select label="Estado" value={invoiceDraft.status} onChange={(e) => setInvoiceDraft((prev) => ({ ...prev, status: e.target.value }))}>
-              <MenuItem value="issued">issued</MenuItem>
-              <MenuItem value="paid">paid</MenuItem>
-              <MenuItem value="void">void</MenuItem>
+              <MenuItem value="issued">Emitida</MenuItem>
+              <MenuItem value="paid">Pagada</MenuItem>
+              <MenuItem value="void">Anulada</MenuItem>
             </TextField>
             <TextField type="datetime-local" label="Emitida" value={invoiceDraft.issuedAt} onChange={(e) => setInvoiceDraft((prev) => ({ ...prev, issuedAt: e.target.value }))} InputLabelProps={{ shrink: true }} />
           </Stack>
@@ -888,7 +1129,12 @@ export default function CommerceAdminPage() {
       </Dialog>
 
       <Dialog open={invoicePreviewOpen} onClose={() => setInvoicePreviewOpen(false)} maxWidth="lg" fullWidth>
-        <DialogTitle>Vista previa PDF</DialogTitle>
+        <DialogTitle>
+          <Typography variant="h6">Vista previa PDF</Typography>
+          <Typography variant="body2" color="text.secondary">
+            Revisa el documento antes de compartirlo o descargarlo.
+          </Typography>
+        </DialogTitle>
         <DialogContent>
           {invoicePreviewUrl ? (
             <Box component="iframe" src={invoicePreviewUrl} sx={{ width: '100%', height: '75vh', border: 0 }} />

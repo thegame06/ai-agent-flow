@@ -27,6 +27,7 @@ import { CONFIG } from 'src/global-config';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
 import { BrandPageHeader } from 'src/aiagentflow/components/BrandPageHeader';
+import { useSettingsWorkspace } from 'src/aiagentflow/pages/settings/SettingsWorkspaceContext';
 
 import { Label } from 'src/components/label';
 import { Iconify } from 'src/components/iconify';
@@ -59,6 +60,7 @@ const tierColor = (tier: string) => {
 };
 
 export default function ModelsPage() {
+  const { embedded } = useSettingsWorkspace();
   const theme = useTheme();
   const router = useRouter();
   const tenantId = useTenantId();
@@ -144,7 +146,7 @@ export default function ModelsPage() {
         <title>Modelos | {CONFIG.appName}</title>
       </Helmet>
 
-      <DashboardContent maxWidth="xl">
+      <DashboardContent maxWidth="xl" disablePadding={embedded}>
         <BrandPageHeader
           eyebrow="Catalogo de IA"
           title="Modelos y enrutamiento"
@@ -152,7 +154,7 @@ export default function ModelsPage() {
           icon="mdi:chip"
           actions={
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-              <Button variant="outlined" onClick={() => router.push(paths.dashboard.system.authProfiles)}>
+              <Button variant="outlined" onClick={() => router.push(paths.dashboard.settings.authProfiles)}>
                 Credenciales
               </Button>
               <Button
@@ -321,7 +323,7 @@ export default function ModelsPage() {
                       startIcon={<Iconify icon="mdi:key-chain-variant" />}
                       onClick={() =>
                         router.push(
-                          `${paths.dashboard.system.authProfiles}?bindModel=${encodeURIComponent(model.modelId)}`
+                          `${paths.dashboard.settings.authProfiles}?bindModel=${encodeURIComponent(model.modelId)}`
                         )
                       }
                     >
