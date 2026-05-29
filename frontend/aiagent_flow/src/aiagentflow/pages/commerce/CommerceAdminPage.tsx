@@ -2,20 +2,21 @@ import { Helmet } from 'react-helmet-async';
 import { useMemo, useState, useEffect } from 'react';
 
 import Box from '@mui/material/Box';
-import Tab from '@mui/material/Tab';
-import Tabs from '@mui/material/Tabs';
 import Card from '@mui/material/Card';
 import Chip from '@mui/material/Chip';
 import Grid from '@mui/material/Grid';
 import Alert from '@mui/material/Alert';
 import Stack from '@mui/material/Stack';
 import Button from '@mui/material/Button';
+import Drawer from '@mui/material/Drawer';
+import Switch from '@mui/material/Switch';
 import Dialog from '@mui/material/Dialog';
-import Divider from '@mui/material/Divider';
 import { DataGrid } from '@mui/x-data-grid';
+import Divider from '@mui/material/Divider';
 import MenuItem from '@mui/material/MenuItem';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
+import ButtonBase from '@mui/material/ButtonBase';
 import DialogTitle from '@mui/material/DialogTitle';
 import DialogContent from '@mui/material/DialogContent';
 import DialogActions from '@mui/material/DialogActions';
@@ -212,6 +213,7 @@ export default function CommerceAdminPage() {
   const [inventory, setInventory] = useState<InventoryRow[]>([]);
   const [inventoryDraft, setInventoryDraft] = useState<InventoryDraft>(EMPTY_INVENTORY);
   const [inventoryDialogOpen, setInventoryDialogOpen] = useState(false);
+  const [inventoryEditingSku, setInventoryEditingSku] = useState<string | null>(null);
   const [inventoryAdjustmentDraft, setInventoryAdjustmentDraft] = useState<InventoryAdjustmentDraft>(EMPTY_ADJUSTMENT);
   const [inventoryAdjustmentOpen, setInventoryAdjustmentOpen] = useState(false);
 
@@ -466,6 +468,7 @@ export default function CommerceAdminPage() {
 
   const openInventoryDialog = (row?: InventoryRow) => {
     if (row) {
+      setInventoryEditingSku(row.sku);
       setInventoryDraft({
         sku: row.sku,
         name: row.name,
@@ -477,6 +480,7 @@ export default function CommerceAdminPage() {
         active: row.active,
       });
     } else {
+      setInventoryEditingSku(null);
       setInventoryDraft(EMPTY_INVENTORY);
     }
     setInventoryDialogOpen(true);
@@ -495,6 +499,7 @@ export default function CommerceAdminPage() {
       });
       setActionOk('Producto guardado.');
       setInventoryDialogOpen(false);
+      setInventoryEditingSku(null);
       await loadInventory();
     } catch (e: any) {
       setActionError(e?.message ?? 'No se pudo guardar el producto.');
@@ -582,6 +587,9 @@ export default function CommerceAdminPage() {
     return { totalDelta };
   }, [movements]);
 
+  const inventoryPreviewPrice = Number(inventoryDraft.unitPrice || 0).toFixed(2);
+  const inventorySupportsStock = inventoryDraft.tracksInventory;
+
   const gridCardSx = {
     height: 560,
     '& .MuiDataGrid-columnHeaders': { bgcolor: 'background.neutral' },
@@ -654,15 +662,56 @@ export default function CommerceAdminPage() {
           ))}
         </Grid>
 
-        <Card variant="outlined" sx={{ p: { xs: 2, md: 2.5 }, borderRadius: 3 }}>
+        <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2.5} alignItems="stretch">
+          <Card
+            variant="outlined"
+            sx={{
+              width: { xs: '100%', lg: 260 },
+              minWidth: { lg: 260 },
+              p: 1.5,
+              borderRadius: 3,
+              alignSelf: { lg: 'flex-start' },
+            }}
+          >
+            <Stack spacing={0.75}>
+              {availableTabs.length > 0 ? (
+                availableTabs.map((entry) => {
+                  const active = entry.value === tab;
+                  const meta = tabMeta[entry.value];
+                  return (
+                    <ButtonBase
+                      key={entry.value}
+                      onClick={() => setTab(entry.value)}
+                      sx={{
+                        width: '100%',
+                        px: 1.25,
+                        py: 1.1,
+                        borderRadius: 2,
+                        justifyContent: 'flex-start',
+                        textAlign: 'left',
+                        bgcolor: active ? 'action.selected' : 'transparent',
+                        borderLeft: '3px solid',
+                        borderColor: active ? 'primary.main' : 'transparent',
+                      }}
+                    >
+                      <Stack direction="row" spacing={1.1} alignItems="center">
+                        <Iconify icon={meta.icon} width={18} />
+                        <Typography variant="body2" fontWeight={active ? 700 : 600}>
+                          {entry.label}
+                        </Typography>
+                      </Stack>
+                    </ButtonBase>
+                  );
+                })
+              ) : (
+                <Alert severity="info">No hay modulos de comercio habilitados.</Alert>
+              )}
+            </Stack>
+          </Card>
+
+          <Card variant="outlined" sx={{ p: { xs: 2, md: 2.5 }, borderRadius: 3, flex: 1, minWidth: 0 }}>
           {availableTabs.length > 0 ? (
-            <>
-              <Stack spacing={1.5} sx={{ mb: 2.5 }}>
-                <Tabs value={tab} onChange={(_, value) => setTab(value)} variant="scrollable" allowScrollButtonsMobile>
-                  {availableTabs.map((entry) => (
-                    <Tab key={entry.value} value={entry.value} label={entry.label} />
-                  ))}
-                </Tabs>
+            <Stack spacing={1.5} sx={{ mb: 2.5 }}>
                 <Card variant="outlined" sx={{ p: 1.5, borderRadius: 2.5, bgcolor: 'background.neutral' }}>
                   <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.25} justifyContent="space-between" alignItems={{ md: 'center' }}>
                     <Box>
@@ -675,7 +724,6 @@ export default function CommerceAdminPage() {
                   </Stack>
                 </Card>
               </Stack>
-            </>
           ) : (
             <Alert severity="info" sx={{ mb: 2 }}>
               No hay modulos de comercio habilitados para este tenant.
@@ -977,7 +1025,8 @@ export default function CommerceAdminPage() {
               </Box>
             </Stack>
           )}
-        </Card>
+          </Card>
+        </Stack>
       </DashboardContent>
 
       <Dialog open={customerDialogOpen} onClose={() => setCustomerDialogOpen(false)} maxWidth="sm" fullWidth>
@@ -1005,75 +1054,272 @@ export default function CommerceAdminPage() {
         </DialogActions>
       </Dialog>
 
-      <Dialog open={inventoryDialogOpen} onClose={() => setInventoryDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>
-          <Typography variant="h6">Producto o servicio</Typography>
-          <Typography variant="body2" color="text.secondary">
-            Configura SKU, tipo, precio y manejo de stock.
-          </Typography>
-        </DialogTitle>
-        <DialogContent>
-          <Stack spacing={2} sx={{ mt: 1 }}>
-            <TextField label="SKU" value={inventoryDraft.sku} onChange={(e) => setInventoryDraft((prev) => ({ ...prev, sku: e.target.value }))} />
-            <TextField label="Nombre" value={inventoryDraft.name} onChange={(e) => setInventoryDraft((prev) => ({ ...prev, name: e.target.value }))} />
-            <Grid container spacing={2}>
-              <Grid item xs={12} md={6}>
-                <TextField select label="Tipo" fullWidth value={inventoryDraft.itemType} onChange={(e) => setInventoryDraft((prev) => ({
-                  ...prev,
-                  itemType: e.target.value,
-                  tracksInventory: ['physical', 'combo', 'kit'].includes(e.target.value) ? prev.tracksInventory : false,
-                  unitOfMeasure: e.target.value === 'service' && prev.unitOfMeasure === 'unit' ? 'hour' : prev.unitOfMeasure,
-                }))}>
-                  <MenuItem value="physical">Fisico</MenuItem>
-                  <MenuItem value="intangible">Intangible</MenuItem>
-                  <MenuItem value="service">Servicio</MenuItem>
-                  <MenuItem value="combo">Combo</MenuItem>
-                  <MenuItem value="kit">Kit</MenuItem>
-                </TextField>
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <TextField select label="Unidad" fullWidth value={inventoryDraft.unitOfMeasure} onChange={(e) => setInventoryDraft((prev) => ({ ...prev, unitOfMeasure: e.target.value }))}>
-                  <MenuItem value="unit">Unidad</MenuItem>
-                  <MenuItem value="set">Set</MenuItem>
-                  <MenuItem value="pack">Pack</MenuItem>
-                  <MenuItem value="box">Caja</MenuItem>
-                  <MenuItem value="hour">Hora</MenuItem>
-                  <MenuItem value="day">Dia</MenuItem>
-                  <MenuItem value="week">Semana</MenuItem>
-                  <MenuItem value="month">Mes</MenuItem>
-                  <MenuItem value="minute">Minuto</MenuItem>
-                  <MenuItem value="kg">Kilogramo</MenuItem>
-                  <MenuItem value="g">Gramo</MenuItem>
-                  <MenuItem value="lb">Libra</MenuItem>
-                  <MenuItem value="liter">Litro</MenuItem>
-                  <MenuItem value="ml">Mililitro</MenuItem>
-                  <MenuItem value="meter">Metro</MenuItem>
-                  <MenuItem value="cm">Centimetro</MenuItem>
-                </TextField>
-              </Grid>
-            </Grid>
-            <Grid container spacing={2}>
-              <Grid item xs={12} md={6}>
-                <TextField label="Precio" fullWidth value={inventoryDraft.unitPrice} onChange={(e) => setInventoryDraft((prev) => ({ ...prev, unitPrice: e.target.value }))} />
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <TextField label="Stock" fullWidth value={inventoryDraft.onHand} disabled={!inventoryDraft.tracksInventory} helperText={inventoryDraft.tracksInventory ? 'Disponible para venta.' : 'No aplica para servicios o intangibles.'} onChange={(e) => setInventoryDraft((prev) => ({ ...prev, onHand: e.target.value }))} />
-              </Grid>
-            </Grid>
-            <Divider />
-            <Button variant={inventoryDraft.tracksInventory ? 'contained' : 'outlined'} onClick={() => setInventoryDraft((prev) => ({ ...prev, tracksInventory: !prev.tracksInventory, onHand: !prev.tracksInventory ? prev.onHand : '0' }))} sx={{ alignSelf: 'flex-start' }}>
-              {inventoryDraft.tracksInventory ? 'Controla inventario' : 'Sin control de inventario'}
-            </Button>
-            <Button variant={inventoryDraft.active ? 'contained' : 'outlined'} onClick={() => setInventoryDraft((prev) => ({ ...prev, active: !prev.active }))} sx={{ alignSelf: 'flex-start' }}>
-              {inventoryDraft.active ? 'Activo' : 'Inactivo'}
-            </Button>
+      <Drawer
+        anchor="right"
+        open={inventoryDialogOpen}
+        onClose={() => {
+          setInventoryDialogOpen(false);
+          setInventoryEditingSku(null);
+        }}
+        PaperProps={{ sx: { width: { xs: '100%', md: 1120 }, maxWidth: '100%' } }}
+      >
+        <Stack sx={{ height: '100%' }}>
+          <Box sx={{ px: 3, py: 2.5, borderBottom: '1px solid', borderColor: 'divider' }}>
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} justifyContent="space-between" alignItems={{ md: 'center' }}>
+              <Box>
+                <Typography variant="overline" color="text.secondary">
+                  Productos
+                </Typography>
+                <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.25 }}>
+                  <Typography variant="h4">
+                    {inventoryEditingSku ? 'Editar producto' : 'Nuevo producto'}
+                  </Typography>
+                  <Chip size="small" color={inventoryDraft.active ? 'success' : 'default'} label={inventoryDraft.active ? 'Activo' : 'Inactivo'} />
+                </Stack>
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>
+                  Configura lo que hoy soporta el catalogo comercial: nombre, SKU, tipo, unidad, precio y control de inventario.
+                </Typography>
+              </Box>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                <Button
+                  variant="text"
+                  onClick={() => {
+                    setInventoryDraft(EMPTY_INVENTORY);
+                    setInventoryEditingSku(null);
+                  }}
+                >
+                  Limpiar cambios
+                </Button>
+                <Button variant="contained" onClick={saveInventory}>
+                  Guardar producto
+                </Button>
+              </Stack>
+            </Stack>
+          </Box>
+
+          <Stack direction={{ xs: 'column', lg: 'row' }} spacing={0} sx={{ flex: 1, minHeight: 0 }}>
+            <Box sx={{ flex: 1, minWidth: 0, overflow: 'auto', p: 3 }}>
+              <Stack spacing={2}>
+                <Card variant="outlined" sx={{ borderRadius: 3 }}>
+                  <Box sx={{ p: 2.25, borderBottom: '1px solid', borderColor: 'divider' }}>
+                    <Typography variant="h6">Detalles del producto</Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Lo minimo necesario para que el producto exista en tu catalogo.
+                    </Typography>
+                  </Box>
+                  <Stack spacing={2} sx={{ p: 2.25 }}>
+                    <TextField
+                      label="Nombre del producto"
+                      value={inventoryDraft.name}
+                      onChange={(e) => setInventoryDraft((prev) => ({ ...prev, name: e.target.value }))}
+                    />
+                    <TextField
+                      label="SKU"
+                      value={inventoryDraft.sku}
+                      onChange={(e) => setInventoryDraft((prev) => ({ ...prev, sku: e.target.value }))}
+                      helperText="Identificador unico del producto."
+                    />
+                    <TextField
+                      label="Descripcion operativa"
+                      multiline
+                      minRows={4}
+                      placeholder="Resumen interno del producto. No se guarda aun en backend."
+                    />
+                    <Grid container spacing={2}>
+                      <Grid item xs={12} md={6}>
+                        <TextField select label="Tipo" fullWidth value={inventoryDraft.itemType} onChange={(e) => setInventoryDraft((prev) => ({
+                          ...prev,
+                          itemType: e.target.value,
+                          tracksInventory: ['physical', 'combo', 'kit'].includes(e.target.value) ? prev.tracksInventory : false,
+                          unitOfMeasure: e.target.value === 'service' && prev.unitOfMeasure === 'unit' ? 'hour' : prev.unitOfMeasure,
+                        }))}>
+                          <MenuItem value="physical">Fisico</MenuItem>
+                          <MenuItem value="intangible">Intangible</MenuItem>
+                          <MenuItem value="service">Servicio</MenuItem>
+                          <MenuItem value="combo">Combo</MenuItem>
+                          <MenuItem value="kit">Kit</MenuItem>
+                        </TextField>
+                      </Grid>
+                      <Grid item xs={12} md={6}>
+                        <TextField select label="Unidad" fullWidth value={inventoryDraft.unitOfMeasure} onChange={(e) => setInventoryDraft((prev) => ({ ...prev, unitOfMeasure: e.target.value }))}>
+                          <MenuItem value="unit">Unidad</MenuItem>
+                          <MenuItem value="set">Set</MenuItem>
+                          <MenuItem value="pack">Pack</MenuItem>
+                          <MenuItem value="box">Caja</MenuItem>
+                          <MenuItem value="hour">Hora</MenuItem>
+                          <MenuItem value="day">Dia</MenuItem>
+                          <MenuItem value="week">Semana</MenuItem>
+                          <MenuItem value="month">Mes</MenuItem>
+                          <MenuItem value="minute">Minuto</MenuItem>
+                          <MenuItem value="kg">Kilogramo</MenuItem>
+                          <MenuItem value="g">Gramo</MenuItem>
+                          <MenuItem value="lb">Libra</MenuItem>
+                          <MenuItem value="liter">Litro</MenuItem>
+                          <MenuItem value="ml">Mililitro</MenuItem>
+                          <MenuItem value="meter">Metro</MenuItem>
+                          <MenuItem value="cm">Centimetro</MenuItem>
+                        </TextField>
+                      </Grid>
+                    </Grid>
+                    <TextField
+                      label="Precio"
+                      value={inventoryDraft.unitPrice}
+                      onChange={(e) => setInventoryDraft((prev) => ({ ...prev, unitPrice: e.target.value }))}
+                      InputProps={{ startAdornment: <Box sx={{ mr: 1, color: 'text.secondary' }}>$</Box> }}
+                    />
+                    <Card variant="outlined" sx={{ p: 1.5, borderRadius: 2.5 }}>
+                      <Stack direction="row" justifyContent="space-between" alignItems="center">
+                        <Box>
+                          <Typography variant="subtitle2">Activo</Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            Define si el producto aparece disponible para usar en ventas.
+                          </Typography>
+                        </Box>
+                        <Switch
+                          checked={inventoryDraft.active}
+                          onChange={() => setInventoryDraft((prev) => ({ ...prev, active: !prev.active }))}
+                        />
+                      </Stack>
+                    </Card>
+                  </Stack>
+                </Card>
+
+                <Card variant="outlined" sx={{ borderRadius: 3 }}>
+                  <Box sx={{ p: 2.25, borderBottom: '1px solid', borderColor: 'divider' }}>
+                    <Typography variant="h6">Inventario y venta</Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Stock y control operativo disponible hoy en el sistema.
+                    </Typography>
+                  </Box>
+                  <Stack spacing={2} sx={{ p: 2.25 }}>
+                    <Card variant="outlined" sx={{ p: 1.5, borderRadius: 2.5 }}>
+                      <Stack direction="row" justifyContent="space-between" alignItems="center">
+                        <Box>
+                          <Typography variant="subtitle2">Controlar inventario</Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            Desactivalo para servicios o productos intangibles.
+                          </Typography>
+                        </Box>
+                        <Switch
+                          checked={inventoryDraft.tracksInventory}
+                          onChange={() =>
+                            setInventoryDraft((prev) => ({
+                              ...prev,
+                              tracksInventory: !prev.tracksInventory,
+                              onHand: !prev.tracksInventory ? prev.onHand : '0',
+                            }))
+                          }
+                        />
+                      </Stack>
+                    </Card>
+                    <TextField
+                      label="Stock disponible"
+                      value={inventoryDraft.onHand}
+                      disabled={!inventoryDraft.tracksInventory}
+                      helperText={inventoryDraft.tracksInventory ? 'Disponible para venta.' : 'No aplica para servicios o intangibles.'}
+                      onChange={(e) => setInventoryDraft((prev) => ({ ...prev, onHand: e.target.value }))}
+                    />
+                    <Alert severity="info">
+                      Aun no hay categorias, sucursales, variaciones o imagenes persistidas para este modulo comercial. Esta pantalla ya queda preparada para cuando ese backend exista.
+                    </Alert>
+                  </Stack>
+                </Card>
+              </Stack>
+            </Box>
+
+            <Box
+              sx={{
+                width: { xs: '100%', lg: 340 },
+                borderLeft: { lg: '1px solid' },
+                borderTop: { xs: '1px solid', lg: 0 },
+                borderColor: 'divider',
+                bgcolor: 'background.neutral',
+                p: 2.5,
+              }}
+            >
+              <Card variant="outlined" sx={{ borderRadius: 3, position: { lg: 'sticky' }, top: 0 }}>
+                <Box sx={{ p: 2, borderBottom: '1px solid', borderColor: 'divider' }}>
+                  <Stack direction="row" justifyContent="space-between" alignItems="center">
+                    <Typography variant="subtitle1">Vista previa</Typography>
+                    <Chip size="small" color="success" label="En vivo" />
+                  </Stack>
+                </Box>
+                <Stack spacing={2} sx={{ p: 2 }}>
+                  <Box
+                    sx={{
+                      borderRadius: 3,
+                      border: '10px solid',
+                      borderColor: 'common.black',
+                      bgcolor: 'background.paper',
+                      minHeight: 520,
+                      p: 2,
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        width: '100%',
+                        height: 210,
+                        borderRadius: 2,
+                        bgcolor: 'background.neutral',
+                        display: 'grid',
+                        placeItems: 'center',
+                        color: 'text.secondary',
+                        mb: 2,
+                      }}
+                    >
+                      <Stack alignItems="center" spacing={1}>
+                        <Iconify icon="mdi:image-outline" width={28} />
+                        <Typography variant="caption">Imagen no disponible</Typography>
+                      </Stack>
+                    </Box>
+                    <Stack spacing={0.75}>
+                      <Stack direction="row" justifyContent="space-between" spacing={1}>
+                        <Typography variant="subtitle1" sx={{ minWidth: 0 }}>
+                          {inventoryDraft.name || 'Nombre del producto'}
+                        </Typography>
+                        <Typography variant="subtitle1">${inventoryPreviewPrice}</Typography>
+                      </Stack>
+                      <Typography variant="body2" color="text.secondary">
+                        {inventorySupportsStock
+                          ? `Stock disponible: ${inventoryDraft.onHand || '0'} ${inventoryDraft.unitOfMeasure}`
+                          : 'Producto sin control de inventario'}
+                      </Typography>
+                      <Divider sx={{ my: 1 }} />
+                      <Typography variant="caption" color="text.secondary">
+                        SKU: {inventoryDraft.sku || '-'}
+                      </Typography>
+                      <Button variant="contained" disabled sx={{ mt: 2 }}>
+                        Agregar al carrito - ${inventoryPreviewPrice}
+                      </Button>
+                    </Stack>
+                  </Box>
+                </Stack>
+              </Card>
+            </Box>
           </Stack>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setInventoryDialogOpen(false)}>Cancelar</Button>
-          <Button variant="contained" onClick={saveInventory}>Guardar</Button>
-        </DialogActions>
-      </Dialog>
+
+          <Box sx={{ px: 3, py: 2, borderTop: '1px solid', borderColor: 'divider' }}>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between" alignItems={{ sm: 'center' }}>
+              <Typography variant="body2" color="text.secondary">
+                {inventoryEditingSku ? 'Editando producto existente.' : 'Nuevo producto pendiente de guardar.'}
+              </Typography>
+              <Stack direction="row" spacing={1}>
+                <Button
+                  onClick={() => {
+                    setInventoryDialogOpen(false);
+                    setInventoryEditingSku(null);
+                  }}
+                >
+                  Cancelar
+                </Button>
+                <Button variant="contained" onClick={saveInventory}>
+                  Guardar producto
+                </Button>
+              </Stack>
+            </Stack>
+          </Box>
+        </Stack>
+      </Drawer>
 
       <Dialog open={inventoryAdjustmentOpen} onClose={() => setInventoryAdjustmentOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>
