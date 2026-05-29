@@ -282,6 +282,29 @@ public sealed class CommerceController : ControllerBase
             request.CategoryIds,
             request.BranchIds,
             request.ImageUrls,
+            request.Attributes?.Select(x => new CommerceProductAttributeDocument { Key = x.Key, Value = x.Value }).ToList(),
+            request.Discount is null ? null : new CommerceProductDiscountDocument
+            {
+                Enabled = request.Discount.Enabled,
+                Type = request.Discount.Type,
+                Value = request.Discount.Value
+            },
+            request.Variations?.Select(x => new CommerceProductVariationDocument
+            {
+                Id = x.Id ?? Guid.NewGuid().ToString("N"),
+                Sku = x.Sku,
+                Name = x.Name ?? x.Sku,
+                Price = x.Price,
+                Stock = x.Stock,
+                Active = x.Active,
+                Attributes = x.Attributes?.Select(a => new CommerceProductAttributeDocument { Key = a.Key, Value = a.Value }).ToList() ?? [],
+                ImageUrls = x.ImageUrls ?? []
+            }).ToList(),
+            request.BranchStocks?.Select(x => new CommerceBranchStockDocument
+            {
+                BranchId = x.BranchId,
+                OnHand = x.OnHand
+            }).ToList(),
             ct);
         return Ok(ToInventoryDto(saved));
     }
@@ -1083,7 +1106,21 @@ public sealed class CommerceController : ControllerBase
         item.Active,
         item.CategoryIds,
         item.BranchIds,
-        item.ImageUrls
+        item.ImageUrls,
+        attributes = item.Attributes.Select(x => new { x.Key, x.Value }).ToList(),
+        discount = item.Discount is null ? null : new { item.Discount.Enabled, item.Discount.Type, item.Discount.Value },
+        variations = item.Variations.Select(x => new
+        {
+            x.Id,
+            x.Sku,
+            x.Name,
+            x.Price,
+            x.Stock,
+            x.Active,
+            attributes = x.Attributes.Select(a => new { a.Key, a.Value }).ToList(),
+            x.ImageUrls
+        }).ToList(),
+        branchStocks = item.BranchStocks.Select(x => new { x.BranchId, x.OnHand }).ToList()
     };
 
     private static object ToCategoryDto(CommerceCategoryDocument category) => new
@@ -1259,6 +1296,41 @@ public sealed record UpsertInventoryRequest
     public List<string>? CategoryIds { get; init; }
     public List<string>? BranchIds { get; init; }
     public List<string>? ImageUrls { get; init; }
+    public List<ProductAttributeRequest>? Attributes { get; init; }
+    public ProductDiscountRequest? Discount { get; init; }
+    public List<ProductVariationRequest>? Variations { get; init; }
+    public List<BranchStockRequest>? BranchStocks { get; init; }
+}
+
+public sealed record ProductAttributeRequest
+{
+    public required string Key { get; init; }
+    public required string Value { get; init; }
+}
+
+public sealed record ProductDiscountRequest
+{
+    public bool Enabled { get; init; }
+    public string Type { get; init; } = "percent";
+    public decimal Value { get; init; }
+}
+
+public sealed record ProductVariationRequest
+{
+    public string? Id { get; init; }
+    public required string Sku { get; init; }
+    public string? Name { get; init; }
+    public decimal Price { get; init; }
+    public int Stock { get; init; }
+    public bool Active { get; init; } = true;
+    public List<ProductAttributeRequest>? Attributes { get; init; }
+    public List<string>? ImageUrls { get; init; }
+}
+
+public sealed record BranchStockRequest
+{
+    public required string BranchId { get; init; }
+    public int OnHand { get; init; }
 }
 
 public sealed record UpsertCategoryRequest

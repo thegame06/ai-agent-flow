@@ -56,6 +56,19 @@ type InventoryRow = {
   categoryIds: string[];
   branchIds: string[];
   imageUrls: string[];
+  attributes: Array<{ key: string; value: string }>;
+  discount?: { enabled: boolean; type: string; value: number } | null;
+  variations: Array<{
+    id: string;
+    sku: string;
+    name: string;
+    price: number;
+    stock: number;
+    active: boolean;
+    attributes: Array<{ key: string; value: string }>;
+    imageUrls: string[];
+  }>;
+  branchStocks: Array<{ branchId: string; onHand: number }>;
 };
 
 type InventoryMovementRow = {
@@ -171,6 +184,21 @@ type InventoryDraft = {
   categoryIds: string[];
   branchIds: string[];
   imageUrls: string[];
+  attributes: Array<{ key: string; value: string }>;
+  discountEnabled: boolean;
+  discountType: string;
+  discountValue: string;
+  variations: Array<{
+    id: string;
+    sku: string;
+    name: string;
+    price: string;
+    stock: string;
+    active: boolean;
+    attributes: Array<{ key: string; value: string }>;
+    imageUrls: string[];
+  }>;
+  branchStocks: Array<{ branchId: string; onHand: string }>;
 };
 
 type InventoryAdjustmentDraft = {
@@ -225,6 +253,12 @@ const EMPTY_INVENTORY: InventoryDraft = {
   categoryIds: [],
   branchIds: [],
   imageUrls: [],
+  attributes: [],
+  discountEnabled: false,
+  discountType: 'percent',
+  discountValue: '',
+  variations: [],
+  branchStocks: [],
 };
 
 const EMPTY_ADJUSTMENT: InventoryAdjustmentDraft = {
@@ -739,6 +773,24 @@ export default function CommerceAdminPage() {
         categoryIds: row.categoryIds ?? [],
         branchIds: row.branchIds ?? [],
         imageUrls: row.imageUrls ?? [],
+        attributes: row.attributes ?? [],
+        discountEnabled: Boolean(row.discount?.enabled),
+        discountType: row.discount?.type ?? 'percent',
+        discountValue: row.discount?.value ? String(row.discount.value) : '',
+        variations: (row.variations ?? []).map((variation) => ({
+          id: variation.id,
+          sku: variation.sku,
+          name: variation.name,
+          price: String(variation.price ?? 0),
+          stock: String(variation.stock ?? 0),
+          active: variation.active,
+          attributes: variation.attributes ?? [],
+          imageUrls: variation.imageUrls ?? [],
+        })),
+        branchStocks: (row.branchStocks ?? []).map((stock) => ({
+          branchId: stock.branchId,
+          onHand: String(stock.onHand ?? 0),
+        })),
       });
       setInventoryImageUrlInput('');
       setInventoryPreviewImageIndex(0);
@@ -765,6 +817,28 @@ export default function CommerceAdminPage() {
         categoryIds: inventoryDraft.categoryIds,
         branchIds: inventoryDraft.branchIds,
         imageUrls: inventoryDraft.imageUrls,
+        attributes: inventoryDraft.attributes,
+        discount: inventoryDraft.discountEnabled
+          ? {
+              enabled: true,
+              type: inventoryDraft.discountType,
+              value: Number(inventoryDraft.discountValue || 0),
+            }
+          : null,
+        variations: inventoryDraft.variations.map((variation) => ({
+          id: variation.id,
+          sku: variation.sku,
+          name: variation.name,
+          price: Number(variation.price || 0),
+          stock: Number(variation.stock || 0),
+          active: variation.active,
+          attributes: variation.attributes,
+          imageUrls: variation.imageUrls,
+        })),
+        branchStocks: inventoryDraft.branchStocks.map((stock) => ({
+          branchId: stock.branchId,
+          onHand: Number(stock.onHand || 0),
+        })),
       });
       setActionOk('Producto guardado.');
       setInventoryDialogOpen(false);
@@ -1037,6 +1111,13 @@ export default function CommerceAdminPage() {
 
   const inventoryPreviewPrice = Number(inventoryDraft.unitPrice || 0).toFixed(2);
   const inventorySupportsStock = inventoryDraft.tracksInventory;
+  const inventoryDiscountedPrice = useMemo(() => {
+    const base = Number(inventoryDraft.unitPrice || 0);
+    if (!inventoryDraft.discountEnabled) return base;
+    const value = Number(inventoryDraft.discountValue || 0);
+    if (inventoryDraft.discountType === 'amount') return Math.max(0, base - value);
+    return Math.max(0, base - base * (value / 100));
+  }, [inventoryDraft.discountEnabled, inventoryDraft.discountType, inventoryDraft.discountValue, inventoryDraft.unitPrice]);
 
   const gridCardSx = {
     height: 560,
@@ -1281,6 +1362,13 @@ export default function CommerceAdminPage() {
                     { field: 'itemType', headerName: 'Tipo', width: 120, renderCell: (params) => <Chip size="small" label={params.value} variant="outlined" /> },
                     { field: 'unitOfMeasure', headerName: 'Unidad', width: 110 },
                     { field: 'unitPrice', headerName: 'Precio', width: 120 },
+                    { field: 'variations', headerName: 'Variaciones', width: 110, valueGetter: (_, row) => row.variations?.length ?? 0 },
+                    {
+                      field: 'discount',
+                      headerName: 'Descuento',
+                      width: 130,
+                      valueGetter: (_, row) => row.discount?.enabled ? `${row.discount.value}${row.discount.type === 'percent' ? '%' : ''}` : '-',
+                    },
                     { field: 'categoryIds', headerName: 'Categorias', width: 120, valueGetter: (_, row) => row.categoryIds?.length ?? 0 },
                     { field: 'branchIds', headerName: 'Sucursales', width: 120, valueGetter: (_, row) => row.branchIds?.length ?? 0 },
                     { field: 'onHand', headerName: 'Stock', width: 110, valueGetter: (_, row) => row.tracksInventory ? row.onHand : '-' },
@@ -1922,7 +2010,14 @@ export default function CommerceAdminPage() {
                       label="Sucursales"
                       SelectProps={{ multiple: true }}
                       value={inventoryDraft.branchIds}
-                      onChange={(e) => setInventoryDraft((prev) => ({ ...prev, branchIds: e.target.value as unknown as string[] }))}
+                      onChange={(e) => {
+                        const nextBranchIds = e.target.value as unknown as string[];
+                        setInventoryDraft((prev) => ({
+                          ...prev,
+                          branchIds: nextBranchIds,
+                          branchStocks: nextBranchIds.map((branchId) => prev.branchStocks.find((stock) => stock.branchId === branchId) ?? { branchId, onHand: '0' }),
+                        }));
+                      }}
                       helperText="Define donde se ofrece el producto."
                     >
                       {branches.map((branch) => (
@@ -1931,6 +2026,255 @@ export default function CommerceAdminPage() {
                         </MenuItem>
                       ))}
                     </TextField>
+                    {inventoryDraft.branchIds.length > 0 && (
+                      <Card variant="outlined" sx={{ p: 1.5, borderRadius: 2.5 }}>
+                        <Stack spacing={1.5}>
+                          <Typography variant="subtitle2">Stock por sucursal</Typography>
+                          {inventoryDraft.branchStocks.map((stock, index) => (
+                            <Grid container spacing={1.5} key={stock.branchId}>
+                              <Grid item xs={12} md={7}>
+                                <TextField
+                                  fullWidth
+                                  label="Sucursal"
+                                  value={branches.find((branch) => branch.id === stock.branchId)?.name || stock.branchId}
+                                  disabled
+                                />
+                              </Grid>
+                              <Grid item xs={12} md={5}>
+                                <TextField
+                                  fullWidth
+                                  label="Stock"
+                                  value={stock.onHand}
+                                  onChange={(e) => setInventoryDraft((prev) => ({
+                                    ...prev,
+                                    branchStocks: prev.branchStocks.map((entry, currentIndex) =>
+                                      currentIndex === index ? { ...entry, onHand: e.target.value } : entry
+                                    ),
+                                  }))}
+                                />
+                              </Grid>
+                            </Grid>
+                          ))}
+                        </Stack>
+                      </Card>
+                    )}
+                    <Card variant="outlined" sx={{ p: 1.5, borderRadius: 2.5 }}>
+                      <Stack spacing={1.5}>
+                        <Stack direction="row" justifyContent="space-between" alignItems="center">
+                          <Typography variant="subtitle2">Descuento por producto</Typography>
+                          <Switch
+                            checked={inventoryDraft.discountEnabled}
+                            onChange={() => setInventoryDraft((prev) => ({ ...prev, discountEnabled: !prev.discountEnabled }))}
+                          />
+                        </Stack>
+                        {inventoryDraft.discountEnabled && (
+                          <Grid container spacing={1.5}>
+                            <Grid item xs={12} md={5}>
+                              <TextField
+                                select
+                                fullWidth
+                                label="Tipo"
+                                value={inventoryDraft.discountType}
+                                onChange={(e) => setInventoryDraft((prev) => ({ ...prev, discountType: e.target.value }))}
+                              >
+                                <MenuItem value="percent">Porcentaje</MenuItem>
+                                <MenuItem value="amount">Monto fijo</MenuItem>
+                              </TextField>
+                            </Grid>
+                            <Grid item xs={12} md={7}>
+                              <TextField
+                                fullWidth
+                                label={inventoryDraft.discountType === 'percent' ? 'Valor (%)' : 'Valor'}
+                                value={inventoryDraft.discountValue}
+                                onChange={(e) => setInventoryDraft((prev) => ({ ...prev, discountValue: e.target.value }))}
+                              />
+                            </Grid>
+                          </Grid>
+                        )}
+                      </Stack>
+                    </Card>
+                    <Card variant="outlined" sx={{ p: 1.5, borderRadius: 2.5 }}>
+                      <Stack spacing={1.5}>
+                        <Stack direction="row" justifyContent="space-between" alignItems="center">
+                          <Typography variant="subtitle2">Atributos</Typography>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            onClick={() => setInventoryDraft((prev) => ({
+                              ...prev,
+                              attributes: [...prev.attributes, { key: '', value: '' }],
+                            }))}
+                          >
+                            Agregar atributo
+                          </Button>
+                        </Stack>
+                        {inventoryDraft.attributes.length > 0 ? inventoryDraft.attributes.map((attribute, index) => (
+                          <Grid container spacing={1.5} key={`attribute-${index}`}>
+                            <Grid item xs={12} md={5}>
+                              <TextField
+                                fullWidth
+                                label="Etiqueta"
+                                value={attribute.key}
+                                onChange={(e) => setInventoryDraft((prev) => ({
+                                  ...prev,
+                                  attributes: prev.attributes.map((entry, currentIndex) =>
+                                    currentIndex === index ? { ...entry, key: e.target.value } : entry
+                                  ),
+                                }))}
+                              />
+                            </Grid>
+                            <Grid item xs={12} md={5}>
+                              <TextField
+                                fullWidth
+                                label="Valor"
+                                value={attribute.value}
+                                onChange={(e) => setInventoryDraft((prev) => ({
+                                  ...prev,
+                                  attributes: prev.attributes.map((entry, currentIndex) =>
+                                    currentIndex === index ? { ...entry, value: e.target.value } : entry
+                                  ),
+                                }))}
+                              />
+                            </Grid>
+                            <Grid item xs={12} md={2}>
+                              <Button
+                                fullWidth
+                                color="error"
+                                onClick={() => setInventoryDraft((prev) => ({
+                                  ...prev,
+                                  attributes: prev.attributes.filter((_, currentIndex) => currentIndex !== index),
+                                }))}
+                              >
+                                Quitar
+                              </Button>
+                            </Grid>
+                          </Grid>
+                        )) : <Typography variant="body2" color="text.secondary">No hay atributos definidos.</Typography>}
+                      </Stack>
+                    </Card>
+                    <Card variant="outlined" sx={{ p: 1.5, borderRadius: 2.5 }}>
+                      <Stack spacing={1.5}>
+                        <Stack direction="row" justifyContent="space-between" alignItems="center">
+                          <Box>
+                            <Typography variant="subtitle2">Variaciones</Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              Cada variacion puede manejar SKU, precio y stock propio.
+                            </Typography>
+                          </Box>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            onClick={() => setInventoryDraft((prev) => ({
+                              ...prev,
+                              variations: [
+                                ...prev.variations,
+                                {
+                                  id: crypto.randomUUID?.() ?? `${Date.now()}-${prev.variations.length}`,
+                                  sku: '',
+                                  name: '',
+                                  price: prev.unitPrice,
+                                  stock: '0',
+                                  active: true,
+                                  attributes: [],
+                                  imageUrls: [],
+                                },
+                              ],
+                            }))}
+                          >
+                            Agregar variacion
+                          </Button>
+                        </Stack>
+                        {inventoryDraft.variations.length > 0 ? inventoryDraft.variations.map((variation, index) => (
+                          <Card key={variation.id} variant="outlined" sx={{ p: 1.5, borderRadius: 2.5 }}>
+                            <Stack spacing={1.5}>
+                              <Grid container spacing={1.5}>
+                                <Grid item xs={12} md={4}>
+                                  <TextField
+                                    fullWidth
+                                    label="SKU"
+                                    value={variation.sku}
+                                    onChange={(e) => setInventoryDraft((prev) => ({
+                                      ...prev,
+                                      variations: prev.variations.map((entry, currentIndex) =>
+                                        currentIndex === index ? { ...entry, sku: e.target.value } : entry
+                                      ),
+                                    }))}
+                                  />
+                                </Grid>
+                                <Grid item xs={12} md={4}>
+                                  <TextField
+                                    fullWidth
+                                    label="Nombre"
+                                    value={variation.name}
+                                    onChange={(e) => setInventoryDraft((prev) => ({
+                                      ...prev,
+                                      variations: prev.variations.map((entry, currentIndex) =>
+                                        currentIndex === index ? { ...entry, name: e.target.value } : entry
+                                      ),
+                                    }))}
+                                  />
+                                </Grid>
+                                <Grid item xs={12} md={2}>
+                                  <TextField
+                                    fullWidth
+                                    label="Precio"
+                                    value={variation.price}
+                                    onChange={(e) => setInventoryDraft((prev) => ({
+                                      ...prev,
+                                      variations: prev.variations.map((entry, currentIndex) =>
+                                        currentIndex === index ? { ...entry, price: e.target.value } : entry
+                                      ),
+                                    }))}
+                                  />
+                                </Grid>
+                                <Grid item xs={12} md={2}>
+                                  <TextField
+                                    fullWidth
+                                    label="Stock"
+                                    value={variation.stock}
+                                    onChange={(e) => setInventoryDraft((prev) => ({
+                                      ...prev,
+                                      variations: prev.variations.map((entry, currentIndex) =>
+                                        currentIndex === index ? { ...entry, stock: e.target.value } : entry
+                                      ),
+                                    }))}
+                                  />
+                                </Grid>
+                              </Grid>
+                              <Stack direction="row" justifyContent="space-between" alignItems="center">
+                                <Typography variant="caption" color="text.secondary">
+                                  Variacion {index + 1}
+                                </Typography>
+                                <Stack direction="row" spacing={1} alignItems="center">
+                                  <Chip size="small" label={variation.active ? 'Activa' : 'Inactiva'} color={variation.active ? 'success' : 'default'} />
+                                  <Button
+                                    size="small"
+                                    onClick={() => setInventoryDraft((prev) => ({
+                                      ...prev,
+                                      variations: prev.variations.map((entry, currentIndex) =>
+                                        currentIndex === index ? { ...entry, active: !entry.active } : entry
+                                      ),
+                                    }))}
+                                  >
+                                    Cambiar estado
+                                  </Button>
+                                  <Button
+                                    size="small"
+                                    color="error"
+                                    onClick={() => setInventoryDraft((prev) => ({
+                                      ...prev,
+                                      variations: prev.variations.filter((_, currentIndex) => currentIndex !== index),
+                                    }))}
+                                  >
+                                    Eliminar
+                                  </Button>
+                                </Stack>
+                              </Stack>
+                            </Stack>
+                          </Card>
+                        )) : <Typography variant="body2" color="text.secondary">No hay variaciones creadas.</Typography>}
+                      </Stack>
+                    </Card>
                     <Stack spacing={1}>
                       <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
                         <TextField
@@ -1975,7 +2319,7 @@ export default function CommerceAdminPage() {
                       )}
                     </Stack>
                     <Alert severity="info">
-                      Variaciones avanzadas, descuentos por producto y galeria enriquecida todavia no estan modeladas. Categorias, sucursales e imagenes base ya quedan persistidas.
+                      Las variaciones ya soportan SKU, precio y stock. Si luego quieres atributos e imagenes por variacion en la UI, esa seria la siguiente pasada.
                     </Alert>
                   </Stack>
                 </Card>
@@ -2064,7 +2408,14 @@ export default function CommerceAdminPage() {
                         <Typography variant="subtitle1" sx={{ minWidth: 0 }}>
                           {inventoryDraft.name || 'Nombre del producto'}
                         </Typography>
-                        <Typography variant="subtitle1">${inventoryPreviewPrice}</Typography>
+                        <Stack spacing={0.25} alignItems="flex-end">
+                          <Typography variant="subtitle1">${inventoryDiscountedPrice.toFixed(2)}</Typography>
+                          {inventoryDraft.discountEnabled && Number(inventoryDraft.discountValue || 0) > 0 && (
+                            <Typography variant="caption" color="text.secondary" sx={{ textDecoration: 'line-through' }}>
+                              ${inventoryPreviewPrice}
+                            </Typography>
+                          )}
+                        </Stack>
                       </Stack>
                       <Typography variant="body2" color="text.secondary">
                         {inventoryDraft.description || (inventorySupportsStock
@@ -2080,8 +2431,34 @@ export default function CommerceAdminPage() {
                           Disponible en: {inventoryDraft.branchIds.map((branchId) => branches.find((branch) => branch.id === branchId)?.name).filter(Boolean).join(', ')}
                         </Typography>
                       )}
+                      {inventoryDraft.attributes.length > 0 && (
+                        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ pt: 0.5 }}>
+                          {inventoryDraft.attributes
+                            .filter((attribute) => attribute.key && attribute.value)
+                            .map((attribute, index) => (
+                              <Chip key={`${attribute.key}-${index}`} size="small" label={`${attribute.key}: ${attribute.value}`} />
+                            ))}
+                        </Stack>
+                      )}
+                      {inventoryDraft.variations.length > 0 && (
+                        <Stack spacing={0.5} sx={{ pt: 0.5 }}>
+                          <Typography variant="caption" color="text.secondary">
+                            Variaciones disponibles
+                          </Typography>
+                          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                            {inventoryDraft.variations.map((variation) => (
+                              <Chip
+                                key={variation.id}
+                                size="small"
+                                variant="outlined"
+                                label={`${variation.name || variation.sku || 'Variacion'} · $${Number(variation.price || 0).toFixed(2)}`}
+                              />
+                            ))}
+                          </Stack>
+                        </Stack>
+                      )}
                       <Button variant="contained" disabled sx={{ mt: 2 }}>
-                        Agregar al carrito - ${inventoryPreviewPrice}
+                        Agregar al carrito - ${inventoryDiscountedPrice.toFixed(2)}
                       </Button>
                     </Stack>
                   </Box>

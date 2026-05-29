@@ -39,6 +39,10 @@ public interface ICommerceStore
         IReadOnlyList<string>? categoryIds,
         IReadOnlyList<string>? branchIds,
         IReadOnlyList<string>? imageUrls,
+        IReadOnlyList<CommerceProductAttributeDocument>? attributes,
+        CommerceProductDiscountDocument? discount,
+        IReadOnlyList<CommerceProductVariationDocument>? variations,
+        IReadOnlyList<CommerceBranchStockDocument>? branchStocks,
         CancellationToken ct);
     Task<CommerceInventoryItemDocument> AdjustInventoryAsync(string tenantId, string sku, int delta, string reason, string? referenceId, CancellationToken ct);
     Task<IReadOnlyList<CommerceInventoryMovementDocument>> SearchInventoryMovementsAsync(string tenantId, string? sku, int page, int pageSize, CancellationToken ct);
@@ -288,6 +292,10 @@ public sealed class CommerceStore : ICommerceStore
         IReadOnlyList<string>? categoryIds,
         IReadOnlyList<string>? branchIds,
         IReadOnlyList<string>? imageUrls,
+        IReadOnlyList<CommerceProductAttributeDocument>? attributes,
+        CommerceProductDiscountDocument? discount,
+        IReadOnlyList<CommerceProductVariationDocument>? variations,
+        IReadOnlyList<CommerceBranchStockDocument>? branchStocks,
         CancellationToken ct)
     {
         var normalizedType = NormalizeInventoryItemType(itemType);
@@ -296,6 +304,13 @@ public sealed class CommerceStore : ICommerceStore
         var normalizedCategories = NormalizeIds(categoryIds);
         var normalizedBranches = NormalizeIds(branchIds);
         var normalizedImages = NormalizeImageUrls(imageUrls);
+        var normalizedAttributes = NormalizeAttributes(attributes);
+        var normalizedDiscount = NormalizeDiscount(discount);
+        var normalizedBranchStocks = NormalizeBranchStocks(branchStocks, normalizedBranches, resolvedTracksInventory);
+        var normalizedVariations = NormalizeVariations(variations);
+        var resolvedOnHand = resolvedTracksInventory
+            ? (normalizedBranchStocks.Count > 0 ? normalizedBranchStocks.Sum(x => x.OnHand) : onHand)
+            : 0;
         var current = await _inventory.Find(x => x.TenantId == tenantId && x.Sku == sku).FirstOrDefaultAsync(ct);
         if (current is null)
         {
@@ -305,7 +320,7 @@ public sealed class CommerceStore : ICommerceStore
                 Sku = sku,
                 Name = name,
                 UnitPrice = unitPrice,
-                OnHand = resolvedTracksInventory ? onHand : 0,
+                OnHand = resolvedOnHand,
                 Active = active,
                 ItemType = normalizedType,
                 UnitOfMeasure = normalizedUnit,
@@ -313,7 +328,11 @@ public sealed class CommerceStore : ICommerceStore
                 Description = string.IsNullOrWhiteSpace(description) ? null : description.Trim(),
                 CategoryIds = normalizedCategories,
                 BranchIds = normalizedBranches,
-                ImageUrls = normalizedImages
+                ImageUrls = normalizedImages,
+                Attributes = normalizedAttributes,
+                Discount = normalizedDiscount,
+                Variations = normalizedVariations,
+                BranchStocks = normalizedBranchStocks
             };
             await _inventory.InsertOneAsync(created, cancellationToken: ct);
             return created;
@@ -321,7 +340,7 @@ public sealed class CommerceStore : ICommerceStore
 
         current.Name = name;
         current.UnitPrice = unitPrice;
-        current.OnHand = resolvedTracksInventory ? onHand : 0;
+        current.OnHand = resolvedOnHand;
         current.Active = active;
         current.ItemType = normalizedType;
         current.UnitOfMeasure = normalizedUnit;
@@ -330,6 +349,10 @@ public sealed class CommerceStore : ICommerceStore
         current.CategoryIds = normalizedCategories;
         current.BranchIds = normalizedBranches;
         current.ImageUrls = normalizedImages;
+        current.Attributes = normalizedAttributes;
+        current.Discount = normalizedDiscount;
+        current.Variations = normalizedVariations;
+        current.BranchStocks = normalizedBranchStocks;
         await _inventory.ReplaceOneAsync(x => x.TenantId == tenantId && x.Sku == sku, current, cancellationToken: ct);
         return current;
     }
@@ -812,6 +835,82 @@ public sealed class CommerceStore : ICommerceStore
             .Where(x => !string.IsNullOrWhiteSpace(x.Key) && !string.IsNullOrWhiteSpace(x.Value))
             .ToDictionary(x => x.Key.Trim(), x => x.Value.Trim(), StringComparer.OrdinalIgnoreCase);
     }
+
+    private static List<CommerceProductAttributeDocument> NormalizeAttributes(IReadOnlyList<CommerceProductAttributeDocument>? attributes)
+    {
+        if (attributes is null || attributes.Count == 0) return [];
+        return attributes
+            .Where(x => !string.IsNullOrWhiteSpace(x.Key) && !string.IsNullOrWhiteSpace(x.Value))
+            .Select(x => new CommerceProductAttributeDocument
+            {
+                Key = x.Key.Trim(),
+                Value = x.Value.Trim()
+            })
+            .GroupBy(x => x.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(g => g.First())
+            .ToList();
+    }
+
+    private static CommerceProductDiscountDocument? NormalizeDiscount(CommerceProductDiscountDocument? discount)
+    {
+        if (discount is null || !discount.Enabled) return null;
+        var discountType = discount.Type?.Trim().ToLowerInvariant();
+        if (discountType is not ("percent" or "amount")) return null;
+        var value = Math.Max(0m, discount.Value);
+        if (value <= 0m) return null;
+        return new CommerceProductDiscountDocument
+        {
+            Enabled = true,
+            Type = discountType,
+            Value = value
+        };
+    }
+
+    private static List<CommerceProductVariationDocument> NormalizeVariations(IReadOnlyList<CommerceProductVariationDocument>? variations)
+    {
+        if (variations is null || variations.Count == 0) return [];
+        return variations
+            .Where(x => !string.IsNullOrWhiteSpace(x.Sku))
+            .Select(x => new CommerceProductVariationDocument
+            {
+                Id = string.IsNullOrWhiteSpace(x.Id) ? Guid.NewGuid().ToString("N") : x.Id.Trim(),
+                Sku = x.Sku.Trim(),
+                Name = string.IsNullOrWhiteSpace(x.Name) ? x.Sku.Trim() : x.Name.Trim(),
+                Price = Math.Max(0m, x.Price),
+                Stock = Math.Max(0, x.Stock),
+                Active = x.Active,
+                Attributes = NormalizeAttributes(x.Attributes),
+                ImageUrls = NormalizeImageUrls(x.ImageUrls)
+            })
+            .GroupBy(x => x.Sku, StringComparer.OrdinalIgnoreCase)
+            .Select(g => g.First())
+            .ToList();
+    }
+
+    private static List<CommerceBranchStockDocument> NormalizeBranchStocks(
+        IReadOnlyList<CommerceBranchStockDocument>? branchStocks,
+        IReadOnlyList<string> branchIds,
+        bool tracksInventory)
+    {
+        if (!tracksInventory) return [];
+        var normalized = branchStocks?
+            .Where(x => !string.IsNullOrWhiteSpace(x.BranchId))
+            .Select(x => new CommerceBranchStockDocument
+            {
+                BranchId = x.BranchId.Trim(),
+                OnHand = Math.Max(0, x.OnHand)
+            })
+            .GroupBy(x => x.BranchId, StringComparer.OrdinalIgnoreCase)
+            .Select(g => g.First())
+            .ToList() ?? [];
+
+        foreach (var branchId in branchIds.Where(x => !normalized.Any(y => string.Equals(y.BranchId, x, StringComparison.OrdinalIgnoreCase))))
+        {
+            normalized.Add(new CommerceBranchStockDocument { BranchId = branchId, OnHand = 0 });
+        }
+
+        return normalized;
+    }
 }
 
 public sealed class CommercePartyDocument
@@ -904,6 +1003,10 @@ public sealed class CommerceInventoryItemDocument
     public List<string> CategoryIds { get; set; } = [];
     public List<string> BranchIds { get; set; } = [];
     public List<string> ImageUrls { get; set; } = [];
+    public List<CommerceProductAttributeDocument> Attributes { get; set; } = [];
+    public CommerceProductDiscountDocument? Discount { get; set; }
+    public List<CommerceProductVariationDocument> Variations { get; set; } = [];
+    public List<CommerceBranchStockDocument> BranchStocks { get; set; } = [];
 }
 
 public sealed class CommerceLineItem
@@ -968,6 +1071,37 @@ public sealed class CommerceStoreSettingsDocument
     public bool HideOutOfStockProducts { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
+}
+
+public sealed class CommerceProductAttributeDocument
+{
+    public string Key { get; set; } = string.Empty;
+    public string Value { get; set; } = string.Empty;
+}
+
+public sealed class CommerceProductDiscountDocument
+{
+    public bool Enabled { get; set; }
+    public string Type { get; set; } = "percent";
+    public decimal Value { get; set; }
+}
+
+public sealed class CommerceProductVariationDocument
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string Sku { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public decimal Price { get; set; }
+    public int Stock { get; set; }
+    public bool Active { get; set; } = true;
+    public List<CommerceProductAttributeDocument> Attributes { get; set; } = [];
+    public List<string> ImageUrls { get; set; } = [];
+}
+
+public sealed class CommerceBranchStockDocument
+{
+    public string BranchId { get; set; } = string.Empty;
+    public int OnHand { get; set; }
 }
 
 public sealed record SaleCalculationResult(decimal Subtotal, decimal Discount, decimal Tax, decimal Total);
