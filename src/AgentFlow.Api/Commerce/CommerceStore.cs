@@ -25,10 +25,34 @@ public interface ICommerceStore
     Task<bool> DeletePartyAsync(string tenantId, string partyId, CancellationToken ct);
     Task<IReadOnlyList<CommerceInventoryItemDocument>> SearchInventoryAsync(string tenantId, string? query, int limit, CancellationToken ct);
     Task<CommerceInventoryItemDocument?> GetInventoryBySkuAsync(string tenantId, string sku, CancellationToken ct);
-    Task<CommerceInventoryItemDocument> UpsertInventoryItemAsync(string tenantId, string sku, string name, decimal unitPrice, int onHand, bool active, string? itemType, string? unitOfMeasure, bool? tracksInventory, CancellationToken ct);
+    Task<CommerceInventoryItemDocument> UpsertInventoryItemAsync(
+        string tenantId,
+        string sku,
+        string name,
+        decimal unitPrice,
+        int onHand,
+        bool active,
+        string? itemType,
+        string? unitOfMeasure,
+        bool? tracksInventory,
+        string? description,
+        IReadOnlyList<string>? categoryIds,
+        IReadOnlyList<string>? branchIds,
+        IReadOnlyList<string>? imageUrls,
+        CancellationToken ct);
     Task<CommerceInventoryItemDocument> AdjustInventoryAsync(string tenantId, string sku, int delta, string reason, string? referenceId, CancellationToken ct);
     Task<IReadOnlyList<CommerceInventoryMovementDocument>> SearchInventoryMovementsAsync(string tenantId, string? sku, int page, int pageSize, CancellationToken ct);
     Task<long> CountInventoryMovementsAsync(string tenantId, string? sku, CancellationToken ct);
+    Task<IReadOnlyList<CommerceCategoryDocument>> SearchCategoriesAsync(string tenantId, string? query, int page, int pageSize, CancellationToken ct);
+    Task<long> CountCategoriesAsync(string tenantId, string? query, CancellationToken ct);
+    Task<CommerceCategoryDocument> UpsertCategoryAsync(CommerceCategoryDocument category, CancellationToken ct);
+    Task<CommerceCategoryDocument?> GetCategoryByIdAsync(string tenantId, string categoryId, CancellationToken ct);
+    Task<bool> DeleteCategoryAsync(string tenantId, string categoryId, CancellationToken ct);
+    Task<IReadOnlyList<CommerceBranchDocument>> SearchBranchesAsync(string tenantId, string? query, int page, int pageSize, CancellationToken ct);
+    Task<long> CountBranchesAsync(string tenantId, string? query, CancellationToken ct);
+    Task<CommerceBranchDocument> UpsertBranchAsync(CommerceBranchDocument branch, CancellationToken ct);
+    Task<CommerceBranchDocument?> GetBranchByIdAsync(string tenantId, string branchId, CancellationToken ct);
+    Task<bool> DeleteBranchAsync(string tenantId, string branchId, CancellationToken ct);
     Task<CommerceSaleDocument> CreateSaleAsync(CommerceSaleDocument sale, CancellationToken ct);
     Task<CommerceSaleDocument?> GetSaleByIdAsync(string tenantId, string saleId, CancellationToken ct);
     Task<IReadOnlyList<CommerceSaleDocument>> SearchSalesAsync(string tenantId, string? partyId, string? state, int page, int pageSize, CancellationToken ct);
@@ -36,12 +60,18 @@ public interface ICommerceStore
     Task<CommerceSaleDocument> UpdateSaleAsync(CommerceSaleDocument sale, CancellationToken ct);
     Task<SaleCalculationResult> CalculateSaleAsync(string tenantId, IReadOnlyList<CommerceLineItem> items, decimal? discountAmount, decimal? discountPercent, bool applyTax, decimal taxRate, CancellationToken ct);
     Task<CommerceOrderDocument> CreateOrderAsync(CommerceOrderDocument order, CancellationToken ct);
+    Task<CommerceOrderDocument?> GetOrderByIdAsync(string tenantId, string orderId, CancellationToken ct);
+    Task<IReadOnlyList<CommerceOrderDocument>> SearchOrdersAsync(string tenantId, string? partyId, string? status, int page, int pageSize, CancellationToken ct);
+    Task<long> CountOrdersAsync(string tenantId, string? partyId, string? status, CancellationToken ct);
+    Task<CommerceOrderDocument> UpdateOrderAsync(CommerceOrderDocument order, CancellationToken ct);
     Task<CommerceInvoiceDocument> CreateInvoiceAsync(CommerceInvoiceDocument invoice, CancellationToken ct);
     Task<CommerceInvoiceDocument?> GetInvoiceByIdAsync(string tenantId, string invoiceId, CancellationToken ct);
     Task<IReadOnlyList<CommerceInvoiceDocument>> SearchInvoicesAsync(string tenantId, string? partyId, string? status, int page, int pageSize, CancellationToken ct);
     Task<long> CountInvoicesAsync(string tenantId, string? partyId, string? status, CancellationToken ct);
     Task<CommerceInvoiceDocument> UpdateInvoiceAsync(CommerceInvoiceDocument invoice, CancellationToken ct);
     Task<CommerceInvoiceDocument> UpdateInvoiceStatusAsync(string tenantId, string invoiceId, string status, CancellationToken ct);
+    Task<CommerceStoreSettingsDocument> GetStoreSettingsAsync(string tenantId, CancellationToken ct);
+    Task<CommerceStoreSettingsDocument> UpsertStoreSettingsAsync(CommerceStoreSettingsDocument settings, CancellationToken ct);
 }
 
 public sealed class CommerceStore : ICommerceStore
@@ -52,6 +82,9 @@ public sealed class CommerceStore : ICommerceStore
     private readonly IMongoCollection<CommerceInvoiceDocument> _invoices;
     private readonly IMongoCollection<CommerceInventoryItemDocument> _inventory;
     private readonly IMongoCollection<CommerceInventoryMovementDocument> _inventoryMovements;
+    private readonly IMongoCollection<CommerceCategoryDocument> _categories;
+    private readonly IMongoCollection<CommerceBranchDocument> _branches;
+    private readonly IMongoCollection<CommerceStoreSettingsDocument> _storeSettings;
 
     public CommerceStore(IMongoDatabase database)
     {
@@ -61,6 +94,9 @@ public sealed class CommerceStore : ICommerceStore
         _invoices = database.GetCollection<CommerceInvoiceDocument>("commerce_invoices");
         _inventory = database.GetCollection<CommerceInventoryItemDocument>("commerce_inventory_items");
         _inventoryMovements = database.GetCollection<CommerceInventoryMovementDocument>("commerce_inventory_movements");
+        _categories = database.GetCollection<CommerceCategoryDocument>("commerce_categories");
+        _branches = database.GetCollection<CommerceBranchDocument>("commerce_branches");
+        _storeSettings = database.GetCollection<CommerceStoreSettingsDocument>("commerce_store_settings");
     }
 
     public async Task<CommercePartyDocument> UpsertPartyByChannelIdentityAsync(
@@ -248,11 +284,18 @@ public sealed class CommerceStore : ICommerceStore
         string? itemType,
         string? unitOfMeasure,
         bool? tracksInventory,
+        string? description,
+        IReadOnlyList<string>? categoryIds,
+        IReadOnlyList<string>? branchIds,
+        IReadOnlyList<string>? imageUrls,
         CancellationToken ct)
     {
         var normalizedType = NormalizeInventoryItemType(itemType);
         var normalizedUnit = NormalizeUnitOfMeasure(unitOfMeasure);
         var resolvedTracksInventory = ResolveTracksInventory(normalizedType, tracksInventory);
+        var normalizedCategories = NormalizeIds(categoryIds);
+        var normalizedBranches = NormalizeIds(branchIds);
+        var normalizedImages = NormalizeImageUrls(imageUrls);
         var current = await _inventory.Find(x => x.TenantId == tenantId && x.Sku == sku).FirstOrDefaultAsync(ct);
         if (current is null)
         {
@@ -266,7 +309,11 @@ public sealed class CommerceStore : ICommerceStore
                 Active = active,
                 ItemType = normalizedType,
                 UnitOfMeasure = normalizedUnit,
-                TracksInventory = resolvedTracksInventory
+                TracksInventory = resolvedTracksInventory,
+                Description = string.IsNullOrWhiteSpace(description) ? null : description.Trim(),
+                CategoryIds = normalizedCategories,
+                BranchIds = normalizedBranches,
+                ImageUrls = normalizedImages
             };
             await _inventory.InsertOneAsync(created, cancellationToken: ct);
             return created;
@@ -279,6 +326,10 @@ public sealed class CommerceStore : ICommerceStore
         current.ItemType = normalizedType;
         current.UnitOfMeasure = normalizedUnit;
         current.TracksInventory = resolvedTracksInventory;
+        current.Description = string.IsNullOrWhiteSpace(description) ? null : description.Trim();
+        current.CategoryIds = normalizedCategories;
+        current.BranchIds = normalizedBranches;
+        current.ImageUrls = normalizedImages;
         await _inventory.ReplaceOneAsync(x => x.TenantId == tenantId && x.Sku == sku, current, cancellationToken: ct);
         return current;
     }
@@ -325,6 +376,112 @@ public sealed class CommerceStore : ICommerceStore
         if (!string.IsNullOrWhiteSpace(sku))
             filter = Builders<CommerceInventoryMovementDocument>.Filter.And(filter, Builders<CommerceInventoryMovementDocument>.Filter.Eq(x => x.Sku, sku));
         return await _inventoryMovements.CountDocumentsAsync(filter, cancellationToken: ct);
+    }
+
+    public async Task<IReadOnlyList<CommerceCategoryDocument>> SearchCategoriesAsync(string tenantId, string? query, int page, int pageSize, CancellationToken ct)
+    {
+        var filter = BuildCategorySearchFilter(tenantId, query);
+        return await _categories.Find(filter)
+            .SortBy(x => x.SortOrder)
+            .ThenBy(x => x.Name)
+            .Skip(Math.Max(0, page) * Math.Clamp(pageSize, 1, 100))
+            .Limit(Math.Clamp(pageSize, 1, 100))
+            .ToListAsync(ct);
+    }
+
+    public async Task<long> CountCategoriesAsync(string tenantId, string? query, CancellationToken ct)
+    {
+        var filter = BuildCategorySearchFilter(tenantId, query);
+        return await _categories.CountDocumentsAsync(filter, cancellationToken: ct);
+    }
+
+    public async Task<CommerceCategoryDocument> UpsertCategoryAsync(CommerceCategoryDocument category, CancellationToken ct)
+    {
+        category.Name = category.Name.Trim();
+        category.Description = string.IsNullOrWhiteSpace(category.Description) ? null : category.Description.Trim();
+        category.ParentCategoryId = string.IsNullOrWhiteSpace(category.ParentCategoryId) ? null : category.ParentCategoryId.Trim();
+        category.UpdatedAt = DateTimeOffset.UtcNow;
+
+        var existing = await _categories.Find(x => x.TenantId == category.TenantId && x.Id == category.Id).FirstOrDefaultAsync(ct);
+        if (existing is null)
+        {
+            category.CreatedAt = category.UpdatedAt;
+            await _categories.InsertOneAsync(category, cancellationToken: ct);
+            return category;
+        }
+
+        category.CreatedAt = existing.CreatedAt;
+        await _categories.ReplaceOneAsync(x => x.TenantId == category.TenantId && x.Id == category.Id, category, cancellationToken: ct);
+        return category;
+    }
+
+    public async Task<CommerceCategoryDocument?> GetCategoryByIdAsync(string tenantId, string categoryId, CancellationToken ct)
+        => await _categories.Find(x => x.TenantId == tenantId && x.Id == categoryId).FirstOrDefaultAsync(ct);
+
+    public async Task<bool> DeleteCategoryAsync(string tenantId, string categoryId, CancellationToken ct)
+    {
+        var result = await _categories.DeleteOneAsync(x => x.TenantId == tenantId && x.Id == categoryId, ct);
+        if (result.DeletedCount > 0)
+        {
+            var categoryPull = Builders<CommerceInventoryItemDocument>.Update.Pull(x => x.CategoryIds, categoryId);
+            await _inventory.UpdateManyAsync(x => x.TenantId == tenantId && x.CategoryIds.Contains(categoryId), categoryPull, cancellationToken: ct);
+        }
+
+        return result.DeletedCount > 0;
+    }
+
+    public async Task<IReadOnlyList<CommerceBranchDocument>> SearchBranchesAsync(string tenantId, string? query, int page, int pageSize, CancellationToken ct)
+    {
+        var filter = BuildBranchSearchFilter(tenantId, query);
+        return await _branches.Find(filter)
+            .SortBy(x => x.Code)
+            .ThenBy(x => x.Name)
+            .Skip(Math.Max(0, page) * Math.Clamp(pageSize, 1, 100))
+            .Limit(Math.Clamp(pageSize, 1, 100))
+            .ToListAsync(ct);
+    }
+
+    public async Task<long> CountBranchesAsync(string tenantId, string? query, CancellationToken ct)
+    {
+        var filter = BuildBranchSearchFilter(tenantId, query);
+        return await _branches.CountDocumentsAsync(filter, cancellationToken: ct);
+    }
+
+    public async Task<CommerceBranchDocument> UpsertBranchAsync(CommerceBranchDocument branch, CancellationToken ct)
+    {
+        branch.Code = branch.Code.Trim();
+        branch.Name = branch.Name.Trim();
+        branch.Address = string.IsNullOrWhiteSpace(branch.Address) ? null : branch.Address.Trim();
+        branch.Phone = string.IsNullOrWhiteSpace(branch.Phone) ? null : NormalizePhone(branch.Phone);
+        branch.Properties = NormalizeProperties(branch.Properties);
+        branch.UpdatedAt = DateTimeOffset.UtcNow;
+
+        var existing = await _branches.Find(x => x.TenantId == branch.TenantId && x.Id == branch.Id).FirstOrDefaultAsync(ct);
+        if (existing is null)
+        {
+            branch.CreatedAt = branch.UpdatedAt;
+            await _branches.InsertOneAsync(branch, cancellationToken: ct);
+            return branch;
+        }
+
+        branch.CreatedAt = existing.CreatedAt;
+        await _branches.ReplaceOneAsync(x => x.TenantId == branch.TenantId && x.Id == branch.Id, branch, cancellationToken: ct);
+        return branch;
+    }
+
+    public async Task<CommerceBranchDocument?> GetBranchByIdAsync(string tenantId, string branchId, CancellationToken ct)
+        => await _branches.Find(x => x.TenantId == tenantId && x.Id == branchId).FirstOrDefaultAsync(ct);
+
+    public async Task<bool> DeleteBranchAsync(string tenantId, string branchId, CancellationToken ct)
+    {
+        var result = await _branches.DeleteOneAsync(x => x.TenantId == tenantId && x.Id == branchId, ct);
+        if (result.DeletedCount > 0)
+        {
+            var branchPull = Builders<CommerceInventoryItemDocument>.Update.Pull(x => x.BranchIds, branchId);
+            await _inventory.UpdateManyAsync(x => x.TenantId == tenantId && x.BranchIds.Contains(branchId), branchPull, cancellationToken: ct);
+        }
+
+        return result.DeletedCount > 0;
     }
 
     public async Task<CommerceSaleDocument> CreateSaleAsync(CommerceSaleDocument sale, CancellationToken ct)
@@ -385,6 +542,31 @@ public sealed class CommerceStore : ICommerceStore
         return order;
     }
 
+    public async Task<CommerceOrderDocument?> GetOrderByIdAsync(string tenantId, string orderId, CancellationToken ct)
+        => await _orders.Find(x => x.TenantId == tenantId && x.Id == orderId).FirstOrDefaultAsync(ct);
+
+    public async Task<IReadOnlyList<CommerceOrderDocument>> SearchOrdersAsync(string tenantId, string? partyId, string? status, int page, int pageSize, CancellationToken ct)
+    {
+        var filter = BuildOrderSearchFilter(tenantId, partyId, status);
+        return await _orders.Find(filter)
+            .SortByDescending(x => x.CreatedAt)
+            .Skip(Math.Max(0, page) * Math.Clamp(pageSize, 1, 100))
+            .Limit(Math.Clamp(pageSize, 1, 100))
+            .ToListAsync(ct);
+    }
+
+    public async Task<long> CountOrdersAsync(string tenantId, string? partyId, string? status, CancellationToken ct)
+    {
+        var filter = BuildOrderSearchFilter(tenantId, partyId, status);
+        return await _orders.CountDocumentsAsync(filter, cancellationToken: ct);
+    }
+
+    public async Task<CommerceOrderDocument> UpdateOrderAsync(CommerceOrderDocument order, CancellationToken ct)
+    {
+        await _orders.ReplaceOneAsync(x => x.TenantId == order.TenantId && x.Id == order.Id, order, cancellationToken: ct);
+        return order;
+    }
+
     public async Task<CommerceInvoiceDocument> CreateInvoiceAsync(CommerceInvoiceDocument invoice, CancellationToken ct)
     {
         invoice.CreatedAt = DateTimeOffset.UtcNow;
@@ -425,6 +607,52 @@ public sealed class CommerceStore : ICommerceStore
         return await UpdateInvoiceAsync(current, ct);
     }
 
+    public async Task<CommerceStoreSettingsDocument> GetStoreSettingsAsync(string tenantId, CancellationToken ct)
+    {
+        var current = await _storeSettings.Find(x => x.TenantId == tenantId).FirstOrDefaultAsync(ct);
+        if (current is not null) return current;
+
+        var created = new CommerceStoreSettingsDocument
+        {
+            TenantId = tenantId,
+            StoreName = "Ventas y cobros",
+            StoreId = $"store-{tenantId[..Math.Min(8, tenantId.Length)]}",
+            ApiToken = Guid.NewGuid().ToString("N"),
+            Currency = "USD",
+            Language = "es",
+            TaxRate = 0m,
+            UsePerProductTax = false,
+            HideOutOfStockProducts = false,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow
+        };
+        await _storeSettings.InsertOneAsync(created, cancellationToken: ct);
+        return created;
+    }
+
+    public async Task<CommerceStoreSettingsDocument> UpsertStoreSettingsAsync(CommerceStoreSettingsDocument settings, CancellationToken ct)
+    {
+        var current = await _storeSettings.Find(x => x.TenantId == settings.TenantId).FirstOrDefaultAsync(ct);
+        settings.StoreName = string.IsNullOrWhiteSpace(settings.StoreName) ? "Ventas y cobros" : settings.StoreName.Trim();
+        settings.StoreId = string.IsNullOrWhiteSpace(settings.StoreId) ? $"store-{settings.TenantId[..Math.Min(8, settings.TenantId.Length)]}" : settings.StoreId.Trim();
+        settings.ApiToken = string.IsNullOrWhiteSpace(settings.ApiToken) ? Guid.NewGuid().ToString("N") : settings.ApiToken.Trim();
+        settings.Currency = string.IsNullOrWhiteSpace(settings.Currency) ? "USD" : settings.Currency.Trim().ToUpperInvariant();
+        settings.Language = string.IsNullOrWhiteSpace(settings.Language) ? "es" : settings.Language.Trim().ToLowerInvariant();
+        settings.UpdatedAt = DateTimeOffset.UtcNow;
+
+        if (current is null)
+        {
+            settings.CreatedAt = settings.UpdatedAt;
+            await _storeSettings.InsertOneAsync(settings, cancellationToken: ct);
+            return settings;
+        }
+
+        settings.Id = current.Id;
+        settings.CreatedAt = current.CreatedAt;
+        await _storeSettings.ReplaceOneAsync(x => x.TenantId == settings.TenantId, settings, cancellationToken: ct);
+        return settings;
+    }
+
     private static FilterDefinition<CommercePartyDocument> BuildPartySearchFilter(string tenantId, string? query)
     {
         var filter = Builders<CommercePartyDocument>.Filter.Eq(x => x.TenantId, tenantId);
@@ -450,6 +678,16 @@ public sealed class CommerceStore : ICommerceStore
         return filter;
     }
 
+    private static FilterDefinition<CommerceOrderDocument> BuildOrderSearchFilter(string tenantId, string? partyId, string? status)
+    {
+        var filter = Builders<CommerceOrderDocument>.Filter.Eq(x => x.TenantId, tenantId);
+        if (!string.IsNullOrWhiteSpace(partyId))
+            filter = Builders<CommerceOrderDocument>.Filter.And(filter, Builders<CommerceOrderDocument>.Filter.Eq(x => x.PartyId, partyId));
+        if (!string.IsNullOrWhiteSpace(status))
+            filter = Builders<CommerceOrderDocument>.Filter.And(filter, Builders<CommerceOrderDocument>.Filter.Eq(x => x.Status, status));
+        return filter;
+    }
+
     private static FilterDefinition<CommerceInvoiceDocument> BuildInvoiceSearchFilter(string tenantId, string? partyId, string? status)
     {
         var filter = Builders<CommerceInvoiceDocument>.Filter.Eq(x => x.TenantId, tenantId);
@@ -458,6 +696,31 @@ public sealed class CommerceStore : ICommerceStore
         if (!string.IsNullOrWhiteSpace(status))
             filter = Builders<CommerceInvoiceDocument>.Filter.And(filter, Builders<CommerceInvoiceDocument>.Filter.Eq(x => x.Status, status));
         return filter;
+    }
+
+    private static FilterDefinition<CommerceCategoryDocument> BuildCategorySearchFilter(string tenantId, string? query)
+    {
+        var filter = Builders<CommerceCategoryDocument>.Filter.Eq(x => x.TenantId, tenantId);
+        if (string.IsNullOrWhiteSpace(query)) return filter;
+        var q = query.Trim();
+        return Builders<CommerceCategoryDocument>.Filter.And(
+            filter,
+            Builders<CommerceCategoryDocument>.Filter.Or(
+                Builders<CommerceCategoryDocument>.Filter.Regex(x => x.Name, new MongoDB.Bson.BsonRegularExpression(q, "i")),
+                Builders<CommerceCategoryDocument>.Filter.Regex(x => x.Description, new MongoDB.Bson.BsonRegularExpression(q, "i"))));
+    }
+
+    private static FilterDefinition<CommerceBranchDocument> BuildBranchSearchFilter(string tenantId, string? query)
+    {
+        var filter = Builders<CommerceBranchDocument>.Filter.Eq(x => x.TenantId, tenantId);
+        if (string.IsNullOrWhiteSpace(query)) return filter;
+        var q = query.Trim();
+        return Builders<CommerceBranchDocument>.Filter.And(
+            filter,
+            Builders<CommerceBranchDocument>.Filter.Or(
+                Builders<CommerceBranchDocument>.Filter.Regex(x => x.Code, new MongoDB.Bson.BsonRegularExpression(q, "i")),
+                Builders<CommerceBranchDocument>.Filter.Regex(x => x.Name, new MongoDB.Bson.BsonRegularExpression(q, "i")),
+                Builders<CommerceBranchDocument>.Filter.Regex(x => x.Address, new MongoDB.Bson.BsonRegularExpression(q, "i"))));
     }
 
     private static string? NormalizePhone(string? phone)
@@ -521,6 +784,34 @@ public sealed class CommerceStore : ICommerceStore
 
         return itemType is "physical" or "combo" or "kit";
     }
+
+    private static List<string> NormalizeIds(IReadOnlyList<string>? ids)
+    {
+        if (ids is null || ids.Count == 0) return [];
+        return ids
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(x => x.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static List<string> NormalizeImageUrls(IReadOnlyList<string>? imageUrls)
+    {
+        if (imageUrls is null || imageUrls.Count == 0) return [];
+        return imageUrls
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(x => x.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static Dictionary<string, string> NormalizeProperties(Dictionary<string, string>? properties)
+    {
+        if (properties is null || properties.Count == 0) return [];
+        return properties
+            .Where(x => !string.IsNullOrWhiteSpace(x.Key) && !string.IsNullOrWhiteSpace(x.Value))
+            .ToDictionary(x => x.Key.Trim(), x => x.Value.Trim(), StringComparer.OrdinalIgnoreCase);
+    }
 }
 
 public sealed class CommercePartyDocument
@@ -573,6 +864,7 @@ public sealed class CommerceOrderDocument
     public string Currency { get; set; } = "USD";
     public decimal Total { get; set; }
     public string Status { get; set; } = "draft";
+    public string? Notes { get; set; }
     public string? SessionId { get; set; }
     public string? ThreadId { get; set; }
     public List<CommerceLineItem> Items { get; set; } = [];
@@ -602,12 +894,16 @@ public sealed class CommerceInventoryItemDocument
     public string TenantId { get; set; } = string.Empty;
     public string Sku { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
+    public string? Description { get; set; }
     public string ItemType { get; set; } = "physical";
     public string UnitOfMeasure { get; set; } = "unit";
     public bool TracksInventory { get; set; } = true;
     public decimal UnitPrice { get; set; }
     public int OnHand { get; set; }
     public bool Active { get; set; } = true;
+    public List<string> CategoryIds { get; set; } = [];
+    public List<string> BranchIds { get; set; } = [];
+    public List<string> ImageUrls { get; set; } = [];
 }
 
 public sealed class CommerceLineItem
@@ -629,6 +925,49 @@ public sealed class CommerceInventoryMovementDocument
     public string Reason { get; set; } = string.Empty;
     public string? ReferenceId { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
+}
+
+public sealed class CommerceCategoryDocument
+{
+    [BsonId] public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string TenantId { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public string? Description { get; set; }
+    public string? ParentCategoryId { get; set; }
+    public int SortOrder { get; set; }
+    public bool Active { get; set; } = true;
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+}
+
+public sealed class CommerceBranchDocument
+{
+    [BsonId] public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string TenantId { get; set; } = string.Empty;
+    public string Code { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public string? Address { get; set; }
+    public string? Phone { get; set; }
+    public bool Active { get; set; } = true;
+    public Dictionary<string, string> Properties { get; set; } = [];
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+}
+
+public sealed class CommerceStoreSettingsDocument
+{
+    [BsonId] public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string TenantId { get; set; } = string.Empty;
+    public string StoreName { get; set; } = "Ventas y cobros";
+    public string StoreId { get; set; } = string.Empty;
+    public string ApiToken { get; set; } = string.Empty;
+    public string Currency { get; set; } = "USD";
+    public string Language { get; set; } = "es";
+    public decimal TaxRate { get; set; }
+    public bool UsePerProductTax { get; set; }
+    public bool HideOutOfStockProducts { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
 }
 
 public sealed record SaleCalculationResult(decimal Subtotal, decimal Discount, decimal Tax, decimal Total);

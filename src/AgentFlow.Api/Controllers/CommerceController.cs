@@ -255,7 +255,7 @@ public sealed class CommerceController : ControllerBase
         var moduleCheck = await EnsureModuleEnabledAsync(tenantId, CommerceModules.Inventory, ct);
         if (moduleCheck is not null) return moduleCheck;
         var rows = await _commerce.SearchInventoryAsync(tenantId, query, limit, ct);
-        return Ok(rows.Select(x => new { x.Id, x.Sku, x.Name, x.ItemType, x.UnitOfMeasure, x.TracksInventory, x.UnitPrice, x.OnHand, x.Active }));
+        return Ok(rows.Select(ToInventoryDto));
     }
 
     [HttpPut("inventory/items/{sku}")]
@@ -268,8 +268,22 @@ public sealed class CommerceController : ControllerBase
         if (!CanAccess(tenantId)) return Forbid();
         var moduleCheck = await EnsureModuleEnabledAsync(tenantId, CommerceModules.Inventory, ct);
         if (moduleCheck is not null) return moduleCheck;
-        var saved = await _commerce.UpsertInventoryItemAsync(tenantId, sku, request.Name, request.UnitPrice, request.OnHand, request.Active, request.ItemType, request.UnitOfMeasure, request.TracksInventory, ct);
-        return Ok(new { saved.Id, saved.Sku, saved.Name, saved.ItemType, saved.UnitOfMeasure, saved.TracksInventory, saved.UnitPrice, saved.OnHand, saved.Active });
+        var saved = await _commerce.UpsertInventoryItemAsync(
+            tenantId,
+            sku,
+            request.Name,
+            request.UnitPrice,
+            request.OnHand,
+            request.Active,
+            request.ItemType,
+            request.UnitOfMeasure,
+            request.TracksInventory,
+            request.Description,
+            request.CategoryIds,
+            request.BranchIds,
+            request.ImageUrls,
+            ct);
+        return Ok(ToInventoryDto(saved));
     }
 
     [HttpPost("inventory/items/{sku}/adjust")]
@@ -285,12 +299,160 @@ public sealed class CommerceController : ControllerBase
         try
         {
             var saved = await _commerce.AdjustInventoryAsync(tenantId, sku, request.Delta, request.Reason, request.ReferenceId, ct);
-            return Ok(new { saved.Id, saved.Sku, saved.Name, saved.ItemType, saved.UnitOfMeasure, saved.TracksInventory, saved.UnitPrice, saved.OnHand, saved.Active });
+            return Ok(ToInventoryDto(saved));
         }
         catch (InvalidOperationException ex)
         {
             return BadRequest(new { message = ex.Message });
         }
+    }
+
+    [HttpGet("inventory/categories")]
+    public async Task<IActionResult> SearchCategories(
+        string tenantId,
+        [FromQuery] string? query = null,
+        [FromQuery] int page = 0,
+        [FromQuery] int pageSize = 25,
+        CancellationToken ct = default)
+    {
+        if (!CanAccess(tenantId)) return Forbid();
+        var moduleCheck = await EnsureModuleEnabledAsync(tenantId, CommerceModules.Inventory, ct);
+        if (moduleCheck is not null) return moduleCheck;
+        var items = await _commerce.SearchCategoriesAsync(tenantId, query, page, pageSize, ct);
+        var total = await _commerce.CountCategoriesAsync(tenantId, query, ct);
+        return Ok(new PagedResponse<object>
+        {
+            Items = items.Select(ToCategoryDto).ToList(),
+            Total = total,
+            Page = Math.Max(0, page),
+            PageSize = Math.Clamp(pageSize, 1, 100)
+        });
+    }
+
+    [HttpPost("inventory/categories")]
+    public async Task<IActionResult> CreateCategory(string tenantId, [FromBody] UpsertCategoryRequest request, CancellationToken ct)
+    {
+        if (!CanAccess(tenantId)) return Forbid();
+        var moduleCheck = await EnsureModuleEnabledAsync(tenantId, CommerceModules.Inventory, ct);
+        if (moduleCheck is not null) return moduleCheck;
+        if (string.IsNullOrWhiteSpace(request.Name)) return BadRequest("name is required.");
+
+        var saved = await _commerce.UpsertCategoryAsync(new CommerceCategoryDocument
+        {
+            TenantId = tenantId,
+            Name = request.Name,
+            Description = request.Description,
+            ParentCategoryId = request.ParentCategoryId,
+            SortOrder = request.SortOrder ?? 0,
+            Active = request.Active
+        }, ct);
+        return Ok(ToCategoryDto(saved));
+    }
+
+    [HttpPut("inventory/categories/{categoryId}")]
+    public async Task<IActionResult> UpdateCategory(string tenantId, string categoryId, [FromBody] UpsertCategoryRequest request, CancellationToken ct)
+    {
+        if (!CanAccess(tenantId)) return Forbid();
+        var moduleCheck = await EnsureModuleEnabledAsync(tenantId, CommerceModules.Inventory, ct);
+        if (moduleCheck is not null) return moduleCheck;
+        var existing = await _commerce.GetCategoryByIdAsync(tenantId, categoryId, ct);
+        if (existing is null) return NotFound();
+        if (string.IsNullOrWhiteSpace(request.Name)) return BadRequest("name is required.");
+
+        existing.Name = request.Name;
+        existing.Description = request.Description;
+        existing.ParentCategoryId = request.ParentCategoryId;
+        existing.SortOrder = request.SortOrder ?? existing.SortOrder;
+        existing.Active = request.Active;
+
+        var saved = await _commerce.UpsertCategoryAsync(existing, ct);
+        return Ok(ToCategoryDto(saved));
+    }
+
+    [HttpDelete("inventory/categories/{categoryId}")]
+    public async Task<IActionResult> DeleteCategory(string tenantId, string categoryId, CancellationToken ct)
+    {
+        if (!CanAccess(tenantId)) return Forbid();
+        var moduleCheck = await EnsureModuleEnabledAsync(tenantId, CommerceModules.Inventory, ct);
+        if (moduleCheck is not null) return moduleCheck;
+        var deleted = await _commerce.DeleteCategoryAsync(tenantId, categoryId, ct);
+        return deleted ? NoContent() : NotFound();
+    }
+
+    [HttpGet("inventory/branches")]
+    public async Task<IActionResult> SearchBranches(
+        string tenantId,
+        [FromQuery] string? query = null,
+        [FromQuery] int page = 0,
+        [FromQuery] int pageSize = 25,
+        CancellationToken ct = default)
+    {
+        if (!CanAccess(tenantId)) return Forbid();
+        var moduleCheck = await EnsureModuleEnabledAsync(tenantId, CommerceModules.Inventory, ct);
+        if (moduleCheck is not null) return moduleCheck;
+        var items = await _commerce.SearchBranchesAsync(tenantId, query, page, pageSize, ct);
+        var total = await _commerce.CountBranchesAsync(tenantId, query, ct);
+        return Ok(new PagedResponse<object>
+        {
+            Items = items.Select(ToBranchDto).ToList(),
+            Total = total,
+            Page = Math.Max(0, page),
+            PageSize = Math.Clamp(pageSize, 1, 100)
+        });
+    }
+
+    [HttpPost("inventory/branches")]
+    public async Task<IActionResult> CreateBranch(string tenantId, [FromBody] UpsertBranchRequest request, CancellationToken ct)
+    {
+        if (!CanAccess(tenantId)) return Forbid();
+        var moduleCheck = await EnsureModuleEnabledAsync(tenantId, CommerceModules.Inventory, ct);
+        if (moduleCheck is not null) return moduleCheck;
+        if (string.IsNullOrWhiteSpace(request.Code) || string.IsNullOrWhiteSpace(request.Name))
+            return BadRequest("code and name are required.");
+
+        var saved = await _commerce.UpsertBranchAsync(new CommerceBranchDocument
+        {
+            TenantId = tenantId,
+            Code = request.Code,
+            Name = request.Name,
+            Address = request.Address,
+            Phone = request.Phone,
+            Active = request.Active,
+            Properties = request.Properties ?? []
+        }, ct);
+        return Ok(ToBranchDto(saved));
+    }
+
+    [HttpPut("inventory/branches/{branchId}")]
+    public async Task<IActionResult> UpdateBranch(string tenantId, string branchId, [FromBody] UpsertBranchRequest request, CancellationToken ct)
+    {
+        if (!CanAccess(tenantId)) return Forbid();
+        var moduleCheck = await EnsureModuleEnabledAsync(tenantId, CommerceModules.Inventory, ct);
+        if (moduleCheck is not null) return moduleCheck;
+        var existing = await _commerce.GetBranchByIdAsync(tenantId, branchId, ct);
+        if (existing is null) return NotFound();
+        if (string.IsNullOrWhiteSpace(request.Code) || string.IsNullOrWhiteSpace(request.Name))
+            return BadRequest("code and name are required.");
+
+        existing.Code = request.Code;
+        existing.Name = request.Name;
+        existing.Address = request.Address;
+        existing.Phone = request.Phone;
+        existing.Active = request.Active;
+        existing.Properties = request.Properties ?? [];
+
+        var saved = await _commerce.UpsertBranchAsync(existing, ct);
+        return Ok(ToBranchDto(saved));
+    }
+
+    [HttpDelete("inventory/branches/{branchId}")]
+    public async Task<IActionResult> DeleteBranch(string tenantId, string branchId, CancellationToken ct)
+    {
+        if (!CanAccess(tenantId)) return Forbid();
+        var moduleCheck = await EnsureModuleEnabledAsync(tenantId, CommerceModules.Inventory, ct);
+        if (moduleCheck is not null) return moduleCheck;
+        var deleted = await _commerce.DeleteBranchAsync(tenantId, branchId, ct);
+        return deleted ? NoContent() : NotFound();
     }
 
     [HttpGet("inventory/movements")]
@@ -560,6 +722,97 @@ public sealed class CommerceController : ControllerBase
         return Ok(new { saved.Id, saved.PartyId, saved.Total, saved.Currency, saved.Status, saved.CreatedAt });
     }
 
+    [HttpGet("orders")]
+    public async Task<IActionResult> SearchOrders(
+        string tenantId,
+        [FromQuery] string? partyId = null,
+        [FromQuery] string? status = null,
+        [FromQuery] int page = 0,
+        [FromQuery] int pageSize = 25,
+        CancellationToken ct = default)
+    {
+        if (!CanAccess(tenantId)) return Forbid();
+        var moduleCheck = await EnsureModuleEnabledAsync(tenantId, CommerceModules.SalesPos, ct);
+        if (moduleCheck is not null) return moduleCheck;
+        var items = await _commerce.SearchOrdersAsync(tenantId, partyId, status, page, pageSize, ct);
+        var total = await _commerce.CountOrdersAsync(tenantId, partyId, status, ct);
+        return Ok(new PagedResponse<object>
+        {
+            Items = items.Select(ToOrderDto).ToList(),
+            Total = total,
+            Page = Math.Max(0, page),
+            PageSize = Math.Clamp(pageSize, 1, 100)
+        });
+    }
+
+    [HttpGet("orders/{orderId}")]
+    public async Task<IActionResult> GetOrderById(string tenantId, string orderId, CancellationToken ct)
+    {
+        if (!CanAccess(tenantId)) return Forbid();
+        var moduleCheck = await EnsureModuleEnabledAsync(tenantId, CommerceModules.SalesPos, ct);
+        if (moduleCheck is not null) return moduleCheck;
+        var order = await _commerce.GetOrderByIdAsync(tenantId, orderId, ct);
+        return order is null ? NotFound() : Ok(order);
+    }
+
+    [HttpPut("orders/{orderId}")]
+    public async Task<IActionResult> UpdateOrder(string tenantId, string orderId, [FromBody] UpdateOrderRequest request, CancellationToken ct)
+    {
+        if (!CanAccess(tenantId)) return Forbid();
+        var moduleCheck = await EnsureModuleEnabledAsync(tenantId, CommerceModules.SalesPos, ct);
+        if (moduleCheck is not null) return moduleCheck;
+        var order = await _commerce.GetOrderByIdAsync(tenantId, orderId, ct);
+        if (order is null) return NotFound();
+
+        order.Status = string.IsNullOrWhiteSpace(request.Status) ? order.Status : request.Status.Trim();
+        order.Notes = string.IsNullOrWhiteSpace(request.Notes) ? order.Notes : request.Notes.Trim();
+        if (request.Items is not null && request.Items.Count > 0)
+        {
+            order.Items = request.Items.Select(i => new CommerceLineItem
+            {
+                Sku = i.Sku,
+                Name = i.Name,
+                UnitPrice = i.UnitPrice,
+                Quantity = i.Quantity
+            }).ToList();
+            order.Total = order.Items.Sum(x => x.Subtotal);
+        }
+
+        var updated = await _commerce.UpdateOrderAsync(order, ct);
+        return Ok(ToOrderDto(updated));
+    }
+
+    [HttpGet("store/settings")]
+    public async Task<IActionResult> GetStoreSettings(string tenantId, CancellationToken ct)
+    {
+        if (!CanAccess(tenantId)) return Forbid();
+        var moduleCheck = await EnsureModuleEnabledAsync(tenantId, CommerceModules.Inventory, ct);
+        if (moduleCheck is not null) return moduleCheck;
+        var settings = await _commerce.GetStoreSettingsAsync(tenantId, ct);
+        return Ok(ToStoreSettingsDto(settings));
+    }
+
+    [HttpPut("store/settings")]
+    public async Task<IActionResult> UpdateStoreSettings(string tenantId, [FromBody] UpsertStoreSettingsRequest request, CancellationToken ct)
+    {
+        if (!CanAccess(tenantId)) return Forbid();
+        var moduleCheck = await EnsureModuleEnabledAsync(tenantId, CommerceModules.Inventory, ct);
+        if (moduleCheck is not null) return moduleCheck;
+
+        var current = await _commerce.GetStoreSettingsAsync(tenantId, ct);
+        current.StoreName = string.IsNullOrWhiteSpace(request.StoreName) ? current.StoreName : request.StoreName.Trim();
+        current.Currency = string.IsNullOrWhiteSpace(request.Currency) ? current.Currency : request.Currency.Trim();
+        current.Language = string.IsNullOrWhiteSpace(request.Language) ? current.Language : request.Language.Trim();
+        current.TaxRate = request.TaxRate ?? current.TaxRate;
+        current.UsePerProductTax = request.UsePerProductTax ?? current.UsePerProductTax;
+        current.HideOutOfStockProducts = request.HideOutOfStockProducts ?? current.HideOutOfStockProducts;
+        if (request.RegenerateApiToken == true)
+            current.ApiToken = Guid.NewGuid().ToString("N");
+
+        var saved = await _commerce.UpsertStoreSettingsAsync(current, ct);
+        return Ok(ToStoreSettingsDto(saved));
+    }
+
     [HttpPost("billing/invoices")]
     public async Task<IActionResult> CreateInvoice(
         string tenantId,
@@ -816,6 +1069,76 @@ public sealed class CommerceController : ControllerBase
         await _sessionRepo.UpdateAsync(session, ct);
     }
 
+    private static object ToInventoryDto(CommerceInventoryItemDocument item) => new
+    {
+        item.Id,
+        item.Sku,
+        item.Name,
+        item.Description,
+        item.ItemType,
+        item.UnitOfMeasure,
+        item.TracksInventory,
+        item.UnitPrice,
+        item.OnHand,
+        item.Active,
+        item.CategoryIds,
+        item.BranchIds,
+        item.ImageUrls
+    };
+
+    private static object ToCategoryDto(CommerceCategoryDocument category) => new
+    {
+        category.Id,
+        category.Name,
+        category.Description,
+        category.ParentCategoryId,
+        category.SortOrder,
+        category.Active,
+        category.CreatedAt,
+        category.UpdatedAt
+    };
+
+    private static object ToBranchDto(CommerceBranchDocument branch) => new
+    {
+        branch.Id,
+        branch.Code,
+        branch.Name,
+        branch.Address,
+        branch.Phone,
+        branch.Active,
+        branch.Properties,
+        branch.CreatedAt,
+        branch.UpdatedAt
+    };
+
+    private static object ToOrderDto(CommerceOrderDocument order) => new
+    {
+        order.Id,
+        order.PartyId,
+        order.Currency,
+        order.Total,
+        order.Status,
+        order.Notes,
+        order.SessionId,
+        order.ThreadId,
+        itemsCount = order.Items.Count,
+        order.CreatedAt
+    };
+
+    private static object ToStoreSettingsDto(CommerceStoreSettingsDocument settings) => new
+    {
+        settings.StoreName,
+        settings.StoreId,
+        settings.ApiToken,
+        settings.Currency,
+        settings.Language,
+        settings.TaxRate,
+        settings.UsePerProductTax,
+        settings.HideOutOfStockProducts,
+        settings.CreatedAt,
+        settings.UpdatedAt
+    };
+
     private static object ToPartyDto(CommercePartyDocument party) => new
     {
         party.Id,
@@ -926,12 +1249,35 @@ public sealed record SendConversationMessageRequest
 public sealed record UpsertInventoryRequest
 {
     public required string Name { get; init; }
+    public string? Description { get; init; }
     public string? ItemType { get; init; }
     public string? UnitOfMeasure { get; init; }
     public bool? TracksInventory { get; init; }
     public required decimal UnitPrice { get; init; }
     public required int OnHand { get; init; }
     public bool Active { get; init; } = true;
+    public List<string>? CategoryIds { get; init; }
+    public List<string>? BranchIds { get; init; }
+    public List<string>? ImageUrls { get; init; }
+}
+
+public sealed record UpsertCategoryRequest
+{
+    public required string Name { get; init; }
+    public string? Description { get; init; }
+    public string? ParentCategoryId { get; init; }
+    public int? SortOrder { get; init; }
+    public bool Active { get; init; } = true;
+}
+
+public sealed record UpsertBranchRequest
+{
+    public required string Code { get; init; }
+    public required string Name { get; init; }
+    public string? Address { get; init; }
+    public string? Phone { get; init; }
+    public bool Active { get; init; } = true;
+    public Dictionary<string, string>? Properties { get; init; }
 }
 
 public sealed record AdjustInventoryRequest
@@ -962,4 +1308,22 @@ public sealed record UpdateInvoiceRequest
     public string? Currency { get; init; }
     public string? Status { get; init; }
     public DateTimeOffset? IssuedAt { get; init; }
+}
+
+public sealed record UpdateOrderRequest
+{
+    public string? Status { get; init; }
+    public string? Notes { get; init; }
+    public List<CommerceLineItemRequest>? Items { get; init; }
+}
+
+public sealed record UpsertStoreSettingsRequest
+{
+    public string? StoreName { get; init; }
+    public string? Currency { get; init; }
+    public string? Language { get; init; }
+    public decimal? TaxRate { get; init; }
+    public bool? UsePerProductTax { get; init; }
+    public bool? HideOutOfStockProducts { get; init; }
+    public bool? RegenerateApiToken { get; init; }
 }
