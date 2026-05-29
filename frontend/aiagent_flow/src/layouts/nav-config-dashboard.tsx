@@ -18,7 +18,7 @@ const ICONS = {
   commerce: icon('mdi:store-cog-outline'),
   activity: icon('mdi:chart-timeline-variant'),
   humanReview: icon('mdi:account-supervisor-outline'),
-  kycPayments: icon('mdi:shield-account-outline'),
+  // kycPayments: icon('mdi:shield-account-outline'),
   channels: icon('mdi:access-point'),
   integrations: icon('mdi:storefront-outline'),
   tools: icon('mdi:tools'),
@@ -64,11 +64,11 @@ export const navData: NavSectionProps['data'] = [
         path: paths.dashboard.executions,
         icon: ICONS.activity,
       },
-      {
-        title: 'KYC y pagos',
-        path: paths.dashboard.kycPayments,
-        icon: ICONS.kycPayments,
-      },
+      // {
+      //   title: 'KYC y pagos',
+      //   path: paths.dashboard.kycPayments,
+      //   icon: ICONS.kycPayments,
+      // },
     ],
   },
   {

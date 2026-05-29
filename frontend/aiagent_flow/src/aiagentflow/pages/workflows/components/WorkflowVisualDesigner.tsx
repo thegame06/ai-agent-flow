@@ -205,13 +205,13 @@ const dockItems = [
     helper: 'Crea o gestiona intenciones de pago.',
     types: ['payments.create_intent'],
   },
-  {
-    label: 'KYC',
-    group: 'Negocio',
-    icon: 'mdi:card-account-details-outline',
-    helper: 'Valida identidad o envia a revision manual.',
-    types: ['kyc.document_check', 'kyc.review_case'],
-  },
+  // {
+  //   label: 'KYC',
+  //   group: 'Negocio',
+  //   icon: 'mdi:card-account-details-outline',
+  //   helper: 'Valida identidad o envia a revision manual.',
+  //   types: ['kyc.document_check', 'kyc.review_case'],
+  // },
 ];
 
 function WorkflowNodeCard({ data, selected }: NodeProps<Node<WorkflowNodeData>>) {
@@ -820,7 +820,7 @@ export function WorkflowVisualDesigner({
       Logica: { label: 'Base', helper: 'Reglas simples para usuarios no tecnicos.' },
       Humano: { label: 'Listo', helper: 'Escala a una cola o equipo humano.' },
       Pagos: { label: 'Listo', helper: 'Usa el modulo transaccional existente.' },
-      KYC: { label: 'Listo', helper: 'Usa el modulo de identidad existente.' },
+      //KYC: { label: 'Listo', helper: 'Usa el modulo de identidad existente.' },
     } as Record<string, { label: string; helper: string }>;
   }, [availableChannels, channelAgentIds.size, connectTemplates.length, publishedAgents.length, selectedWorkflowChannel]);
   const selectedAgent = useMemo(() => {
@@ -1010,7 +1010,7 @@ export function WorkflowVisualDesigner({
                 <Typography variant="subtitle1">Construye tu flujo</Typography>
                 <Typography variant="body2" color="text.secondary">
                   Empieza con un Agente de IA para entender la intencion y luego agrega acciones como WhatsApp,
-                  API, conectores avanzados, KYC o atencion humana.
+                  API, conectores avanzados o atencion humana.
                 </Typography>
               </Box>
               <Stack

@@ -19,11 +19,11 @@ type Props = {
 
 export function RuntimeEntityCards({ items }: Props) {
   return (
-    <Grid container spacing={2}>
+    <Grid container spacing={2.5}>
       {items.map((item) => (
         <Grid key={item.title} item xs={12} md={4}>
-          <Card variant="outlined" sx={{ p: 2, height: '100%' }}>
-            <Stack spacing={1.25}>
+          <Card variant="outlined" sx={{ p: 2.25, height: '100%', borderRadius: 3 }}>
+            <Stack spacing={1.5}>
               <Stack direction="row" spacing={1} alignItems="center">
                 <Iconify icon={item.icon} width={22} />
                 <Typography variant="subtitle1">{item.title}</Typography>

@@ -1,4 +1,4 @@
-import { Helmet } from 'react-helmet-async';
+﻿import { Helmet } from 'react-helmet-async';
 import { useState, useEffect, useCallback } from 'react';
 
 import Box from '@mui/material/Box';
@@ -42,6 +42,7 @@ import axios, { endpoints } from 'src/lib/axios';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { TermHelp } from 'src/aiagentflow/components/TermHelp';
 import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
+import { BrandPageHeader } from 'src/aiagentflow/components/BrandPageHeader';
 
 import { Iconify } from 'src/components/iconify';
 
@@ -148,9 +149,9 @@ export default function ChannelsPage() {
     maxClarificationTurns: 2,
     escalationTarget: '',
     clarificationQuestions: [
-      { text: '�Me puedes contar brevemente qu� necesitas?', active: true, field: 'motivo', required: true, retries: 1, noResponseAction: 'continue' },
-      { text: '�Qu� resultado esperas obtener?', active: true, field: 'objetivo', required: false, retries: 1, noResponseAction: 'continue' },
-      { text: '�Es algo urgente para hoy?', active: false, field: 'urgencia', required: false, retries: 1, noResponseAction: 'continue' },
+      { text: 'Que necesitas resolver hoy?', active: true, field: 'motivo', required: true, retries: 1, noResponseAction: 'continue' },
+      { text: 'Que resultado esperas obtener?', active: true, field: 'objetivo', required: false, retries: 1, noResponseAction: 'continue' },
+      { text: 'Es algo urgente para hoy?', active: false, field: 'urgencia', required: false, retries: 1, noResponseAction: 'continue' },
     ] as Array<{ text: string; active: boolean; field: string; required: boolean; retries: number; noResponseAction: string }>,
   });
   const [routingPreview, setRoutingPreview] = useState<{ suggestedAgentId?: string; activeLoadByAgent?: Record<string, number> } | null>(null);
@@ -188,7 +189,7 @@ export default function ChannelsPage() {
     { value: 'CallCenter', label: 'Centro de llamadas', icon: 'mdi:account-voice' },
     { value: 'Email', label: 'Email', icon: 'mdi:email-outline' },
     { value: 'Telegram', label: 'Telegram', icon: 'mdi:telegram' },
-    { value: 'Slack', label: 'Slack', icon: 'mdi:slack' },
+    { value: 'Stack', label: 'Stack', icon: 'mdi:slack' },
   ];
 
   const fetchAll = useCallback(async () => {
@@ -279,9 +280,9 @@ export default function ChannelsPage() {
         clarificationQuestions: (res.data?.clarificationQuestions && Array.isArray(res.data.clarificationQuestions) && res.data.clarificationQuestions.length > 0)
           ? res.data.clarificationQuestions
           : [
-            { text: '�Me puedes contar brevemente qu� necesitas?', active: true, field: 'motivo', required: true, retries: 1, noResponseAction: 'continue' },
-            { text: '�Qu� resultado esperas obtener?', active: true, field: 'objetivo', required: false, retries: 1, noResponseAction: 'continue' },
-            { text: '�Es algo urgente para hoy?', active: false, field: 'urgencia', required: false, retries: 1, noResponseAction: 'continue' },
+            { text: 'Que necesitas resolver hoy?', active: true, field: 'motivo', required: true, retries: 1, noResponseAction: 'continue' },
+            { text: 'Que resultado esperas obtener?', active: true, field: 'objetivo', required: false, retries: 1, noResponseAction: 'continue' },
+            { text: 'Es algo urgente para hoy?', active: false, field: 'urgencia', required: false, retries: 1, noResponseAction: 'continue' },
           ],
       });
       setRoutingChannel(channel);
@@ -532,44 +533,14 @@ export default function ChannelsPage() {
       </Helmet>
 
       <DashboardContent maxWidth="xl">
-        <Paper
-          variant="outlined"
-          sx={{
-            mb: 3,
-            p: { xs: 2.5, md: 3 },
-            borderRadius: 4,
-            borderColor:
-              theme.palette.mode === 'dark'
-                ? alpha(theme.palette.primary.light, 0.22)
-                : alpha(theme.palette.primary.main, 0.16),
-            background:
-              theme.palette.mode === 'dark'
-                ? `radial-gradient(circle at 8% 18%, ${alpha(theme.palette.secondary.main, 0.2)}, transparent 34%), linear-gradient(135deg, ${alpha(
-                    theme.palette.background.paper,
-                    0.96
-                  )} 0%, ${alpha(theme.palette.grey[900], 0.9)} 100%)`
-                : 'radial-gradient(circle at 8% 18%, rgba(0,167,181,0.14), transparent 30%), linear-gradient(135deg, #FBFDF9 0%, #F3F9F5 100%)',
-          }}
-        >
-          <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between" alignItems={{ md: 'center' }}>
-            <Stack direction="row" spacing={1.5} alignItems="center">
-              <Avatar sx={{ width: 56, height: 56, bgcolor: 'primary.lighter', color: 'primary.main' }}>
-                <Iconify icon="mdi:access-point" width={30} />
-              </Avatar>
-              <Box>
-                <Typography variant="overline" color="text.secondary">
-                  Conversaciones e integraciones
-                </Typography>
-                <Stack direction="row" spacing={1} alignItems="center">
-                  <Typography variant="h3">Canales de atencion</Typography>
-                  <TermHelp title="Un canal es el medio por donde escribe o llama el cliente, por ejemplo WhatsApp, web chat, email o voz." />
-                </Stack>
-                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                  Conecta WhatsApp, web chat, voz, call center, email y APIs para usarlos en la bandeja, ventas y flujos automatizados.
-                </Typography>
-              </Box>
-            </Stack>
-            <Stack direction="row" spacing={1}>
+        <BrandPageHeader
+          eyebrow="Conversaciones e integraciones"
+          title="Canales de atencion"
+          description="Conecta WhatsApp, web chat, voz, centro de llamadas, email y APIs para usarlos en la bandeja, ventas y automatizaciones."
+          icon="mdi:access-point"
+          help={<TermHelp title="Un canal es el medio por donde escribe o llama el cliente, por ejemplo WhatsApp, web chat, email o voz." />}
+          actions={
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
               <Button
                 variant="outlined"
                 component={RouterLink}
@@ -590,12 +561,12 @@ export default function ChannelsPage() {
                 Agregar canal
               </Button>
             </Stack>
-          </Stack>
-        </Paper>
+          }
+        />
 
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
-        <Grid container spacing={3}>
+        <Grid container spacing={2.5}>
           <Grid item xs={12}>
             <Grid container spacing={2}>
               {[
@@ -605,7 +576,7 @@ export default function ChannelsPage() {
                 ['Conversaciones', sessions.length, 'Casos recientes', 'mdi:inbox-outline'],
               ].map(([label, value, helper, icon]) => (
                 <Grid item xs={12} sm={6} md={3} key={label}>
-                  <Card variant="outlined" sx={{ p: 2, height: '100%' }}>
+                  <Card variant="outlined" sx={{ p: 2.25, height: '100%', borderRadius: 3 }}>
                     <Stack direction="row" spacing={1.5} alignItems="center">
                       <Box
                         sx={{
@@ -634,7 +605,7 @@ export default function ChannelsPage() {
           </Grid>
 
           <Grid item xs={12}>
-            <Card variant="outlined" sx={{ p: 2, borderRadius: 2.5 }}>
+            <Card variant="outlined" sx={{ p: { xs: 2, md: 2.5 }, borderRadius: 3 }}>
               <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between">
                 <Box>
                   <Typography variant="h6">Twilio omnicanal</Typography>
@@ -662,7 +633,7 @@ export default function ChannelsPage() {
           </Grid>
 
           <Grid item xs={12} md={7}>
-            <Card variant="outlined" sx={{ p: 2 }}>
+            <Card variant="outlined" sx={{ p: { xs: 2, md: 2.5 }, borderRadius: 3, height: '100%' }}>
               <Typography variant="h6" sx={{ mb: 0.5 }}>Canales conectados</Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                 Estos canales alimentan la bandeja y aparecen como entradas disponibles en flujos automatizados.
@@ -672,7 +643,8 @@ export default function ChannelsPage() {
               ) : channels.length === 0 ? (
                 <Alert severity="info">Aun no hay canales de atencion configurados.</Alert>
               ) : (
-                <Table size="small">
+                <Box sx={{ overflowX: 'auto' }}>
+                  <Table size="small">
                   <TableHead>
                     <TableRow>
                         <TableCell>Nombre</TableCell>
@@ -691,7 +663,7 @@ export default function ChannelsPage() {
                           <Chip label={c.type} size="small" variant="outlined" />
                         </TableCell>
                         <TableCell>
-                          <Stack direction="row" spacing={0.5} flexWrap="wrap">
+                          <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
                             {channelCapabilities(c).map((capability) => (
                               <Chip key={capability} label={capability} size="small" />
                             ))}
@@ -734,13 +706,14 @@ export default function ChannelsPage() {
                       </TableRow>
                     ))}
                   </TableBody>
-                </Table>
+                  </Table>
+                </Box>
               )}
             </Card>
           </Grid>
 
           <Grid item xs={12} md={5}>
-            <Card variant="outlined" sx={{ p: 2 }}>
+            <Card variant="outlined" sx={{ p: { xs: 2, md: 2.5 }, borderRadius: 3, height: '100%' }}>
               <Typography variant="h6" sx={{ mb: 2 }}>Conversaciones del canal</Typography>
               {sessions.length === 0 ? (
                 <Alert severity="info">No hay conversaciones.</Alert>
@@ -816,9 +789,14 @@ export default function ChannelsPage() {
 
       {/* Create Channel Dialog */}
       <Dialog open={openCreate} onClose={() => setOpenCreate(false)} fullWidth maxWidth="sm">
-        <DialogTitle>Agregar canal de atencion</DialogTitle>
+        <DialogTitle sx={{ pb: 1 }}>
+          <Typography variant="h6">Agregar canal de atencion</Typography>
+          <Typography variant="body2" color="text.secondary">
+            Define el canal, el asistente principal y la forma de conexion.
+          </Typography>
+        </DialogTitle>
         <DialogContent>
-          <Stack spacing={2} sx={{ pt: 1 }}>
+          <Stack spacing={2.25} sx={{ pt: 1 }}>
             <TextField
               label="Nombre del canal"
               value={form.name}
@@ -917,7 +895,7 @@ export default function ChannelsPage() {
               ))}
             </TextField>
 
-            <Divider textAlign="left">
+            <Divider textAlign="left" sx={{ pt: 0.5 }}>
               <Typography variant="caption" color="text.secondary">Asignacion automatica (opcional)</Typography>
             </Divider>
 
@@ -990,7 +968,12 @@ export default function ChannelsPage() {
       </Dialog>
 
       <Dialog open={openRouting} onClose={() => setOpenRouting(false)} fullWidth maxWidth="sm">
-        <DialogTitle>Enrutamiento por intencion - {routingChannel?.name}</DialogTitle>
+        <DialogTitle sx={{ pb: 1 }}>
+          <Typography variant="h6">Enrutamiento por intencion</Typography>
+          <Typography variant="body2" color="text.secondary">
+            {routingChannel?.name ? `Canal: ${routingChannel.name}` : 'Configura como se reparte la conversacion.'}
+          </Typography>
+        </DialogTitle>
         <DialogContent>
           <Stack spacing={2.5} sx={{ pt: 1 }}>
             <Alert severity="info" sx={{ mb: 0 }}>
@@ -1043,7 +1026,7 @@ export default function ChannelsPage() {
                 onChange={(e) => setRoutingForm((prev) => ({ ...prev, noMatchAction: e.target.value }))}
                 input={<OutlinedInput label="Estrategia sin match" />}
               >
-                <MenuItem value="human_review_only">Solo revisi�n humana</MenuItem>
+                <MenuItem value="human_review_only">Solo revision humana</MenuItem>
                 <MenuItem value="clarify_then_route">Preguntar y reintentar</MenuItem>
               </Select>
             </FormControl>
@@ -1064,7 +1047,7 @@ export default function ChannelsPage() {
 
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
               <TextField
-                label="M�ximo de preguntas"
+                label="Maximo de preguntas"
                 type="number"
                 value={routingForm.maxClarificationTurns}
                 onChange={(e) => setRoutingForm((prev) => ({ ...prev, maxClarificationTurns: Number(e.target.value || 2) }))}
@@ -1074,13 +1057,13 @@ export default function ChannelsPage() {
               />
               <TextField
                 select
-                label="Destino de escalaci�n"
+                label="Destino de escalacion"
                 value={routingForm.escalationTarget}
                 onChange={(e) => setRoutingForm((prev) => ({ ...prev, escalationTarget: e.target.value }))}
                 fullWidth
-                helperText="Cola humana que recibir� casos escalados sin clasificaci�n."
+                helperText="Cola humana que recibira casos escalados sin clasificacion."
               >
-                <MenuItem value=""><em>Sin cola de escalaci�n</em></MenuItem>
+                <MenuItem value=""><em>Sin cola de escalacion</em></MenuItem>
                 {queueOptions.filter((q) => q.active).map((q) => (
                   <MenuItem key={q.id} value={q.id}>{q.name}</MenuItem>
                 ))}
@@ -1088,7 +1071,7 @@ export default function ChannelsPage() {
             </Stack>
 
             <Stack spacing={1.25}>
-              <Typography variant="subtitle2">Preguntas de clarificaci�n</Typography>
+              <Typography variant="subtitle2">Preguntas de clarificacion</Typography>
               {routingForm.clarificationQuestions.map((q, idx) => (
                 <Stack key={`q-${idx}`} direction={{ xs: 'column', sm: 'row' }} spacing={1}>
                   <TextField
@@ -1122,7 +1105,7 @@ export default function ChannelsPage() {
                       }))}
                       disabled={routingForm.noMatchAction !== 'clarify_then_route'}
                     >
-                      <MenuItem value="si">S�</MenuItem>
+                      <MenuItem value="si">Si</MenuItem>
                       <MenuItem value="no">No</MenuItem>
                     </Select>
                   </FormControl>
@@ -1155,7 +1138,12 @@ export default function ChannelsPage() {
       </Dialog>
 
       <Dialog open={openIntentsModal} onClose={() => setOpenIntentsModal(false)} fullWidth maxWidth="md">
-        <DialogTitle>Cargar intenciones - {intentsChannel?.name}</DialogTitle>
+        <DialogTitle sx={{ pb: 1 }}>
+          <Typography variant="h6">Cargar intenciones</Typography>
+          <Typography variant="body2" color="text.secondary">
+            {intentsChannel?.name ? `Canal: ${intentsChannel.name}` : 'Selecciona las intenciones que este canal puede clasificar.'}
+          </Typography>
+        </DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ pt: 1 }}>
             <Alert severity="info">
@@ -1184,57 +1172,59 @@ export default function ChannelsPage() {
                   </Button>
                   <Chip size="small" label={`${selectedIntentKeys.length} seleccionadas`} />
                 </Stack>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell padding="checkbox" />
-                      <TableCell>Intencion</TableCell>
-                      <TableCell>Categoria</TableCell>
-                      <TableCell>Descripcion</TableCell>
-                      <TableCell>Prioridad</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {intentCatalog.map((item) => {
-                      const checked = selectedIntentKeys.includes(item.key);
-                      return (
-                        <TableRow
-                          key={item.key}
-                          hover
-                          onClick={() => {
-                            setSelectedIntentKeys((prev) =>
-                              prev.includes(item.key) ? prev.filter((key) => key !== item.key) : [...prev, item.key]
-                            );
-                          }}
-                          sx={{ cursor: 'pointer' }}
-                        >
-                          <TableCell padding="checkbox">
-                            <Checkbox
-                              checked={checked}
-                              onClick={(e) => e.stopPropagation()}
-                              onChange={() => {
-                                setSelectedIntentKeys((prev) =>
-                                  prev.includes(item.key) ? prev.filter((key) => key !== item.key) : [...prev, item.key]
-                                );
-                              }}
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Stack spacing={0.25}>
-                              <Typography variant="body2">{item.name}</Typography>
-                              <Typography variant="caption" color="text.secondary">{item.key}</Typography>
-                            </Stack>
-                          </TableCell>
-                          <TableCell>{item.category}</TableCell>
-                          <TableCell sx={{ maxWidth: 420 }}>
-                            <Typography variant="body2" noWrap>{item.description}</Typography>
-                          </TableCell>
-                          <TableCell>{item.priority}</TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
+                <Box sx={{ overflowX: 'auto' }}>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell padding="checkbox" />
+                        <TableCell>Intencion</TableCell>
+                        <TableCell>Categoria</TableCell>
+                        <TableCell>Descripcion</TableCell>
+                        <TableCell>Prioridad</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {intentCatalog.map((item) => {
+                        const checked = selectedIntentKeys.includes(item.key);
+                        return (
+                          <TableRow
+                            key={item.key}
+                            hover
+                            onClick={() => {
+                              setSelectedIntentKeys((prev) =>
+                                prev.includes(item.key) ? prev.filter((key) => key !== item.key) : [...prev, item.key]
+                              );
+                            }}
+                            sx={{ cursor: 'pointer' }}
+                          >
+                            <TableCell padding="checkbox">
+                              <Checkbox
+                                checked={checked}
+                                onClick={(e) => e.stopPropagation()}
+                                onChange={() => {
+                                  setSelectedIntentKeys((prev) =>
+                                    prev.includes(item.key) ? prev.filter((key) => key !== item.key) : [...prev, item.key]
+                                  );
+                                }}
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <Stack spacing={0.25}>
+                                <Typography variant="body2">{item.name}</Typography>
+                                <Typography variant="caption" color="text.secondary">{item.key}</Typography>
+                              </Stack>
+                            </TableCell>
+                            <TableCell>{item.category}</TableCell>
+                            <TableCell sx={{ maxWidth: 420 }}>
+                              <Typography variant="body2" noWrap>{item.description}</Typography>
+                            </TableCell>
+                            <TableCell>{item.priority}</TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </Box>
               </>
             )}
           </Stack>
@@ -1258,7 +1248,12 @@ export default function ChannelsPage() {
         }}
         maxWidth="sm"
       >
-        <DialogTitle>Escanear codigo QR - {selectedChannel?.name}</DialogTitle>
+        <DialogTitle sx={{ pb: 1 }}>
+          <Typography variant="h6">Escanear codigo QR</Typography>
+          <Typography variant="body2" color="text.secondary">
+            {selectedChannel?.name ? `Canal: ${selectedChannel.name}` : 'Vincula el canal de WhatsApp desde el telefono.'}
+          </Typography>
+        </DialogTitle>
         <DialogContent>
           <Box sx={{ textAlign: 'center', py: 3 }}>
             {qrCode && (
@@ -1311,7 +1306,12 @@ export default function ChannelsPage() {
 
       {/* Session Evidence Dialog */}
       <Dialog open={!!selectedSession} onClose={() => setSelectedSession(null)} fullWidth maxWidth="md">
-        <DialogTitle>Historial de la conversacion - {selectedSession?.identifier}</DialogTitle>
+        <DialogTitle sx={{ pb: 1 }}>
+          <Typography variant="h6">Historial de la conversacion</Typography>
+          <Typography variant="body2" color="text.secondary">
+            {selectedSession?.identifier ? `Cliente o sesion: ${selectedSession.identifier}` : 'Revisa el detalle completo de la conversacion.'}
+          </Typography>
+        </DialogTitle>
         <DialogContent>
           {sessionLoading ? (
             <Box sx={{ py: 4, textAlign: 'center' }}><CircularProgress /></Box>
@@ -1323,32 +1323,34 @@ export default function ChannelsPage() {
               {sessionMessages.length === 0 ? (
                 <Alert severity="warning">No se encontraron mensajes para esta conversacion.</Alert>
               ) : (
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Direccion</TableCell>
-                      <TableCell>Actor</TableCell>
-                      <TableCell>Contenido</TableCell>
-                      <TableCell>Estado</TableCell>
-                      <TableCell>Entrega</TableCell>
-                      <TableCell>Creado</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {sessionMessages.map((m) => (
-                      <TableRow key={m.id}>
-                        <TableCell>{m.direction}</TableCell>
-                        <TableCell>{m.actor || '-'}</TableCell>
-                        <TableCell sx={{ maxWidth: 420, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                          {m.errorMessage || m.content}
-                        </TableCell>
-                        <TableCell>{m.status}</TableCell>
-                        <TableCell>{m.deliveryState || '-'}</TableCell>
-                        <TableCell>{new Date(m.createdAt).toLocaleString()}</TableCell>
+                <Box sx={{ overflowX: 'auto' }}>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Direccion</TableCell>
+                        <TableCell>Actor</TableCell>
+                        <TableCell>Contenido</TableCell>
+                        <TableCell>Estado</TableCell>
+                        <TableCell>Entrega</TableCell>
+                        <TableCell>Creado</TableCell>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHead>
+                    <TableBody>
+                      {sessionMessages.map((m) => (
+                        <TableRow key={m.id}>
+                          <TableCell>{m.direction}</TableCell>
+                          <TableCell>{m.actor || '-'}</TableCell>
+                          <TableCell sx={{ maxWidth: 420, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {m.errorMessage || m.content}
+                          </TableCell>
+                          <TableCell>{m.status}</TableCell>
+                          <TableCell>{m.deliveryState || '-'}</TableCell>
+                          <TableCell>{new Date(m.createdAt).toLocaleString()}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </Box>
               )}
             </Stack>
           )}
@@ -1360,7 +1362,12 @@ export default function ChannelsPage() {
 
       {/* Test Message Dialog */}
       <Dialog open={openTestPanel} onClose={() => setOpenTestPanel(false)} fullWidth maxWidth="sm">
-        <DialogTitle>Probar mensaje - {testPanelChannel?.name}</DialogTitle>
+        <DialogTitle sx={{ pb: 1 }}>
+          <Typography variant="h6">Probar mensaje</Typography>
+          <Typography variant="body2" color="text.secondary">
+            {testPanelChannel?.name ? `Canal: ${testPanelChannel.name}` : 'Valida la entrada del cliente antes de publicar.'}
+          </Typography>
+        </DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ pt: 1 }}>
             <Alert severity="info">
@@ -1421,6 +1428,11 @@ export default function ChannelsPage() {
     </>
   );
 }
+
+
+
+
+
 
 
 

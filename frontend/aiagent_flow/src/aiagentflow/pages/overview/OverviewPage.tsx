@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import type { RootState, AppDispatch } from 'src/aiagentflow/store';
 
 import { Helmet } from 'react-helmet-async';
@@ -7,15 +8,12 @@ import { useDispatch, useSelector } from 'react-redux';
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import Chip from '@mui/material/Chip';
+import Grid from '@mui/material/Grid';
 import Stack from '@mui/material/Stack';
-import Paper from '@mui/material/Paper';
 import Alert from '@mui/material/Alert';
-import Avatar from '@mui/material/Avatar';
 import Button from '@mui/material/Button';
-import Divider from '@mui/material/Divider';
 import Typography from '@mui/material/Typography';
 import CardContent from '@mui/material/CardContent';
-import { alpha, useTheme } from '@mui/material/styles';
 import LinearProgress from '@mui/material/LinearProgress';
 
 import { paths } from 'src/routes/paths';
@@ -25,6 +23,7 @@ import { CONFIG } from 'src/global-config';
 import axios, { endpoints } from 'src/lib/axios';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
+import { BrandPageHeader } from 'src/aiagentflow/components/BrandPageHeader';
 import { type WizardId, WizardLauncher } from 'src/aiagentflow/components/chat-wizard/WizardRegistry';
 
 import { Iconify } from 'src/components/iconify';
@@ -50,7 +49,6 @@ type ReadinessItem = {
 export default function OverviewPage() {
   const dispatch = useDispatch<AppDispatch>();
   const tenantId = useTenantId();
-  const theme = useTheme();
   const [orchestratorStatus, setOrchestratorStatus] = useState<SystemOrchestratorStatus | null>(null);
   const [wizardType, setWizardType] = useState<WizardId>('automation');
 
@@ -78,7 +76,9 @@ export default function OverviewPage() {
 
   const workflowCount = orchestratorStatus?.workflows?.length ?? 0;
   const channelCount = orchestratorStatus?.channels?.length ?? 0;
-  const readyConnections = orchestratorStatus?.connections?.filter((item) => item.ready).length ?? 0;
+  const readyConnections =
+    orchestratorStatus?.connections?.filter((item) => item.ready).length ?? 0;
+
   const readinessItems: ReadinessItem[] = useMemo(
     () => [
       {
@@ -123,7 +123,8 @@ export default function OverviewPage() {
 
   const readyCount = readinessItems.filter((item) => item.ready).length;
   const readinessPercent = Math.round((readyCount / readinessItems.length) * 100);
-  const readinessTone = readinessPercent === 100 ? 'success' : readinessPercent >= 50 ? 'warning' : 'error';
+  const readinessTone =
+    readinessPercent === 100 ? 'success' : readinessPercent >= 50 ? 'warning' : 'error';
   const missingItems = readinessItems.filter((item) => !item.ready);
   const nextStep = missingItems[0] ?? readinessItems[0];
 
@@ -144,91 +145,33 @@ export default function OverviewPage() {
       <DashboardContent maxWidth="xl">
         {loading && <LinearProgress sx={{ mb: 2 }} />}
 
-        <Paper
-          variant="outlined"
-          sx={{
-            p: { xs: 3, md: 4 },
-            borderRadius: 4,
-            overflow: 'hidden',
-            borderColor:
-              theme.palette.mode === 'dark'
-                ? alpha(theme.palette.primary.light, 0.22)
-                : alpha(theme.palette.primary.main, 0.16),
-            background:
-              theme.palette.mode === 'dark'
-                ? `radial-gradient(circle at 6% 18%, ${alpha(theme.palette.primary.main, 0.2)}, transparent 30%), radial-gradient(circle at 94% 0%, ${alpha(
-                    theme.palette.secondary.main,
-                    0.16
-                  )}, transparent 28%), linear-gradient(135deg, ${alpha(theme.palette.background.paper, 0.96)} 0%, ${alpha(
-                    theme.palette.grey[900],
-                    0.9
-                  )} 100%)`
-                : 'radial-gradient(circle at 6% 18%, rgba(14,124,90,0.18), transparent 28%), radial-gradient(circle at 94% 0%, rgba(0,167,181,0.18), transparent 26%), linear-gradient(135deg, #FBFDF9 0%, #F3F9F5 100%)',
-          }}
-        >
-          <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ xs: 'flex-start', md: 'center' }} sx={{ mb: 2.5 }}>
-            <Avatar
-              src="/logo/logo-single.svg"
-              alt="AnnonAI"
-              sx={{ width: 52, height: 52, bgcolor: 'transparent', boxShadow: `0 12px 32px ${alpha(theme.palette.primary.main, 0.22)}` }}
-            />
-            <Box sx={{ flex: 1 }}>
-              <Typography variant="h4" sx={{ fontWeight: 800, letterSpacing: -0.6, lineHeight: 1.2 }}>
-                Centro operativo
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Revisa qué falta para operar, crea automatizaciones y corrige bloqueos sin entrar a configuraciones técnicas.
-              </Typography>
-            </Box>
-            <Chip
-              size="small"
-              icon={<Iconify icon={readinessPercent === 100 ? 'mdi:check-circle' : 'mdi:clock-outline'} width={14} />}
-              label={readinessPercent === 100 ? 'Listo para operar' : 'Preparacion pendiente'}
-              color={readinessPercent === 100 ? 'success' : 'warning'}
-              variant="soft"
-            />
-          </Stack>
-
-          <Stack direction={{ xs: 'column', md: 'row' }} spacing={2.5} alignItems={{ xs: 'stretch', md: 'center' }} sx={{ mb: 3 }}>
-            <Box sx={{ minWidth: { md: 220 } }}>
-              <Typography variant="overline" color="text.secondary">
-                Preparacion general
-              </Typography>
-              <Typography variant="h3" sx={{ lineHeight: 1.1 }}>
-                {readinessPercent}%
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                {readyCount} de {readinessItems.length} bloques listos
-              </Typography>
-            </Box>
-            <Box sx={{ flex: 1 }}>
-              <LinearProgress
-                variant="determinate"
-                value={readinessPercent}
-                color={readinessTone}
-                sx={{ height: 10, borderRadius: 999, mb: 1.25 }}
+        <BrandPageHeader
+          eyebrow="Centro operativo"
+          title="Preparacion de la plataforma"
+          description="Revisa lo que falta para operar, publica automatizaciones y corrige bloqueos sin entrar a configuraciones tecnicas."
+          icon="mdi:view-dashboard-outline"
+          meta={
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+              <Chip
+                size="small"
+                color={readinessPercent === 100 ? 'success' : 'warning'}
+                label={readinessPercent === 100 ? 'Listo para operar' : 'Preparacion pendiente'}
               />
-              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                {readinessItems.map((item) => (
-                  <Chip
-                    key={item.key}
-                    size="small"
-                    icon={<Iconify icon={item.icon} width={14} />}
-                    label={`${item.label}: ${item.countLabel}`}
-                    color={item.ready ? 'success' : 'default'}
-                    variant={item.ready ? 'soft' : 'outlined'}
-                    sx={{ bgcolor: item.ready ? undefined : alpha(theme.palette.background.paper, 0.72) }}
-                  />
-                ))}
-              </Stack>
-            </Box>
-            <Stack spacing={1} sx={{ minWidth: { md: 240 } }}>
+              <Chip
+                size="small"
+                variant="outlined"
+                color="info"
+                label={`${readyCount} de ${readinessItems.length} bloques listos`}
+              />
+            </Stack>
+          }
+          actions={
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
               <Button
                 component={RouterLink}
                 href={paths.dashboard.automationNew}
                 variant="contained"
                 startIcon={<Iconify icon="mdi:auto-fix" width={18} />}
-                size="large"
               >
                 Crear automatizacion
               </Button>
@@ -241,85 +184,172 @@ export default function OverviewPage() {
                 {nextStep.actionLabel}
               </Button>
             </Stack>
-          </Stack>
+          }
+        />
 
-          {missingItems.length > 0 ? (
-            <Alert severity="warning" sx={{ mb: 2.5 }}>
-              <strong>Bloqueos actuales:</strong> {missingItems.map((item) => item.label).join(', ')}.
-              {' '}Empieza por <strong>{nextStep.label.toLowerCase()}</strong>.
-            </Alert>
-          ) : (
-            <Alert severity="success" sx={{ mb: 2.5 }}>
-              La plataforma ya tiene los elementos mínimos para operar. El siguiente paso recomendado es publicar o mejorar una automatización.
-            </Alert>
-          )}
+        <Grid container spacing={2.5}>
+          <Grid item xs={12} lg={8}>
+            <Card variant="outlined" sx={{ p: { xs: 2, md: 2.5 }, borderRadius: 3, height: '100%' }}>
+              <Stack spacing={2}>
+                <Box>
+                  <Typography variant="overline" color="text.secondary">
+                    Preparacion general
+                  </Typography>
+                  <Stack
+                    direction={{ xs: 'column', sm: 'row' }}
+                    spacing={1.5}
+                    justifyContent="space-between"
+                    alignItems={{ sm: 'flex-end' }}
+                    sx={{ mt: 0.5 }}
+                  >
+                    <Box>
+                      <Typography variant="h3" sx={{ lineHeight: 1 }}>
+                        {readinessPercent}%
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {readyCount} de {readinessItems.length} bloques listos
+                      </Typography>
+                    </Box>
+                    <Chip
+                      size="small"
+                      color={readinessTone}
+                      label={nextStep.ready ? 'Base operativa lista' : `Siguiente foco: ${nextStep.label}`}
+                    />
+                  </Stack>
+                </Box>
 
-          <Divider sx={{ mb: 2.5 }} />
+                <LinearProgress
+                  variant="determinate"
+                  value={readinessPercent}
+                  color={readinessTone}
+                  sx={{ height: 10, borderRadius: 999 }}
+                />
 
-          <WizardLauncher value={wizardType} onChange={setWizardType} />
-        </Paper>
+                <Grid container spacing={1.5}>
+                  {readinessItems.map((item) => (
+                    <Grid key={item.key} item xs={12} sm={6}>
+                      <Card
+                        variant="outlined"
+                        sx={{
+                          p: 1.75,
+                          borderRadius: 2.5,
+                          borderColor: item.ready ? 'success.light' : 'divider',
+                          bgcolor: item.ready ? 'success.lighter' : 'background.paper',
+                        }}
+                      >
+                        <Stack spacing={1.25}>
+                          <Stack direction="row" spacing={1} alignItems="center">
+                            <Iconify icon={item.icon} width={18} />
+                            <Typography variant="subtitle2">{item.label}</Typography>
+                          </Stack>
+                          <Typography variant="body2" color="text.secondary">
+                            {item.countLabel}
+                          </Typography>
+                          <Box>
+                            <Button
+                              component={RouterLink}
+                              href={item.href}
+                              size="small"
+                              variant={item.ready ? 'text' : 'outlined'}
+                            >
+                              {item.actionLabel}
+                            </Button>
+                          </Box>
+                        </Stack>
+                      </Card>
+                    </Grid>
+                  ))}
+                </Grid>
 
-        <GridSection title="Proximo paso" sx={{ mt: 3 }}>
-          <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
-            <ActionCard
-              title={nextStep.ready ? 'Optimizar automatizaciones' : nextStep.actionLabel}
-              description={
-                nextStep.ready
-                  ? 'Ya tienes la base operativa. Aprovecha para construir o mejorar una automatización con impacto directo.'
-                  : `Aun falta completar ${nextStep.label.toLowerCase()} para operar con menos fricción.`
-              }
-              href={nextStep.ready ? paths.dashboard.automationNew : nextStep.href}
-              cta={nextStep.ready ? 'Abrir creador' : nextStep.actionLabel}
-              icon={nextStep.ready ? 'mdi:auto-fix' : nextStep.icon}
-            />
-            <ActionCard
-              title="Monitorear actividad"
-              description={`Hoy llevas ${metrics.completedToday} ejecuciones completadas y ${Math.round(metrics.avgQualityScore * 100)}% de calidad promedio.`}
-              href={paths.dashboard.executions}
-              cta="Ver actividad"
-              icon="mdi:chart-timeline-variant"
-            />
-          </Stack>
-        </GridSection>
+                {missingItems.length > 0 ? (
+                  <Alert severity="warning">
+                    <strong>Bloqueos actuales:</strong> {missingItems.map((item) => item.label).join(', ')}.
+                    {' '}Empieza por <strong>{nextStep.label.toLowerCase()}</strong>.
+                  </Alert>
+                ) : (
+                  <Alert severity="success">
+                    La base operativa ya esta lista. El siguiente paso recomendado es publicar o mejorar una automatizacion.
+                  </Alert>
+                )}
+              </Stack>
+            </Card>
+          </Grid>
 
-        <GridSection title="Accesos rapidos" sx={{ mt: 3 }}>
-          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-            {quickLinks.map((link) => (
-              <Button
-                key={link.label}
-                component={RouterLink}
-                href={link.href}
-                variant="outlined"
-                size="small"
-                startIcon={<Iconify icon={link.icon} width={16} />}
-                sx={{ borderRadius: 6, color: 'text.secondary', borderColor: 'divider', '&:hover': { borderColor: 'primary.main', color: 'primary.main' } }}
-              >
-                {link.label}
-              </Button>
-            ))}
-          </Stack>
-        </GridSection>
+          <Grid item xs={12} lg={4}>
+            <Card variant="outlined" sx={{ p: { xs: 2, md: 2.5 }, borderRadius: 3, height: '100%' }}>
+              <Stack spacing={2}>
+                <Box>
+                  <Typography variant="subtitle1">Acciones recomendadas</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Mantiene el ritmo operativo sin perderte en menus secundarios.
+                  </Typography>
+                </Box>
+                <ActionCard
+                  title={nextStep.ready ? 'Optimizar automatizaciones' : nextStep.actionLabel}
+                  description={
+                    nextStep.ready
+                      ? 'Ya tienes la base lista. Aprovecha para construir o mejorar una automatizacion con impacto directo.'
+                      : `Aun falta completar ${nextStep.label.toLowerCase()} para operar con menos friccion.`
+                  }
+                  href={nextStep.ready ? paths.dashboard.automationNew : nextStep.href}
+                  cta={nextStep.ready ? 'Abrir creador' : nextStep.actionLabel}
+                  icon={nextStep.ready ? 'mdi:auto-fix' : nextStep.icon}
+                />
+                <ActionCard
+                  title="Monitorear actividad"
+                  description={`Hoy llevas ${metrics.completedToday} ejecuciones completadas y ${Math.round(metrics.avgQualityScore * 100)}% de calidad promedio.`}
+                  href={paths.dashboard.executions}
+                  cta="Ver actividad"
+                  icon="mdi:chart-timeline-variant"
+                />
+              </Stack>
+            </Card>
+          </Grid>
+
+          <Grid item xs={12}>
+            <Card variant="outlined" sx={{ p: { xs: 2, md: 2.5 }, borderRadius: 3 }}>
+              <Stack spacing={2}>
+                <Box>
+                  <Typography variant="subtitle1">Accesos rapidos</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Atajos para las tareas que mas se repiten en operacion.
+                  </Typography>
+                </Box>
+                <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                  {quickLinks.map((link) => (
+                    <Button
+                      key={link.label}
+                      component={RouterLink}
+                      href={link.href}
+                      variant="outlined"
+                      size="small"
+                      startIcon={<Iconify icon={link.icon} width={16} />}
+                      sx={{ borderRadius: 6 }}
+                    >
+                      {link.label}
+                    </Button>
+                  ))}
+                </Stack>
+              </Stack>
+            </Card>
+          </Grid>
+
+          <Grid item xs={12}>
+            <Card variant="outlined" sx={{ p: { xs: 2, md: 2.5 }, borderRadius: 3 }}>
+              <Stack spacing={2}>
+                <Box>
+                  <Typography variant="subtitle1">Asistente guiado</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Usa una guia conversacional para preparar la siguiente automatizacion.
+                  </Typography>
+                </Box>
+                <WizardLauncher value={wizardType} onChange={setWizardType} />
+              </Stack>
+            </Card>
+          </Grid>
+        </Grid>
       </DashboardContent>
     </>
-  );
-}
-
-function GridSection({
-  title,
-  children,
-  sx,
-}: {
-  title: string;
-  children: React.ReactNode;
-  sx?: object;
-}) {
-  return (
-    <Box sx={sx}>
-      <Typography variant="h6" sx={{ mb: 1.5 }}>
-        {title}
-      </Typography>
-      {children}
-    </Box>
   );
 }
 
@@ -337,12 +367,12 @@ function ActionCard({
   icon: string;
 }) {
   return (
-    <Card variant="outlined" sx={{ flex: 1 }}>
+    <Card variant="outlined" sx={{ borderRadius: 2.5 }}>
       <CardContent>
-        <Stack spacing={1.5}>
+        <Stack spacing={1.25}>
           <Stack direction="row" spacing={1} alignItems="center">
             <Iconify icon={icon} width={20} />
-            <Typography variant="subtitle1">{title}</Typography>
+            <Typography variant="subtitle2">{title}</Typography>
           </Stack>
           <Typography variant="body2" color="text.secondary">
             {description}

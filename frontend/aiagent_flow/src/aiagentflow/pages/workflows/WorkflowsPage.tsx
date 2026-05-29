@@ -1,4 +1,4 @@
-import { Helmet } from 'react-helmet-async';
+﻿import { Helmet } from 'react-helmet-async';
 import { useSearchParams } from 'react-router';
 import { useMemo, useState, useEffect } from 'react';
 
@@ -23,6 +23,7 @@ import axios, { endpoints } from 'src/lib/axios';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { TermHelp } from 'src/aiagentflow/components/TermHelp';
 import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
+import { BrandPageHeader } from 'src/aiagentflow/components/BrandPageHeader';
 
 import { Iconify } from 'src/components/iconify';
 
@@ -54,11 +55,6 @@ const SYSTEM_EVENT_OPTIONS = [
     value: 'connect.campaign.triggered',
     label: 'Campana iniciada',
     helper: 'Lo dispara una campana saliente o una regla programada.',
-  },
-  {
-    value: 'kyc.case.updated',
-    label: 'Caso KYC actualizado',
-    helper: 'Lo dispara el modulo KYC cuando cambia la decision o requiere revision.',
   },
   {
     value: 'payment.status.changed',
@@ -218,12 +214,13 @@ export default function WorkflowsPage() {
     setSelectedWorkflowId,
   } = useWorkflowEditorState(activityCatalog);
 
-  const uiAllowedTypes =
-    designType === 'tool' ? allowedTypes.filter((t) => TOOL_ACTIVITY_TYPES.includes(t as any)) : allowedTypes;
+  const uiAllowedTypes = (
+    designType === 'tool' ? allowedTypes.filter((t) => TOOL_ACTIVITY_TYPES.includes(t as any)) : allowedTypes
+  ).filter((type) => !type.startsWith('kyc.'));
   const quickstarts =
     designType === 'tool'
-      ? WORKFLOW_QUICKSTARTS.filter((q) => q.id.includes('kyc') || q.id.includes('payment'))
-      : WORKFLOW_QUICKSTARTS;
+      ? WORKFLOW_QUICKSTARTS.filter((q) => q.id.includes('payment'))
+      : WORKFLOW_QUICKSTARTS.filter((q) => !q.id.includes('kyc'));
   const designValidationErrors = [
     ...validationErrors,
     ...(designType === 'tool'
@@ -456,17 +453,15 @@ export default function WorkflowsPage() {
         )}
 
 
-        <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ md: 'center' }} spacing={1.5} sx={{ mb: 2 }}>
-          <Box>
-            <Stack direction="row" spacing={0.75} alignItems="center">
-              <Typography variant="h4">Automatizaciones</Typography>
-              <TermHelp title="Flujo automatizado es la secuencia de pasos que el sistema ejecuta para atender un caso de principio a fin." />
-            </Stack>
-            <Typography variant="body2" color="text.secondary">
-              Disena el recorrido completo del caso: entrada del cliente, validaciones, respuestas, pagos, revision humana y cierre.
-            </Typography>
-            <Stack direction="row" spacing={1} sx={{ mt: 1 }} alignItems="center">
-              <Chip size="small" color="info" label={`Modalidad ${selectedRuntimeKind}`} />
+        <BrandPageHeader
+          eyebrow="Construccion operativa"
+          title="Automatizaciones"
+          description="Disena el recorrido completo del caso: entrada del cliente, validaciones, respuestas, pagos, revision humana y cierre."
+          icon="mdi:source-branch"
+          help={<TermHelp title="Flujo automatizado es la secuencia de pasos que el sistema ejecuta para atender un caso de principio a fin." />}
+          meta={
+            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+              <Chip size="small" color="info" label={`Modalidad ${selectedRuntimeKind}`} variant="outlined" />
               <ToggleButtonGroup
                 size="small"
                 value={selectedRuntimeKind}
@@ -478,22 +473,27 @@ export default function WorkflowsPage() {
                 <ToggleButton value="MultimodalRealtime">Multimodal</ToggleButton>
               </ToggleButtonGroup>
             </Stack>
-          </Box>
-          <Stack direction="row" spacing={1} flexWrap="wrap">
-            <Button variant="contained" startIcon={<Iconify icon="mingcute:add-line" />} onClick={handleCreateBlank}>
-              Crear flujo
-            </Button>
-            <Button variant="outlined" startIcon={<Iconify icon="mdi:refresh" />} onClick={loadAll}>
-              Actualizar
-            </Button>
-          </Stack>
-        </Stack>
+          }
+          actions={
+            <Stack direction="row" spacing={1} flexWrap="wrap">
+              <Button variant="contained" startIcon={<Iconify icon="mingcute:add-line" />} onClick={handleCreateBlank}>
+                Crear automatizacion
+              </Button>
+              <Button variant="outlined" startIcon={<Iconify icon="mdi:refresh" />} onClick={loadAll}>
+                Actualizar
+              </Button>
+            </Stack>
+          }
+        />
 
-        <Tabs
-          value={mainTab}
-          onChange={(_, v) => setMainTab(v)}
-          sx={{ mb: 2.5, borderBottom: 1, borderColor: 'divider' }}
-        >
+        <Card variant="outlined" sx={{ p: 0.75, mb: 2.5, borderRadius: 3 }}>
+          <Tabs
+            value={mainTab}
+            onChange={(_, v) => setMainTab(v)}
+            variant="scrollable"
+            allowScrollButtonsMobile
+            sx={{ px: { xs: 0.5, md: 1 } }}
+          >
           <Tab
             label="Diseno"
             icon={<Iconify icon="mdi:pencil-ruler" width={18} />}
@@ -502,7 +502,7 @@ export default function WorkflowsPage() {
           <Tab
             label={
               <Badge badgeContent={scopedWorkflows.length} color="primary" max={99}>
-                <Box sx={{ pr: 1.5 }}>Mis flujos</Box>
+                <Box sx={{ pr: 1.5 }}>Mis automatizaciones</Box>
               </Badge>
             }
             icon={<Iconify icon="mdi:folder-multiple-outline" width={18} />}
@@ -518,16 +518,17 @@ export default function WorkflowsPage() {
             icon={<Iconify icon="mdi:chart-box-outline" width={18} />}
             iconPosition="start"
           />
-        </Tabs>
+          </Tabs>
+        </Card>
 
         {mainTab === 0 && (
           <>
             {!hasSelection && (
-              <Card variant="outlined" sx={{ p: 4, textAlign: 'center', mb: 2, borderRadius: 3 }}>
+              <Card variant="outlined" sx={{ p: { xs: 3, md: 4 }, textAlign: 'center', mb: 2.5, borderRadius: 3 }}>
                 <Iconify icon="mdi:graph-outline" width={48} sx={{ color: 'primary.main', mb: 1.5 }} />
                 <Typography variant="h5" sx={{ mb: 0.5 }}>Sin flujo activo</Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5, maxWidth: 480, mx: 'auto' }}>
-                  Selecciona un flujo existente en &quot;Mis flujos&quot; o crea uno nuevo desde cero.
+                  Selecciona un flujo existente en &quot;Mis automatizaciones&quot; o crea uno nuevo desde cero.
                 </Typography>
                 <Stack direction="row" spacing={1.5} justifyContent="center" flexWrap="wrap">
                   <Button variant="contained" startIcon={<Iconify icon="mingcute:add-line" />} onClick={handleCreateBlank}>
@@ -542,14 +543,14 @@ export default function WorkflowsPage() {
                     </Button>
                   ))}
                   <Button variant="text" startIcon={<Iconify icon="mdi:folder-open-outline" />} onClick={() => setMainTab(1)}>
-                    Ver mis flujos
+                    Ver mis automatizaciones
                   </Button>
                 </Stack>
               </Card>
             )}
 
             {hasSelection && (
-        <Card variant="outlined" sx={{ p: 2, mb: 2, borderRadius: 2 }}>
+        <Card variant="outlined" sx={{ p: { xs: 2, md: 2.5 }, mb: 2.5, borderRadius: 3 }}>
           <Stack spacing={2}>
             <Stack direction={{ xs: 'column', lg: 'row' }} justifyContent="space-between" spacing={1.5} alignItems={{ lg: 'center' }}>
               <Stack direction="row" spacing={0.8} flexWrap="wrap" alignItems="center">
@@ -669,7 +670,7 @@ export default function WorkflowsPage() {
                 <Box sx={{ flex: 1 }}>
                   <Typography variant="caption" color="text.secondary">
                     Entrada principal: <strong>{workflowChannel?.name ?? 'sin canal'}</strong>
-                    {' · '}Asistente responsable: <strong>{firstAgentNode?.aiAgent?.agentName || firstAgentNode?.config?.agentName || firstAgentNode?.config?.agentId || 'sin asistente'}</strong>
+                    {' | '}Asistente responsable: <strong>{firstAgentNode?.aiAgent?.agentName || firstAgentNode?.config?.agentName || firstAgentNode?.config?.agentId || 'sin asistente'}</strong>
                   </Typography>
                 </Box>
                 <TextField
@@ -775,7 +776,7 @@ export default function WorkflowsPage() {
                 sx={{ maxWidth: 440 }}
                 fullWidth
               />
-              <Chip size="small" label={`${filteredWorkflows.length} de ${scopedWorkflows.length} flujos`} />
+              <Chip size="small" label={`${filteredWorkflows.length} de ${scopedWorkflows.length} automatizaciones`} />
               <Stack direction="row" spacing={1} sx={{ ml: { md: 'auto' } }}>
                 <Button variant="contained" startIcon={<Iconify icon="mingcute:add-line" />} onClick={handleCreateBlank}>
                   Crear desde cero
@@ -824,7 +825,7 @@ export default function WorkflowsPage() {
                       <Typography variant="caption" color="text.secondary">
                         Actualizado: {workflow.updatedAt ? new Date(workflow.updatedAt).toLocaleString() : 'sin fecha'}
                       </Typography>
-                      <Button size="small" variant="outlined">Abrir flujo</Button>
+                      <Button size="small" variant="outlined">Abrir automatizacion</Button>
                     </Stack>
                   </Card>
                 </Grid>
@@ -834,11 +835,11 @@ export default function WorkflowsPage() {
                 <Grid item xs={12}>
                   <Card variant="outlined" sx={{ p: 4, textAlign: 'center', borderRadius: 3 }}>
                     <Iconify icon="mdi:graph-outline" width={42} sx={{ color: 'primary.main', mb: 1 }} />
-                    <Typography variant="h6">{scopedWorkflows.length === 0 ? 'No hay flujos creados' : 'Sin resultados'}</Typography>
+                    <Typography variant="h6">{scopedWorkflows.length === 0 ? 'No hay automatizaciones creadas' : 'Sin resultados'}</Typography>
                     <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                      {scopedWorkflows.length === 0 ? 'Crea tu primera automatizacion.' : 'Cambia la búsqueda.'}
+                      {scopedWorkflows.length === 0 ? 'Crea tu primera automatizacion.' : 'Cambia la busqueda.'}
                     </Typography>
-                    <Button variant="contained" onClick={handleCreateBlank}>Crear flujo</Button>
+                    <Button variant="contained" onClick={handleCreateBlank}>Crear automatizacion</Button>
                   </Card>
                 </Grid>
               )}
@@ -864,7 +865,7 @@ export default function WorkflowsPage() {
             </Stack>
             <Grid container spacing={2}>
               {[
-                { label: 'Automatizaciones', value: scopedWorkflows.length, helper: `${publishedCount} publicados`, icon: 'mdi:source-branch' },
+                { label: 'Automatizaciones', value: scopedWorkflows.length, helper: `${publishedCount} publicadas`, icon: 'mdi:source-branch' },
                 { label: 'Ejecuciones', value: executions.length, helper: `${failedExecutions} fallidas`, icon: 'mdi:play-circle-outline' },
                 { label: 'Nodos activos', value: activities.length, helper: hasSelection ? 'en configuracion' : 'sin flujo activo', icon: 'mdi:graph-outline' },
                 { label: 'Asistentes en uso', value: availableAgents.filter((a) => !a.isSystemAgent).length, helper: 'asistentes personalizados', icon: 'mdi:robot-outline' },
@@ -877,7 +878,7 @@ export default function WorkflowsPage() {
                       </Box>
                       <Box>
                         <Typography variant="h5">{stat.value}</Typography>
-                        <Typography variant="caption" color="text.secondary">{stat.label}· {stat.helper}</Typography>
+                        <Typography variant="caption" color="text.secondary">{stat.label}| {stat.helper}</Typography>
                       </Box>
                     </Stack>
                   </Card>
@@ -906,6 +907,8 @@ export default function WorkflowsPage() {
     </>
   );
 }
+
+
 
 
 

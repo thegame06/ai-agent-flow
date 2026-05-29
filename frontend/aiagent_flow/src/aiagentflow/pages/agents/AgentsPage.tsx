@@ -27,6 +27,7 @@ import { RouterLink } from 'src/routes/components';
 import { CONFIG } from 'src/global-config';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
+import { BrandPageHeader } from 'src/aiagentflow/components/BrandPageHeader';
 
 import { Label } from 'src/components/label';
 import { Iconify } from 'src/components/iconify';
@@ -192,76 +193,43 @@ export default function AgentsPage() {
       </Helmet>
 
       <DashboardContent maxWidth="xl">
-        <Paper
-          variant="outlined"
-          sx={{
-            mb: 3,
-            p: { xs: 2.5, md: 3 },
-            borderRadius: 4,
-            borderColor:
-              theme.palette.mode === 'dark'
-                ? alpha(theme.palette.primary.light, 0.22)
-                : alpha(theme.palette.primary.main, 0.16),
-            background:
-              theme.palette.mode === 'dark'
-                ? `radial-gradient(circle at 8% 18%, ${alpha(theme.palette.primary.main, 0.22)}, transparent 34%), linear-gradient(135deg, ${alpha(
-                    theme.palette.background.paper,
-                    0.96
-                  )} 0%, ${alpha(theme.palette.grey[900], 0.9)} 100%)`
-                : 'radial-gradient(circle at 8% 18%, rgba(14,124,90,0.16), transparent 30%), linear-gradient(135deg, #FBFDF9 0%, #F3F9F5 100%)',
-          }}
-        >
-          <Grid container spacing={3} alignItems="center">
-            <Grid item xs={12} md={7}>
-              <Stack direction="row" spacing={1.5} alignItems="center">
-                <Avatar sx={{ width: 56, height: 56, bgcolor: 'primary.lighter', color: 'primary.main' }}>
-                  <Iconify icon="mdi:robot-happy-outline" width={30} />
-                </Avatar>
-                <Box>
-                  <Typography variant="overline" color="text.secondary">
-                    Asistentes reutilizables
-                  </Typography>
-                  <Typography variant="h3">Asistentes</Typography>
-                  {runtimeKind && <Chip size="small" color="info" label={`Modalidad ${runtimeKind}`} sx={{ mt: 0.5 }} />}
-                  <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                    Disena asistentes reutilizables para canales y flujos automatizados. Cada asistente puede tener modelo,
-                    memoria, herramientas, integraciones externas y reglas de seguridad.
-                  </Typography>
-                </Box>
-              </Stack>
-            </Grid>
-            <Grid item xs={12} md={5}>
-              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent={{ md: 'flex-end' }}>
-                <Button
-                  component={RouterLink}
-                  href={paths.dashboard.agentsListDetail}
-                  variant="outlined"
-                  startIcon={<Iconify icon="mdi:view-split-vertical" />}
-                >
-                  Vista detallada
-                </Button>
-                <Button
-                  component={RouterLink}
-                  href={paths.dashboard.workflows}
-                  variant="outlined"
-                  startIcon={<Iconify icon="mdi:source-branch" />}
-                >
-                  Usar en automatizacion
-                </Button>
-                <Button
-                  component={RouterLink}
-                  href={paths.dashboard.agentDesigner}
-                  variant="contained"
-                  startIcon={<Iconify icon="mingcute:add-line" />}
-                >
-                  Nuevo asistente
-                </Button>
-              </Stack>
-            </Grid>
-          </Grid>
-        </Paper>
+        <BrandPageHeader
+          eyebrow="Asistentes reutilizables"
+          title="Asistentes"
+          description="Disena asistentes reutilizables para canales y automatizaciones. Cada asistente puede tener modelo, memoria, herramientas, conexiones externas y reglas de seguridad."
+          icon="mdi:robot-happy-outline"
+          meta={runtimeKind ? <Chip size="small" color="info" label={`Modalidad ${runtimeKind}`} variant="outlined" /> : undefined}
+          actions={
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent={{ md: 'flex-end' }}>
+              <Button
+                component={RouterLink}
+                href={paths.dashboard.agentsListDetail}
+                variant="outlined"
+                startIcon={<Iconify icon="mdi:view-split-vertical" />}
+              >
+                Vista detallada
+              </Button>
+              <Button
+                component={RouterLink}
+                href={paths.dashboard.workflows}
+                variant="outlined"
+                startIcon={<Iconify icon="mdi:source-branch" />}
+              >
+                Usar en automatizacion
+              </Button>
+              <Button
+                component={RouterLink}
+                href={paths.dashboard.agentDesigner}
+                variant="contained"
+                startIcon={<Iconify icon="mingcute:add-line" />}
+              >
+                Nuevo asistente
+              </Button>
+            </Stack>
+          }
+        />
 
-        <Grid container spacing={2} sx={{ mb: 3 }}>
+        <Grid container spacing={2.5} sx={{ mb: 3.5 }}>
           {[
             ['Total', agents.length, 'mdi:robot-outline'],
             ['Publicados', publishedAgents, 'mdi:check-decagram-outline'],
@@ -272,7 +240,8 @@ export default function AgentsPage() {
               <Card
                 variant="outlined"
                 sx={{
-                  p: 2,
+                  p: 2.25,
+                  borderRadius: 3,
                   bgcolor: theme.palette.mode === 'dark' ? alpha(theme.palette.background.paper, 0.86) : 'background.paper',
                   borderColor: theme.palette.mode === 'dark' ? alpha(theme.palette.common.white, 0.08) : 'divider',
                 }}
@@ -296,7 +265,7 @@ export default function AgentsPage() {
         {loading ? (
           <LinearProgress />
         ) : agents.length === 0 ? (
-          <Card sx={{ p: 5, textAlign: 'center' }}>
+          <Card sx={{ p: { xs: 3.5, md: 5 }, textAlign: 'center', borderRadius: 3 }}>
             <Iconify icon="mdi:robot-outline" width={80} sx={{ color: 'text.disabled', mb: 2 }} />
             <Typography variant="h6" color="text.secondary">
               No hay asistentes creados
@@ -314,7 +283,7 @@ export default function AgentsPage() {
             </Button>
           </Card>
         ) : (
-          <Grid container spacing={3}>
+          <Grid container spacing={2.5}>
             {agents.map((agent) => (
               <Grid key={agent.id} item xs={12} sm={6} md={4}>
                 <Card

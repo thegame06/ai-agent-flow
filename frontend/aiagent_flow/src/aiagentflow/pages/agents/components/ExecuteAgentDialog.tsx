@@ -69,9 +69,6 @@ export function ExecuteAgentDialog({ open, onClose, agent }: ExecuteAgentDialogP
     setResult(null);
 
     try {
-      console.log('Executing agent:', agent.id, 'with message:', message);
-      
-      // POST /api/v1/tenants/{tenantId}/agents/{agentId}/trigger
       const sessionStorageKey = `af:chat-session:${tenantId}:${agent.id}`;
       const threadStorageKey = `af:active-thread:${tenantId}:${agent.id}`;
       const sessionId = localStorage.getItem(sessionStorageKey) ?? crypto.randomUUID();
@@ -85,11 +82,9 @@ export function ExecuteAgentDialog({ open, onClose, agent }: ExecuteAgentDialogP
         threadId: activeThreadId,
       });
 
-      console.log('Trigger response:', response.data);
-
       const executionId = response.data.executionId || response.data.id;
       if (response.data.threadId) {
-        localStorage.setItem(`af:active-thread::`, response.data.threadId);
+        localStorage.setItem(threadStorageKey, response.data.threadId);
       }
 
       if (!executionId) {
@@ -109,12 +104,10 @@ export function ExecuteAgentDialog({ open, onClose, agent }: ExecuteAgentDialogP
         attempts += 1;
         try {
           const statusResponse = await axios.get(
-            `/api/v1/tenants//executions/`
+            `/api/v1/tenants/${tenantId}/executions/${executionId}`
           );
           const execution = statusResponse.data;
           const normalizedStatus = normalizeStatus(execution?.status);
-
-          console.log(`Polling attempt ${attempts}:`, execution, 'normalized=', normalizedStatus);
 
           if (normalizedStatus === 'Completed' || normalizedStatus === 'Failed' || attempts >= maxAttempts) {
             clearInterval(checkStatus);
@@ -138,24 +131,22 @@ export function ExecuteAgentDialog({ open, onClose, agent }: ExecuteAgentDialogP
             });
 
             if (response.data?.threadId) {
-              localStorage.setItem(`af:active-thread::`, response.data.threadId);
+              localStorage.setItem(threadStorageKey, response.data.threadId);
             }
 
             setLoading(false);
           }
         } catch (error: any) {
-          console.error('Polling error:', error);
           clearInterval(checkStatus);
           setResult({
             executionId,
             status: 'Failed',
-            error: `Unable to fetch execution status: ${error.message}`,
+            error: `No se pudo consultar el estado de la ejecucion: ${error.message}`,
           });
           setLoading(false);
         }
       }, 1000);
     } catch (error: any) {
-      console.error('Execution error:', error);
       setResult({
         executionId: '',
         status: 'Failed',
@@ -185,7 +176,7 @@ export function ExecuteAgentDialog({ open, onClose, agent }: ExecuteAgentDialogP
       </DialogTitle>
 
       <DialogContent>
-        <Stack spacing={3} sx={{ pt: 2 }}>
+        <Stack spacing={2.5} sx={{ pt: 2 }}>
           {agent.description && (
             <Typography variant="body2" color="text.secondary">
               {agent.description}
@@ -218,7 +209,7 @@ export function ExecuteAgentDialog({ open, onClose, agent }: ExecuteAgentDialogP
               <Stack spacing={1}>
                 <Box>
                   <Typography variant="subtitle2">
-                    Estado: {result.status}
+                    Estado: {result.status === 'Completed' ? 'Completado' : result.status === 'Failed' ? 'Fallido' : 'En ejecucion'}
                   </Typography>
                   {result.executionId && (
                     <Typography variant="caption" color="text.secondary">
@@ -270,7 +261,7 @@ export function ExecuteAgentDialog({ open, onClose, agent }: ExecuteAgentDialogP
 
       <DialogActions>
         <Button onClick={handleClose} disabled={loading}>
-          {result ? 'Close' : 'Cancel'}
+          {result ? 'Cerrar' : 'Cancelar'}
         </Button>
         {result?.threadId && (
           <Button
@@ -279,7 +270,7 @@ export function ExecuteAgentDialog({ open, onClose, agent }: ExecuteAgentDialogP
               window.location.href = `/dashboard/agents/${agent.id}/chat`;
             }}
           >
-            Open Conversation
+            Abrir conversacion
           </Button>
         )}
         <LoadingButton

@@ -21,6 +21,7 @@ import { CONFIG } from 'src/global-config';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { TermHelp } from 'src/aiagentflow/components/TermHelp';
 import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
+import { BrandPageHeader } from 'src/aiagentflow/components/BrandPageHeader';
 
 import { Label } from 'src/components/label';
 import { Iconify } from 'src/components/iconify';
@@ -145,18 +146,14 @@ export default function ToolsPage() {
       </Helmet>
 
       <DashboardContent maxWidth="xl">
-        <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Box>
-            <Stack direction="row" spacing={1} alignItems="center">
-              <Typography variant="h4">Herramientas y conexiones</Typography>
-              <TermHelp title="Aqui administras herramientas disponibles para los asistentes y conexiones con sistemas externos." />
-            </Stack>
-            <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-              Administra capacidades disponibles para asistentes, automatizaciones y conexiones externas.
-            </Typography>
-          </Box>
-          <Button variant="outlined" onClick={fetchTools}>Actualizar</Button>
-        </Box>
+        <BrandPageHeader
+          eyebrow="Capacidades operativas"
+          title="Herramientas y conexiones"
+          description="Administra capacidades disponibles para asistentes, automatizaciones y conexiones externas."
+          icon="mdi:tools"
+          help={<TermHelp title="Aqui administras herramientas disponibles para los asistentes y conexiones con sistemas externos." />}
+          actions={<Button variant="outlined" onClick={fetchTools}>Actualizar</Button>}
+        />
 
         <Grid container spacing={2} sx={{ mb: 3 }}>
           {[

@@ -7,8 +7,6 @@ import Chip from '@mui/material/Chip';
 import Grid from '@mui/material/Grid';
 import Stack from '@mui/material/Stack';
 import Alert from '@mui/material/Alert';
-import Paper from '@mui/material/Paper';
-import Avatar from '@mui/material/Avatar';
 import Button from '@mui/material/Button';
 import Dialog from '@mui/material/Dialog';
 import Divider from '@mui/material/Divider';
@@ -27,6 +25,7 @@ import { CONFIG } from 'src/global-config';
 import axios, { endpoints } from 'src/lib/axios';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
+import { BrandPageHeader } from 'src/aiagentflow/components/BrandPageHeader';
 
 import { Iconify } from 'src/components/iconify';
 
@@ -562,44 +561,17 @@ export default function MarketplacePage() {
       </Helmet>
       <DashboardContent maxWidth="xl">
         <Stack spacing={2.5} sx={{ mb: 3 }}>
-          <Paper
-            variant="outlined"
-            sx={{
-              p: { xs: 2.5, md: 3 },
-              borderRadius: 4,
-              borderColor:
-                theme.palette.mode === 'dark'
-                  ? alpha(theme.palette.primary.light, 0.22)
-                  : alpha(theme.palette.primary.main, 0.16),
-              background:
-                theme.palette.mode === 'dark'
-                  ? `radial-gradient(circle at 8% 18%, ${alpha(theme.palette.primary.main, 0.2)}, transparent 34%), linear-gradient(135deg, ${alpha(
-                      theme.palette.background.paper,
-                      0.96
-                    )} 0%, ${alpha(theme.palette.grey[900], 0.9)} 100%)`
-                  : 'radial-gradient(circle at 8% 18%, rgba(14,124,90,0.14), transparent 30%), linear-gradient(135deg, #FBFDF9 0%, #F3F9F5 100%)',
-            }}
-          >
-            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between" alignItems={{ md: 'center' }}>
-              <Stack direction="row" spacing={1.5} alignItems="center">
-                <Avatar sx={{ width: 56, height: 56, bgcolor: 'primary.lighter', color: 'primary.main' }}>
-                  <Iconify icon="mdi:storefront-outline" width={30} />
-                </Avatar>
-                <Box>
-                  <Typography variant="overline" color="text.secondary">
-                    Integraciones
-                  </Typography>
-                  <Typography variant="h3">Marketplace de conexiones</Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                    Instala y configura capacidades para automatizaciones, asistentes, canales y conexiones externas.
-                  </Typography>
-                </Box>
-              </Stack>
+          <BrandPageHeader
+            eyebrow="Integraciones"
+            title="Marketplace de conexiones"
+            description="Instala y configura capacidades para automatizaciones, asistentes, canales y conexiones externas."
+            icon="mdi:storefront-outline"
+            actions={
               <Button variant="contained" href={paths.dashboard.workflows}>
                 Usar en automatizaciones
               </Button>
-            </Stack>
-          </Paper>
+            }
+          />
 
           <Grid container spacing={2}>
             {[

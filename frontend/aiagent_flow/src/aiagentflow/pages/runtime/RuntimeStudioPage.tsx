@@ -1,4 +1,4 @@
-import { useParams } from 'react-router';
+ï»¿import { useParams } from 'react-router';
 import { useMemo, useEffect } from 'react';
 import { Helmet } from 'react-helmet-async';
 
@@ -76,7 +76,7 @@ export default function RuntimeStudioPage() {
         <title>Runtime avanzado | {CONFIG.appName}</title>
       </Helmet>
       <RuntimeWorkspaceShell
-        title={`Runtime avanzado · ${runtime.uiLabel}`}
+        title={`Runtime avanzado - ${runtime.uiLabel}`}
         description="Espacio por modalidad para asistentes, automatizaciones reutilizables y pruebas operativas."
         runtimeKind={runtime.label}
         actions={[
@@ -106,3 +106,4 @@ export default function RuntimeStudioPage() {
     </>
   );
 }
+

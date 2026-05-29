@@ -26,6 +26,7 @@ import axios from 'src/lib/axios';
 import { CONFIG } from 'src/global-config';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
+import { BrandPageHeader } from 'src/aiagentflow/components/BrandPageHeader';
 
 import { Label } from 'src/components/label';
 import { Iconify } from 'src/components/iconify';
@@ -144,18 +145,15 @@ export default function ModelsPage() {
       </Helmet>
 
       <DashboardContent maxWidth="xl">
-        <Box sx={{ mb: 5 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Box>
-              <Typography variant="h4">Modelos y enrutamiento</Typography>
-              <Typography variant="body2" sx={{ color: 'text.secondary', mt: 1 }}>
-                Administra modelos, proveedores, prioridades y perfiles de autenticacion vinculados.
-              </Typography>
-            </Box>
-
-            <Stack direction="row" spacing={1}>
+        <BrandPageHeader
+          eyebrow="Catalogo de IA"
+          title="Modelos y enrutamiento"
+          description="Administra modelos, proveedores, prioridades y credenciales vinculadas para cada modalidad."
+          icon="mdi:chip"
+          actions={
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
               <Button variant="outlined" onClick={() => router.push(paths.dashboard.system.authProfiles)}>
-                Provider Auth Profiles
+                Credenciales
               </Button>
               <Button
                 variant="contained"
@@ -168,8 +166,10 @@ export default function ModelsPage() {
                 Agregar modelo
               </Button>
             </Stack>
-          </Box>
+          }
+        />
 
+        <Box sx={{ mb: 5 }}>
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mt: 2 }}>
             <TextField
               select

@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, useCallback } from 'react';
+﻿import { useMemo, useState, useEffect, useCallback } from 'react';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -188,17 +188,28 @@ export function RuntimeModelProfilesPanel({ tenantId, runtimeKind }: Props) {
   }, [draft.runtimeKind, models]);
 
   const renderModelOptionLabel = (model: ModelCatalogEntry) =>
-    `${model.displayName || model.modelId}${model.providerId ? ` � ${model.providerId}` : ''}`;
+    `${model.displayName || model.modelId}${model.providerId ? ` · ${model.providerId}` : ''}`;
 
   const runtimeLabel =
     runtimeKind === 'Text' ? 'texto' : runtimeKind === 'Voice' ? 'voz' : 'multimodal';
 
   return (
-    <Card sx={{ p: 2 }}>
-      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}>
+    <Card sx={{ p: { xs: 2, md: 2.5 }, mt: 3, borderRadius: 3 }}>
+      <Stack
+        direction={{ xs: 'column', md: 'row' }}
+        justifyContent="space-between"
+        alignItems={{ md: 'center' }}
+        spacing={1.5}
+        sx={{ mb: 2 }}
+      >
         <Box>
-          <Typography variant="subtitle1">Perfiles de modelos por modalidad</Typography>
-          <Typography variant="caption" color="text.secondary">
+          <Typography variant="overline" color="text.secondary">
+            Configuracion de modelos
+          </Typography>
+          <Typography variant="h6" sx={{ mt: 0.25 }}>
+            Perfiles de modelos por modalidad
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
             Define los modelos por rol para {runtimeLabel}: cerebro, transcripcion y voz.
           </Typography>
         </Box>
@@ -215,11 +226,16 @@ export function RuntimeModelProfilesPanel({ tenantId, runtimeKind }: Props) {
       {error && <Alert severity="error" sx={{ mb: 1.5 }}>{error}</Alert>}
       {loading && <Typography variant="body2" color="text.secondary">Cargando perfiles...</Typography>}
 
-      <Stack spacing={1}>
+      <Stack spacing={1.25}>
         {profiles.map((profile) => (
-          <Card key={profile.id} variant="outlined" sx={{ p: 1.5 }}>
-            <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1}>
-              <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+          <Card key={profile.id} variant="outlined" sx={{ p: 1.75, borderRadius: 2.5 }}>
+            <Stack
+              direction={{ xs: 'column', lg: 'row' }}
+              justifyContent="space-between"
+              alignItems={{ lg: 'center' }}
+              spacing={1.5}
+            >
+              <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
                 <Typography variant="body2" fontWeight={700}>{profile.name}</Typography>
                 <Chip size="small" label={profile.id} />
                 <Chip size="small" label={profile.runtimeKind} color="info" />
@@ -228,7 +244,7 @@ export function RuntimeModelProfilesPanel({ tenantId, runtimeKind }: Props) {
                 {profile.runtimeKind !== 'Text' && <Chip size="small" label={`stt: ${profile.roles?.stt ?? '-'}`} />}
                 {profile.runtimeKind !== 'Text' && <Chip size="small" label={`tts: ${profile.roles?.tts ?? '-'}`} />}
               </Stack>
-              <Stack direction="row" spacing={0.5}>
+              <Stack direction="row" spacing={0.5} justifyContent="flex-end">
                 <IconButton size="small" onClick={() => openEdit(profile)}>
                   <Iconify icon="solar:pen-outline" width={18} />
                 </IconButton>
@@ -337,3 +353,4 @@ export function RuntimeModelProfilesPanel({ tenantId, runtimeKind }: Props) {
     </Card>
   );
 }
+
