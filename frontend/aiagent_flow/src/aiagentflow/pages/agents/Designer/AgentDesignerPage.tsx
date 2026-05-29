@@ -92,7 +92,7 @@ function TabGeneral({
         label="Nombre del agente"
         value={draft.name}
         onChange={(e) => dispatch(updateField({ field: 'name', value: e.target.value }))}
-        placeholder="e.g. CustomerSupport-v2"
+        placeholder="Ej. SoporteCliente-v2"
       />
       <TextField
         fullWidth
@@ -101,19 +101,19 @@ function TabGeneral({
         label="Descripcion"
         value={draft.description}
         onChange={(e) => dispatch(updateField({ field: 'description', value: e.target.value }))}
-        placeholder="Describe the agent's purpose and capabilities..."
+        placeholder="Describe el objetivo y las capacidades del asistente..."
       />
       <Stack direction="row" spacing={2}>
         <FormControl sx={{ minWidth: 220 }}>
-          <InputLabel>Runtime de agente</InputLabel>
+          <InputLabel>Modalidad del asistente</InputLabel>
           <Select
             value={draft.runtimeKind}
-            label="Runtime de agente"
+            label="Modalidad del asistente"
             onChange={(e) => dispatch(updateField({ field: 'runtimeKind', value: e.target.value }))}
           >
-            <MenuItem value="Text">Runtime de texto</MenuItem>
-            <MenuItem value="Voice">Runtime de voz</MenuItem>
-            <MenuItem value="MultimodalRealtime">Multimodal runtime</MenuItem>
+            <MenuItem value="Text">Modalidad de texto</MenuItem>
+            <MenuItem value="Voice">Modalidad de voz</MenuItem>
+            <MenuItem value="MultimodalRealtime">Modalidad multimodal</MenuItem>
           </Select>
         </FormControl>
         <TextField
@@ -131,21 +131,21 @@ function TabGeneral({
           >
             <MenuItem value="Draft">Borrador</MenuItem>
             <MenuItem value="Published">Publicado</MenuItem>
-            <MenuItem value="Archived">Archived</MenuItem>
+            <MenuItem value="Archived">Archivado</MenuItem>
           </Select>
         </FormControl>
       </Stack>
       <FormControl fullWidth>
-        <InputLabel>Perfil de modelos por runtime</InputLabel>
+        <InputLabel>Perfil de modelos por modalidad</InputLabel>
         <Select
           value={draft.runtimeModelProfileId || ''}
-          label="Perfil de modelos por runtime"
+          label="Perfil de modelos por modalidad"
           onChange={(e) => dispatch(updateField({ field: 'runtimeModelProfileId', value: e.target.value }))}
         >
-          <MenuItem value="">Default del runtime ({draft.runtimeKind})</MenuItem>
+          <MenuItem value="">Predeterminado de la modalidad ({draft.runtimeKind})</MenuItem>
           {runtimeProfiles.map((profile) => (
             <MenuItem key={profile.id} value={profile.id}>
-              {profile.name}{profile.isDefault ? ' (Default)' : ''}
+              {profile.name}{profile.isDefault ? ' (Predeterminado)' : ''}
             </MenuItem>
           ))}
         </Select>
@@ -157,17 +157,17 @@ function TabGeneral({
       </FormControl>
       {!runtimeProfilesLoading && runtimeProfiles.length === 0 && (
         <Alert severity="info" variant="outlined">
-          No hay perfiles configurados para este runtime. Se usará el default global del runtime.
+          No hay perfiles configurados para esta modalidad. Se usara el perfil global predeterminado.
         </Alert>
       )}
       <TextField
         fullWidth
         multiline
         rows={6}
-        label="Instrucciones del agente"
+        label="Instrucciones del asistente"
         value={draft.systemPrompt}
         onChange={(e) => dispatch(updateField({ field: 'systemPrompt', value: e.target.value }))}
-        placeholder="You are a helpful agent that..."
+        placeholder="Define como debe responder y operar este asistente..."
         sx={{ fontFamily: 'monospace' }}
       />
       <Box>
@@ -205,10 +205,10 @@ function TabGuardrails({ draft, dispatch }: { draft: any; dispatch: any }) {
   const g = draft.guardrails;
   return (
     <Stack spacing={3}>
-      <Typography variant="subtitle1" fontWeight={700}>Limites de ejecucion</Typography>
+      <Typography variant="subtitle1" fontWeight={700}>Limites de operacion</Typography>
       <Stack direction="row" spacing={3}>
         <TextField
-          label="Max Steps"
+          label="Maximo de pasos"
           type="number"
           value={g.maxSteps}
           onChange={(e) => dispatch(updateGuardrails({ maxSteps: Number(e.target.value) }))}
@@ -222,14 +222,14 @@ function TabGuardrails({ draft, dispatch }: { draft: any; dispatch: any }) {
           sx={{ width: 180 }}
         />
         <TextField
-          label="Max tokens"
+          label="Maximo de tokens"
           type="number"
           value={g.maxTokensPerExecution}
           onChange={(e) => dispatch(updateGuardrails({ maxTokensPerExecution: Number(e.target.value) }))}
           sx={{ width: 180 }}
         />
         <TextField
-          label="Max reintentos"
+          label="Maximo de reintentos"
           type="number"
           value={g.maxRetries}
           onChange={(e) => dispatch(updateGuardrails({ maxRetries: Number(e.target.value) }))}
@@ -243,18 +243,18 @@ function TabGuardrails({ draft, dispatch }: { draft: any; dispatch: any }) {
             onChange={(e) => dispatch(updateGuardrails({ plannerType: e.target.value }))}
           >
             <MenuItem value="ReAct">ReAct</MenuItem>
-            <MenuItem value="Sequential">Sequential</MenuItem>
+            <MenuItem value="Sequential">Secuencial</MenuItem>
             <MenuItem value="TreeOfThought">Tree of Thought</MenuItem>
           </Select>
         </FormControl>
         <FormControl sx={{ width: 180 }}>
-          <InputLabel>Modo runtime</InputLabel>
+          <InputLabel>Modo de operacion</InputLabel>
           <Select
             value={g.runtimeMode}
-            label="Modo runtime"
+            label="Modo de operacion"
             onChange={(e) => dispatch(updateGuardrails({ runtimeMode: e.target.value }))}
           >
-            <MenuItem value="Autonomous">Autonomous</MenuItem>
+            <MenuItem value="Autonomous">Autonomo</MenuItem>
             <MenuItem value="Determinista">Determinista</MenuItem>
           </Select>
         </FormControl>
@@ -266,7 +266,7 @@ function TabGuardrails({ draft, dispatch }: { draft: any; dispatch: any }) {
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Box>
           <Typography variant="subtitle2">Herramientas en paralelo</Typography>
-          <Typography variant="caption" color="text.secondary">Permite fan-out/fan-in cuando un paso de tool define varios nombres.</Typography>
+          <Typography variant="caption" color="text.secondary">Permite fan-out/fan-in cuando un paso de herramienta define varios nombres.</Typography>
         </Box>
         <Switch
           checked={g.allowParallelToolCalls}
@@ -311,7 +311,7 @@ function TabGuardrails({ draft, dispatch }: { draft: any; dispatch: any }) {
           {g.hitl.enabled && (
              <Stack spacing={2} sx={{ pl: 2, borderLeft: `2px solid ${theme.palette.info.light}` }}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Typography variant="body2">Revisar todas las llamadas de tools</Typography>
+                  <Typography variant="body2">Revisar todas las llamadas de herramientas</Typography>
                   <Switch 
                      size="small"
                      checked={g.hitl.requireReviewOnAllToolCalls}
@@ -352,8 +352,8 @@ function TabMemory({ draft, dispatch }: { draft: any; dispatch: any }) {
       <Typography variant="subtitle1" fontWeight={700}>Configuracion de memoria</Typography>
       {([
         { key: 'workingMemory' as const, label: 'Memoria de trabajo', desc: 'Contexto de corto plazo para la ejecucion actual', icon: 'mdi:brain' },
-        { key: 'longTermMemory' as const, label: 'Memoria de largo plazo', desc: 'Conocimiento persistente entre ejecuciones (MongoDB)', icon: 'mdi:database' },
-        { key: 'vectorMemory' as const, label: 'Memoria vectorial', desc: 'Busqueda semantica con embeddings (Vector DB)', icon: 'mdi:vector-polyline' },
+        { key: 'longTermMemory' as const, label: 'Memoria de largo plazo', desc: 'Conocimiento persistente entre ejecuciones', icon: 'mdi:database' },
+        { key: 'vectorMemory' as const, label: 'Memoria vectorial', desc: 'Busqueda semantica con embeddings', icon: 'mdi:vector-polyline' },
         { key: 'auditMemory' as const, label: 'Memoria de auditoria', desc: 'Bitacora inmutable de ejecucion (siempre activa)', icon: 'mdi:shield-check' },
       ]).map(({ key, label, desc, icon }) => (
         <Paper key={key} variant="outlined" sx={{ p: 2 }}>
@@ -406,9 +406,9 @@ function TabTools({
 
   return (
     <Stack spacing={2.5}>
-      <Typography variant="subtitle1" fontWeight={700}>Vinculacion de tools</Typography>
+      <Typography variant="subtitle1" fontWeight={700}>Vinculacion de herramientas</Typography>
       <Typography variant="body2" color="text.secondary">
-        Selecciona que tools de la plataforma puede ejecutar este agente.
+        Selecciona que herramientas de la plataforma puede ejecutar este asistente.
       </Typography>
 
       <Paper variant="outlined" sx={{ p: 2 }}>
@@ -417,7 +417,7 @@ function TabTools({
         </Typography>
         {draft.tools.length === 0 ? (
           <Alert severity="warning" variant="outlined">
-            Aun no hay tools vinculadas. Si el agente necesita tools, vincula al menos una.
+            Aun no hay herramientas vinculadas. Si el asistente las necesita, vincula al menos una.
           </Alert>
         ) : (
           <Stack spacing={1}>
@@ -444,7 +444,7 @@ function TabTools({
           Herramientas disponibles en la plataforma
         </Typography>
         {loading ? (
-          <Typography variant="body2" color="text.secondary">Cargando tools...</Typography>
+          <Typography variant="body2" color="text.secondary">Cargando herramientas...</Typography>
         ) : availableTools.length === 0 ? (
           <Alert severity="info" variant="outlined">
             No se detectaron herramientas desde Extensions API.
@@ -499,7 +499,7 @@ function TabModel({
 
   return (
     <Stack spacing={3}>
-      <Typography variant="subtitle1" fontWeight={700}>Configuracion del modelo IA</Typography>
+      <Typography variant="subtitle1" fontWeight={700}>Configuracion del modelo</Typography>
       <Alert severity="info" variant="outlined">
         Los modelos se cargan desde la API de Enrutamiento de Modelos. Si no hay modelos configurados, primero registra uno en Configuración / Modelos.
       </Alert>
@@ -546,7 +546,7 @@ function TabModel({
       </Stack>
       <TextField
         fullWidth
-        label="Cadena de fallback (reasoning)"
+        label="Cadena de respaldo"
         value={mc.reasoningModelCandidatesCsv}
         onChange={(e) => dispatch(updateModel({ reasoningModelCandidatesCsv: e.target.value }))}
         placeholder="gpt-4o-mini,gpt-4.1-mini"
@@ -572,7 +572,7 @@ function TabModel({
       </Box>
 
       <TextField
-        label="Max tokens de respuesta"
+        label="Maximo de tokens de respuesta"
         type="number"
         value={mc.maxResponseTokens}
         onChange={(e) => dispatch(updateModel({ maxResponseTokens: Number(e.target.value) }))}
@@ -583,7 +583,7 @@ function TabModel({
 }
 
 
-const TAB_LABELS = ['General', 'Subflujo', 'Modo runtime', 'Memoria', 'Integraciones', 'Modelo IA'];
+const TAB_LABELS = ['General', 'Subflujo', 'Modo de operacion', 'Memoria', 'Integraciones', 'Modelo IA'];
 const TAB_ICONS = [
   'mdi:information-outline',
   'mdi:sitemap',
@@ -726,7 +726,7 @@ export default function AgentDesignerPage({ embedded = false, embeddedAgentId }:
         return (
           <Stack spacing={2}>
             <Alert severity="info" variant="outlined">
-              Este es el subflujo interno del agente. En Workflow Studio principal se usa como un nodo reutilizable por canal, intencion o proceso.
+              Este es el subflujo interno del agente. En orquestador principal se usa como un nodo reutilizable por canal, intencion o proceso.
             </Alert>
             <AgentFlowCanvas steps={draft.steps} agentName={draft.name} />
           </Stack>
@@ -762,7 +762,7 @@ export default function AgentDesignerPage({ embedded = false, embeddedAgentId }:
     <>
       {!embedded && (
         <Helmet>
-          <title>{draft.name || 'Nuevo Agente'} — Agent Studio | {CONFIG.appName}</title>
+          <title>{draft.name || 'Nuevo asistente'} | {CONFIG.appName}</title>
         </Helmet>
       )}
 
@@ -780,7 +780,7 @@ export default function AgentDesignerPage({ embedded = false, embeddedAgentId }:
         {/* ── Header ── */}
         <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 0.5 }}>
           {!embedded && (
-            <Tooltip title="Volver a Agentes">
+            <Tooltip title="Volver a asistentes">
               <IconButton onClick={() => router.push(paths.dashboard.agents)} size="small">
                 <Iconify icon="mdi:arrow-left" width={22} />
               </IconButton>
@@ -789,7 +789,7 @@ export default function AgentDesignerPage({ embedded = false, embeddedAgentId }:
           <Box sx={{ flex: 1, minWidth: 0 }}>
             <Stack direction="row" spacing={1} alignItems="center">
               <Typography variant="h4" noWrap>
-                {draft.name || (agentLoading ? 'Cargando...' : 'Nuevo Agente')}
+                {draft.name || (agentLoading ? 'Cargando...' : 'Nuevo asistente')}
               </Typography>
               {draft.id && (
                 <Chip
@@ -890,3 +890,4 @@ export default function AgentDesignerPage({ embedded = false, embeddedAgentId }:
     </>
   );
 }
+

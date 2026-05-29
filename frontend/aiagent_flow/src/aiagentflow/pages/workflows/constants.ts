@@ -51,7 +51,7 @@ export const ACTIVITY_TYPE_LABELS_ES: Record<string, string> = {
   'files.read': 'Leer archivo',
   'drive.lookup': 'Buscar en Drive',
   'storage.write': 'Guardar en storage',
-  'mcp.tool_call': 'Usar herramienta MCP',
+  'mcp.tool_call': 'Usar conector avanzado',
   'voice.call': 'Llamada de voz',
   'callcenter.outbound_call': 'Llamada call center',
 };
@@ -68,9 +68,9 @@ export const ACTIVITY_TYPE_CATEGORY_ES: Record<string, string> = {
   files: 'Archivos',
   drive: 'Archivos',
   storage: 'Archivos',
-  mcp: 'MCP',
+  mcp: 'Conectores avanzados',
   voice: 'Voz',
-  callcenter: 'Call Center',
+  callcenter: 'Centro de llamadas',
   other: 'Otros',
 };
 
@@ -107,11 +107,11 @@ export const ACTIVITY_TYPE_PRESETS: Record<string, Record<string, string>> = {
   },
   'connect.update_inbox_status': {
     messageId: '{{steps.send-wa.inboxMessageId}}',
-    status: 'Sent',
+    status: 'Enviado',
   },
   'connect.enqueue_campaign_message': {
     recipient: '{{payload.recipient}}',
-    content: 'Campaign workflow message',
+    content: 'Mensaje automatico de campana',
     channel: 'whatsapp',
   },
   'human.assign': {
@@ -140,7 +140,7 @@ export const ACTIVITY_TYPE_PRESETS: Record<string, Record<string, string>> = {
   'kyc.review_case': {
     caseId: '{{steps.doc-check.caseId}}',
     approved: 'true',
-    notes: 'Auto-review fallback',
+    notes: 'Respaldo de revision automatica',
   },
   'payments.create_intent': {
     customerId: '{{payload.customerId}}',
@@ -238,7 +238,7 @@ export const DEFAULT_DEFINITION = JSON.stringify(
         type: 'connect.update_inbox_status',
         config: {
           messageId: '{{steps.send-wa.inboxMessageId}}',
-          status: 'Sent',
+          status: 'Enviado',
         },
       },
     ],
@@ -269,7 +269,7 @@ export const WORKFLOW_QUICKSTARTS: Array<{ id: string; name: string; triggerEven
             type: 'connect.update_inbox_status',
             config: {
               messageId: '{{payload.inboxMessageId}}',
-              status: 'Queued'
+              status: 'En cola'
             }
           }
         ]
@@ -360,7 +360,7 @@ export const WORKFLOW_QUICKSTARTS: Array<{ id: string; name: string; triggerEven
             id: 'review-gate',
             type: 'ai.agent',
             config: {
-              input: 'Assess if manual review is required for KYC case {{steps.doc-check.caseId}}'
+              input: 'Evalua si el caso KYC {{steps.doc-check.caseId}} requiere revision manual' 
             }
           }
         ]
@@ -392,7 +392,7 @@ export const WORKFLOW_QUICKSTARTS: Array<{ id: string; name: string; triggerEven
             type: 'connect.enqueue_campaign_message',
             config: {
               recipient: '{{payload.recipient}}',
-              content: 'Your payment intent {{steps.create-payment.paymentId}} was created.',
+              content: 'Tu intencion de pago {{steps.create-payment.paymentId}} fue creada.',
               channel: '{{payload.channel}}'
             }
           }
@@ -403,3 +403,4 @@ export const WORKFLOW_QUICKSTARTS: Array<{ id: string; name: string; triggerEven
     ),
   },
 ];
+

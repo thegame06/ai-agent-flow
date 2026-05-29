@@ -74,12 +74,12 @@ export default function SettingsPage() {
         const res = await axios.get(`/api/v1/tenants/${tenantId}/settings`);
         setSettings({ ...defaultSettings, ...res.data });
       } catch (e: any) {
-        setMessage(e?.message || 'Failed to load settings');
+        setMessage(e?.message || 'No se pudo cargar la configuracion.');
       } finally {
         setLoading(false);
       }
     };
-    load();
+    void load();
   }, [tenantId]);
 
   const save = async () => {
@@ -88,9 +88,9 @@ export default function SettingsPage() {
     try {
       const res = await axios.put(`/api/v1/tenants/${tenantId}/settings`, settings);
       setSettings({ ...defaultSettings, ...res.data });
-      setMessage('Settings saved successfully');
+      setMessage('Configuracion guardada correctamente.');
     } catch (e: any) {
-      setMessage(e?.message || 'Failed to save settings');
+      setMessage(e?.message || 'No se pudo guardar la configuracion.');
     } finally {
       setSaving(false);
     }
@@ -110,29 +110,29 @@ export default function SettingsPage() {
   return (
     <>
       <Helmet>
-        <title>Settings | {CONFIG.appName}</title>
+        <title>Configuracion general | {CONFIG.appName}</title>
       </Helmet>
 
       <DashboardContent maxWidth="lg">
         <Box sx={{ mb: 5 }}>
-          <Typography variant="h4">Platform Settings</Typography>
+          <Typography variant="h4">Configuracion general</Typography>
           <Typography variant="body2" sx={{ color: 'text.secondary', mt: 1 }}>
-            Manage your tenant configuration, security settings, and platform preferences.
+            Administra la configuracion del tenant, seguridad, limites de ejecucion y preferencias de la plataforma.
           </Typography>
         </Box>
 
-        {message && <Alert severity={message.includes('successfully') ? 'success' : 'error'} sx={{ mb: 2 }}>{message}</Alert>}
+        {message && <Alert severity={message.includes('correctamente') ? 'success' : 'error'} sx={{ mb: 2 }}>{message}</Alert>}
 
         <Grid container spacing={3}>
           <Grid item xs={12} md={6}>
             <Card>
-              <CardHeader title="Tenant Configuration" subheader="General settings" avatar={<Iconify icon="mdi:domain" width={28} />} />
+              <CardHeader title="Configuracion del tenant" subheader="Datos generales" avatar={<Iconify icon="mdi:domain" width={28} />} />
               <Divider />
               <CardContent>
                 <Stack spacing={3}>
-                  <TextField fullWidth label="Tenant Name" value={settings.tenantName} onChange={(e) => set('tenantName', e.target.value)} disabled={loading} />
+                  <TextField fullWidth label="Nombre del tenant" value={settings.tenantName} onChange={(e) => set('tenantName', e.target.value)} disabled={loading} />
                   <TextField fullWidth label="Tenant ID" value={tenantId} disabled />
-                  <TextField fullWidth label="Default API Version" value={settings.defaultApiVersion} onChange={(e) => set('defaultApiVersion', e.target.value)} disabled={loading} />
+                  <TextField fullWidth label="Version API por defecto" value={settings.defaultApiVersion} onChange={(e) => set('defaultApiVersion', e.target.value)} disabled={loading} />
                 </Stack>
               </CardContent>
             </Card>
@@ -140,17 +140,17 @@ export default function SettingsPage() {
 
           <Grid item xs={12} md={6}>
             <Card>
-              <CardHeader title="Security & Compliance" subheader="Execution controls" avatar={<Iconify icon="mdi:shield-lock-outline" width={28} />} />
+              <CardHeader title="Seguridad y cumplimiento" subheader="Controles de ejecucion" avatar={<Iconify icon="mdi:shield-lock-outline" width={28} />} />
               <Divider />
               <CardContent>
                 <Stack spacing={2.5}>
-                  <RowSwitch label="Enforce RBAC" checked={settings.enforceRbac} onChange={(v) => set('enforceRbac', v)} />
+                  <RowSwitch label="Forzar RBAC" checked={settings.enforceRbac} onChange={(v) => set('enforceRbac', v)} />
                   <Divider />
-                  <RowSwitch label="Prompt Injection Guard" checked={settings.promptInjectionGuard} onChange={(v) => set('promptInjectionGuard', v)} />
+                  <RowSwitch label="Proteccion contra prompt injection" checked={settings.promptInjectionGuard} onChange={(v) => set('promptInjectionGuard', v)} />
                   <Divider />
-                  <RowSwitch label="Sandbox Dangerous Tools" checked={settings.sandboxDangerousTools} onChange={(v) => set('sandboxDangerousTools', v)} />
+                  <RowSwitch label="Aislar herramientas peligrosas" checked={settings.sandboxDangerousTools} onChange={(v) => set('sandboxDangerousTools', v)} />
                   <Divider />
-                  <RowSwitch label="Audit Logging" checked={settings.auditLogging} onChange={(v) => set('auditLogging', v)} />
+                  <RowSwitch label="Registrar auditoria" checked={settings.auditLogging} onChange={(v) => set('auditLogging', v)} />
                 </Stack>
               </CardContent>
             </Card>
@@ -158,11 +158,11 @@ export default function SettingsPage() {
 
           <Grid item xs={12} md={6}>
             <Card>
-              <CardHeader title="Appearance" subheader="Theme preferences" avatar={<Iconify icon="mdi:theme-light-dark" width={28} />} />
+              <CardHeader title="Apariencia" subheader="Preferencias visuales" avatar={<Iconify icon="mdi:theme-light-dark" width={28} />} />
               <Divider />
               <CardContent>
                 <Stack spacing={2.5}>
-                  <RowSwitch label="Dark Mode" checked={darkModeEnabled} onChange={toggleDarkMode} />
+                  <RowSwitch label="Modo oscuro" checked={darkModeEnabled} onChange={toggleDarkMode} />
                   <Typography variant="caption" color="text.secondary">
                     Aplica a toda la interfaz del dashboard y queda guardado en el navegador.
                   </Typography>
@@ -173,14 +173,14 @@ export default function SettingsPage() {
 
           <Grid item xs={12} md={6}>
             <Card>
-              <CardHeader title="Execution Limits" subheader="Runtime boundaries" avatar={<Iconify icon="mdi:speedometer" width={28} />} />
+              <CardHeader title="Limites de ejecucion" subheader="Restricciones del runtime" avatar={<Iconify icon="mdi:speedometer" width={28} />} />
               <Divider />
               <CardContent>
                 <Stack spacing={3}>
-                  <TextField fullWidth label="Max Steps per Execution" type="number" value={settings.maxStepsPerExecution} onChange={(e) => set('maxStepsPerExecution', Number(e.target.value))} />
-                  <TextField fullWidth label="Timeout per Step (seconds)" type="number" value={settings.timeoutPerStepSeconds} onChange={(e) => set('timeoutPerStepSeconds', Number(e.target.value))} />
-                  <TextField fullWidth label="Max Tokens per Execution" type="number" value={settings.maxTokensPerExecution} onChange={(e) => set('maxTokensPerExecution', Number(e.target.value))} />
-                  <TextField fullWidth label="Max Concurrent Executions" type="number" value={settings.maxConcurrentExecutions} onChange={(e) => set('maxConcurrentExecutions', Number(e.target.value))} />
+                  <TextField fullWidth label="Maximo de pasos por ejecucion" type="number" value={settings.maxStepsPerExecution} onChange={(e) => set('maxStepsPerExecution', Number(e.target.value))} />
+                  <TextField fullWidth label="Timeout por paso (segundos)" type="number" value={settings.timeoutPerStepSeconds} onChange={(e) => set('timeoutPerStepSeconds', Number(e.target.value))} />
+                  <TextField fullWidth label="Maximo de tokens por ejecucion" type="number" value={settings.maxTokensPerExecution} onChange={(e) => set('maxTokensPerExecution', Number(e.target.value))} />
+                  <TextField fullWidth label="Maximo de ejecuciones concurrentes" type="number" value={settings.maxConcurrentExecutions} onChange={(e) => set('maxConcurrentExecutions', Number(e.target.value))} />
                 </Stack>
               </CardContent>
             </Card>
@@ -188,16 +188,16 @@ export default function SettingsPage() {
 
           <Grid item xs={12} md={6}>
             <Card>
-              <CardHeader title="Observability" subheader="Telemetry and tracing" avatar={<Iconify icon="mdi:chart-timeline-variant" width={28} />} />
+              <CardHeader title="Observabilidad" subheader="Telemetria y trazas" avatar={<Iconify icon="mdi:chart-timeline-variant" width={28} />} />
               <Divider />
               <CardContent>
                 <Stack spacing={2.5}>
-                  <RowSwitch label="OpenTelemetry Export" checked={settings.otlpExport} onChange={(v) => set('otlpExport', v)} />
+                  <RowSwitch label="Exportar OpenTelemetry" checked={settings.otlpExport} onChange={(v) => set('otlpExport', v)} />
                   <Divider />
-                  <TextField fullWidth label="OTLP Endpoint" value={settings.otlpEndpoint} onChange={(e) => set('otlpEndpoint', e.target.value)} size="small" />
-                  <RowSwitch label="Execution Replay" checked={settings.executionReplay} onChange={(v) => set('executionReplay', v)} />
+                  <TextField fullWidth label="Endpoint OTLP" value={settings.otlpEndpoint} onChange={(e) => set('otlpEndpoint', e.target.value)} size="small" />
+                  <RowSwitch label="Execution replay" checked={settings.executionReplay} onChange={(v) => set('executionReplay', v)} />
                   <Divider />
-                  <RowSwitch label="LLM Decision Logging" checked={settings.llmDecisionLogging} onChange={(v) => set('llmDecisionLogging', v)} />
+                  <RowSwitch label="Registrar decisiones LLM" checked={settings.llmDecisionLogging} onChange={(v) => set('llmDecisionLogging', v)} />
                 </Stack>
               </CardContent>
             </Card>
@@ -206,7 +206,7 @@ export default function SettingsPage() {
 
         <Box sx={{ mt: 4, display: 'flex', justifyContent: 'flex-end' }}>
           <Button variant="contained" size="large" startIcon={<Iconify icon="mdi:content-save-outline" />} onClick={save} disabled={loading || saving}>
-            {saving ? 'Saving...' : 'Save Settings'}
+            {saving ? 'Guardando...' : 'Guardar configuracion'}
           </Button>
         </Box>
       </DashboardContent>

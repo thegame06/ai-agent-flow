@@ -105,7 +105,7 @@ export default function AutomationWizardPage() {
         setThreads(next);
         setSelectedThreadId((prev) => (next.some((t) => t.threadId === prev) ? prev : next[0]?.threadId ?? ''));
       } catch (e: any) {
-        setError(e?.message ?? 'No se pudo cargar historial');
+        setError(e?.message ?? 'No se pudo cargar el historial');
       } finally {
         setLoading(false);
       }
@@ -158,7 +158,7 @@ export default function AutomationWizardPage() {
         });
         setMessages(mapped);
       } catch (e: any) {
-        setError(e?.message ?? 'No se pudo cargar detalle');
+        setError(e?.message ?? 'No se pudo cargar el detalle');
       } finally {
         setThreadLoading(false);
       }
@@ -174,7 +174,7 @@ export default function AutomationWizardPage() {
       <DashboardContent maxWidth="lg">
         <Stack spacing={2}>
           <Stack direction="row" justifyContent="space-between" alignItems="center">
-            <Typography variant="h4">Configuracion asistida</Typography>
+            <Typography variant="h4">Crear automatizacion</Typography>
             <Stack direction="row" spacing={1}>
               <Button variant={viewMode === 'focus' ? 'contained' : 'outlined'} onClick={() => setViewMode('focus')}>
                 Enfoque
@@ -188,7 +188,7 @@ export default function AutomationWizardPage() {
           {viewMode === 'focus' ? (
             <Stack spacing={2}>
               <Typography variant="body2" color="text.secondary">
-                Wizard conversacional reusable. Tambien puede incrustarse en Inicio y otros modulos.
+                Asistente guiado reusable para crear automatizaciones. Tambien puede incrustarse en Inicio y otros modulos.
               </Typography>
               <WizardLauncher value={wizardId} onChange={setWizardId} initialChannelId={channelId} />
             </Stack>
@@ -247,7 +247,7 @@ export default function AutomationWizardPage() {
                 }}
               >
                 <CardHeader
-                  title="Detalle conversacion"
+                  title="Detalle de conversacion"
                   subheader={selectedThread ? `Hilo ${selectedThread.threadKey || selectedThread.threadId.slice(0, 10)}` : 'Selecciona una conversacion'}
                 />
                 <CardContent>
@@ -267,3 +267,4 @@ export default function AutomationWizardPage() {
     </>
   );
 }
+

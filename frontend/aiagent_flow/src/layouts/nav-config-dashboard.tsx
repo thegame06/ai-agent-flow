@@ -4,63 +4,36 @@ import { paths } from 'src/routes/paths';
 
 import { Iconify } from 'src/components/iconify';
 
-// ----------------------------------------------------------------------
-
 const icon = (name: string) => <Iconify icon={name} width={24} />;
 
 const ICONS = {
-  dashboard: icon('mdi:assistant'),
+  home: icon('mdi:home-outline'),
+  automation: icon('mdi:auto-fix'),
   workflow: icon('mdi:source-branch'),
   runtime: icon('mdi:layers-triple-outline'),
-  automation: icon('mdi:auto-fix'),
   agent: icon('mdi:robot-happy-outline'),
   intent: icon('mdi:target-variant'),
-  inbox: icon('mdi:inbox-outline'),
+  inbox: icon('mdi:forum-outline'),
+  unclassified: icon('mdi:inbox-outline'),
   commerce: icon('mdi:store-cog-outline'),
-  executions: icon('mdi:chart-timeline-variant'),
+  activity: icon('mdi:chart-timeline-variant'),
   humanReview: icon('mdi:account-supervisor-outline'),
   kycPayments: icon('mdi:shield-account-outline'),
   channels: icon('mdi:access-point'),
-  marketplace: icon('mdi:storefront-outline'),
-  mcp: icon('mdi:connection'),
+  integrations: icon('mdi:storefront-outline'),
+  tools: icon('mdi:tools'),
+  advanced: icon('mdi:connection'),
   settings: icon('mdi:cog-outline'),
 };
 
-// ----------------------------------------------------------------------
-
 export const navData: NavSectionProps['data'] = [
   {
-    subheader: 'AnnonAI',
+    subheader: 'Inicio',
     items: [
       {
-        title: 'Configuracion asistida',
-        path: paths.dashboard.annonai,
-        icon: ICONS.dashboard,
-      },
-    ],
-  },
-  {
-    subheader: 'Construccion',
-    items: [
-      {
-        title: 'Flujos automatizados',
-        path: paths.dashboard.workflows,
-        icon: ICONS.workflow,
-      },
-      {
-        title: 'Runtime Studio',
-        path: paths.dashboard.runtimeStudio('text'),
-        icon: ICONS.runtime,
-      },
-      {
-        title: 'Asistentes IA',
-        path: paths.dashboard.agents,
-        icon: ICONS.agent,
-      },
-      {
-        title: 'Reglas de intención',
-        path: paths.dashboard.intents,
-        icon: ICONS.intent,
+        title: 'Inicio',
+        path: paths.dashboard.overview,
+        icon: ICONS.home,
       },
     ],
   },
@@ -68,14 +41,18 @@ export const navData: NavSectionProps['data'] = [
     subheader: 'Operacion',
     items: [
       {
-        title: 'Bandeja de entrada',
+        title: 'Bandeja',
         path: paths.dashboard.threads,
-        icon: icon('mdi:forum-outline'),
+        icon: ICONS.inbox,
+        children: [
+          { title: 'Conversaciones', path: paths.dashboard.threads },
+          { title: 'Casos sin clasificar', path: paths.dashboard.inbox },
+        ],
       },
       {
-        title: 'Casos sin clasificar',
-        path: paths.dashboard.inbox,
-        icon: ICONS.inbox,
+        title: 'Casos por revisar',
+        path: paths.dashboard.checkpoints,
+        icon: ICONS.humanReview,
       },
       {
         title: 'Ventas y cobros',
@@ -83,14 +60,9 @@ export const navData: NavSectionProps['data'] = [
         icon: ICONS.commerce,
       },
       {
-        title: 'Actividad del sistema',
+        title: 'Actividad',
         path: paths.dashboard.executions,
-        icon: ICONS.executions,
-      },
-      {
-        title: 'Casos para revisar',
-        path: paths.dashboard.checkpoints,
-        icon: ICONS.humanReview,
+        icon: ICONS.activity,
       },
       {
         title: 'KYC y pagos',
@@ -100,22 +72,55 @@ export const navData: NavSectionProps['data'] = [
     ],
   },
   {
-    subheader: 'Integraciones',
+    subheader: 'Construccion',
     items: [
       {
-        title: 'Canales de atencion',
+        title: 'Crear automatizacion',
+        path: paths.dashboard.annonai,
+        icon: ICONS.automation,
+      },
+      {
+        title: 'Automatizaciones',
+        path: paths.dashboard.workflows,
+        icon: ICONS.workflow,
+        children: [
+          { title: 'Ver automatizaciones', path: paths.dashboard.workflows },
+          { title: 'Runtime avanzado', path: paths.dashboard.runtimeStudio('text') },
+        ],
+      },
+      {
+        title: 'Asistentes',
+        path: paths.dashboard.agents,
+        icon: ICONS.agent,
+      },
+      {
+        title: 'Intenciones',
+        path: paths.dashboard.intents,
+        icon: ICONS.intent,
+      },
+    ],
+  },
+  {
+    subheader: 'Conexiones',
+    items: [
+      {
+        title: 'Canales',
         path: paths.dashboard.system.channels,
         icon: ICONS.channels,
       },
       {
         title: 'Integraciones',
         path: paths.dashboard.marketplace,
-        icon: ICONS.marketplace,
+        icon: ICONS.integrations,
       },
       {
-        title: 'Herramientas externas',
-        path: paths.dashboard.system.mcp,
-        icon: ICONS.mcp,
+        title: 'Herramientas',
+        path: paths.dashboard.tools,
+        icon: ICONS.tools,
+        children: [
+          { title: 'Herramientas', path: paths.dashboard.tools },
+          { title: 'Conectores avanzados', path: paths.dashboard.system.mcp },
+        ],
       },
     ],
   },
@@ -123,10 +128,11 @@ export const navData: NavSectionProps['data'] = [
     subheader: 'Administracion',
     items: [
       {
-        title: 'Configuracion',
+        title: 'Configuracion general',
         path: paths.dashboard.system.settings,
         icon: ICONS.settings,
         children: [
+          { title: 'Configuracion general', path: paths.dashboard.system.settings },
           { title: 'Modelos IA', path: paths.dashboard.system.models },
           { title: 'Credenciales', path: paths.dashboard.system.authProfiles },
           { title: 'Funciones beta', path: paths.dashboard.system.featureFlags },

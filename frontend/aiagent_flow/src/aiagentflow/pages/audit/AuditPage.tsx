@@ -10,11 +10,11 @@ import Alert from '@mui/material/Alert';
 import Button from '@mui/material/Button';
 import Divider from '@mui/material/Divider';
 import TableRow from '@mui/material/TableRow';
+import MenuItem from '@mui/material/MenuItem';
 import TableBody from '@mui/material/TableBody';
 import TableCell from '@mui/material/TableCell';
 import TableHead from '@mui/material/TableHead';
 import TextField from '@mui/material/TextField';
-import MenuItem from '@mui/material/MenuItem';
 import Typography from '@mui/material/Typography';
 import { alpha, useTheme } from '@mui/material/styles';
 import LinearProgress from '@mui/material/LinearProgress';
@@ -215,29 +215,33 @@ export default function AuditPage() {
     }
   };
 
-  const matchesRuntime = (entry: AuditLogEntry) => {
-    if (runtimeFilter === 'all') return true;
-    const payload = parseEventJson(entry.eventJson);
-    const eventRuntime =
-      payload?.runtimeKind
-      ?? payload?.metadata?.runtimeKind
-      ?? payload?.context?.runtimeKind
-      ?? '';
-    return String(eventRuntime).toLowerCase() === runtimeFilter.toLowerCase();
-  };
-
-  const matchesRole = (entry: AuditLogEntry) => {
-    if (modelRoleFilter === 'all') return true;
-    const payload = parseEventJson(entry.eventJson);
-    const asText = JSON.stringify(payload).toLowerCase();
-    if (modelRoleFilter === 'brain') return asText.includes('reasoning') || asText.includes('brain');
-    if (modelRoleFilter === 'stt') return asText.includes('stt') || asText.includes('speech');
-    if (modelRoleFilter === 'tts') return asText.includes('tts') || asText.includes('synth');
-    return true;
-  };
-
   const filteredLogs = useMemo(
-    () => logs.filter((entry) => matchesRuntime(entry) && matchesRole(entry)),
+    () =>
+      logs.filter((entry) => {
+        const payload = parseEventJson(entry.eventJson);
+
+        if (runtimeFilter !== 'all') {
+          const eventRuntime =
+            payload?.runtimeKind
+            ?? payload?.metadata?.runtimeKind
+            ?? payload?.context?.runtimeKind
+            ?? '';
+
+          if (String(eventRuntime).toLowerCase() !== runtimeFilter.toLowerCase()) {
+            return false;
+          }
+        }
+
+        if (modelRoleFilter !== 'all') {
+          const asText = JSON.stringify(payload).toLowerCase();
+
+          if (modelRoleFilter === 'brain') return asText.includes('reasoning') || asText.includes('brain');
+          if (modelRoleFilter === 'stt') return asText.includes('stt') || asText.includes('speech');
+          if (modelRoleFilter === 'tts') return asText.includes('tts') || asText.includes('synth');
+        }
+
+        return true;
+      }),
     [logs, runtimeFilter, modelRoleFilter]
   );
 

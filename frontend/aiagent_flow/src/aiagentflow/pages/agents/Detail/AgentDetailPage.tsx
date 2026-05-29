@@ -1,4 +1,4 @@
-﻿import { Helmet } from 'react-helmet-async';
+import { Helmet } from 'react-helmet-async';
 import { useState, useEffect, useCallback } from 'react';
 
 import Box from '@mui/material/Box';
@@ -44,7 +44,7 @@ const countItems = (value: unknown) => {
 };
 
 const readAgentModel = (agent: any) =>
-  agent?.modelId || agent?.model || agent?.brain?.model || agent?.runtime?.model || 'Modelo por defecto';
+  agent?.modelId || agent?.model || agent?.brain?.model || agent?.runtime?.model || 'Modelo predeterminado';
 
 const readAgentInstructions = (agent: any) =>
   agent?.instructions || agent?.systemPrompt || agent?.brain?.instructions || 'Sin instrucciones publicadas.';
@@ -213,11 +213,11 @@ export default function AgentDetailPage() {
                     </Stack>
                     <Typography variant="body1" color="text.secondary">
                       {agent.description ||
-                        'Este agente es un subflujo inteligente: entiende una tarea, usa herramientas autorizadas y devuelve una salida al workflow principal.'}
+                        'Este asistente funciona como subflujo inteligente: entiende una tarea, usa herramientas autorizadas y devuelve una salida a la automatizacion principal.'}
                     </Typography>
                     <Stack direction="row" spacing={1} flexWrap="wrap">
                       <Chip icon={<Iconify icon="mdi:robot-outline" />} label={model} />
-                      <Chip icon={<Iconify icon="mdi:tools" />} label={`${countItems(tools)} tools`} />
+                      <Chip icon={<Iconify icon="mdi:tools" />} label={`${countItems(tools)} herramientas`} />
                       <Chip icon={<Iconify icon="mdi:database-outline" />} label={`${memoryCount} fuentes`} />
                       <Chip icon={<Iconify icon="mdi:access-point" />} label={`${channelCount} canales`} />
                     </Stack>
@@ -231,7 +231,7 @@ export default function AgentDetailPage() {
                       startIcon={<Iconify icon="solar:pen-bold" />}
                       href={paths.dashboard.agentEdit(agent.id)}
                     >
-                      Editar subflujo
+                      Editar asistente
                     </Button>
                     <Button
                       fullWidth
@@ -239,7 +239,7 @@ export default function AgentDetailPage() {
                       startIcon={<Iconify icon="mdi:source-branch" />}
                       href={paths.dashboard.workflows}
                     >
-                      Usar en Workflow Studio
+                      Usar en automatizaciones
                     </Button>
                   </Stack>
                 </Grid>
@@ -267,7 +267,7 @@ export default function AgentDetailPage() {
                   body:
                     countItems(tools) > 0
                       ? toolLabels.join(', ')
-                      : 'Sin tools autorizadas. Agregalas desde Agent Studio antes de usar el nodo en un flujo.',
+                      : 'Sin herramientas autorizadas. Agregalas desde la configuracion del asistente antes de usar este nodo en una automatizacion.',
                 },
                 {
                   title: 'Conocimiento y memoria',
@@ -275,10 +275,10 @@ export default function AgentDetailPage() {
                   body: `${memoryCount} fuente(s) disponibles para responder o tomar decisiones.`,
                 },
                 {
-                  title: 'Salida al workflow',
+                  title: 'Salida a la automatizacion',
                   icon: 'mdi:call-split',
                   body:
-                    'El nodo AI Agent devuelve resultado, variables y estados: finalizo, expiro o hubo error. El workflow decide el siguiente paso.',
+                    'El nodo del asistente devuelve resultado, variables y estados: finalizo, expiro o hubo error. La automatizacion decide el siguiente paso.',
                 },
               ].map((item) => (
                 <Grid key={item.title} item xs={12} md={6}>
@@ -300,10 +300,10 @@ export default function AgentDetailPage() {
                 <Card variant="outlined">
                   <CardContent>
                     <Stack spacing={2}>
-                      <Typography variant="h6">Como se usa este agente dentro de Workflow Studio</Typography>
+                      <Typography variant="h6">Como se usa este asistente dentro de automatizaciones</Typography>
                       <Grid container spacing={2}>
                         {[
-                          ['1', 'Arrastra un nodo Agente de IA al canvas.'],
+                          ['1', 'Arrastra un nodo de asistente al lienzo.'],
                           ['2', `Selecciona ${agent.name} como agente publicado.`],
                           ['3', 'Define que variable recibe y que variable devuelve.'],
                           ['4', 'Conecta finalizo, expiro o error con acciones de negocio.'],
@@ -428,3 +428,5 @@ export default function AgentDetailPage() {
     </>
   );
 }
+
+

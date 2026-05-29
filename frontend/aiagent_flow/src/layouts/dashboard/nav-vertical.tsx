@@ -48,10 +48,10 @@ export function NavVertical({
             <Logo />
             <Box>
               <Typography variant="subtitle1" sx={{ lineHeight: 1, fontWeight: 900 }}>
-                Annonai
+                AnnonAI
               </Typography>
               <Typography variant="caption" color="text.secondary">
-                Automatizacion AI
+                Centro operativo
               </Typography>
             </Box>
           </Box>

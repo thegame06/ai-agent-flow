@@ -1,4 +1,4 @@
-﻿import { Helmet } from 'react-helmet-async';
+import { Helmet } from 'react-helmet-async';
 import { useState, useEffect, useCallback } from 'react';
 
 import Box from '@mui/material/Box';
@@ -148,9 +148,9 @@ export default function ChannelsPage() {
     maxClarificationTurns: 2,
     escalationTarget: '',
     clarificationQuestions: [
-      { text: '¿Me puedes contar brevemente qué necesitas?', active: true, field: 'motivo', required: true, retries: 1, noResponseAction: 'continue' },
-      { text: '¿Qué resultado esperas obtener?', active: true, field: 'objetivo', required: false, retries: 1, noResponseAction: 'continue' },
-      { text: '¿Es algo urgente para hoy?', active: false, field: 'urgencia', required: false, retries: 1, noResponseAction: 'continue' },
+      { text: '�Me puedes contar brevemente qu� necesitas?', active: true, field: 'motivo', required: true, retries: 1, noResponseAction: 'continue' },
+      { text: '�Qu� resultado esperas obtener?', active: true, field: 'objetivo', required: false, retries: 1, noResponseAction: 'continue' },
+      { text: '�Es algo urgente para hoy?', active: false, field: 'urgencia', required: false, retries: 1, noResponseAction: 'continue' },
     ] as Array<{ text: string; active: boolean; field: string; required: boolean; retries: number; noResponseAction: string }>,
   });
   const [routingPreview, setRoutingPreview] = useState<{ suggestedAgentId?: string; activeLoadByAgent?: Record<string, number> } | null>(null);
@@ -183,9 +183,9 @@ export default function ChannelsPage() {
   const channelTypes = [
     { value: 'WhatsApp', label: 'WhatsApp', icon: 'mdi:whatsapp' },
     { value: 'WebChat', label: 'Chat web', icon: 'mdi:web' },
-    { value: 'Api', label: 'API Direct', icon: 'mdi:api' },
+    { value: 'Api', label: 'API directa', icon: 'mdi:api' },
     { value: 'Voice', label: 'Voz / Twilio', icon: 'mdi:phone-in-talk-outline' },
-    { value: 'CallCenter', label: 'Call Center', icon: 'mdi:account-voice' },
+    { value: 'CallCenter', label: 'Centro de llamadas', icon: 'mdi:account-voice' },
     { value: 'Email', label: 'Email', icon: 'mdi:email-outline' },
     { value: 'Telegram', label: 'Telegram', icon: 'mdi:telegram' },
     { value: 'Slack', label: 'Slack', icon: 'mdi:slack' },
@@ -217,7 +217,7 @@ export default function ChannelsPage() {
         .map((q) => ({ id: q.id, name: q.name, active: Boolean(q.active) }));
       setQueueOptions(queues);
     } catch (err: any) {
-      setError(err?.message || 'Error cargando canales');
+      setError(err?.message || 'No se pudieron cargar los canales');
     } finally {
       setLoading(false);
     }
@@ -260,7 +260,7 @@ export default function ChannelsPage() {
       setForm({ name: '', type: 'WhatsApp', authMode: 'qr', apiToken: '', phoneNumberId: '', defaultAgentId: '', routingAgentIds: [], connectionId: '', provider: 'twilio', sessionWindowHours: '24', routerAgentId: '', reopenTemplateName: '' });
       await fetchAll();
     } catch (err: any) {
-      alert(err?.message || 'Error creando canal');
+      alert(err?.message || 'No se pudo crear el canal');
     } finally {
       setSaving(false);
     }
@@ -279,16 +279,16 @@ export default function ChannelsPage() {
         clarificationQuestions: (res.data?.clarificationQuestions && Array.isArray(res.data.clarificationQuestions) && res.data.clarificationQuestions.length > 0)
           ? res.data.clarificationQuestions
           : [
-            { text: '¿Me puedes contar brevemente qué necesitas?', active: true, field: 'motivo', required: true, retries: 1, noResponseAction: 'continue' },
-            { text: '¿Qué resultado esperas obtener?', active: true, field: 'objetivo', required: false, retries: 1, noResponseAction: 'continue' },
-            { text: '¿Es algo urgente para hoy?', active: false, field: 'urgencia', required: false, retries: 1, noResponseAction: 'continue' },
+            { text: '�Me puedes contar brevemente qu� necesitas?', active: true, field: 'motivo', required: true, retries: 1, noResponseAction: 'continue' },
+            { text: '�Qu� resultado esperas obtener?', active: true, field: 'objetivo', required: false, retries: 1, noResponseAction: 'continue' },
+            { text: '�Es algo urgente para hoy?', active: false, field: 'urgencia', required: false, retries: 1, noResponseAction: 'continue' },
           ],
       });
       setRoutingChannel(channel);
       setRoutingPreview(null);
       setOpenRouting(true);
     } catch (err: any) {
-      alert(err?.message || 'Error cargando reglas de enrutamiento');
+      alert(err?.message || 'No se pudieron cargar las reglas de enrutamiento');
     }
   };
 
@@ -309,7 +309,7 @@ export default function ChannelsPage() {
       setRoutingChannel(null);
       await fetchAll();
     } catch (err: any) {
-      alert(err?.message || 'Error actualizando enrutamiento');
+      alert(err?.message || 'No se pudo actualizar el enrutamiento');
     } finally {
       setSaving(false);
     }
@@ -324,7 +324,7 @@ export default function ChannelsPage() {
         activeLoadByAgent: res.data?.activeLoadByAgent || {},
       });
     } catch (err: any) {
-      alert(err?.message || 'Error ejecutando vista previa de enrutamiento');
+      alert(err?.message || 'No se pudo ejecutar la vista previa de enrutamiento');
     }
   };
 
@@ -338,7 +338,7 @@ export default function ChannelsPage() {
       setIntentsChannel(channel);
       setOpenIntentsModal(true);
     } catch (err: any) {
-      alert(err?.message || 'Error cargando el catalogo de intenciones');
+      alert(err?.message || 'No se pudo cargar el catalogo de intenciones');
     } finally {
       setLoadingIntents(false);
     }
@@ -357,7 +357,7 @@ export default function ChannelsPage() {
       setSelectedIntentKeys([]);
       await fetchAll();
     } catch (err: any) {
-      alert(getErrorMessage(err, 'Error aplicando intenciones al canal'));
+      alert(getErrorMessage(err, 'No se pudieron aplicar las intenciones al canal'));
     } finally {
       setSaving(false);
     }
@@ -419,9 +419,9 @@ export default function ChannelsPage() {
       const qrSuffix = channel.type === 'WhatsApp' && (channel.config?.AuthMode || '').toLowerCase() === 'qr'
         ? ` | QR: ${res.data.healthy ? 'CONNECTED' : (res.data.qrAvailable ? 'AVAILABLE' : 'PENDING')}`
         : '';
-      alert(`Health: ${res.data.healthy ? 'OK' : 'UNHEALTHY'} - ${res.data.message || 'n/a'}${qrSuffix}`);
+      alert(`Estado: ${res.data.healthy ? 'OK' : 'NO DISPONIBLE'} - ${res.data.message || 'sin detalle'}${qrSuffix}`);
     } catch (err: any) {
-      alert(err?.message || 'Error en health check');
+      alert(err?.message || 'No se pudo validar el estado del canal');
     }
   };
 
@@ -432,7 +432,7 @@ export default function ChannelsPage() {
       const res = await axios.get(`/api/v1/tenants/${TENANT_ID}/channel-sessions/${session.id}/messages?page=0&pageSize=100`);
       setSessionMessages((res.data?.items ?? res.data ?? []) as SessionMessageEvidence[]);
     } catch (err: any) {
-      alert(err?.message || 'Error cargando mensajes de sesion');
+      alert(err?.message || 'No se pudieron cargar los mensajes de la sesion');
     } finally {
       setSessionLoading(false);
     }
@@ -512,7 +512,7 @@ export default function ChannelsPage() {
     if (channel.type === 'Voice') return ['voice', 'twilio', 'outbound'];
     if (channel.type === 'CallCenter') return ['campaigns', 'voice', 'handoff'];
     if (channel.type === 'Email') return ['inbox', 'outbound'];
-    if (channel.type === 'WebChat') return ['inbox', 'web widget'];
+    if (channel.type === 'WebChat') return ['inbox', 'widget web'];
     if (channel.type === 'Api') return ['webhook', 'inbox'];
     return ['inbox'];
   };
@@ -639,7 +639,7 @@ export default function ChannelsPage() {
                 <Box>
                   <Typography variant="h6">Twilio omnicanal</Typography>
                   <Typography variant="body2" color="text.secondary">
-                    Una sola conexion Twilio se reutiliza para Voz, Call Center, SMS y futuros canales WhatsApp por Twilio.
+                    Una sola conexion Twilio se reutiliza para voz, centro de llamadas, SMS y futuros canales de WhatsApp por Twilio.
                     Los canales no guardan secretos: solo referencian la conexion del tenant.
                   </Typography>
                 </Box>
@@ -1043,20 +1043,20 @@ export default function ChannelsPage() {
                 onChange={(e) => setRoutingForm((prev) => ({ ...prev, noMatchAction: e.target.value }))}
                 input={<OutlinedInput label="Estrategia sin match" />}
               >
-                <MenuItem value="human_review_only">Solo revisión humana</MenuItem>
+                <MenuItem value="human_review_only">Solo revisi�n humana</MenuItem>
                 <MenuItem value="clarify_then_route">Preguntar y reintentar</MenuItem>
               </Select>
             </FormControl>
 
             <TextField
               select
-              label="Agente fallback"
+              label="Agente de respaldo"
               value={routingForm.routerFallbackAgentId}
               onChange={(e) => setRoutingForm((prev) => ({ ...prev, routerFallbackAgentId: e.target.value }))}
               fullWidth
-              helperText="Agente responsable del proceso de fallback y trazabilidad de auditoría."
+              helperText="Agente responsable del proceso de respaldo y trazabilidad de auditoria."
             >
-              <MenuItem value=""><em>Sin agente fallback</em></MenuItem>
+              <MenuItem value=""><em>Sin agente de respaldo</em></MenuItem>
               {candidateAgents.map((agent) => (
                 <MenuItem key={agent.id} value={agent.id}>{agent.name}</MenuItem>
               ))}
@@ -1064,7 +1064,7 @@ export default function ChannelsPage() {
 
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
               <TextField
-                label="Máximo de preguntas"
+                label="M�ximo de preguntas"
                 type="number"
                 value={routingForm.maxClarificationTurns}
                 onChange={(e) => setRoutingForm((prev) => ({ ...prev, maxClarificationTurns: Number(e.target.value || 2) }))}
@@ -1074,13 +1074,13 @@ export default function ChannelsPage() {
               />
               <TextField
                 select
-                label="Destino de escalación"
+                label="Destino de escalaci�n"
                 value={routingForm.escalationTarget}
                 onChange={(e) => setRoutingForm((prev) => ({ ...prev, escalationTarget: e.target.value }))}
                 fullWidth
-                helperText="Cola humana que recibirá casos escalados sin clasificación."
+                helperText="Cola humana que recibir� casos escalados sin clasificaci�n."
               >
-                <MenuItem value=""><em>Sin cola de escalación</em></MenuItem>
+                <MenuItem value=""><em>Sin cola de escalaci�n</em></MenuItem>
                 {queueOptions.filter((q) => q.active).map((q) => (
                   <MenuItem key={q.id} value={q.id}>{q.name}</MenuItem>
                 ))}
@@ -1088,7 +1088,7 @@ export default function ChannelsPage() {
             </Stack>
 
             <Stack spacing={1.25}>
-              <Typography variant="subtitle2">Preguntas de clarificación</Typography>
+              <Typography variant="subtitle2">Preguntas de clarificaci�n</Typography>
               {routingForm.clarificationQuestions.map((q, idx) => (
                 <Stack key={`q-${idx}`} direction={{ xs: 'column', sm: 'row' }} spacing={1}>
                   <TextField
@@ -1122,7 +1122,7 @@ export default function ChannelsPage() {
                       }))}
                       disabled={routingForm.noMatchAction !== 'clarify_then_route'}
                     >
-                      <MenuItem value="si">Sí</MenuItem>
+                      <MenuItem value="si">S�</MenuItem>
                       <MenuItem value="no">No</MenuItem>
                     </Select>
                   </FormControl>
@@ -1311,7 +1311,7 @@ export default function ChannelsPage() {
 
       {/* Session Evidence Dialog */}
       <Dialog open={!!selectedSession} onClose={() => setSelectedSession(null)} fullWidth maxWidth="md">
-        <DialogTitle>Historial tecnico de la conversacion - {selectedSession?.identifier}</DialogTitle>
+        <DialogTitle>Historial de la conversacion - {selectedSession?.identifier}</DialogTitle>
         <DialogContent>
           {sessionLoading ? (
             <Box sx={{ py: 4, textAlign: 'center' }}><CircularProgress /></Box>
@@ -1360,7 +1360,7 @@ export default function ChannelsPage() {
 
       {/* Test Message Dialog */}
       <Dialog open={openTestPanel} onClose={() => setOpenTestPanel(false)} fullWidth maxWidth="sm">
-        <DialogTitle>Probar mensaje” {testPanelChannel?.name}</DialogTitle>
+        <DialogTitle>Probar mensaje - {testPanelChannel?.name}</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ pt: 1 }}>
             <Alert severity="info">
@@ -1385,7 +1385,7 @@ export default function ChannelsPage() {
             />
             <Stack direction="row" spacing={1} alignItems="center">
               <Chip
-                label={testMsg.asyncMode ? 'Modo: Async (202)' : 'Modo: Sync (200)'}
+                label={testMsg.asyncMode ? 'Modo: Asincrono (202)' : 'Modo: Sincrono (200)'}
                 color={testMsg.asyncMode ? 'info' : 'default'}
                 onClick={() => setTestMsg((p) => ({ ...p, asyncMode: !p.asyncMode }))}
                 clickable
@@ -1421,3 +1421,8 @@ export default function ChannelsPage() {
     </>
   );
 }
+
+
+
+
+

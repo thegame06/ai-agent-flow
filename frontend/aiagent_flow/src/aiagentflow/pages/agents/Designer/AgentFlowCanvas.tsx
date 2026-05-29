@@ -82,8 +82,8 @@ const STEP_TYPES: StepMeta[] = [
   },
   {
     value: 'tool_call',
-    label: 'Usar tool',
-    description: 'Llama una tool autorizada en Agent Studio.',
+    label: 'Usar herramienta',
+    description: 'Llama una herramienta autorizada en la configuracion del asistente.',
     icon: 'mdi:wrench-outline',
     color: '#475569',
   },
@@ -345,7 +345,7 @@ export default function AgentFlowCanvas({ steps, agentName }: AgentFlowCanvasPro
         <Box>
           <Typography variant="subtitle1">Subflujo del agente</Typography>
           <Typography variant="caption" color="text.secondary">
-            {agentName || 'Agente'} se ejecuta como subflujo cuando un nodo del Workflow Studio lo invoca.
+            {agentName || 'Agente'} se ejecuta como subflujo cuando un nodo del la automatizacion lo invoca.
           </Typography>
         </Box>
         <Stack direction="row" spacing={0.8} sx={{ ml: 'auto', mr: 1 }} flexWrap="wrap">
@@ -421,7 +421,7 @@ export default function AgentFlowCanvas({ steps, agentName }: AgentFlowCanvasPro
               <Box>
                 <Typography variant="subtitle1">Define como trabaja el agente</Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Este subflujo describe como piensa, usa tools y valida resultados cuando Workflow Studio lo llama.
+                  Este subflujo describe como piensa, usa herramientas y valida resultados cuando la automatizacion lo llama.
                 </Typography>
               </Box>
               <Stack direction="row" spacing={1}>
@@ -429,7 +429,7 @@ export default function AgentFlowCanvas({ steps, agentName }: AgentFlowCanvasPro
                   Razonar
                 </Button>
                 <Button size="small" variant="outlined" onClick={() => createStep('tool_call')}>
-                  Usar tool
+                  Usar herramienta
                 </Button>
                 <Button size="small" variant="outlined" onClick={() => createStep('observe')}>
                   Observar
@@ -592,10 +592,10 @@ export default function AgentFlowCanvas({ steps, agentName }: AgentFlowCanvasPro
                 {(selectedStep.type === 'act' || selectedStep.type === 'tool_call') && (
                   <>
                     <TextField
-                      label="Tool o integracion"
+                      label="Herramienta o integracion"
                       size="small"
                       value={String(selectedConfig.toolName ?? '')}
-                      helperText="Debe existir como tool autorizada del agente."
+                      helperText="Debe existir como herramienta autorizada del asistente."
                       onChange={(event) => updateSelectedConfig('toolName', event.target.value)}
                     />
                     <TextField
@@ -692,7 +692,7 @@ export default function AgentFlowCanvas({ steps, agentName }: AgentFlowCanvasPro
               />
             )}
             <Alert severity="info">
-              Este subflujo define como piensa y actua el agente. El Workflow Studio principal solo lo llama como nodo.
+              Este subflujo define como piensa y actua el agente. El la automatizacion principal solo lo llama como nodo.
             </Alert>
             <Button
               color="error"
@@ -710,3 +710,5 @@ export default function AgentFlowCanvas({ steps, agentName }: AgentFlowCanvasPro
     </Card>
   );
 }
+
+

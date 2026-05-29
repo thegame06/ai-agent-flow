@@ -1,4 +1,5 @@
 import { Helmet } from 'react-helmet-async';
+import { useSearchParams } from 'react-router';
 import { useMemo, useState, useEffect, useCallback } from 'react';
 
 import Box from '@mui/material/Box';
@@ -52,9 +53,12 @@ interface ModelItem {
   providerProfileId?: string;
 }
 
+const providerOptions = ['OpenAI', 'Anthropic', 'Gemini', 'OpenRouter', 'Groq', 'Deepgram', '11Labs'];
+
 export default function AuthProfilesPage() {
   const router = useRouter();
-  const TENANT_ID = useTenantId();
+  const tenantId = useTenantId();
+  const [searchParams] = useSearchParams();
   const [profiles, setProfiles] = useState<AuthProfile[]>([]);
   const [models, setModels] = useState<ModelItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -71,36 +75,53 @@ export default function AuthProfilesPage() {
 
   const [bind, setBind] = useState({ modelId: '', providerProfileId: '' });
 
-  const providerOptions = useMemo(() => ['OpenAI', 'Anthropic', 'Gemini', 'OpenRouter', 'Groq'], []);
-
   const fetchAll = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
       const [profilesRes, modelsRes] = await Promise.all([
-        axios.get(`/api/v1/tenants/${TENANT_ID}/auth-profiles`),
+        axios.get(`/api/v1/tenants/${tenantId}/auth-profiles`),
         axios.get('/api/v1/model-routing/models'),
       ]);
 
       setProfiles((profilesRes.data ?? []) as AuthProfile[]);
       setModels((modelsRes.data ?? []) as ModelItem[]);
     } catch (err: any) {
-      setError(err?.message || 'Failed to load auth profiles');
+      setError(err?.message || 'No se pudieron cargar los perfiles de autenticacion.');
     } finally {
       setLoading(false);
     }
-  }, [TENANT_ID]);
+  }, [tenantId]);
 
   useEffect(() => {
-    fetchAll();
+    void fetchAll();
   }, [fetchAll]);
+
+  const filteredProfiles = useMemo(() => {
+    const selectedModel = models.find((model) => model.modelId === bind.modelId);
+    if (!selectedModel) return profiles;
+    return profiles.filter((profile) => profile.provider === selectedModel.providerId);
+  }, [bind.modelId, models, profiles]);
+
+  useEffect(() => {
+    const bindModel = searchParams.get('bindModel');
+    if (!bindModel || models.length === 0) return;
+
+    const selectedModel = models.find((model) => model.modelId === bindModel);
+    if (!selectedModel) return;
+
+    setBind({
+      modelId: selectedModel.modelId,
+      providerProfileId: selectedModel.providerProfileId || '',
+    });
+  }, [models, searchParams]);
 
   const handleCreate = async () => {
     if (!form.profileId.trim()) return;
 
     try {
       setSaving(true);
-      await axios.post(`/api/v1/tenants/${TENANT_ID}/auth-profiles`, {
+      await axios.post(`/api/v1/tenants/${tenantId}/auth-profiles`, {
         provider: form.provider,
         profileId: form.profileId.trim(),
         authType: form.authType,
@@ -110,7 +131,7 @@ export default function AuthProfilesPage() {
       setForm({ provider: 'OpenAI', profileId: '', authType: 'api_key', secret: '' });
       await fetchAll();
     } catch (err: any) {
-      alert(err?.message || 'Failed to create profile');
+      alert(err?.message || 'No se pudo crear el perfil.');
     } finally {
       setSaving(false);
     }
@@ -118,21 +139,21 @@ export default function AuthProfilesPage() {
 
   const handleTest = async (profileId: string) => {
     try {
-      const res = await axios.post(`/api/v1/tenants/${TENANT_ID}/auth-profiles/${profileId}/test`);
+      const res = await axios.post(`/api/v1/tenants/${tenantId}/auth-profiles/${profileId}/test`);
       alert(`${profileId}: ${res.data?.healthy ? 'Healthy' : 'Unhealthy'} (${res.data?.reason ?? 'n/a'})`);
     } catch (err: any) {
-      alert(err?.message || 'Test failed');
+      alert(err?.message || 'La prueba del perfil fallo.');
     }
   };
 
   const handleDelete = async (profileId: string) => {
-    if (!confirm(`Delete profile '${profileId}'?`)) return;
+    if (!confirm(`Eliminar perfil '${profileId}'?`)) return;
 
     try {
-      await axios.delete(`/api/v1/tenants/${TENANT_ID}/auth-profiles/${profileId}`);
+      await axios.delete(`/api/v1/tenants/${tenantId}/auth-profiles/${profileId}`);
       await fetchAll();
     } catch (err: any) {
-      alert(err?.message || 'Failed to delete profile');
+      alert(err?.message || 'No se pudo eliminar el perfil.');
     }
   };
 
@@ -144,16 +165,16 @@ export default function AuthProfilesPage() {
         providerProfileId: bind.providerProfileId,
       });
       await fetchAll();
-      alert('Model linked to profile successfully');
+      alert('Modelo vinculado al perfil correctamente.');
     } catch (err: any) {
-      alert(err?.message || 'Failed to bind model profile');
+      alert(err?.message || 'No se pudo vincular el perfil al modelo.');
     }
   };
 
   return (
     <>
       <Helmet>
-        <title>Auth Profiles | {CONFIG.appName}</title>
+        <title>Provider Auth Profiles | {CONFIG.appName}</title>
       </Helmet>
 
       <DashboardContent maxWidth="xl">
@@ -161,15 +182,15 @@ export default function AuthProfilesPage() {
           <Box>
             <Typography variant="h4">Provider Auth Profiles</Typography>
             <Typography variant="body2" sx={{ color: 'text.secondary', mt: 1 }}>
-              Create and test provider credentials, then bind them to model routing.
+              Crea y prueba credenciales por proveedor, luego vincúlalas a los modelos del catálogo.
             </Typography>
           </Box>
           <Stack direction="row" spacing={1}>
             <Button variant="outlined" onClick={() => router.push(paths.dashboard.system.models)}>
-              Go to Models
+              Ir a Modelos
             </Button>
             <Button variant="contained" startIcon={<Iconify icon="mingcute:add-line" />} onClick={() => setOpenCreate(true)}>
-              Add Auth Profile
+              Agregar Provider Auth Profile
             </Button>
           </Stack>
         </Box>
@@ -179,33 +200,33 @@ export default function AuthProfilesPage() {
         <Grid container spacing={3}>
           <Grid item xs={12} md={7}>
             <Card sx={{ p: 2 }}>
-              <Typography variant="h6" sx={{ mb: 2 }}>Profiles</Typography>
+              <Typography variant="h6" sx={{ mb: 2 }}>Perfiles</Typography>
               {loading ? (
                 <Box sx={{ py: 4, textAlign: 'center' }}><CircularProgress /></Box>
               ) : profiles.length === 0 ? (
-                <Alert severity="info">No auth profiles yet.</Alert>
+                <Alert severity="info">Aún no hay perfiles de proveedor.</Alert>
               ) : (
                 <Table size="small">
                   <TableHead>
                     <TableRow>
-                      <TableCell>Profile</TableCell>
-                      <TableCell>Provider</TableCell>
-                      <TableCell>Type</TableCell>
+                      <TableCell>Perfil</TableCell>
+                      <TableCell>Proveedor</TableCell>
+                      <TableCell>Tipo</TableCell>
                       <TableCell>Secret</TableCell>
-                      <TableCell align="right">Actions</TableCell>
+                      <TableCell align="right">Acciones</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {profiles.map((p) => (
-                      <TableRow key={p.id} hover>
-                        <TableCell>{p.profileId}</TableCell>
-                        <TableCell><Chip label={p.provider} size="small" variant="outlined" /></TableCell>
-                        <TableCell>{p.authType}</TableCell>
-                        <TableCell>{p.secretMasked ?? '—'}</TableCell>
+                    {profiles.map((profile) => (
+                      <TableRow key={profile.id} hover>
+                        <TableCell>{profile.profileId}</TableCell>
+                        <TableCell><Chip label={profile.provider} size="small" variant="outlined" /></TableCell>
+                        <TableCell>{profile.authType}</TableCell>
+                        <TableCell>{profile.secretMasked ?? '—'}</TableCell>
                         <TableCell align="right">
                           <Stack direction="row" spacing={1} justifyContent="flex-end">
-                            <Button size="small" variant="outlined" onClick={() => handleTest(p.profileId)}>Test</Button>
-                            <Button size="small" color="error" variant="outlined" onClick={() => handleDelete(p.profileId)}>Delete</Button>
+                            <Button size="small" variant="outlined" onClick={() => handleTest(profile.profileId)}>Test</Button>
+                            <Button size="small" color="error" variant="outlined" onClick={() => handleDelete(profile.profileId)}>Delete</Button>
                           </Stack>
                         </TableCell>
                       </TableRow>
@@ -218,17 +239,27 @@ export default function AuthProfilesPage() {
 
           <Grid item xs={12} md={5}>
             <Card sx={{ p: 2 }}>
-              <Typography variant="h6" sx={{ mb: 2 }}>Bind profile to model</Typography>
+              <Typography variant="h6" sx={{ mb: 2 }}>Vincular perfil a modelo</Typography>
               <Stack spacing={2}>
+                {!!bind.modelId && !models.find((model) => model.modelId === bind.modelId)?.providerProfileId && (
+                  <Alert severity="warning">
+                    El modelo seleccionado aún no tiene un perfil de proveedor vinculado.
+                  </Alert>
+                )}
                 <Select
                   value={bind.modelId}
                   displayEmpty
-                  onChange={(e) => setBind((prev) => ({ ...prev, modelId: String(e.target.value) }))}
+                  onChange={(e) =>
+                    setBind({
+                      modelId: String(e.target.value),
+                      providerProfileId: '',
+                    })
+                  }
                 >
-                  <MenuItem value=""><em>Select model</em></MenuItem>
-                  {models.map((m) => (
-                    <MenuItem key={m.modelId} value={m.modelId}>
-                      {m.displayName} ({m.modelId})
+                  <MenuItem value=""><em>Seleccionar modelo</em></MenuItem>
+                  {models.map((model) => (
+                    <MenuItem key={model.modelId} value={model.modelId}>
+                      {model.displayName} ({model.providerId})
                     </MenuItem>
                   ))}
                 </Select>
@@ -238,29 +269,39 @@ export default function AuthProfilesPage() {
                   displayEmpty
                   onChange={(e) => setBind((prev) => ({ ...prev, providerProfileId: String(e.target.value) }))}
                 >
-                  <MenuItem value=""><em>Select profile</em></MenuItem>
-                  {profiles.map((p) => (
-                    <MenuItem key={p.id} value={p.profileId}>
-                      {p.profileId} ({p.provider})
+                  <MenuItem value=""><em>Seleccionar perfil</em></MenuItem>
+                  {filteredProfiles.map((profile) => (
+                    <MenuItem key={profile.id} value={profile.profileId}>
+                      {profile.profileId} ({profile.provider})
                     </MenuItem>
                   ))}
                 </Select>
 
                 <Button variant="contained" onClick={handleBind} disabled={!bind.modelId || !bind.providerProfileId}>
-                  Bind
+                  Vincular
                 </Button>
 
                 <Divider />
 
-                <Typography variant="subtitle2">Current model bindings</Typography>
-                <Stack spacing={1}>
-                  {models.map((m) => (
-                    <Box key={m.modelId} sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <Typography variant="caption">{m.modelId}</Typography>
-                      <Typography variant="caption" fontWeight={700}>{m.providerProfileId || '—'}</Typography>
-                    </Box>
-                  ))}
-                </Stack>
+                <Typography variant="subtitle2">Vínculos actuales</Typography>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Modelo</TableCell>
+                      <TableCell>Proveedor</TableCell>
+                      <TableCell>Perfil vinculado</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {models.map((model) => (
+                      <TableRow key={model.modelId}>
+                        <TableCell>{model.displayName}</TableCell>
+                        <TableCell>{model.providerId}</TableCell>
+                        <TableCell>{model.providerProfileId || '—'}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
               </Stack>
             </Card>
           </Grid>
@@ -268,37 +309,37 @@ export default function AuthProfilesPage() {
       </DashboardContent>
 
       <Dialog open={openCreate} onClose={() => setOpenCreate(false)} fullWidth maxWidth="sm">
-        <DialogTitle>Create Auth Profile</DialogTitle>
+        <DialogTitle>Crear Provider Auth Profile</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ pt: 1 }}>
-            <Select value={form.provider} onChange={(e) => setForm((p) => ({ ...p, provider: String(e.target.value) }))}>
-              {providerOptions.map((p) => (
-                <MenuItem key={p} value={p}>{p}</MenuItem>
+            <Select value={form.provider} onChange={(e) => setForm((prev) => ({ ...prev, provider: String(e.target.value) }))}>
+              {providerOptions.map((provider) => (
+                <MenuItem key={provider} value={provider}>{provider}</MenuItem>
               ))}
             </Select>
             <TextField
               label="Profile ID"
               value={form.profileId}
-              onChange={(e) => setForm((p) => ({ ...p, profileId: e.target.value }))}
+              onChange={(e) => setForm((prev) => ({ ...prev, profileId: e.target.value }))}
               placeholder="openai-personal"
             />
             <TextField
               label="Auth Type"
               value={form.authType}
-              onChange={(e) => setForm((p) => ({ ...p, authType: e.target.value }))}
+              onChange={(e) => setForm((prev) => ({ ...prev, authType: e.target.value }))}
             />
             <TextField
               label="Secret / API Key"
               type="password"
               value={form.secret}
-              onChange={(e) => setForm((p) => ({ ...p, secret: e.target.value }))}
+              onChange={(e) => setForm((prev) => ({ ...prev, secret: e.target.value }))}
             />
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setOpenCreate(false)}>Cancel</Button>
+          <Button onClick={() => setOpenCreate(false)}>Cancelar</Button>
           <Button variant="contained" onClick={handleCreate} disabled={saving || !form.profileId || !form.secret}>
-            {saving ? 'Saving...' : 'Save'}
+            {saving ? 'Guardando...' : 'Guardar'}
           </Button>
         </DialogActions>
       </Dialog>

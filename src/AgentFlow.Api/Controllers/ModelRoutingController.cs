@@ -110,9 +110,6 @@ public sealed class ModelRoutingController : ControllerBase
             return BadRequest(new { message = "maxContextTokens must be > 0." });
         if (request.CostPer1KTokens < 0)
             return BadRequest(new { message = "costPer1KTokens must be >= 0." });
-        if (!string.Equals(request.ProviderId, "OpenAI", StringComparison.OrdinalIgnoreCase))
-            return BadRequest(new { message = "Only OpenAI models are supported by the current runtime. Add other providers after implementing their runtime adapter." });
-
         var providerProfileId = request.ProviderProfileId;
         if (!string.IsNullOrWhiteSpace(request.ApiKey))
         {
@@ -342,11 +339,6 @@ public sealed class ModelRoutingController : ControllerBase
 
     private bool HasProviderConfiguration(string tenantId, string modelId, string providerId)
     {
-        if (!string.Equals(providerId, "OpenAI", StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
         var linkedProfileId = _authProfiles.GetModelProfileId(tenantId, modelId);
         if (!string.IsNullOrWhiteSpace(linkedProfileId))
         {

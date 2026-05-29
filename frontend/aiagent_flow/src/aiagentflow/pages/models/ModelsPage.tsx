@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { usePopover } from 'minimal-shared/hooks';
+import { useMemo, useState, useEffect } from 'react';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -11,6 +11,7 @@ import Alert from '@mui/material/Alert';
 import Button from '@mui/material/Button';
 import Divider from '@mui/material/Divider';
 import MenuItem from '@mui/material/MenuItem';
+import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import IconButton from '@mui/material/IconButton';
 import CardContent from '@mui/material/CardContent';
@@ -24,6 +25,7 @@ import { useRouter } from 'src/routes/hooks';
 import axios from 'src/lib/axios';
 import { CONFIG } from 'src/global-config';
 import { DashboardContent } from 'src/layouts/dashboard';
+import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
 
 import { Label } from 'src/components/label';
 import { Iconify } from 'src/components/iconify';
@@ -31,7 +33,16 @@ import { CustomPopover } from 'src/components/custom-popover';
 
 import { AddModelDialog } from './components/AddModelDialog';
 
-// ----------------------------------------------------------------------
+type ModelItem = {
+  modelId: string;
+  providerId: string;
+  displayName: string;
+  costPer1KTokens: number;
+  maxContextTokens: number;
+  tier: string;
+  status: string;
+  providerProfileId?: string;
+};
 
 const tierColor = (tier: string) => {
   switch (tier) {
@@ -46,14 +57,15 @@ const tierColor = (tier: string) => {
   }
 };
 
-// ----------------------------------------------------------------------
-
 export default function ModelsPage() {
   const theme = useTheme();
   const router = useRouter();
-  const [models, setModels] = useState<any[]>([]);
+  const tenantId = useTenantId();
+  const [models, setModels] = useState<ModelItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [addModelOpen, setAddModelOpen] = useState(false);
+  const [editingModel, setEditingModel] = useState<ModelItem | null>(null);
+  const [providerFilter, setProviderFilter] = useState('all');
   const [error, setError] = useState<string | null>(null);
 
   const fetchModels = async () => {
@@ -61,12 +73,12 @@ export default function ModelsPage() {
       setLoading(true);
       setError(null);
       const response = await axios.get('/api/v1/model-routing/models');
-      setModels(response.data);
+      setModels((response.data ?? []) as ModelItem[]);
     } catch (err: any) {
       const message =
         err?.status === 403
-          ? 'Model catalog requires platform admin permissions.'
-          : 'Unable to load model catalog.';
+          ? 'El catalogo de modelos requiere permisos de administrador de plataforma.'
+          : 'No se pudo cargar el catalogo de modelos.';
       setError(message);
       setModels([]);
     } finally {
@@ -75,11 +87,26 @@ export default function ModelsPage() {
   };
 
   useEffect(() => {
-    fetchModels();
+    void fetchModels();
   }, []);
 
+  const providerOptions = useMemo(
+    () => ['all', ...new Set(models.map((model) => model.providerId).filter(Boolean))],
+    [models]
+  );
+
+  const filteredModels = useMemo(
+    () =>
+      models.filter((model) =>
+        providerFilter === 'all' ? true : model.providerId === providerFilter
+      ),
+    [models, providerFilter]
+  );
+
   const handleConfigure = (modelId: string) => {
-    alert(`Advanced model configuration is pending. Selected: ${modelId}`);
+    const selectedModel = models.find((model) => model.modelId === modelId) ?? null;
+    setEditingModel(selectedModel);
+    setAddModelOpen(true);
   };
 
   const handleSetPrimary = async (modelId: string) => {
@@ -87,7 +114,7 @@ export default function ModelsPage() {
       await axios.post(`/api/v1/model-routing/models/${modelId}/set-primary`);
       await fetchModels();
     } catch (err: any) {
-      alert(err?.message || 'Failed to set model as primary.');
+      alert(err?.message || 'No se pudo marcar el modelo como primario.');
     }
   };
 
@@ -95,9 +122,9 @@ export default function ModelsPage() {
     try {
       const response = await axios.post(`/api/v1/model-routing/models/${modelId}/test`);
       const healthy = response.data?.healthy ?? response.data?.Healthy;
-      alert(healthy ? `Model '${modelId}' is healthy.` : `Model '${modelId}' is unhealthy.`);
+      alert(healthy ? `El modelo '${modelId}' esta saludable.` : `El modelo '${modelId}' no esta saludable.`);
     } catch (err: any) {
-      alert(err?.message || 'Failed to test model connection.');
+      alert(err?.message || 'No se pudo probar el modelo.');
     }
   };
 
@@ -106,42 +133,66 @@ export default function ModelsPage() {
       await axios.delete(`/api/v1/model-routing/models/${modelId}`);
       await fetchModels();
     } catch (err: any) {
-      alert(err?.message || 'Failed to disable model.');
+      alert(err?.message || 'No se pudo deshabilitar el modelo.');
     }
   };
 
   return (
     <>
       <Helmet>
-        <title>Model Routing | {CONFIG.appName}</title>
+        <title>Modelos | {CONFIG.appName}</title>
       </Helmet>
 
       <DashboardContent maxWidth="xl">
         <Box sx={{ mb: 5 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <Box>
-              <Typography variant="h4">Model Routing & Configuration</Typography>
+              <Typography variant="h4">Modelos y enrutamiento</Typography>
               <Typography variant="body2" sx={{ color: 'text.secondary', mt: 1 }}>
-                Configure LLM providers, routing priorities, fallbacks, and cost controls
+                Administra modelos, proveedores, prioridades y perfiles de autenticacion vinculados.
               </Typography>
             </Box>
 
             <Stack direction="row" spacing={1}>
-              <Button
-                variant="outlined"
-                onClick={() => router.push(paths.dashboard.system.authProfiles)}
-              >
-                Auth Profiles
+              <Button variant="outlined" onClick={() => router.push(paths.dashboard.system.authProfiles)}>
+                Provider Auth Profiles
               </Button>
               <Button
                 variant="contained"
                 startIcon={<Iconify icon="mingcute:add-line" />}
-                onClick={() => setAddModelOpen(true)}
+                onClick={() => {
+                  setEditingModel(null);
+                  setAddModelOpen(true);
+                }}
               >
-                Add Model
+                Agregar modelo
               </Button>
             </Stack>
           </Box>
+
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mt: 2 }}>
+            <TextField
+              select
+              label="Proveedor"
+              value={providerFilter}
+              onChange={(e) => setProviderFilter(e.target.value)}
+              sx={{ minWidth: 220 }}
+            >
+              <MenuItem value="all">Todos</MenuItem>
+              {providerOptions
+                .filter((provider) => provider !== 'all')
+                .map((provider) => (
+                  <MenuItem key={provider} value={provider}>
+                    {provider}
+                  </MenuItem>
+                ))}
+            </TextField>
+            <Chip
+              label={`${filteredModels.length} modelo${filteredModels.length === 1 ? '' : 's'}`}
+              variant="outlined"
+              sx={{ width: 'fit-content' }}
+            />
+          </Stack>
         </Box>
 
         {error && (
@@ -152,13 +203,11 @@ export default function ModelsPage() {
 
         {loading ? (
           <LinearProgress />
-        ) : models.length === 0 ? (
-          <Alert severity="info">
-            No models are available in the routing registry for your current role or tenant.
-          </Alert>
+        ) : filteredModels.length === 0 ? (
+          <Alert severity="info">No hay modelos para el filtro seleccionado.</Alert>
         ) : (
           <Grid container spacing={3}>
-            {models.map((model) => (
+            {filteredModels.map((model) => (
               <Grid key={model.modelId} item xs={12} sm={6} md={4}>
                 <Card
                   sx={{
@@ -175,7 +224,6 @@ export default function ModelsPage() {
                 >
                   <CardContent sx={{ flexGrow: 1 }}>
                     <Stack spacing={2}>
-                      {/* Header */}
                       <Box
                         sx={{
                           display: 'flex',
@@ -187,6 +235,9 @@ export default function ModelsPage() {
                           <Typography variant="h6" noWrap>
                             {model.displayName}
                           </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {model.providerId} · {model.modelId}
+                          </Typography>
                         </Box>
                         <ModelMenu
                           modelId={model.modelId}
@@ -196,72 +247,51 @@ export default function ModelsPage() {
                         />
                       </Box>
 
-                      {/* Status & Tier */}
-                      <Stack direction="row" spacing={1} alignItems="center">
-                        <Label color={model.status === 'Active' ? 'success' : 'default'}>
-                          {model.status}
-                        </Label>
+                        <Stack direction="row" spacing={1} alignItems="center">
+                          <Label color={model.status === 'Active' ? 'success' : 'default'}>
+                            {model.status}
+                          </Label>
                         <Chip
                           label={model.tier}
                           size="small"
                           color={tierColor(model.tier)}
                           variant="soft"
-                        />
-                        <Chip label={model.providerId} size="small" variant="outlined" />
-                      </Stack>
+                          />
+                          <Chip label={model.providerId} size="small" variant="outlined" />
+                          {!model.providerProfileId && (
+                            <Chip
+                              label="Sin credencial"
+                              size="small"
+                              color="warning"
+                              variant="soft"
+                            />
+                          )}
+                        </Stack>
 
                       <Divider />
 
-                      {/* Stats */}
                       <Stack spacing={1}>
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <Typography variant="caption" color="text.secondary">
-                            <Iconify
-                              icon="mdi:identifier"
-                              width={14}
-                              sx={{ mr: 0.5, verticalAlign: 'text-bottom' }}
-                            />
-                            Model ID
-                          </Typography>
-                          <Typography variant="caption" fontWeight={600} noWrap>
-                            {model.modelId}
-                          </Typography>
-                        </Box>
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <Typography variant="caption" color="text.secondary">
-                            <Iconify
-                              icon="mdi:currency-usd"
-                              width={14}
-                              sx={{ mr: 0.5, verticalAlign: 'text-bottom' }}
-                            />
-                            Cost/1K tokens
-                          </Typography>
-                          <Typography variant="caption" fontWeight={600}>
-                            ${model.costPer1KTokens}
-                          </Typography>
-                        </Box>
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <Typography variant="caption" color="text.secondary">
-                            <Iconify
-                              icon="mdi:text-box-outline"
-                              width={14}
-                              sx={{ mr: 0.5, verticalAlign: 'text-bottom' }}
-                            />
-                            Max Tokens
-                          </Typography>
-                          <Typography variant="caption" fontWeight={600}>
-                            {(model.maxContextTokens / 1000).toFixed(0)}K
-                          </Typography>
-                        </Box>
+                        <MetaRow
+                          icon="mdi:server-network-outline"
+                          label="Proveedor"
+                          value={model.providerId}
+                        />
+                        <MetaRow icon="mdi:key-chain-variant" label="Perfil vinculado" value={model.providerProfileId || 'Sin vincular'} />
+                        <MetaRow icon="mdi:identifier" label="Model ID" value={model.modelId} noWrap />
+                        <MetaRow icon="mdi:currency-usd" label="Costo/1K tokens" value={`$${model.costPer1KTokens}`} />
+                        <MetaRow
+                          icon="mdi:text-box-outline"
+                          label="Contexto maximo"
+                          value={model.maxContextTokens > 0 ? `${(model.maxContextTokens / 1000).toFixed(0)}K` : 'N/A'}
+                        />
                       </Stack>
 
                       <Divider />
 
-                      {/* Reliability */}
                       <Box>
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
                           <Typography variant="caption" color="text.secondary">
-                            Reliability
+                            Salud estimada
                           </Typography>
                           <Typography variant="caption" fontWeight={600}>
                             99.9%
@@ -279,20 +309,30 @@ export default function ModelsPage() {
 
                   <CardActions sx={{ px: 2, pb: 2 }}>
                     <Button
-                      fullWidth
                       variant="outlined"
-                      startIcon={<Iconify icon="mdi:cog-outline" />}
+                      startIcon={<Iconify icon="solar:pen-outline" />}
                       onClick={() => handleConfigure(model.modelId)}
                     >
-                      Configure
+                      Editar
                     </Button>
                     <Button
-                      fullWidth
+                      variant={model.providerProfileId ? 'outlined' : 'soft'}
+                      color={model.providerProfileId ? 'inherit' : 'warning'}
+                      startIcon={<Iconify icon="mdi:key-chain-variant" />}
+                      onClick={() =>
+                        router.push(
+                          `${paths.dashboard.system.authProfiles}?bindModel=${encodeURIComponent(model.modelId)}`
+                        )
+                      }
+                    >
+                      Perfil
+                    </Button>
+                    <Button
                       variant="contained"
                       startIcon={<Iconify icon="mdi:connection" />}
                       onClick={() => handleTestConnection(model.modelId)}
                     >
-                      Test
+                      Probar
                     </Button>
                   </CardActions>
                 </Card>
@@ -302,20 +342,47 @@ export default function ModelsPage() {
         )}
       </DashboardContent>
 
-      {/* Add Model Dialog */}
       <AddModelDialog
         open={addModelOpen}
-        onClose={() => setAddModelOpen(false)}
+        onClose={() => {
+          setAddModelOpen(false);
+          setEditingModel(null);
+        }}
         onSuccess={() => {
           setAddModelOpen(false);
-          fetchModels();
+          setEditingModel(null);
+          void fetchModels();
         }}
+        tenantId={tenantId}
+        initialModel={editingModel}
       />
     </>
   );
 }
 
-// ----------------------------------------------------------------------
+function MetaRow({
+  icon,
+  label,
+  value,
+  noWrap = false,
+}: {
+  icon: string;
+  label: string;
+  value: string;
+  noWrap?: boolean;
+}) {
+  return (
+    <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2 }}>
+      <Typography variant="caption" color="text.secondary">
+        <Iconify icon={icon} width={14} sx={{ mr: 0.5, verticalAlign: 'text-bottom' }} />
+        {label}
+      </Typography>
+      <Typography variant="caption" fontWeight={600} noWrap={noWrap}>
+        {value}
+      </Typography>
+    </Box>
+  );
+}
 
 interface ModelMenuProps {
   modelId: string;
@@ -340,8 +407,8 @@ function ModelMenu({ modelId, onConfigure, onSetPrimary, onDisable }: ModelMenuP
             onConfigure(modelId);
           }}
         >
-          <Iconify icon="mdi:cog-outline" />
-          Configure
+          <Iconify icon="solar:pen-outline" />
+          Editar
         </MenuItem>
 
         <MenuItem
@@ -351,7 +418,7 @@ function ModelMenu({ modelId, onConfigure, onSetPrimary, onDisable }: ModelMenuP
           }}
         >
           <Iconify icon="mdi:star-outline" />
-          Set as Primary
+          Marcar como primario
         </MenuItem>
 
         <Divider sx={{ borderStyle: 'dashed' }} />
@@ -364,7 +431,7 @@ function ModelMenu({ modelId, onConfigure, onSetPrimary, onDisable }: ModelMenuP
           sx={{ color: 'error.main' }}
         >
           <Iconify icon="mdi:cancel" />
-          Disable
+          Deshabilitar
         </MenuItem>
       </CustomPopover>
     </>

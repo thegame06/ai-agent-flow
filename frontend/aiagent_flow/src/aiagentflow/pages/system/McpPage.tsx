@@ -1,4 +1,4 @@
-ï»¿import { Helmet } from 'react-helmet-async';
+import { Helmet } from 'react-helmet-async';
 import { useState, useEffect, useCallback } from 'react';
 
 import Box from '@mui/material/Box';
@@ -64,7 +64,7 @@ export default function McpPage() {
       setSettings(null);
     }
   }, [tenantId]);
-  
+
   const loadServers = useCallback(async () => {
     setError(null);
     try {
@@ -72,13 +72,13 @@ export default function McpPage() {
       setServers(res.data ?? []);
       if (res.data?.length && !selectedServer) setSelectedServer(res.data[0].name);
     } catch (e: any) {
-      setError(e?.message || 'Failed to load MCP servers');
+      setError(e?.message || 'No se pudieron cargar los conectores avanzados.');
     }
   }, [selectedServer]);
-  
+
   useEffect(() => {
-    loadSettings();
-    loadServers();
+    void loadSettings();
+    void loadServers();
   }, [loadServers, loadSettings]);
 
   const loadTools = async () => {
@@ -94,7 +94,7 @@ export default function McpPage() {
         setInputJson(data[0].inputSchemaJson || '{}');
       }
     } catch (e: any) {
-      setError(e?.message || 'Failed to load MCP tools');
+      setError(e?.message || 'No se pudieron cargar las herramientas del conector.');
       setTools([]);
     } finally {
       setLoading(false);
@@ -112,7 +112,7 @@ export default function McpPage() {
       });
       setOutput(JSON.stringify(res.data, null, 2));
     } catch (e: any) {
-      setError(e?.response?.data?.message || e?.message || 'Failed to invoke MCP tool');
+      setError(e?.response?.data?.message || e?.message || 'No se pudo ejecutar la herramienta.');
     } finally {
       setLoading(false);
     }
@@ -123,18 +123,24 @@ export default function McpPage() {
     setError(null);
     try {
       await axios.post(`/api/v1/tenants/${tenantId}/mcp/enable`, {
-        allowedServers: allowedServersCsv.split(',').map((item) => item.trim()).filter(Boolean).length ? allowedServersCsv.split(',').map((item) => item.trim()).filter(Boolean) : (selectedServer ? [selectedServer] : undefined),
+        allowedServers: allowedServersCsv
+          .split(',')
+          .map((item) => item.trim())
+          .filter(Boolean).length
+          ? allowedServersCsv.split(',').map((item) => item.trim()).filter(Boolean)
+          : selectedServer
+            ? [selectedServer]
+            : undefined,
         timeoutSeconds: 20,
         retryCount: 1,
       });
       await loadSettings();
     } catch (e: any) {
-      setError(e?.message || 'Failed to enable MCP');
+      setError(e?.message || 'No se pudo habilitar la conexion avanzada.');
     } finally {
       setLoading(false);
     }
   };
-
 
   const saveSettings = async () => {
     setLoading(true);
@@ -152,23 +158,24 @@ export default function McpPage() {
       });
       await loadSettings();
     } catch (e: any) {
-      setError(e?.message || 'Failed to save MCP settings');
+      setError(e?.message || 'No se pudo guardar la configuracion del conector.');
     } finally {
       setLoading(false);
     }
   };
+
   return (
     <>
       <Helmet>
-        <title>MCP para agentes | {CONFIG.appName}</title>
+        <title>Conectores avanzados | {CONFIG.appName}</title>
       </Helmet>
       <DashboardContent maxWidth="xl">
         <Box sx={{ mb: 4 }}>
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between">
             <Box>
-              <Typography variant="h4">MCP para agentes y workflows</Typography>
+              <Typography variant="h4">Conectores avanzados</Typography>
               <Typography variant="body2" color="text.secondary">
-                Habilita servidores MCP, descubre herramientas y confirma que pueden usarse desde Agent Studio y Workflow Studio.
+                Habilita servidores externos, revisa sus herramientas y valida que puedan usarse desde asistentes y automatizaciones.
               </Typography>
             </Box>
             <Stack direction="row" spacing={1}>
@@ -176,7 +183,7 @@ export default function McpPage() {
                 Configurar conexion
               </Button>
               <Button variant="contained" href={paths.dashboard.workflows}>
-                Usar en workflow
+                Usar en automatizacion
               </Button>
             </Stack>
           </Stack>
@@ -184,10 +191,10 @@ export default function McpPage() {
 
         <Grid container spacing={2} sx={{ mb: 3 }}>
           {[
-            ['1', 'Configura MCP en Marketplace', 'Guarda servidor, runtime y token como recurso del tenant.'],
-            ['2', 'Permite servidores aqui', 'Define que servidores puede usar este tenant.'],
-            ['3', 'Descubre y prueba tools', 'Valida una tool antes de publicarla en agentes o workflows.'],
-            ['4', 'Usa el nodo MCP', 'Workflow Studio mostrara si la conexion esta lista.'],
+            ['1', 'Registra la conexion', 'Guarda el servidor, runtime y token como recurso del tenant.'],
+            ['2', 'Permite servidores', 'Define que conexiones externas puede usar este tenant.'],
+            ['3', 'Prueba herramientas', 'Valida una herramienta antes de publicarla en asistentes o automatizaciones.'],
+            ['4', 'Activa el nodo', 'Workflow Studio mostrara si la conexion ya esta lista para usarse.'],
           ].map(([step, title, body]) => (
             <Grid key={step} item xs={12} md={3}>
               <Card variant="outlined" sx={{ height: '100%' }}>
@@ -205,8 +212,8 @@ export default function McpPage() {
 
         <Grid container spacing={2} sx={{ mb: 3 }}>
           {[
-            ['Servidores', servers.length, 'Configurados'],
-            ['Herramientas', tools.length, 'Descubiertas'],
+            ['Conexiones', servers.length, 'Configuradas'],
+            ['Herramientas', tools.length, 'Disponibles'],
             ['Estado', settings?.enabled ? 'Activo' : 'Inactivo', 'Tenant'],
           ].map(([label, value, helper]) => (
             <Grid item xs={12} md={4} key={label}>
@@ -216,7 +223,7 @@ export default function McpPage() {
                     <Typography variant="h5">{String(value)}</Typography>
                     <Typography variant="caption" color="text.secondary">{label}</Typography>
                   </Box>
-                  <Chip size="small" label={helper} variant="soft" />
+                  <Chip size="small" label={helper} variant="outlined" />
                 </Stack>
               </Card>
             </Grid>
@@ -224,21 +231,27 @@ export default function McpPage() {
         </Grid>
 
         {settings && (
-          <Alert severity={settings.enabled ? 'success' : 'warning'} sx={{ mb: 2 }}
+          <Alert
+            severity={settings.enabled ? 'success' : 'warning'}
+            sx={{ mb: 2 }}
             action={
               !settings.enabled ? (
                 <Button color="inherit" size="small" onClick={enableMcp} disabled={loading}>
-                  Habilitar MCP
+                  Habilitar conexion
                 </Button>
               ) : undefined
             }
           >
-            MCP: <b>{settings.enabled ? 'Activo' : 'Inactivo'}</b> Â· Runtime: <b>{settings.runtime}</b> Â· Timeout: {settings.timeoutSeconds}s Â· Reintentos: {settings.retryCount}
+            Conexion avanzada: <b>{settings.enabled ? 'Activa' : 'Inactiva'}</b> · Runtime: <b>{settings.runtime}</b> · Timeout: {settings.timeoutSeconds}s · Reintentos: {settings.retryCount}
           </Alert>
         )}
 
         {error && (
-          <Alert severity="error" sx={{ mb: 2 }} action={<Button color="inherit" size="small" onClick={loadServers}>Retry</Button>}>
+          <Alert
+            severity="error"
+            sx={{ mb: 2 }}
+            action={<Button color="inherit" size="small" onClick={() => void loadServers()}>Reintentar</Button>}
+          >
             {error}
           </Alert>
         )}
@@ -250,37 +263,43 @@ export default function McpPage() {
                 <Stack spacing={2}>
                   <TextField
                     select
-                    label="Servidor MCP"
+                    label="Conexion"
                     value={selectedServer}
                     onChange={(e) => setSelectedServer(e.target.value)}
                     fullWidth
                   >
-                    {servers.map((s) => (
-                      <MenuItem key={s.name} value={s.name}>{s.name} ({s.transport})</MenuItem>
+                    {servers.map((server) => (
+                      <MenuItem key={server.name} value={server.name}>
+                        {server.name} ({server.transport})
+                      </MenuItem>
                     ))}
                   </TextField>
 
                   <Stack direction="row" spacing={1}>
-                    <Button variant="outlined" onClick={loadServers} disabled={loading}>
-                      Actualizar servidores
+                    <Button variant="outlined" onClick={() => void loadServers()} disabled={loading}>
+                      Actualizar conexiones
                     </Button>
-                    <Button variant="outlined" onClick={loadTools} disabled={loading || !selectedServer || !settings?.enabled}>
-                      Descubrir herramientas
+                    <Button
+                      variant="outlined"
+                      onClick={loadTools}
+                      disabled={loading || !selectedServer || !settings?.enabled}
+                    >
+                      Cargar herramientas
                     </Button>
                   </Stack>
 
-
                   <TextField
-                    label="Servidores permitidos para este tenant"
+                    label="Conexiones permitidas para este tenant"
                     value={allowedServersCsv}
                     onChange={(e) => setAllowedServersCsv(e.target.value)}
-                    helperText="Separados por coma. Workflow Studio solo podra usar servidores permitidos."
+                    helperText="Separalas por coma. Solo estas conexiones podran usarse en automatizaciones."
                     fullWidth
                   />
 
                   <Button variant="outlined" onClick={saveSettings} disabled={loading}>
-                    Guardar permisos MCP
+                    Guardar permisos
                   </Button>
+
                   <TextField
                     select
                     label="Herramienta"
@@ -288,8 +307,8 @@ export default function McpPage() {
                     onChange={(e) => setSelectedTool(e.target.value)}
                     fullWidth
                   >
-                    {tools.map((t) => (
-                      <MenuItem key={t.name} value={t.name}>{t.name}</MenuItem>
+                    {tools.map((tool) => (
+                      <MenuItem key={tool.name} value={tool.name}>{tool.name}</MenuItem>
                     ))}
                   </TextField>
 
@@ -302,7 +321,11 @@ export default function McpPage() {
                     minRows={8}
                   />
 
-                  <Button variant="contained" onClick={invoke} disabled={loading || !selectedTool || !settings?.enabled}>
+                  <Button
+                    variant="contained"
+                    onClick={invoke}
+                    disabled={loading || !selectedTool || !settings?.enabled}
+                  >
                     Probar herramienta
                   </Button>
                 </Stack>
@@ -323,4 +346,3 @@ export default function McpPage() {
     </>
   );
 }
-

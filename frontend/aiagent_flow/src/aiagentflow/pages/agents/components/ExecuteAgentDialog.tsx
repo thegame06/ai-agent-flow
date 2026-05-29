@@ -132,7 +132,7 @@ export function ExecuteAgentDialog({ open, onClose, agent }: ExecuteAgentDialogP
               status: timedOut ? 'Failed' : normalizedStatus,
               output: finalOutput,
               error: timedOut
-                ? 'Polling timeout: la ejecución puede haber terminado; revisa Chat/History.'
+                ? 'Tiempo de espera agotado: la ejecucion puede haber terminado; revisa Conversar o Historial.'
                 : execution?.error || execution?.errorMessage,
               threadId: response.data?.threadId,
             });
@@ -163,7 +163,7 @@ export function ExecuteAgentDialog({ open, onClose, agent }: ExecuteAgentDialogP
           error.response?.data?.message ||
           error.response?.data?.error ||
           error.message ||
-          'Failed to execute agent',
+          'No se pudo ejecutar el asistente',
       });
       setLoading(false);
     }
@@ -180,7 +180,7 @@ export function ExecuteAgentDialog({ open, onClose, agent }: ExecuteAgentDialogP
       <DialogTitle>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <Iconify icon="mdi:rocket-launch-outline" width={24} />
-          Execute Agent: {agent.name}
+          Ejecutar asistente: {agent.name}
         </Box>
       </DialogTitle>
 
@@ -196,18 +196,18 @@ export function ExecuteAgentDialog({ open, onClose, agent }: ExecuteAgentDialogP
             fullWidth
             multiline
             rows={4}
-            label="Message / Task"
-            placeholder="Enter the task or message for the agent to process..."
+            label="Mensaje o tarea"
+            placeholder="Escribe la tarea o mensaje que debe procesar el asistente..."
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             disabled={loading}
-            helperText="Provide clear instructions or a question for the agent"
+            helperText="Escribe instrucciones claras o una pregunta para el asistente."
           />
 
           {loading && (
             <Box>
               <Typography variant="body2" color="text.secondary" gutterBottom>
-                Executing agent...
+                Ejecutando asistente...
               </Typography>
               <LinearProgress />
             </Box>
@@ -218,16 +218,16 @@ export function ExecuteAgentDialog({ open, onClose, agent }: ExecuteAgentDialogP
               <Stack spacing={1}>
                 <Box>
                   <Typography variant="subtitle2">
-                    Status: {result.status}
+                    Estado: {result.status}
                   </Typography>
                   {result.executionId && (
                     <Typography variant="caption" color="text.secondary">
-                      Execution ID: {result.executionId}
+                      ID de ejecucion: {result.executionId}
                     </Typography>
                   )}
                   {result.threadId && (
                     <Typography variant="caption" color="text.secondary" display="block">
-                      Thread ID: {result.threadId}
+                      ID de hilo: {result.threadId}
                     </Typography>
                   )}
                 </Box>
@@ -235,7 +235,7 @@ export function ExecuteAgentDialog({ open, onClose, agent }: ExecuteAgentDialogP
                 {result.output && (
                   <Box>
                     <Typography variant="body2" fontWeight={600} gutterBottom>
-                      Output:
+                      Resultado:
                     </Typography>
                     <Typography
                       variant="body2"
@@ -289,9 +289,10 @@ export function ExecuteAgentDialog({ open, onClose, agent }: ExecuteAgentDialogP
           disabled={!message.trim() || loading}
           startIcon={<Iconify icon="mdi:play" />}
         >
-          Execute
+          Ejecutar
         </LoadingButton>
       </DialogActions>
     </Dialog>
   );
 }
+

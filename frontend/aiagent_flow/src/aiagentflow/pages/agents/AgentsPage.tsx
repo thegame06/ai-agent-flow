@@ -121,7 +121,7 @@ export default function AgentsPage() {
     router.push(`${paths.dashboard.agentDesigner}/${agentId}`);
   };
 
-  const handleChat = (agentId: string) => {
+  const handleConversar = (agentId: string) => {
     router.push(`${paths.dashboard.agents}/${agentId}/chat`);
   };
 
@@ -188,7 +188,7 @@ export default function AgentsPage() {
   return (
     <>
       <Helmet>
-        <title>Asistentes IA | {CONFIG.appName}</title>
+        <title>Asistentes | {CONFIG.appName}</title>
       </Helmet>
 
       <DashboardContent maxWidth="xl">
@@ -221,8 +221,8 @@ export default function AgentsPage() {
                   <Typography variant="overline" color="text.secondary">
                     Asistentes reutilizables
                   </Typography>
-                  <Typography variant="h3">Asistentes IA</Typography>
-                  {runtimeKind && <Chip size="small" color="info" label={`Runtime ${runtimeKind}`} sx={{ mt: 0.5 }} />}
+                  <Typography variant="h3">Asistentes</Typography>
+                  {runtimeKind && <Chip size="small" color="info" label={`Modalidad ${runtimeKind}`} sx={{ mt: 0.5 }} />}
                   <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
                     Disena asistentes reutilizables para canales y flujos automatizados. Cada asistente puede tener modelo,
                     memoria, herramientas, integraciones externas y reglas de seguridad.
@@ -238,7 +238,7 @@ export default function AgentsPage() {
                   variant="outlined"
                   startIcon={<Iconify icon="mdi:view-split-vertical" />}
                 >
-                  Vista lista-detalle
+                  Vista detallada
                 </Button>
                 <Button
                   component={RouterLink}
@@ -246,7 +246,7 @@ export default function AgentsPage() {
                   variant="outlined"
                   startIcon={<Iconify icon="mdi:source-branch" />}
                 >
-                  Usar en flujo
+                  Usar en automatizacion
                 </Button>
                 <Button
                   component={RouterLink}
@@ -348,7 +348,7 @@ export default function AgentsPage() {
                           isSystemAgent={agent.isSystemAgent}
                           systemRole={agent.systemRole}
                           onEdit={handleEdit}
-                          onChat={handleChat}
+                          onConversar={handleConversar}
                           onClone={handleClone}
                           onDelete={handleDelete}
                         />
@@ -385,7 +385,7 @@ export default function AgentsPage() {
                           minHeight: 40,
                         }}
                       >
-                        {agent.description || 'No description'}
+                        {agent.description || 'Sin descripcion'}
                       </Typography>
 
                       <Divider />
@@ -479,12 +479,12 @@ interface AgentMenuProps {
   isSystemAgent?: boolean;
   systemRole?: string;
   onEdit: (id: string) => void;
-  onChat: (id: string) => void;
+  onConversar: (id: string) => void;
   onClone: (id: string) => void;
   onDelete: (id: string) => void;
 }
 
-function AgentMenu({ agentId, isSystemAgent, systemRole, onEdit, onChat, onClone, onDelete }: AgentMenuProps) {
+function AgentMenu({ agentId, isSystemAgent, systemRole, onEdit, onConversar, onClone, onDelete }: AgentMenuProps) {
   const isReadOnly = isSystemAgent === true && systemRole !== 'WorkflowBrain';
   const { open, anchorEl, onClose, onOpen } = usePopover();
 
@@ -510,11 +510,11 @@ function AgentMenu({ agentId, isSystemAgent, systemRole, onEdit, onChat, onClone
           disabled={isSystemAgent === true}
           onClick={() => {
             onClose();
-            onChat(agentId);
+            onConversar(agentId);
           }}
         >
           <Iconify icon="mdi:message-text-outline" />
-          Chat
+          Conversar
         </MenuItem>
 
         <MenuItem
@@ -544,3 +544,4 @@ function AgentMenu({ agentId, isSystemAgent, systemRole, onEdit, onChat, onClone
     </>
   );
 }
+

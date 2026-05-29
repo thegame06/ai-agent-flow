@@ -51,7 +51,7 @@ export default function FeatureFlagsPage() {
       const res = await axios.post(endpoints.agentflow.featureFlags.enabled(tenantId), contextPayload);
       setEnabledFlags(res.data?.enabledFeatures ?? []);
     } catch (e: any) {
-      setMessage(e?.message ?? 'Failed to load enabled flags');
+      setMessage(e?.message ?? 'No se pudieron cargar las funciones activas.');
       setEnabledFlags([]);
     } finally {
       setLoading(false);
@@ -62,7 +62,7 @@ export default function FeatureFlagsPage() {
     try {
       setLoading(true);
       await axios.put(endpoints.agentflow.featureFlags.update(tenantId, flagKey), {
-        description: `Managed from UI for ${flagKey}`,
+        description: `Administrado desde la interfaz para ${flagKey}`,
         isEnabled,
         targeting: {
           agentIds: agentId ? [agentId] : [],
@@ -71,9 +71,9 @@ export default function FeatureFlagsPage() {
         },
       });
       await checkEnabled();
-      setMessage(`Flag ${flagKey} updated`);
+      setMessage(`Funcion actualizada: ${flagKey}`);
     } catch (e: any) {
-      setMessage(e?.message ?? `Failed to update ${flagKey}`);
+      setMessage(e?.message ?? `No se pudo actualizar ${flagKey}`);
     } finally {
       setLoading(false);
     }
@@ -82,14 +82,14 @@ export default function FeatureFlagsPage() {
   return (
     <>
       <Helmet>
-        <title>Feature Flags | {CONFIG.appName}</title>
+        <title>Funciones beta | {CONFIG.appName}</title>
       </Helmet>
 
       <DashboardContent maxWidth="xl">
         <Box sx={{ mb: 4 }}>
-          <Typography variant="h4">Feature Flags</Typography>
+          <Typography variant="h4">Funciones beta</Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-            Evaluate and manage experimentation flags by tenant context.
+            Evalua y administra funciones experimentales segun el contexto del tenant, agente y segmento.
           </Typography>
         </Box>
 
@@ -97,25 +97,27 @@ export default function FeatureFlagsPage() {
 
         <Card sx={{ mb: 3 }}>
           <CardContent>
-            <Typography variant="h6" sx={{ mb: 2 }}>Context</Typography>
+            <Typography variant="h6" sx={{ mb: 2 }}>Contexto de evaluacion</Typography>
             <Grid container spacing={2}>
               <Grid item xs={12} md={4}>
-                <TextField fullWidth label="Agent ID (optional)" value={agentId} onChange={(e) => setAgentId(e.target.value)} />
+                <TextField fullWidth label="Agent ID (opcional)" value={agentId} onChange={(e) => setAgentId(e.target.value)} />
               </Grid>
               <Grid item xs={12} md={4}>
                 <TextField fullWidth label="User ID" value={userId} onChange={(e) => setUserId(e.target.value)} />
               </Grid>
               <Grid item xs={12} md={4}>
-                <TextField fullWidth label="Segments (comma separated)" value={segments} onChange={(e) => setSegments(e.target.value)} />
+                <TextField fullWidth label="Segmentos (separados por coma)" value={segments} onChange={(e) => setSegments(e.target.value)} />
               </Grid>
             </Grid>
-            <Button sx={{ mt: 2 }} variant="contained" onClick={checkEnabled} disabled={loading}>Check Enabled Flags</Button>
+            <Button sx={{ mt: 2 }} variant="contained" onClick={checkEnabled} disabled={loading}>
+              Evaluar funciones activas
+            </Button>
           </CardContent>
         </Card>
 
         <Card>
           <CardContent>
-            <Typography variant="h6" sx={{ mb: 2 }}>Common Flags</Typography>
+            <Typography variant="h6" sx={{ mb: 2 }}>Funciones frecuentes</Typography>
             <Stack spacing={2}>
               {COMMON_FLAGS.map((flag) => {
                 const isEnabled = enabledFlags.includes(flag);
@@ -123,7 +125,7 @@ export default function FeatureFlagsPage() {
                   <Box key={flag} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 1.5, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
                     <Stack direction="row" spacing={1} alignItems="center">
                       <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>{flag}</Typography>
-                      <Chip size="small" label={isEnabled ? 'Enabled' : 'Disabled'} color={isEnabled ? 'success' : 'default'} />
+                      <Chip size="small" label={isEnabled ? 'Activa' : 'Inactiva'} color={isEnabled ? 'success' : 'default'} />
                     </Stack>
                     <Switch checked={isEnabled} onChange={(_, checked) => setFlag(flag, checked)} disabled={loading} />
                   </Box>

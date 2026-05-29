@@ -229,7 +229,7 @@ export default function WorkflowsPage() {
     ...(designType === 'tool'
       ? activities
           .filter((a) => !TOOL_ACTIVITY_TYPES.includes(a.type as any))
-          .map((a) => `El nodo ${a.id || a.type} no esta permitido en modo Tool tecnica.`)
+          .map((a) => `El nodo ${a.id || a.type} no esta permitido en modo herramienta tecnica.`)
       : []),
   ];
   const publishedCount = scopedWorkflows.filter((wf) => wf.status === 'Published').length;
@@ -445,7 +445,7 @@ export default function WorkflowsPage() {
   return (
     <>
       <Helmet>
-        <title>Flujos automatizados | {CONFIG.appName}</title>
+        <title>Automatizaciones | {CONFIG.appName}</title>
       </Helmet>
 
       <DashboardContent maxWidth="xl">
@@ -459,22 +459,22 @@ export default function WorkflowsPage() {
         <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ md: 'center' }} spacing={1.5} sx={{ mb: 2 }}>
           <Box>
             <Stack direction="row" spacing={0.75} alignItems="center">
-              <Typography variant="h4">Flujos automatizados</Typography>
+              <Typography variant="h4">Automatizaciones</Typography>
               <TermHelp title="Flujo automatizado es la secuencia de pasos que el sistema ejecuta para atender un caso de principio a fin." />
             </Stack>
             <Typography variant="body2" color="text.secondary">
-              Diseña el recorrido completo del caso: entrada del cliente, validaciones, respuestas, pagos, revisión humana y cierre.
+              Disena el recorrido completo del caso: entrada del cliente, validaciones, respuestas, pagos, revision humana y cierre.
             </Typography>
             <Stack direction="row" spacing={1} sx={{ mt: 1 }} alignItems="center">
-              <Chip size="small" color="info" label={`Runtime ${selectedRuntimeKind}`} />
+              <Chip size="small" color="info" label={`Modalidad ${selectedRuntimeKind}`} />
               <ToggleButtonGroup
                 size="small"
                 value={selectedRuntimeKind}
                 exclusive
                 onChange={(_, value) => value && setSelectedRuntimeKind(value)}
               >
-                <ToggleButton value="Text">Text</ToggleButton>
-                <ToggleButton value="Voice">Voice</ToggleButton>
+                <ToggleButton value="Text">Texto</ToggleButton>
+                <ToggleButton value="Voice">Voz</ToggleButton>
                 <ToggleButton value="MultimodalRealtime">Multimodal</ToggleButton>
               </ToggleButtonGroup>
             </Stack>
@@ -534,7 +534,7 @@ export default function WorkflowsPage() {
                     Crear desde cero
                   </Button>
                   <Button variant="outlined" onClick={handleCreateDefault}>
-                    Base WhatsApp
+                    Base de WhatsApp
                   </Button>
                   {quickstarts.slice(0, 3).map((tpl) => (
                     <Button key={tpl.id} variant="outlined" onClick={() => handleUseTemplate(tpl)}>
@@ -651,7 +651,7 @@ export default function WorkflowsPage() {
                 onChange={(_, v) => { if (v) setDesignType(v); }}
               >
                 <ToggleButton value="workflow">Flujo</ToggleButton>
-                <ToggleButton value="tool">Tool</ToggleButton>
+                <ToggleButton value="tool">Herramienta</ToggleButton>
               </ToggleButtonGroup>
               <ToggleButtonGroup
                 value={editorMode}
@@ -710,7 +710,7 @@ export default function WorkflowsPage() {
               <Card variant="outlined" sx={{ p: 1.5, bgcolor: 'background.neutral' }}>
                 <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} flexWrap="wrap">
                     <Button variant="contained" onClick={handleCreateBlank}>Desde cero</Button>
-                    <Button variant="outlined" onClick={handleCreateDefault}>Base WhatsApp</Button>
+                    <Button variant="outlined" onClick={handleCreateDefault}>Base de WhatsApp</Button>
                   {quickstarts.map((tpl) => (
                     <Button key={tpl.id} variant="outlined" onClick={() => handleUseTemplate(tpl)}>{tpl.name}</Button>
                   ))}
@@ -780,7 +780,7 @@ export default function WorkflowsPage() {
                 <Button variant="contained" startIcon={<Iconify icon="mingcute:add-line" />} onClick={handleCreateBlank}>
                   Crear desde cero
                 </Button>
-                <Button variant="outlined" onClick={handleCreateDefault}>Base WhatsApp</Button>
+                <Button variant="outlined" onClick={handleCreateDefault}>Base de WhatsApp</Button>
               </Stack>
             </Stack>
 
@@ -836,7 +836,7 @@ export default function WorkflowsPage() {
                     <Iconify icon="mdi:graph-outline" width={42} sx={{ color: 'primary.main', mb: 1 }} />
                     <Typography variant="h6">{scopedWorkflows.length === 0 ? 'No hay flujos creados' : 'Sin resultados'}</Typography>
                     <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                      {scopedWorkflows.length === 0 ? 'Crea tu primer flujo automatizado.' : 'Cambia la búsqueda.'}
+                      {scopedWorkflows.length === 0 ? 'Crea tu primera automatizacion.' : 'Cambia la búsqueda.'}
                     </Typography>
                     <Button variant="contained" onClick={handleCreateBlank}>Crear flujo</Button>
                   </Card>
@@ -852,7 +852,7 @@ export default function WorkflowsPage() {
               <TextField
                 size="small"
                 select
-                label="Ventana metrica"
+                label="Ventana de metricas"
                 value={metricsWindow}
                 onChange={(event) => setMetricsWindow(event.target.value as '24h' | '7d' | '30d')}
                 sx={{ minWidth: 180 }}
@@ -864,9 +864,9 @@ export default function WorkflowsPage() {
             </Stack>
             <Grid container spacing={2}>
               {[
-                { label: 'Flujos', value: scopedWorkflows.length, helper: `${publishedCount} publicados`, icon: 'mdi:source-branch' },
+                { label: 'Automatizaciones', value: scopedWorkflows.length, helper: `${publishedCount} publicados`, icon: 'mdi:source-branch' },
                 { label: 'Ejecuciones', value: executions.length, helper: `${failedExecutions} fallidas`, icon: 'mdi:play-circle-outline' },
-                { label: 'Nodos activos', value: activities.length, helper: hasSelection ? 'en diseno' : 'sin flujo activo', icon: 'mdi:graph-outline' },
+                { label: 'Nodos activos', value: activities.length, helper: hasSelection ? 'en configuracion' : 'sin flujo activo', icon: 'mdi:graph-outline' },
                 { label: 'Asistentes en uso', value: availableAgents.filter((a) => !a.isSystemAgent).length, helper: 'asistentes personalizados', icon: 'mdi:robot-outline' },
               ].map((stat) => (
                 <Grid item xs={6} md={3} key={stat.label}>
@@ -906,6 +906,9 @@ export default function WorkflowsPage() {
     </>
   );
 }
+
+
+
 
 
 

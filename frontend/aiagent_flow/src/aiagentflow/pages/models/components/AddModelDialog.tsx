@@ -1,13 +1,17 @@
-import { useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 
 import Box from '@mui/material/Box';
 import Grid from '@mui/material/Grid';
+import Alert from '@mui/material/Alert';
 import Button from '@mui/material/Button';
 import Dialog from '@mui/material/Dialog';
+import Select from '@mui/material/Select';
 import MenuItem from '@mui/material/MenuItem';
 import TextField from '@mui/material/TextField';
+import InputLabel from '@mui/material/InputLabel';
 import Typography from '@mui/material/Typography';
 import LoadingButton from '@mui/lab/LoadingButton';
+import FormControl from '@mui/material/FormControl';
 import DialogTitle from '@mui/material/DialogTitle';
 import DialogActions from '@mui/material/DialogActions';
 import DialogContent from '@mui/material/DialogContent';
@@ -16,70 +20,157 @@ import axios from 'src/lib/axios';
 
 import { Iconify } from 'src/components/iconify';
 
-// ----------------------------------------------------------------------
+interface ModelFormData {
+  modelId: string;
+  displayName: string;
+  providerId: string;
+  tier: string;
+  costPer1KTokens: number;
+  maxContextTokens: number;
+  providerProfileId: string;
+  apiKey: string;
+}
+
+interface AuthProfileOption {
+  id: string;
+  provider: string;
+  profileId: string;
+  secretMasked?: string;
+}
+
+interface ModelDraft {
+  modelId: string;
+  displayName: string;
+  providerId: string;
+  tier: string;
+  costPer1KTokens: number;
+  maxContextTokens: number;
+  providerProfileId?: string;
+}
 
 interface AddModelDialogProps {
   open: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  tenantId: string;
+  initialModel?: ModelDraft | null;
 }
 
-export function AddModelDialog({ open, onClose, onSuccess }: AddModelDialogProps) {
-  const [loading, setLoading] = useState(false);
-  const [formData, setFormData] = useState({
-    modelId: '',
-    displayName: '',
-    providerId: 'OpenAI',
-    tier: 'Primary',
-    costPer1KTokens: 0.0,
-    maxContextTokens: 128000,
-    apiKey: '',
-  });
+const providerOptions = ['OpenAI', 'Anthropic', 'Gemini', 'OpenRouter', 'Groq', 'Deepgram', '11Labs'];
 
-  const handleChange = (field: string, value: any) => {
+const emptyForm: ModelFormData = {
+  modelId: '',
+  displayName: '',
+  providerId: 'OpenAI',
+  tier: 'Primary',
+  costPer1KTokens: 0,
+  maxContextTokens: 128000,
+  providerProfileId: '',
+  apiKey: '',
+};
+
+export function AddModelDialog({
+  open,
+  onClose,
+  onSuccess,
+  tenantId,
+  initialModel,
+}: AddModelDialogProps) {
+  const [loading, setLoading] = useState(false);
+  const [profiles, setProfiles] = useState<AuthProfileOption[]>([]);
+  const [profilesError, setProfilesError] = useState<string | null>(null);
+  const [formData, setFormData] = useState<ModelFormData>(emptyForm);
+
+  useEffect(() => {
+    if (!open) return;
+
+    setFormData(
+      initialModel
+        ? {
+            modelId: initialModel.modelId,
+            displayName: initialModel.displayName,
+            providerId: initialModel.providerId || 'OpenAI',
+            tier: initialModel.tier || 'Primary',
+            costPer1KTokens: Number(initialModel.costPer1KTokens ?? 0),
+            maxContextTokens: Number(initialModel.maxContextTokens ?? 128000),
+            providerProfileId: initialModel.providerProfileId ?? '',
+            apiKey: '',
+          }
+        : emptyForm
+    );
+  }, [initialModel, open]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const loadProfiles = async () => {
+      try {
+        setProfilesError(null);
+        const res = await axios.get(`/api/v1/tenants/${tenantId}/auth-profiles`);
+        setProfiles(Array.isArray(res.data) ? res.data : []);
+      } catch (error: any) {
+        setProfiles([]);
+        setProfilesError(error?.message || 'No se pudieron cargar los perfiles de proveedor.');
+      }
+    };
+
+    void loadProfiles();
+  }, [open, tenantId]);
+
+  const filteredProfiles = useMemo(
+    () =>
+      profiles.filter(
+        (profile) => profile.provider?.toLowerCase() === formData.providerId.toLowerCase()
+      ),
+    [formData.providerId, profiles]
+  );
+
+  const handleChange = <K extends keyof ModelFormData>(field: K, value: ModelFormData[K]) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
   const handleSubmit = async () => {
     setLoading(true);
     try {
-      // Este endpoint probablemente no exista aún en el backend
-      // Tendrás que implementarlo o usar un endpoint existente
-      await axios.post('/api/v1/model-routing/models', formData);
-      
+      await axios.post('/api/v1/model-routing/models', {
+        modelId: formData.modelId.trim(),
+        displayName: formData.displayName.trim(),
+        providerId: formData.providerId,
+        tier: formData.tier,
+        costPer1KTokens: Number(formData.costPer1KTokens),
+        maxContextTokens: Number(formData.maxContextTokens),
+        providerProfileId: formData.providerProfileId || undefined,
+        apiKey: formData.apiKey || undefined,
+      });
+
       onSuccess();
       handleClose();
     } catch (error: any) {
-      console.error('Failed to add model:', error);
-      if (error?.status === 404 || error?.status === 405) {
-        alert('Model creation API is not available yet in this backend build.');
-      } else {
-        alert(error?.message || 'Failed to add model. Check console for details.');
-      }
+      alert(error?.message || 'No se pudo guardar el modelo.');
     } finally {
       setLoading(false);
     }
   };
 
   const handleClose = () => {
-    setFormData({
-      modelId: '',
-      displayName: '',
-      providerId: 'OpenAI',
-      tier: 'Primary',
-      costPer1KTokens: 0.0,
-      maxContextTokens: 128000,
-      apiKey: '',
-    });
+    setFormData(emptyForm);
+    setProfilesError(null);
     onClose();
   };
+
+  const isEdit = Boolean(initialModel);
+  const canSubmit = Boolean(
+    formData.modelId &&
+      formData.displayName &&
+      (isEdit || formData.providerProfileId || formData.apiKey)
+  );
 
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
       <DialogTitle>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Iconify icon="mingcute:add-line" width={24} />
-          Add New Model
+          <Iconify icon={isEdit ? 'solar:pen-outline' : 'mingcute:add-line'} width={24} />
+          {isEdit ? 'Editar modelo' : 'Agregar nuevo modelo'}
         </Box>
       </DialogTitle>
 
@@ -92,9 +183,10 @@ export function AddModelDialog({ open, onClose, onSuccess }: AddModelDialogProps
                 label="Model ID"
                 value={formData.modelId}
                 onChange={(e) => handleChange('modelId', e.target.value)}
-                placeholder="e.g., gpt-4-turbo"
+                placeholder="gpt-4o-mini"
                 required
-                helperText="The technical identifier for the model"
+                disabled={isEdit}
+                helperText="Identificador tecnico del modelo."
               />
             </Grid>
 
@@ -104,9 +196,9 @@ export function AddModelDialog({ open, onClose, onSuccess }: AddModelDialogProps
                 label="Display Name"
                 value={formData.displayName}
                 onChange={(e) => handleChange('displayName', e.target.value)}
-                placeholder="e.g., GPT-4 Turbo"
+                placeholder="GPT-4o mini"
                 required
-                helperText="Human-readable name"
+                helperText="Nombre visible en la plataforma."
               />
             </Grid>
 
@@ -114,11 +206,18 @@ export function AddModelDialog({ open, onClose, onSuccess }: AddModelDialogProps
               <TextField
                 select
                 fullWidth
-                label="Provider"
+                label="Proveedor"
                 value={formData.providerId}
-                onChange={(e) => handleChange('providerId', e.target.value)}
+                onChange={(e) => {
+                  handleChange('providerId', e.target.value);
+                  handleChange('providerProfileId', '');
+                }}
               >
-                <MenuItem value="OpenAI">OpenAI</MenuItem>
+                {providerOptions.map((provider) => (
+                  <MenuItem key={provider} value={provider}>
+                    {provider}
+                  </MenuItem>
+                ))}
               </TextField>
             </Grid>
 
@@ -126,7 +225,7 @@ export function AddModelDialog({ open, onClose, onSuccess }: AddModelDialogProps
               <TextField
                 select
                 fullWidth
-                label="Tier"
+                label="Prioridad"
                 value={formData.tier}
                 onChange={(e) => handleChange('tier', e.target.value)}
               >
@@ -140,11 +239,11 @@ export function AddModelDialog({ open, onClose, onSuccess }: AddModelDialogProps
               <TextField
                 fullWidth
                 type="number"
-                label="Cost per 1K Tokens"
+                label="Costo por 1K tokens"
                 value={formData.costPer1KTokens}
-                onChange={(e) => handleChange('costPer1KTokens', parseFloat(e.target.value))}
+                onChange={(e) => handleChange('costPer1KTokens', Number(e.target.value))}
                 inputProps={{ step: 0.001, min: 0 }}
-                helperText="USD cost per 1000 tokens"
+                helperText="Costo estimado por 1000 tokens."
               />
             </Grid>
 
@@ -152,29 +251,56 @@ export function AddModelDialog({ open, onClose, onSuccess }: AddModelDialogProps
               <TextField
                 fullWidth
                 type="number"
-                label="Max Context Tokens"
+                label="Contexto maximo"
                 value={formData.maxContextTokens}
-                onChange={(e) => handleChange('maxContextTokens', parseInt(e.target.value, 10))}
-                inputProps={{ step: 1000, min: 1000 }}
-                helperText="Maximum context window size"
+                onChange={(e) => handleChange('maxContextTokens', Number(e.target.value))}
+                inputProps={{ step: 1000, min: 0 }}
+                helperText="Ventana maxima de contexto."
               />
             </Grid>
+
+            <Grid item xs={12}>
+              <FormControl fullWidth>
+                <InputLabel>Provider Auth Profile</InputLabel>
+                <Select
+                  value={formData.providerProfileId}
+                  label="Provider Auth Profile"
+                  onChange={(e) => handleChange('providerProfileId', String(e.target.value))}
+                >
+                  <MenuItem value="">
+                    <em>Seleccionar perfil existente</em>
+                  </MenuItem>
+                  {filteredProfiles.map((profile) => (
+                    <MenuItem key={profile.id} value={profile.profileId}>
+                      {profile.profileId}
+                      {profile.secretMasked ? ` · ${profile.secretMasked}` : ''}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+
+            {profilesError && (
+              <Grid item xs={12}>
+                <Alert severity="warning">{profilesError}</Alert>
+              </Grid>
+            )}
 
             <Grid item xs={12}>
               <TextField
                 fullWidth
                 type="password"
-                label="API Key"
+                label="API Key manual"
                 value={formData.apiKey}
                 onChange={(e) => handleChange('apiKey', e.target.value)}
                 placeholder="sk-..."
-                helperText="Required for the runtime to use this model. It will be saved as a linked auth profile."
+                helperText="Opcional. Si no eliges un perfil existente, se crea y vincula uno nuevo con esta clave."
               />
             </Grid>
 
             <Grid item xs={12}>
               <Typography variant="caption" color="text.secondary">
-                The agent runtime uses the selected model ID and its linked auth profile from this catalog.
+                El modelo puede usar un perfil existente del mismo proveedor o crear uno nuevo con la API key manual.
               </Typography>
             </Grid>
           </Grid>
@@ -183,16 +309,16 @@ export function AddModelDialog({ open, onClose, onSuccess }: AddModelDialogProps
 
       <DialogActions>
         <Button onClick={handleClose} disabled={loading}>
-          Cancel
+          Cancelar
         </Button>
         <LoadingButton
           variant="contained"
           onClick={handleSubmit}
           loading={loading}
-          disabled={!formData.modelId || !formData.displayName || !formData.apiKey}
-          startIcon={<Iconify icon="mingcute:add-line" />}
+          disabled={!canSubmit}
+          startIcon={<Iconify icon={isEdit ? 'solar:pen-outline' : 'mingcute:add-line'} />}
         >
-          Add Model
+          {isEdit ? 'Guardar cambios' : 'Agregar modelo'}
         </LoadingButton>
       </DialogActions>
     </Dialog>

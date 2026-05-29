@@ -141,18 +141,18 @@ export default function ToolsPage() {
   return (
     <>
       <Helmet>
-        <title>Herramientas e integraciones | {CONFIG.appName}</title>
+        <title>Herramientas y conexiones | {CONFIG.appName}</title>
       </Helmet>
 
       <DashboardContent maxWidth="xl">
         <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Box>
             <Stack direction="row" spacing={1} alignItems="center">
-              <Typography variant="h4">Herramientas e integraciones</Typography>
+              <Typography variant="h4">Herramientas y conexiones</Typography>
               <TermHelp title="Aqui administras herramientas disponibles para los asistentes y conexiones con sistemas externos." />
             </Stack>
             <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-              Administra capacidades disponibles para asistentes, flujos automatizados e integraciones.
+              Administra capacidades disponibles para asistentes, automatizaciones y conexiones externas.
             </Typography>
           </Box>
           <Button variant="outlined" onClick={fetchTools}>Actualizar</Button>
@@ -160,9 +160,9 @@ export default function ToolsPage() {
 
         <Grid container spacing={2} sx={{ mb: 3 }}>
           {[
-            ['Integraciones', 'Instala nuevas capacidades', paths.dashboard.marketplace, 'mdi:storefront-outline'],
+            ['Integraciones', 'Instala nuevas conexiones', paths.dashboard.marketplace, 'mdi:storefront-outline'],
             ['Canales', 'Conecta WhatsApp, web chat y APIs', paths.dashboard.system.channels, 'mdi:message-processing-outline'],
-            ['Herramientas externas', 'Expone herramientas externas para asistentes', paths.dashboard.system.mcp, 'mdi:connection'],
+            ['Conectores avanzados', 'Habilita conexiones avanzadas para asistentes', paths.dashboard.system.mcp, 'mdi:connection'],
           ].map(([title, subtitle, href, icon]) => (
             <Grid item xs={12} md={4} key={title}>
               <Card
@@ -239,3 +239,4 @@ export default function ToolsPage() {
     </>
   );
 }
+

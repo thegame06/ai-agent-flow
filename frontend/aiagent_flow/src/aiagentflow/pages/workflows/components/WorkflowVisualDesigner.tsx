@@ -178,10 +178,10 @@ const dockItems = [
     types: ['files.read', 'drive.lookup', 'storage.write'],
   },
   {
-    label: 'MCP',
+    label: 'Conectores avanzados',
     group: 'Datos',
     icon: 'mdi:connection',
-    helper: 'Usa conectores MCP disponibles en la plataforma.',
+    helper: 'Usa conexiones avanzadas disponibles en la plataforma.',
     types: ['mcp.tool_call'],
   },
   {
@@ -816,7 +816,7 @@ export function WorkflowVisualDesigner({
       },
       API: { label: 'Integracion', helper: 'Se habilita por tools HTTP o conectores externos.' },
       Archivos: { label: 'Integracion', helper: 'Usa tools de Excel, Drive, documentos o storage ya registradas.' },
-      MCP: { label: 'Integracion', helper: 'Usa conectores MCP disponibles en plataforma.' },
+      'Conectores avanzados': { label: 'Integracion', helper: 'Usa conexiones avanzadas disponibles en plataforma.' },
       Logica: { label: 'Base', helper: 'Reglas simples para usuarios no tecnicos.' },
       Humano: { label: 'Listo', helper: 'Escala a una cola o equipo humano.' },
       Pagos: { label: 'Listo', helper: 'Usa el modulo transaccional existente.' },
@@ -1010,7 +1010,7 @@ export function WorkflowVisualDesigner({
                 <Typography variant="subtitle1">Construye tu flujo</Typography>
                 <Typography variant="body2" color="text.secondary">
                   Empieza con un Agente de IA para entender la intencion y luego agrega acciones como WhatsApp,
-                  API, MCP, KYC o atencion humana.
+                  API, conectores avanzados, KYC o atencion humana.
                 </Typography>
               </Box>
               <Stack
@@ -1401,7 +1401,7 @@ export function WorkflowVisualDesigner({
                     label="Agente publicado"
                     select
                     value={selected.config?.agentId ?? selected.aiAgent?.agentId ?? ''}
-                    helperText="El modelo, tools, memoria y guardrails viven en Agent Studio."
+                    helperText="El modelo, las herramientas, la memoria y las reglas viven en Agent Studio."
                     onChange={(e) => selectPublishedAgent(e.target.value)}
                     size="small"
                   >
@@ -1797,10 +1797,10 @@ export function WorkflowVisualDesigner({
                   {selected.type === 'mcp.tool_call' && (
                     <Stack spacing={1}>
                       <TextField
-                        label="Servidor MCP"
+                        label="Servidor avanzado"
                         size="small"
                         value={selected.config?.server ?? ''}
-                        helperText="Nombre del servidor MCP habilitado en Configuracion."
+                        helperText="Nombre del servidor avanzado habilitado en configuracion."
                         onChange={(e) => onUpdateActivityConfig(selectedIndex, 'server', e.target.value)}
                       />
                       <TextField
@@ -2043,7 +2043,7 @@ export function WorkflowVisualDesigner({
                         </Typography>
                         <Stack direction="row" spacing={0.8} flexWrap="wrap" sx={{ mt: 0.8 }}>
                           <Chip size="small" label={`${selectedAgent.stepsCount ?? 0} pasos internos`} />
-                          <Chip size="small" label={`${selectedAgent.toolsCount ?? 0} tools autorizadas`} />
+                          <Chip size="small" label={`${selectedAgent.toolsCount ?? 0} herramientas autorizadas`} />
                           {channelAgentIds.has(selectedAgent.id) && <Chip size="small" color="success" label="Disponible en canal" />}
                           {selectedAgent.provider && <Chip size="small" label={selectedAgent.provider} />}
                           {selectedAgent.primaryModel && <Chip size="small" label={selectedAgent.primaryModel} />}
@@ -2305,3 +2305,4 @@ export function WorkflowVisualDesigner({
     </Card>
   );
 }
+

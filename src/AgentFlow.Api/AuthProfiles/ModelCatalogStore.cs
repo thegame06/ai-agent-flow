@@ -114,9 +114,6 @@ public static class ConfiguredModelProviderFactory
         string providerId,
         IAuthProfilesStore authProfiles)
     {
-        if (!string.Equals(providerId, "OpenAI", StringComparison.OrdinalIgnoreCase))
-            return false;
-
         var linkedProfileId = authProfiles.GetModelProfileId(tenantId, modelId);
         if (string.IsNullOrWhiteSpace(linkedProfileId))
             return false;

@@ -8,13 +8,20 @@ import { CONFIG } from 'src/global-config';
 import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
 
 import { RuntimeEntityCards } from './components/RuntimeEntityCards';
-import { RuntimeModelProfilesPanel } from './components/RuntimeModelProfilesPanel';
 import { RuntimeWorkspaceShell } from './components/RuntimeWorkspaceShell';
+import { RuntimeModelProfilesPanel } from './components/RuntimeModelProfilesPanel';
 
-const runtimeMap: Record<string, { label: 'Text' | 'Voice' | 'MultimodalRealtime'; slug: string }> = {
-  text: { label: 'Text', slug: 'text' },
-  voice: { label: 'Voice', slug: 'voice' },
-  multimodal: { label: 'MultimodalRealtime', slug: 'multimodal' },
+const runtimeMap: Record<
+  string,
+  { label: 'Text' | 'Voice' | 'MultimodalRealtime'; slug: string; uiLabel: string }
+> = {
+  text: { label: 'Text', slug: 'text', uiLabel: 'Texto' },
+  voice: { label: 'Voice', slug: 'voice', uiLabel: 'Voz' },
+  multimodal: {
+    label: 'MultimodalRealtime',
+    slug: 'multimodal',
+    uiLabel: 'Multimodal',
+  },
 };
 
 export default function RuntimeStudioPage() {
@@ -23,56 +30,74 @@ export default function RuntimeStudioPage() {
   const { runtimeKind = 'text' } = useParams();
   const storedRuntime =
     typeof window !== 'undefined' ? localStorage.getItem(runtimeStorageKey)?.toLowerCase() : null;
-  const runtime = runtimeMap[(runtimeKind || storedRuntime || 'text').toLowerCase()] ?? runtimeMap.text;
+  const runtime =
+    runtimeMap[(runtimeKind || storedRuntime || 'text').toLowerCase()] ?? runtimeMap.text;
+
   useEffect(() => {
     if (typeof window === 'undefined') return;
     localStorage.setItem(runtimeStorageKey, runtime.label);
   }, [runtime.label, runtimeStorageKey]);
+
   const runtimeQuery = `runtimeKind=${encodeURIComponent(runtime.label)}`;
 
   const items = useMemo(
     () => [
       {
         title: 'Asistentes',
-        description: 'Gestiona asistentes del runtime seleccionado.',
+        description: 'Gestiona asistentes para esta modalidad.',
         href: `${paths.dashboard.agents}?${runtimeQuery}`,
         icon: 'mdi:robot-outline',
       },
       {
-        title: 'Workflows de negocio',
-        description: 'Diseña flujos principales para este runtime.',
+        title: 'Automatizaciones principales',
+        description: 'Disena los flujos principales para esta modalidad.',
         href: `${paths.dashboard.workflows}?${runtimeQuery}`,
         icon: 'mdi:source-branch',
       },
       {
-        title: 'Subflujos',
-        description: 'Crea subflujos reutilizables y especializados por modalidad.',
+        title: 'Subflujos reutilizables',
+        description: 'Crea piezas especializadas para reutilizar en otras automatizaciones.',
         href: `${paths.dashboard.automationNew}?wizard=agentSubflow&${runtimeQuery}`,
         icon: 'mdi:vector-polyline',
       },
       {
-        title: 'Test Studio',
-        description: 'Prueba sesiones por runtime con timeline y trazabilidad.',
+        title: 'Centro de pruebas',
+        description: 'Valida sesiones, mensajes y eventos antes de salir a produccion.',
         href: paths.dashboard.runtimeTestStudio(runtime.slug as 'text' | 'voice' | 'multimodal'),
         icon: 'mdi:test-tube',
       },
     ],
-    [runtimeQuery]
+    [runtime.slug, runtimeQuery]
   );
 
   return (
     <>
       <Helmet>
-        <title>Runtime Studio | {CONFIG.appName}</title>
+        <title>Runtime avanzado | {CONFIG.appName}</title>
       </Helmet>
       <RuntimeWorkspaceShell
-        title={`Runtime Studio · ${runtime.label}`}
-        description="Espacio por modalidad para asistentes, workflows de negocio y subflujos reutilizables."
+        title={`Runtime avanzado � ${runtime.uiLabel}`}
+        description="Espacio por modalidad para asistentes, automatizaciones reutilizables y pruebas operativas."
         runtimeKind={runtime.label}
         actions={[
-          { label: 'Text', href: paths.dashboard.runtimeStudio('text'), icon: 'mdi:form-textbox', variant: runtime.slug === 'text' ? 'contained' : 'outlined' },
-          { label: 'Voice', href: paths.dashboard.runtimeStudio('voice'), icon: 'mdi:phone-in-talk-outline', variant: runtime.slug === 'voice' ? 'contained' : 'outlined' },
-          { label: 'Multimodal', href: paths.dashboard.runtimeStudio('multimodal'), icon: 'mdi:video-wireless-outline', variant: runtime.slug === 'multimodal' ? 'contained' : 'outlined' },
+          {
+            label: 'Texto',
+            href: paths.dashboard.runtimeStudio('text'),
+            icon: 'mdi:form-textbox',
+            variant: runtime.slug === 'text' ? 'contained' : 'outlined',
+          },
+          {
+            label: 'Voz',
+            href: paths.dashboard.runtimeStudio('voice'),
+            icon: 'mdi:phone-in-talk-outline',
+            variant: runtime.slug === 'voice' ? 'contained' : 'outlined',
+          },
+          {
+            label: 'Multimodal',
+            href: paths.dashboard.runtimeStudio('multimodal'),
+            icon: 'mdi:video-wireless-outline',
+            variant: runtime.slug === 'multimodal' ? 'contained' : 'outlined',
+          },
         ]}
       >
         <RuntimeEntityCards items={items} />

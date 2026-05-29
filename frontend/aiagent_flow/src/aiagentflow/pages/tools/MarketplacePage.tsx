@@ -81,8 +81,8 @@ const CAPABILITY_LABELS: Record<string, string> = {
   'files.read': 'Leer archivos',
   'drive.lookup': 'Buscar en Drive',
   'storage.write': 'Guardar documentos',
-  'mcp.tool_call': 'Usar herramientas MCP',
-  'tool discovery': 'Descubrir tools',
+  'mcp.tool_call': 'Usar conectores avanzados',
+  'tool discovery': 'Descubrir herramientas',
 };
 
 const NODE_LABELS: Record<string, string> = {
@@ -92,7 +92,7 @@ const NODE_LABELS: Record<string, string> = {
   'files.read': 'Leer archivo',
   'drive.lookup': 'Buscar en Drive',
   'storage.write': 'Guardar archivo',
-  'mcp.tool_call': 'Tool MCP',
+  'mcp.tool_call': 'Conector avanzado',
   'http.request': 'Consultar API',
   'webhook.call': 'Webhook',
 };
@@ -133,11 +133,11 @@ const QUICK_CONNECTIONS = [
   },
   {
     id: 'mcp',
-    title: 'MCP Tools',
+    title: 'Conectores avanzados',
     type: 'Mcp',
     connectorId: 'mcp',
     icon: 'mdi:connection',
-    description: 'Publica servidores MCP para agentes y Workflow Studio.',
+    description: 'Publica conexiones avanzadas para asistentes y automatizaciones.',
     config: { server: 'local-test', runtime: 'MicrosoftAgentFramework' },
     secretHint: '{"token":"..."}',
     capabilities: ['mcp.tool_call', 'tool discovery'],
@@ -186,7 +186,7 @@ export default function MarketplacePage() {
       setConnections(connectionsRes.data ?? []);
       setResources(resourcesRes.data ?? []);
     } catch (err: any) {
-      setError(err?.message || 'Error cargando marketplace');
+      setError(err?.message || 'No se pudo cargar el marketplace de conectores');
     }
   }, [query, tenantId]);
 
@@ -279,7 +279,7 @@ export default function MarketplacePage() {
               fullWidth
             />
             <TextField
-              label="Status callback URL"
+              label="URL de callback de estado"
               value={readConfigValue('statusCallbackUrl')}
               onChange={(e) => updateConfigValue('statusCallbackUrl', e.target.value)}
               fullWidth
@@ -387,7 +387,7 @@ export default function MarketplacePage() {
       return (
         <Card variant="outlined" sx={{ p: 2, bgcolor: 'background.neutral' }}>
           <Stack spacing={1.5}>
-            <Typography variant="subtitle2">Servidor MCP</Typography>
+            <Typography variant="subtitle2">Servidor avanzado</Typography>
             <TextField
               label="Servidor"
               value={readConfigValue('server')}
@@ -508,7 +508,7 @@ export default function MarketplacePage() {
     }
 
     setOpenConnection(false);
-    setHealthMessage('Integracion guardada. Ya puede usarse desde Canales, Agentes y Workflow Studio.');
+    setHealthMessage('Integracion guardada. Ya puede usarse desde canales, asistentes y automatizaciones.');
     await load();
   };
 
@@ -558,7 +558,7 @@ export default function MarketplacePage() {
   return (
     <>
       <Helmet>
-        <title>Marketplace de conectores | {CONFIG.appName}</title>
+        <title>Marketplace de conexiones | {CONFIG.appName}</title>
       </Helmet>
       <DashboardContent maxWidth="xl">
         <Stack spacing={2.5} sx={{ mb: 3 }}>
@@ -589,14 +589,14 @@ export default function MarketplacePage() {
                   <Typography variant="overline" color="text.secondary">
                     Integraciones
                   </Typography>
-                  <Typography variant="h3">Marketplace de conectores</Typography>
+                  <Typography variant="h3">Marketplace de conexiones</Typography>
                   <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                    Instala y configura capacidades para workflows, agentes, canales y herramientas externas.
+                    Instala y configura capacidades para automatizaciones, asistentes, canales y conexiones externas.
                   </Typography>
                 </Box>
               </Stack>
               <Button variant="contained" href={paths.dashboard.workflows}>
-                Usar en Workflow Studio
+                Usar en automatizaciones
               </Button>
             </Stack>
           </Paper>
@@ -627,7 +627,7 @@ export default function MarketplacePage() {
             <TextField
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Buscar por nombre, vendor o capacidad"
+              placeholder="Buscar por nombre, proveedor o capacidad"
               size="small"
               sx={{ maxWidth: 420 }}
               fullWidth
@@ -646,7 +646,7 @@ export default function MarketplacePage() {
         <Card variant="outlined" sx={{ p: 2, mb: 3 }}>
           <Stack spacing={1.5}>
             <Box>
-              <Typography variant="h6">Integraciones listas para Workflow Studio</Typography>
+              <Typography variant="h6">Integraciones listas para automatizaciones</Typography>
               <Typography variant="body2" color="text.secondary">
                 Configura una vez y reutiliza en canales, nodos, agentes y workflows.
               </Typography>
@@ -684,7 +684,7 @@ export default function MarketplacePage() {
                               {configured ? 'Editar' : 'Configurar'}
                             </Button>
                             <Button size="small" variant="outlined" href={paths.dashboard.workflows}>
-                              Usar en workflow
+                              Usar en automatizacion
                             </Button>
                             {configuredConnection && (
                               <Button size="small" variant="text" onClick={() => checkConnectionHealth(configuredConnection.id)}>
@@ -717,13 +717,13 @@ export default function MarketplacePage() {
         <Card variant="outlined" sx={{ p: 2, mb: 3 }}>
           <Stack spacing={1.5}>
             <Box>
-              <Typography variant="h6">Recursos disponibles para agentes y workflows</Typography>
+              <Typography variant="h6">Recursos disponibles para asistentes y automatizaciones</Typography>
               <Typography variant="body2" color="text.secondary">
-                Esta es la lista real que consume Workflow Studio. Si algo aparece pendiente, el nodo lo avisara antes de publicar.
+                Esta es la lista real que consumen las automatizaciones. Si algo aparece pendiente, el nodo lo avisara antes de publicar.
               </Typography>
             </Box>
             {resources.length === 0 ? (
-              <Alert severity="info">Aun no hay recursos. Configura Twilio, Storage, API o MCP arriba.</Alert>
+              <Alert severity="info">Aun no hay recursos. Configura Twilio, Storage, API o conectores avanzados arriba.</Alert>
             ) : (
               <Grid container spacing={2}>
                 {resources.map((resource) => (
@@ -754,7 +754,7 @@ export default function MarketplacePage() {
                             ))}
                           </Stack>
                           <Typography variant="caption" color="text.secondary">
-                            Nodos sugeridos: {resource.suggestedNodes.map((node) => NODE_LABELS[node] ?? node).join(', ') || 'sin nodos'}
+                            Usos sugeridos: {resource.suggestedNodes.map((node) => NODE_LABELS[node] ?? node).join(', ') || 'sin nodos'}
                           </Typography>
                           {!resource.ready && (
                             <Typography variant="caption" color="warning.main">
@@ -841,8 +841,8 @@ export default function MarketplacePage() {
                       <Button variant="contained" disabled={isInstalled || entry.metadata.isQuarantined} onClick={() => install(entry.extensionId)}>
                         {isInstalled ? 'Instalado' : 'Instalar'}
                       </Button>
-                      <Button variant="outlined" href={paths.dashboard.workflows}>Usar en workflow</Button>
-                      <Button variant="text" onClick={() => update(entry)}>Actualizar metadata</Button>
+                      <Button variant="outlined" href={paths.dashboard.workflows}>Usar en automatizacion</Button>
+                      <Button variant="text" onClick={() => update(entry)}>Actualizar catalogo</Button>
                     </Stack>
                   </Stack>
                 </CardContent>
@@ -853,7 +853,7 @@ export default function MarketplacePage() {
       </DashboardContent>
 
       <Dialog open={openConnection} onClose={() => setOpenConnection(false)} fullWidth maxWidth="sm">
-        <DialogTitle>Configurar integracion</DialogTitle>
+        <DialogTitle>Configurar conexion</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ pt: 1 }}>
             <TextField
@@ -882,7 +882,7 @@ export default function MarketplacePage() {
               ))}
             </TextField>
             <TextField
-              label="Connector ID"
+              label="ID del conector"
               value={connectionForm.connectorId}
               onChange={(e) => setConnectionForm((prev) => ({ ...prev, connectorId: e.target.value }))}
               fullWidth
@@ -898,7 +898,7 @@ export default function MarketplacePage() {
               helperText="Opcional avanzado. Los campos guiados de arriba actualizan este JSON automaticamente."
             />
             <TextField
-              label="Secret avanzado JSON o token"
+              label="Secreto avanzado JSON o token"
               value={connectionForm.secret}
               onChange={(e) => setConnectionForm((prev) => ({ ...prev, secret: e.target.value }))}
               fullWidth
@@ -918,3 +918,4 @@ export default function MarketplacePage() {
     </>
   );
 }
+
