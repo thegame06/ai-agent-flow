@@ -1,5 +1,6 @@
 using AgentFlow.Api.Controllers.DTOs;
 using AgentFlow.Api.AuthProfiles;
+using AgentFlow.Extensions;
 using AgentFlow.Domain.Aggregates;
 using AgentFlow.Domain.Enums;
 using AgentFlow.Domain.Repositories;
@@ -30,17 +31,23 @@ public sealed class AgentsController : ControllerBase
     private readonly IAgentDefinitionRepository _agentRepository;
     private readonly IRuntimeModelProfileStore _runtimeProfiles;
     private readonly ITenantContextAccessor _tenantContext;
+    private readonly IExtensionRegistry _extensionRegistry;
+    private readonly IConfiguration _configuration;
     private readonly ILogger<AgentsController> _logger;
 
     public AgentsController(
         IAgentDefinitionRepository agentRepository,
         IRuntimeModelProfileStore runtimeProfiles,
         ITenantContextAccessor tenantContext,
+        IExtensionRegistry extensionRegistry,
+        IConfiguration configuration,
         ILogger<AgentsController> logger)
     {
         _agentRepository = agentRepository;
         _runtimeProfiles = runtimeProfiles;
         _tenantContext = tenantContext;
+        _extensionRegistry = extensionRegistry;
+        _configuration = configuration;
         _logger = logger;
     }
 
@@ -112,6 +119,32 @@ public sealed class AgentsController : ControllerBase
 
         var dto = MapToDetailDto(agent);
         return Ok(dto);
+    }
+
+    [HttpGet("tool-catalog")]
+    public async Task<IActionResult> GetToolCatalog(
+        [FromRoute] string tenantId,
+        CancellationToken ct = default)
+    {
+        var ctx = _tenantContext.Current;
+        if (ctx != null && ctx.TenantId != tenantId && !ctx.IsPlatformAdmin)
+            return Forbid();
+
+        var catalog = new Dictionary<string, AgentToolCatalogItemDto>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var tool in _extensionRegistry.GetTools())
+        {
+            var item = ToCatalogItem(tool);
+            catalog[item.ToolId] = item;
+        }
+
+        foreach (var server in _configuration.GetSection("Mcp:Servers").Get<List<McpServerConfig>>() ?? [])
+        {
+            foreach (var item in await DiscoverMcpCatalogAsync(server, ct))
+                catalog[item.ToolId] = item;
+        }
+
+        return Ok(catalog.Values.OrderBy(x => x.ToolName).ThenBy(x => x.ToolId).ToList());
     }
 
     // ─────────────────────────────────────────────
@@ -583,6 +616,123 @@ public sealed class AgentsController : ControllerBase
         add(fallbackModel);
         add(explicitCandidatesCsv);
         return string.Join(",", ordered);
+    }
+
+    private static AgentToolCatalogItemDto ToCatalogItem(IToolPlugin tool)
+    {
+        if (TryParseMcpExtensionId(tool.ExtensionId, out var serverName, out var toolName))
+        {
+            return new AgentToolCatalogItemDto
+            {
+                ToolId = $"mcp:{serverName}:{toolName}",
+                ToolName = toolName,
+                Version = tool.Version,
+                RiskLevel = tool.RiskLevel.ToString(),
+                Description = tool.Description,
+                Source = $"mcp:{serverName}"
+            };
+        }
+
+        return new AgentToolCatalogItemDto
+        {
+            ToolId = string.IsNullOrWhiteSpace(tool.ExtensionId) ? tool.Name : tool.ExtensionId,
+            ToolName = tool.Name,
+            Version = tool.Version,
+            RiskLevel = tool.RiskLevel.ToString(),
+            Description = tool.Description,
+            Source = "extension"
+        };
+    }
+
+    private async Task<IReadOnlyList<AgentToolCatalogItemDto>> DiscoverMcpCatalogAsync(McpServerConfig server, CancellationToken ct)
+    {
+        if (!string.Equals(server.Transport, "Http", StringComparison.OrdinalIgnoreCase) || string.IsNullOrWhiteSpace(server.Url))
+            return [];
+
+        try
+        {
+            var toolsUrl = BuildMcpToolsUrl(server.Url);
+            using var http = new HttpClient();
+            using var response = await http.GetAsync(toolsUrl, ct);
+            if (!response.IsSuccessStatusCode)
+                return [];
+
+            await using var body = await response.Content.ReadAsStreamAsync(ct);
+            using var document = await JsonDocument.ParseAsync(body, cancellationToken: ct);
+            if (document.RootElement.ValueKind != JsonValueKind.Array)
+                return [];
+
+            var riskLevel = server.Security?.DefaultRiskLevel ?? "Low";
+            var items = new List<AgentToolCatalogItemDto>();
+
+            foreach (var entry in document.RootElement.EnumerateArray())
+            {
+                var toolName = entry.TryGetProperty("name", out var nameProp) ? nameProp.GetString() : null;
+                if (string.IsNullOrWhiteSpace(toolName))
+                    continue;
+
+                var description = entry.TryGetProperty("description", out var descriptionProp)
+                    ? descriptionProp.GetString() ?? string.Empty
+                    : string.Empty;
+
+                items.Add(new AgentToolCatalogItemDto
+                {
+                    ToolId = $"mcp:{server.Name}:{toolName}",
+                    ToolName = toolName,
+                    Version = "1.0.0",
+                    RiskLevel = riskLevel,
+                    Description = description,
+                    Source = $"mcp:{server.Name}"
+                });
+            }
+
+            return items;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to discover MCP tools for server {ServerName}", server.Name);
+            return [];
+        }
+    }
+
+    private static bool TryParseMcpExtensionId(string extensionId, out string serverName, out string toolName)
+    {
+        serverName = string.Empty;
+        toolName = string.Empty;
+
+        if (!extensionId.StartsWith("mcp.", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        var suffix = extensionId["mcp.".Length..];
+        var separatorIndex = suffix.IndexOf('.');
+        if (separatorIndex <= 0 || separatorIndex >= suffix.Length - 1)
+            return false;
+
+        serverName = suffix[..separatorIndex];
+        toolName = suffix[(separatorIndex + 1)..];
+        return !string.IsNullOrWhiteSpace(serverName) && !string.IsNullOrWhiteSpace(toolName);
+    }
+
+    private static string BuildMcpToolsUrl(string invokeUrl)
+    {
+        var trimmed = invokeUrl.TrimEnd('/');
+        var lastSlash = trimmed.LastIndexOf('/');
+        if (lastSlash <= 0)
+            return trimmed + "/tools";
+        return trimmed[..lastSlash] + "/tools";
+    }
+
+    private sealed class McpServerConfig
+    {
+        public string Name { get; set; } = string.Empty;
+        public string Transport { get; set; } = "Http";
+        public string? Url { get; set; }
+        public McpServerSecurityConfig? Security { get; set; }
+    }
+
+    private sealed class McpServerSecurityConfig
+    {
+        public string DefaultRiskLevel { get; set; } = "Low";
     }
 
     private static string? NormalizeOptional(string? value)

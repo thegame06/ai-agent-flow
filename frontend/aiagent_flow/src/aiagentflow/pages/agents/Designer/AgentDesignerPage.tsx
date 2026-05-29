@@ -32,8 +32,8 @@ import LinearProgress from '@mui/material/LinearProgress';
 import { paths } from 'src/routes/paths';
 import { useRouter } from 'src/routes/hooks';
 
-import axios from 'src/lib/axios';
 import { CONFIG } from 'src/global-config';
+import axios, { endpoints } from 'src/lib/axios';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
 import { normalizeToolLabel } from 'src/aiagentflow/utils/toolLabels';
@@ -60,11 +60,12 @@ interface ModelOption {
 }
 
 interface ToolOption {
-  extensionId: string;
-  name: string;
+  toolId: string;
+  toolName: string;
   version: string;
   riskLevel: 'Low' | 'Medium' | 'High' | 'Critical';
   description: string;
+  source: string;
 }
 
 interface RuntimeModelProfileOption {
@@ -391,12 +392,12 @@ function TabTools({
   const selectedToolIds = new Set(draft.tools.map((t: { toolId: string }) => t.toolId));
 
   const bindTool = (tool: ToolOption) => {
-    if (selectedToolIds.has(tool.extensionId)) return;
+    if (selectedToolIds.has(tool.toolId)) return;
 
     dispatch(
       addTool({
-        toolId: tool.extensionId,
-        toolName: tool.name,
+        toolId: tool.toolId,
+        toolName: tool.toolName,
         version: tool.version,
         riskLevel: tool.riskLevel,
         permissions: [],
@@ -447,28 +448,31 @@ function TabTools({
           <Typography variant="body2" color="text.secondary">Cargando herramientas...</Typography>
         ) : availableTools.length === 0 ? (
           <Alert severity="info" variant="outlined">
-            No se detectaron herramientas desde Extensions API.
+            No se detectaron herramientas configuradas para agentes.
           </Alert>
         ) : (
           <Stack spacing={1}>
             {availableTools.map((tool) => (
               <Box
-                key={tool.extensionId}
+                key={tool.toolId}
                 sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2 }}
               >
                 <Box sx={{ minWidth: 0 }}>
-                  <Typography variant="body2" fontWeight={600} noWrap>{normalizeToolLabel(tool.name || tool.extensionId)}</Typography>
+                  <Typography variant="body2" fontWeight={600} noWrap>{normalizeToolLabel(tool.toolName || tool.toolId)}</Typography>
                   <Typography variant="caption" color="text.secondary" noWrap>
-                    {tool.description || tool.extensionId}
+                    {tool.description || tool.toolId}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary" display="block" noWrap>
+                    Fuente: {tool.source}
                   </Typography>
                 </Box>
                 <Button
                   size="small"
                   variant="outlined"
-                  disabled={selectedToolIds.has(tool.extensionId)}
+                  disabled={selectedToolIds.has(tool.toolId)}
                   onClick={() => bindTool(tool)}
                 >
-                  {selectedToolIds.has(tool.extensionId) ? 'Vinculada' : 'Vincular'}
+                  {selectedToolIds.has(tool.toolId) ? 'Vinculada' : 'Vincular'}
                 </Button>
               </Box>
             ))}
@@ -631,7 +635,7 @@ export default function AgentDesignerPage({ embedded = false, embeddedAgentId }:
       try {
         const [modelsResponse, toolsResponse] = await Promise.allSettled([
           axios.get('/api/v1/model-routing/models'),
-          axios.get('/api/v1/extensions/tools'),
+          axios.get(endpoints.agentflow.agents.toolCatalog(tenantId)),
         ]);
 
         if (modelsResponse.status === 'fulfilled' && Array.isArray(modelsResponse.value.data)) {
@@ -647,11 +651,12 @@ export default function AgentDesignerPage({ embedded = false, embeddedAgentId }:
         if (toolsResponse.status === 'fulfilled' && Array.isArray(toolsResponse.value.data)) {
           setAvailableTools(
             toolsResponse.value.data.map((t: any) => ({
-              extensionId: t.extensionId,
-              name: t.name,
+              toolId: t.toolId,
+              toolName: t.toolName,
               version: t.version ?? '1.0.0',
               riskLevel: (t.riskLevel ?? 'Low') as ToolOption['riskLevel'],
               description: t.description ?? '',
+              source: t.source ?? 'extension',
             }))
           );
         }
@@ -661,7 +666,7 @@ export default function AgentDesignerPage({ embedded = false, embeddedAgentId }:
     };
 
     loadCatalog();
-  }, []);
+  }, [tenantId]);
 
   useEffect(() => {
     const loadRuntimeProfiles = async () => {

@@ -115,6 +115,16 @@ public sealed record ToolBindingDto
     public IReadOnlyList<string> Permissions { get; init; } = [];
 }
 
+public sealed record AgentToolCatalogItemDto
+{
+    public string ToolId { get; init; } = string.Empty;
+    public string ToolName { get; init; } = string.Empty;
+    public string Version { get; init; } = "1.0.0";
+    public string RiskLevel { get; init; } = "Low";
+    public string Description { get; init; } = string.Empty;
+    public string Source { get; init; } = string.Empty;
+}
+
 // ─────────────────────────────────────────────
 // RESPONSE DTOs — what the API returns
 // ─────────────────────────────────────────────

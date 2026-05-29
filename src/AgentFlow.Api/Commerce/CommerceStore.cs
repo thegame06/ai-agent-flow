@@ -307,7 +307,7 @@ public sealed class CommerceStore : ICommerceStore
         var normalizedAttributes = NormalizeAttributes(attributes);
         var normalizedDiscount = NormalizeDiscount(discount);
         var normalizedBranchStocks = NormalizeBranchStocks(branchStocks, normalizedBranches, resolvedTracksInventory);
-        var normalizedVariations = NormalizeVariations(variations);
+        var normalizedVariations = NormalizeVariations(variations, normalizedBranches, resolvedTracksInventory);
         var resolvedOnHand = resolvedTracksInventory
             ? (normalizedBranchStocks.Count > 0 ? normalizedBranchStocks.Sum(x => x.OnHand) : onHand)
             : 0;
@@ -866,7 +866,10 @@ public sealed class CommerceStore : ICommerceStore
         };
     }
 
-    private static List<CommerceProductVariationDocument> NormalizeVariations(IReadOnlyList<CommerceProductVariationDocument>? variations)
+    private static List<CommerceProductVariationDocument> NormalizeVariations(
+        IReadOnlyList<CommerceProductVariationDocument>? variations,
+        IReadOnlyList<string> branchIds,
+        bool tracksInventory)
     {
         if (variations is null || variations.Count == 0) return [];
         return variations
@@ -880,7 +883,15 @@ public sealed class CommerceStore : ICommerceStore
                 Stock = Math.Max(0, x.Stock),
                 Active = x.Active,
                 Attributes = NormalizeAttributes(x.Attributes),
-                ImageUrls = NormalizeImageUrls(x.ImageUrls)
+                ImageUrls = NormalizeImageUrls(x.ImageUrls),
+                BranchStocks = NormalizeBranchStocks(x.BranchStocks, branchIds, tracksInventory)
+            })
+            .Select(x =>
+            {
+                x.Stock = x.BranchStocks.Count > 0
+                    ? x.BranchStocks.Sum(stock => stock.OnHand)
+                    : Math.Max(0, x.Stock);
+                return x;
             })
             .GroupBy(x => x.Sku, StringComparer.OrdinalIgnoreCase)
             .Select(g => g.First())
@@ -1096,6 +1107,7 @@ public sealed class CommerceProductVariationDocument
     public bool Active { get; set; } = true;
     public List<CommerceProductAttributeDocument> Attributes { get; set; } = [];
     public List<string> ImageUrls { get; set; } = [];
+    public List<CommerceBranchStockDocument> BranchStocks { get; set; } = [];
 }
 
 public sealed class CommerceBranchStockDocument

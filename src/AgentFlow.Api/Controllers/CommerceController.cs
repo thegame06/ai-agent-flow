@@ -298,7 +298,12 @@ public sealed class CommerceController : ControllerBase
                 Stock = x.Stock,
                 Active = x.Active,
                 Attributes = x.Attributes?.Select(a => new CommerceProductAttributeDocument { Key = a.Key, Value = a.Value }).ToList() ?? [],
-                ImageUrls = x.ImageUrls ?? []
+                ImageUrls = x.ImageUrls ?? [],
+                BranchStocks = x.BranchStocks?.Select(stock => new CommerceBranchStockDocument
+                {
+                    BranchId = stock.BranchId,
+                    OnHand = stock.OnHand
+                }).ToList() ?? []
             }).ToList(),
             request.BranchStocks?.Select(x => new CommerceBranchStockDocument
             {
@@ -1118,7 +1123,8 @@ public sealed class CommerceController : ControllerBase
             x.Stock,
             x.Active,
             attributes = x.Attributes.Select(a => new { a.Key, a.Value }).ToList(),
-            x.ImageUrls
+            x.ImageUrls,
+            branchStocks = x.BranchStocks.Select(stock => new { stock.BranchId, stock.OnHand }).ToList()
         }).ToList(),
         branchStocks = item.BranchStocks.Select(x => new { x.BranchId, x.OnHand }).ToList()
     };
@@ -1325,6 +1331,7 @@ public sealed record ProductVariationRequest
     public bool Active { get; init; } = true;
     public List<ProductAttributeRequest>? Attributes { get; init; }
     public List<string>? ImageUrls { get; init; }
+    public List<BranchStockRequest>? BranchStocks { get; init; }
 }
 
 public sealed record BranchStockRequest

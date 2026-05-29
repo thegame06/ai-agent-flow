@@ -123,6 +123,7 @@ export const endpoints = {
     agents: {
       list: (tenantId: string) => `/api/v1/tenants/${tenantId}/agents`,
       detail: (tenantId: string, agentId: string) => `/api/v1/tenants/${tenantId}/agents/${agentId}`,
+      toolCatalog: (tenantId: string) => `/api/v1/tenants/${tenantId}/agents/tool-catalog`,
       create: (tenantId: string) => `/api/v1/tenants/${tenantId}/agents`,
       update: (tenantId: string, agentId: string) => `/api/v1/tenants/${tenantId}/agents/${agentId}`,
       delete: (tenantId: string, agentId: string) => `/api/v1/tenants/${tenantId}/agents/${agentId}`,

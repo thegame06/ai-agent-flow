@@ -67,6 +67,7 @@ type InventoryRow = {
     active: boolean;
     attributes: Array<{ key: string; value: string }>;
     imageUrls: string[];
+    branchStocks: Array<{ branchId: string; onHand: number }>;
   }>;
   branchStocks: Array<{ branchId: string; onHand: number }>;
 };
@@ -197,6 +198,7 @@ type InventoryDraft = {
     active: boolean;
     attributes: Array<{ key: string; value: string }>;
     imageUrls: string[];
+    branchStocks: Array<{ branchId: string; onHand: string }>;
   }>;
   branchStocks: Array<{ branchId: string; onHand: string }>;
 };
@@ -382,6 +384,9 @@ export default function CommerceAdminPage() {
   const [inventoryEditingSku, setInventoryEditingSku] = useState<string | null>(null);
   const [inventoryImageUrlInput, setInventoryImageUrlInput] = useState('');
   const [inventoryPreviewImageIndex, setInventoryPreviewImageIndex] = useState(0);
+  const [inventoryPreviewVariationId, setInventoryPreviewVariationId] = useState('');
+  const [inventoryVariationImageInputs, setInventoryVariationImageInputs] = useState<Record<string, string>>({});
+  const [inventoryPreviewVariationImageIndex, setInventoryPreviewVariationImageIndex] = useState(0);
   const [inventoryAdjustmentDraft, setInventoryAdjustmentDraft] = useState<InventoryAdjustmentDraft>(EMPTY_ADJUSTMENT);
   const [inventoryAdjustmentOpen, setInventoryAdjustmentOpen] = useState(false);
 
@@ -786,6 +791,10 @@ export default function CommerceAdminPage() {
           active: variation.active,
           attributes: variation.attributes ?? [],
           imageUrls: variation.imageUrls ?? [],
+          branchStocks: (variation.branchStocks ?? []).map((stock) => ({
+            branchId: stock.branchId,
+            onHand: String(stock.onHand ?? 0),
+          })),
         })),
         branchStocks: (row.branchStocks ?? []).map((stock) => ({
           branchId: stock.branchId,
@@ -794,11 +803,17 @@ export default function CommerceAdminPage() {
       });
       setInventoryImageUrlInput('');
       setInventoryPreviewImageIndex(0);
+      setInventoryPreviewVariationId('');
+      setInventoryVariationImageInputs({});
+      setInventoryPreviewVariationImageIndex(0);
     } else {
       setInventoryEditingSku(null);
       setInventoryDraft(EMPTY_INVENTORY);
       setInventoryImageUrlInput('');
       setInventoryPreviewImageIndex(0);
+      setInventoryPreviewVariationId('');
+      setInventoryVariationImageInputs({});
+      setInventoryPreviewVariationImageIndex(0);
     }
     setInventoryDialogOpen(true);
   };
@@ -834,6 +849,10 @@ export default function CommerceAdminPage() {
           active: variation.active,
           attributes: variation.attributes,
           imageUrls: variation.imageUrls,
+          branchStocks: variation.branchStocks.map((stock) => ({
+            branchId: stock.branchId,
+            onHand: Number(stock.onHand || 0),
+          })),
         })),
         branchStocks: inventoryDraft.branchStocks.map((stock) => ({
           branchId: stock.branchId,
@@ -1107,17 +1126,47 @@ export default function CommerceAdminPage() {
     return cache;
   }, [categories, categoryLookup]);
 
-  const inventoryPreviewImage = inventoryDraft.imageUrls[inventoryPreviewImageIndex] ?? inventoryDraft.imageUrls[0] ?? '';
+  const updateVariation = (
+    variationId: string,
+    updater: (variation: InventoryDraft['variations'][number]) => InventoryDraft['variations'][number]
+  ) => {
+    setInventoryDraft((prev) => ({
+      ...prev,
+      variations: prev.variations.map((variation) =>
+        variation.id === variationId ? updater(variation) : variation
+      ),
+    }));
+  };
 
-  const inventoryPreviewPrice = Number(inventoryDraft.unitPrice || 0).toFixed(2);
+  const selectedPreviewVariation = inventoryDraft.variations.find(
+    (variation) => variation.id === inventoryPreviewVariationId
+  );
+  const previewImageUrls = selectedPreviewVariation?.imageUrls?.length
+    ? selectedPreviewVariation.imageUrls
+    : inventoryDraft.imageUrls;
+  const previewImageIndex = selectedPreviewVariation
+    ? inventoryPreviewVariationImageIndex
+    : inventoryPreviewImageIndex;
+  const inventoryPreviewImage = previewImageUrls[previewImageIndex] ?? previewImageUrls[0] ?? '';
+  const previewBasePrice = selectedPreviewVariation
+    ? Number(selectedPreviewVariation.price || 0)
+    : Number(inventoryDraft.unitPrice || 0);
+  const inventoryPreviewPrice = previewBasePrice.toFixed(2);
   const inventorySupportsStock = inventoryDraft.tracksInventory;
   const inventoryDiscountedPrice = useMemo(() => {
-    const base = Number(inventoryDraft.unitPrice || 0);
+    const base = previewBasePrice;
     if (!inventoryDraft.discountEnabled) return base;
     const value = Number(inventoryDraft.discountValue || 0);
     if (inventoryDraft.discountType === 'amount') return Math.max(0, base - value);
     return Math.max(0, base - base * (value / 100));
-  }, [inventoryDraft.discountEnabled, inventoryDraft.discountType, inventoryDraft.discountValue, inventoryDraft.unitPrice]);
+  }, [inventoryDraft.discountEnabled, inventoryDraft.discountType, inventoryDraft.discountValue, previewBasePrice]);
+  const previewBranchStocks = selectedPreviewVariation?.branchStocks?.length
+    ? selectedPreviewVariation.branchStocks
+    : inventoryDraft.branchStocks;
+  const previewStockQuantity = selectedPreviewVariation?.stock ?? inventoryDraft.onHand ?? '0';
+  const previewStockLabel = inventorySupportsStock
+    ? `Stock disponible: ${previewStockQuantity} ${inventoryDraft.unitOfMeasure}`
+    : 'Producto sin control de inventario';
 
   const gridCardSx = {
     height: 560,
@@ -2016,6 +2065,16 @@ export default function CommerceAdminPage() {
                           ...prev,
                           branchIds: nextBranchIds,
                           branchStocks: nextBranchIds.map((branchId) => prev.branchStocks.find((stock) => stock.branchId === branchId) ?? { branchId, onHand: '0' }),
+                          variations: prev.variations.map((variation) => ({
+                            ...variation,
+                            branchStocks: nextBranchIds.map((branchId) => (
+                              variation.branchStocks.find((stock) => stock.branchId === branchId) ?? { branchId, onHand: '0' }
+                            )),
+                            stock: String(nextBranchIds.reduce((sum, branchId) => {
+                              const current = variation.branchStocks.find((stock) => stock.branchId === branchId)?.onHand ?? '0';
+                              return sum + Number(current || 0);
+                            }, 0)),
+                          })),
                         }));
                       }}
                       helperText="Define donde se ofrece el producto."
@@ -2158,7 +2217,7 @@ export default function CommerceAdminPage() {
                           <Box>
                             <Typography variant="subtitle2">Variaciones</Typography>
                             <Typography variant="caption" color="text.secondary">
-                              Cada variacion puede manejar SKU, precio y stock propio.
+                              Cada variacion puede manejar SKU, atributos, galeria y stock propio por sucursal.
                             </Typography>
                           </Box>
                           <Button
@@ -2177,6 +2236,7 @@ export default function CommerceAdminPage() {
                                   active: true,
                                   attributes: [],
                                   imageUrls: [],
+                                  branchStocks: prev.branchIds.map((branchId) => ({ branchId, onHand: '0' })),
                                 },
                               ],
                             }))}
@@ -2193,12 +2253,7 @@ export default function CommerceAdminPage() {
                                     fullWidth
                                     label="SKU"
                                     value={variation.sku}
-                                    onChange={(e) => setInventoryDraft((prev) => ({
-                                      ...prev,
-                                      variations: prev.variations.map((entry, currentIndex) =>
-                                        currentIndex === index ? { ...entry, sku: e.target.value } : entry
-                                      ),
-                                    }))}
+                                    onChange={(e) => updateVariation(variation.id, (entry) => ({ ...entry, sku: e.target.value }))}
                                   />
                                 </Grid>
                                 <Grid item xs={12} md={4}>
@@ -2206,12 +2261,7 @@ export default function CommerceAdminPage() {
                                     fullWidth
                                     label="Nombre"
                                     value={variation.name}
-                                    onChange={(e) => setInventoryDraft((prev) => ({
-                                      ...prev,
-                                      variations: prev.variations.map((entry, currentIndex) =>
-                                        currentIndex === index ? { ...entry, name: e.target.value } : entry
-                                      ),
-                                    }))}
+                                    onChange={(e) => updateVariation(variation.id, (entry) => ({ ...entry, name: e.target.value }))}
                                   />
                                 </Grid>
                                 <Grid item xs={12} md={2}>
@@ -2219,12 +2269,7 @@ export default function CommerceAdminPage() {
                                     fullWidth
                                     label="Precio"
                                     value={variation.price}
-                                    onChange={(e) => setInventoryDraft((prev) => ({
-                                      ...prev,
-                                      variations: prev.variations.map((entry, currentIndex) =>
-                                        currentIndex === index ? { ...entry, price: e.target.value } : entry
-                                      ),
-                                    }))}
+                                    onChange={(e) => updateVariation(variation.id, (entry) => ({ ...entry, price: e.target.value }))}
                                   />
                                 </Grid>
                                 <Grid item xs={12} md={2}>
@@ -2232,12 +2277,7 @@ export default function CommerceAdminPage() {
                                     fullWidth
                                     label="Stock"
                                     value={variation.stock}
-                                    onChange={(e) => setInventoryDraft((prev) => ({
-                                      ...prev,
-                                      variations: prev.variations.map((entry, currentIndex) =>
-                                        currentIndex === index ? { ...entry, stock: e.target.value } : entry
-                                      ),
-                                    }))}
+                                    onChange={(e) => updateVariation(variation.id, (entry) => ({ ...entry, stock: e.target.value }))}
                                   />
                                 </Grid>
                               </Grid>
@@ -2249,27 +2289,174 @@ export default function CommerceAdminPage() {
                                   <Chip size="small" label={variation.active ? 'Activa' : 'Inactiva'} color={variation.active ? 'success' : 'default'} />
                                   <Button
                                     size="small"
-                                    onClick={() => setInventoryDraft((prev) => ({
-                                      ...prev,
-                                      variations: prev.variations.map((entry, currentIndex) =>
-                                        currentIndex === index ? { ...entry, active: !entry.active } : entry
-                                      ),
-                                    }))}
+                                    variant={inventoryPreviewVariationId === variation.id ? 'contained' : 'outlined'}
+                                    onClick={() => {
+                                      setInventoryPreviewVariationId(variation.id);
+                                      setInventoryPreviewVariationImageIndex(0);
+                                    }}
+                                  >
+                                    Vista previa
+                                  </Button>
+                                  <Button
+                                    size="small"
+                                    onClick={() => updateVariation(variation.id, (entry) => ({ ...entry, active: !entry.active }))}
                                   >
                                     Cambiar estado
                                   </Button>
                                   <Button
                                     size="small"
                                     color="error"
-                                    onClick={() => setInventoryDraft((prev) => ({
-                                      ...prev,
-                                      variations: prev.variations.filter((_, currentIndex) => currentIndex !== index),
-                                    }))}
+                                    onClick={() => {
+                                      setInventoryDraft((prev) => ({
+                                        ...prev,
+                                        variations: prev.variations.filter((entry) => entry.id !== variation.id),
+                                      }));
+                                      setInventoryPreviewVariationId((current) => current === variation.id ? '' : current);
+                                      setInventoryVariationImageInputs((prev) => {
+                                        const next = { ...prev };
+                                        delete next[variation.id];
+                                        return next;
+                                      });
+                                    }}
                                   >
                                     Eliminar
                                   </Button>
                                 </Stack>
                               </Stack>
+                              <Grid container spacing={1.5}>
+                                {variation.attributes.map((attribute, attributeIndex) => (
+                                  <Grid item xs={12} md={6} key={`${variation.id}-attribute-${attributeIndex}`}>
+                                    <Stack direction="row" spacing={1}>
+                                      <TextField
+                                        fullWidth
+                                        label="Atributo"
+                                        value={attribute.key}
+                                        onChange={(e) => updateVariation(variation.id, (entry) => ({
+                                          ...entry,
+                                          attributes: entry.attributes.map((item, currentIndex) =>
+                                            currentIndex === attributeIndex ? { ...item, key: e.target.value } : item
+                                          ),
+                                        }))}
+                                      />
+                                      <TextField
+                                        fullWidth
+                                        label="Valor"
+                                        value={attribute.value}
+                                        onChange={(e) => updateVariation(variation.id, (entry) => ({
+                                          ...entry,
+                                          attributes: entry.attributes.map((item, currentIndex) =>
+                                            currentIndex === attributeIndex ? { ...item, value: e.target.value } : item
+                                          ),
+                                        }))}
+                                      />
+                                      <Button
+                                        color="error"
+                                        onClick={() => updateVariation(variation.id, (entry) => ({
+                                          ...entry,
+                                          attributes: entry.attributes.filter((_, currentIndex) => currentIndex !== attributeIndex),
+                                        }))}
+                                      >
+                                        Quitar
+                                      </Button>
+                                    </Stack>
+                                  </Grid>
+                                ))}
+                              </Grid>
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                onClick={() => updateVariation(variation.id, (entry) => ({
+                                  ...entry,
+                                  attributes: [...entry.attributes, { key: '', value: '' }],
+                                }))}
+                              >
+                                Agregar atributo
+                              </Button>
+                              <Stack spacing={1}>
+                                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                                  <TextField
+                                    fullWidth
+                                    label="URL de imagen de variacion"
+                                    value={inventoryVariationImageInputs[variation.id] ?? ''}
+                                    onChange={(e) => setInventoryVariationImageInputs((prev) => ({
+                                      ...prev,
+                                      [variation.id]: e.target.value,
+                                    }))}
+                                  />
+                                  <Button
+                                    variant="outlined"
+                                    onClick={() => {
+                                      const nextUrl = inventoryVariationImageInputs[variation.id]?.trim();
+                                      if (!nextUrl) return;
+                                      updateVariation(variation.id, (entry) => ({
+                                        ...entry,
+                                        imageUrls: [...entry.imageUrls, nextUrl],
+                                      }));
+                                      setInventoryVariationImageInputs((prev) => ({
+                                        ...prev,
+                                        [variation.id]: '',
+                                      }));
+                                    }}
+                                  >
+                                    Agregar imagen
+                                  </Button>
+                                </Stack>
+                                {variation.imageUrls.length > 0 && (
+                                  <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                                    {variation.imageUrls.map((url, imageIndex) => (
+                                      <Chip
+                                        key={`${variation.id}-${url}-${imageIndex}`}
+                                        label={`Imagen ${imageIndex + 1}`}
+                                        color={inventoryPreviewVariationId === variation.id && inventoryPreviewVariationImageIndex === imageIndex ? 'primary' : 'default'}
+                                        variant={inventoryPreviewVariationId === variation.id && inventoryPreviewVariationImageIndex === imageIndex ? 'filled' : 'outlined'}
+                                        onClick={() => {
+                                          setInventoryPreviewVariationId(variation.id);
+                                          setInventoryPreviewVariationImageIndex(imageIndex);
+                                        }}
+                                        onDelete={() => updateVariation(variation.id, (entry) => ({
+                                          ...entry,
+                                          imageUrls: entry.imageUrls.filter((_, currentIndex) => currentIndex !== imageIndex),
+                                        }))}
+                                      />
+                                    ))}
+                                  </Stack>
+                                )}
+                              </Stack>
+                              {inventoryDraft.branchIds.length > 0 && (
+                                <Grid container spacing={1.5}>
+                                  {inventoryDraft.branchIds.map((branchId) => {
+                                    const branchName = branches.find((branch) => branch.id === branchId)?.name || 'Sucursal';
+                                    const branchStock = variation.branchStocks.find((entry) => entry.branchId === branchId)?.onHand ?? '0';
+                                    return (
+                                      <Grid item xs={12} md={6} key={`${variation.id}-${branchId}`}>
+                                        <TextField
+                                          fullWidth
+                                          label={`Stock en ${branchName}`}
+                                          value={branchStock}
+                                          onChange={(e) => updateVariation(variation.id, (entry) => ({
+                                            ...entry,
+                                            branchStocks: inventoryDraft.branchIds.map((currentBranchId) => {
+                                              const currentValue = entry.branchStocks.find((stock) => stock.branchId === currentBranchId)?.onHand ?? '0';
+                                              return {
+                                                branchId: currentBranchId,
+                                                onHand: currentBranchId === branchId ? e.target.value : currentValue,
+                                              };
+                                            }),
+                                            stock: String(
+                                              inventoryDraft.branchIds.reduce((sum, currentBranchId) => {
+                                                const currentValue = currentBranchId === branchId
+                                                  ? Number(e.target.value || 0)
+                                                  : Number(entry.branchStocks.find((stock) => stock.branchId === currentBranchId)?.onHand || 0);
+                                                return sum + currentValue;
+                                              }, 0)
+                                            ),
+                                          }))}
+                                        />
+                                      </Grid>
+                                    );
+                                  })}
+                                </Grid>
+                              )}
                             </Stack>
                           </Card>
                         )) : <Typography variant="body2" color="text.secondary">No hay variaciones creadas.</Typography>}
@@ -2319,7 +2506,7 @@ export default function CommerceAdminPage() {
                       )}
                     </Stack>
                     <Alert severity="info">
-                      Las variaciones ya soportan SKU, precio y stock. Si luego quieres atributos e imagenes por variacion en la UI, esa seria la siguiente pasada.
+                      La vista previa puede alternar entre el producto base y una variacion especifica para revisar precio, imagenes y stock.
                     </Alert>
                   </Stack>
                 </Card>
@@ -2376,12 +2563,18 @@ export default function CommerceAdminPage() {
                         </Stack>
                       )}
                     </Box>
-                    {inventoryDraft.imageUrls.length > 1 && (
+                    {previewImageUrls.length > 1 && (
                       <Stack direction="row" spacing={1} sx={{ overflowX: 'auto', pb: 0.5 }}>
-                        {inventoryDraft.imageUrls.map((url, index) => (
+                        {previewImageUrls.map((url, index) => (
                           <Box
-                            key={url}
-                            onClick={() => setInventoryPreviewImageIndex(index)}
+                            key={`${selectedPreviewVariation?.id ?? 'base'}-${url}-${index}`}
+                            onClick={() => {
+                              if (selectedPreviewVariation) {
+                                setInventoryPreviewVariationImageIndex(index);
+                              } else {
+                                setInventoryPreviewImageIndex(index);
+                              }
+                            }}
                             sx={{
                               width: 56,
                               height: 56,
@@ -2389,7 +2582,7 @@ export default function CommerceAdminPage() {
                               overflow: 'hidden',
                               cursor: 'pointer',
                               border: '2px solid',
-                              borderColor: index === inventoryPreviewImageIndex ? 'primary.main' : 'divider',
+                              borderColor: index === previewImageIndex ? 'primary.main' : 'divider',
                               flex: '0 0 auto',
                             }}
                           >
@@ -2406,7 +2599,7 @@ export default function CommerceAdminPage() {
                       </Stack>
                       <Stack direction="row" justifyContent="space-between" spacing={1}>
                         <Typography variant="subtitle1" sx={{ minWidth: 0 }}>
-                          {inventoryDraft.name || 'Nombre del producto'}
+                          {selectedPreviewVariation?.name || inventoryDraft.name || 'Nombre del producto'}
                         </Typography>
                         <Stack spacing={0.25} alignItems="flex-end">
                           <Typography variant="subtitle1">${inventoryDiscountedPrice.toFixed(2)}</Typography>
@@ -2418,39 +2611,66 @@ export default function CommerceAdminPage() {
                         </Stack>
                       </Stack>
                       <Typography variant="body2" color="text.secondary">
-                        {inventoryDraft.description || (inventorySupportsStock
-                          ? `Stock disponible: ${inventoryDraft.onHand || '0'} ${inventoryDraft.unitOfMeasure}`
-                          : 'Producto sin control de inventario')}
+                        {inventoryDraft.description || previewStockLabel}
                       </Typography>
                       <Divider sx={{ my: 1 }} />
                       <Typography variant="caption" color="text.secondary">
-                        SKU: {inventoryDraft.sku || '-'}
+                        SKU: {selectedPreviewVariation?.sku || inventoryDraft.sku || '-'}
                       </Typography>
+                      {selectedPreviewVariation && (
+                        <Typography variant="caption" color="primary.main">
+                          Vista seleccionada: {selectedPreviewVariation.name || selectedPreviewVariation.sku}
+                        </Typography>
+                      )}
                       {inventoryDraft.branchIds.length > 0 && (
                         <Typography variant="caption" color="text.secondary">
                           Disponible en: {inventoryDraft.branchIds.map((branchId) => branches.find((branch) => branch.id === branchId)?.name).filter(Boolean).join(', ')}
                         </Typography>
                       )}
-                      {inventoryDraft.attributes.length > 0 && (
+                      {previewBranchStocks.length > 0 && (
+                        <Stack spacing={0.5}>
+                          {previewBranchStocks.map((stock) => (
+                            <Typography key={`${selectedPreviewVariation?.id ?? 'base'}-${stock.branchId}`} variant="caption" color="text.secondary">
+                              {branches.find((branch) => branch.id === stock.branchId)?.name || 'Sucursal'}: {stock.onHand}
+                            </Typography>
+                          ))}
+                        </Stack>
+                      )}
+                      {(selectedPreviewVariation?.attributes.length || inventoryDraft.attributes.length) ? (
                         <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ pt: 0.5 }}>
-                          {inventoryDraft.attributes
+                          {(selectedPreviewVariation?.attributes.length ? selectedPreviewVariation.attributes : inventoryDraft.attributes)
                             .filter((attribute) => attribute.key && attribute.value)
                             .map((attribute, index) => (
                               <Chip key={`${attribute.key}-${index}`} size="small" label={`${attribute.key}: ${attribute.value}`} />
                             ))}
                         </Stack>
-                      )}
+                      ) : null}
                       {inventoryDraft.variations.length > 0 && (
                         <Stack spacing={0.5} sx={{ pt: 0.5 }}>
                           <Typography variant="caption" color="text.secondary">
                             Variaciones disponibles
                           </Typography>
                           <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                            <Chip
+                              size="small"
+                              variant={selectedPreviewVariation ? 'outlined' : 'filled'}
+                              color={selectedPreviewVariation ? 'default' : 'primary'}
+                              label="Producto base"
+                              onClick={() => {
+                                setInventoryPreviewVariationId('');
+                                setInventoryPreviewVariationImageIndex(0);
+                              }}
+                            />
                             {inventoryDraft.variations.map((variation) => (
                               <Chip
                                 key={variation.id}
                                 size="small"
-                                variant="outlined"
+                                variant={inventoryPreviewVariationId === variation.id ? 'filled' : 'outlined'}
+                                color={inventoryPreviewVariationId === variation.id ? 'primary' : 'default'}
+                                onClick={() => {
+                                  setInventoryPreviewVariationId(variation.id);
+                                  setInventoryPreviewVariationImageIndex(0);
+                                }}
                                 label={`${variation.name || variation.sku || 'Variacion'} · $${Number(variation.price || 0).toFixed(2)}`}
                               />
                             ))}
