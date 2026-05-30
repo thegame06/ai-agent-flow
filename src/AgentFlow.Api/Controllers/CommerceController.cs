@@ -255,7 +255,8 @@ public sealed class CommerceController : ControllerBase
         var moduleCheck = await EnsureModuleEnabledAsync(tenantId, CommerceModules.Inventory, ct);
         if (moduleCheck is not null) return moduleCheck;
         var rows = await _commerce.SearchInventoryAsync(tenantId, query, limit, ct);
-        return Ok(rows.Select(ToInventoryDto));
+        var payload = await Task.WhenAll(rows.Select(x => ToInventorySearchDtoAsync(tenantId, x, ct)));
+        return Ok(payload);
     }
 
     [HttpPut("inventory/items/{sku}")]
@@ -1128,6 +1129,50 @@ public sealed class CommerceController : ControllerBase
         }).ToList(),
         branchStocks = item.BranchStocks.Select(x => new { x.BranchId, x.OnHand }).ToList()
     };
+
+    private async Task<object> ToInventorySearchDtoAsync(string tenantId, CommerceInventoryItemDocument item, CancellationToken ct)
+    {
+        var categoryNames = new List<string>();
+        foreach (var categoryId in item.CategoryIds.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            var category = await _commerce.GetCategoryByIdAsync(tenantId, categoryId, ct);
+            if (category is not null && !string.IsNullOrWhiteSpace(category.Name))
+                categoryNames.Add(category.Name);
+        }
+
+        return new
+        {
+            item.Id,
+            item.Sku,
+            item.Name,
+            item.Description,
+            item.ItemType,
+            item.UnitOfMeasure,
+            item.TracksInventory,
+            item.UnitPrice,
+            item.OnHand,
+            item.Active,
+            item.CategoryIds,
+            CategoryNames = categoryNames,
+            item.BranchIds,
+            item.ImageUrls,
+            attributes = item.Attributes.Select(x => new { x.Key, x.Value }).ToList(),
+            discount = item.Discount is null ? null : new { item.Discount.Enabled, item.Discount.Type, item.Discount.Value },
+            variations = item.Variations.Select(x => new
+            {
+                x.Id,
+                x.Sku,
+                x.Name,
+                x.Price,
+                x.Stock,
+                x.Active,
+                attributes = x.Attributes.Select(a => new { a.Key, a.Value }).ToList(),
+                x.ImageUrls,
+                branchStocks = x.BranchStocks.Select(stock => new { stock.BranchId, stock.OnHand }).ToList()
+            }).ToList(),
+            branchStocks = item.BranchStocks.Select(x => new { x.BranchId, x.OnHand }).ToList()
+        };
+    }
 
     private static object ToCategoryDto(CommerceCategoryDocument category) => new
     {

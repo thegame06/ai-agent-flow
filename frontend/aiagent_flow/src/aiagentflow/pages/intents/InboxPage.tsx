@@ -38,6 +38,9 @@ export default function InboxPage() {
   const [filter, setFilter] = useState<InboxFilter>({ state: 'all', confidence: 'all' });
   const [intentKeys, setIntentKeys] = useState<string[]>([]);
   const [viewConversation, setViewConversation] = useState<InboxConversation | null>(null);
+  const [viewConversationDetail, setViewConversationDetail] = useState<any | null>(null);
+  const [viewConversationJourney, setViewConversationJourney] = useState<any | null>(null);
+  const [viewConversationLoading, setViewConversationLoading] = useState(false);
   const [reassignConversation, setReassignConversation] = useState<InboxConversation | null>(null);
   const [resolveConversation, setResolveConversation] = useState<InboxConversation | null>(null);
   const [newIntent, setNewIntent] = useState('');
@@ -118,8 +121,24 @@ export default function InboxPage() {
     loadData();
   }, [loadData]);
 
-  const handleView = (conversation: InboxConversation) => {
+  const handleView = async (conversation: InboxConversation) => {
     setViewConversation(conversation);
+    setViewConversationLoading(true);
+    try {
+      const [detailRes, journeyRes] = await Promise.allSettled([
+        axios.get(endpoints.agentflow.inbox.detail(tenantId, conversation.id)),
+        axios.get(endpoints.agentflow.audit.journey(tenantId, conversation.id)),
+      ]);
+
+      setViewConversationDetail(detailRes.status === 'fulfilled' ? detailRes.value.data : conversation);
+      setViewConversationJourney(journeyRes.status === 'fulfilled' ? journeyRes.value.data : null);
+    } catch (err) {
+      console.error('Failed to load conversation detail:', err);
+      setViewConversationDetail(conversation);
+      setViewConversationJourney(null);
+    } finally {
+      setViewConversationLoading(false);
+    }
   };
 
   const handleReassign = async (conversationId: string, selectedIntent: string) => {
@@ -229,26 +248,35 @@ export default function InboxPage() {
           />
         </Stack>
 
-        <Dialog open={Boolean(viewConversation)} onClose={() => setViewConversation(null)} maxWidth="md" fullWidth>
+        <Dialog
+          open={Boolean(viewConversation)}
+          onClose={() => {
+            setViewConversation(null);
+            setViewConversationDetail(null);
+            setViewConversationJourney(null);
+          }}
+          maxWidth="md"
+          fullWidth
+        >
           <DialogTitle>Detalle del caso</DialogTitle>
           <DialogContent>
             <Stack spacing={2} sx={{ pt: 1 }}>
               <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-                <Chip size="small" label={`Canal: ${viewConversation?.channel || '-'}`} />
-                <Chip size="small" color="info" label={`Estado: ${stateLabel(normalizeState((viewConversation as any)?.state))}`} />
-                <Chip size="small" color="warning" label={`Confianza: ${confidenceLabel(normalizeConfidence((viewConversation as any)?.confidence))}`} />
+                <Chip size="small" label={`Canal: ${viewConversationDetail?.channel || viewConversation?.channel || '-'}`} />
+                <Chip size="small" color="info" label={`Estado: ${stateLabel(normalizeState(viewConversationDetail?.state ?? (viewConversation as any)?.state))}`} />
+                <Chip size="small" color="warning" label={`Confianza: ${confidenceLabel(normalizeConfidence(viewConversationDetail?.confidence ?? (viewConversation as any)?.confidence))}`} />
               </Stack>
 
               <Paper variant="outlined" sx={{ p: 2 }}>
                 <Stack spacing={1.25}>
-                  <Typography variant="body2"><b>ID:</b> {viewConversation?.id || '-'}</Typography>
-                  <Typography variant="body2"><b>Usuario:</b> {viewConversation?.user_identifier || '-'}</Typography>
-                  <Typography variant="body2"><b>Intencion detectada:</b> {viewConversation?.detected_intent_key || 'Sin intencion detectada'}</Typography>
-                  <Typography variant="body2"><b>Agente asignado:</b> {viewConversation?.assigned_agent_id || '-'}</Typography>
-                  <Typography variant="body2"><b>Ejecucion de workflow:</b> {viewConversation?.workflow_execution_id || '-'}</Typography>
-                  <Typography variant="body2"><b>Nota del sistema:</b> {viewConversation?.review_notes || '-'}</Typography>
-                  <Typography variant="body2"><b>Creado:</b> {toDate(viewConversation?.created_at)}</Typography>
-                  <Typography variant="body2"><b>Actualizado:</b> {toDate(viewConversation?.updated_at)}</Typography>
+                  <Typography variant="body2"><b>ID:</b> {viewConversationDetail?.id || viewConversation?.id || '-'}</Typography>
+                  <Typography variant="body2"><b>Usuario:</b> {viewConversationDetail?.user_identifier || viewConversation?.user_identifier || viewConversationJourney?.summary?.customer?.identifier || '-'}</Typography>
+                  <Typography variant="body2"><b>Intencion detectada:</b> {viewConversationDetail?.detected_intent_key || viewConversation?.detected_intent_key || 'Sin intencion detectada'}</Typography>
+                  <Typography variant="body2"><b>Agente asignado:</b> {viewConversationDetail?.assigned_agent_id || viewConversation?.assigned_agent_id || '-'}</Typography>
+                  <Typography variant="body2"><b>Ejecucion de workflow:</b> {viewConversationDetail?.workflow_execution_id || viewConversation?.workflow_execution_id || '-'}</Typography>
+                  <Typography variant="body2"><b>Nota del sistema:</b> {viewConversationDetail?.review_notes || viewConversation?.review_notes || '-'}</Typography>
+                  <Typography variant="body2"><b>Creado:</b> {toDate(viewConversationDetail?.created_at || viewConversation?.created_at || viewConversationJourney?.summary?.startedAt)}</Typography>
+                  <Typography variant="body2"><b>Actualizado:</b> {toDate(viewConversationDetail?.updated_at || viewConversation?.updated_at || viewConversationJourney?.summary?.lastUpdatedAt)}</Typography>
                 </Stack>
               </Paper>
 
@@ -264,14 +292,44 @@ export default function InboxPage() {
                   }}
                 >
                   <Typography variant="body2">
-                    {viewConversation?.last_message?.trim() || 'Sin mensaje'}
+                    {viewConversationDetail?.last_message?.trim()
+                      || viewConversation?.last_message?.trim()
+                      || viewConversationJourney?.summary?.firstCustomerMessage?.trim()
+                      || 'Sin mensaje'}
                   </Typography>
+                </Paper>
+              </Stack>
+
+              <Stack spacing={1}>
+                <Typography variant="subtitle2">Conversacion</Typography>
+                <Paper variant="outlined" sx={{ p: 1.5, maxHeight: 320, overflow: 'auto' }}>
+                  <Stack spacing={1.25}>
+                    {viewConversationLoading && <Typography variant="body2" color="text.secondary">Cargando detalle...</Typography>}
+                    {!viewConversationLoading && viewConversationJourney?.timeline?.length ? (
+                      viewConversationJourney.timeline
+                        .filter((item: any) => item.category === 'customer_message' || item.category === 'reply')
+                        .map((item: any) => (
+                          <Stack key={item.id} spacing={0.25}>
+                            <Typography variant="caption" color="text.secondary">
+                              {item.category === 'customer_message' ? 'Cliente' : 'Sistema'} · {toDate(item.occurredAt)}
+                            </Typography>
+                            <Typography variant="body2">{item.description || item.detail || item.title}</Typography>
+                          </Stack>
+                        ))
+                    ) : !viewConversationLoading ? (
+                      <Typography variant="body2" color="text.secondary">No hay detalle conversacional disponible.</Typography>
+                    ) : null}
+                  </Stack>
                 </Paper>
               </Stack>
             </Stack>
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => setViewConversation(null)}>Cerrar</Button>
+            <Button onClick={() => {
+              setViewConversation(null);
+              setViewConversationDetail(null);
+              setViewConversationJourney(null);
+            }}>Cerrar</Button>
           </DialogActions>
         </Dialog>
 

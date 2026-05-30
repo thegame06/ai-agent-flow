@@ -145,6 +145,11 @@ export const endpoints = {
       list: (tenantId: string) => `/api/v1/tenants/${tenantId}/checkpoints`,
       decide: (tenantId: string, executionId: string) => `/api/v1/tenants/${tenantId}/checkpoints/${executionId}/decide`,
     },
+    inbox: {
+      list: (tenantId: string) => `/api/v1/tenants/${tenantId}/inbox`,
+      detail: (tenantId: string, conversationId: string) => `/api/v1/tenants/${tenantId}/inbox/${encodeURIComponent(conversationId)}`,
+      stats: (tenantId: string) => `/api/v1/tenants/${tenantId}/inbox/stats`,
+    },
     // Tools / Extensions
     extensions: {
       tools: '/api/v1/extensions/tools',

@@ -31,6 +31,30 @@ builder.Services.AddScoped<IAgentFlowMcpTool, CommerceUpdateInvoiceStatusTool>()
 builder.Services.AddScoped<IAgentFlowMcpTool, CommerceSendInvoiceWhatsAppTool>();
 builder.Services.AddScoped<IAgentFlowMcpTool, CommerceSendConversationMessageTool>();
 builder.Services.AddScoped<IAgentFlowMcpTool, CommerceCloseConversationTool>();
+builder.Services.AddScoped<IAgentFlowMcpTool, CommerceUpsertInventoryItemTool>();
+builder.Services.AddScoped<IAgentFlowMcpTool, CommerceAdjustInventoryTool>();
+builder.Services.AddScoped<IAgentFlowMcpTool, CommerceSearchInventoryMovementsTool>();
+builder.Services.AddScoped<IAgentFlowMcpTool, CommerceSearchCategoriesTool>();
+builder.Services.AddScoped<IAgentFlowMcpTool, CommerceCreateCategoryTool>();
+builder.Services.AddScoped<IAgentFlowMcpTool, CommerceUpdateCategoryTool>();
+builder.Services.AddScoped<IAgentFlowMcpTool, CommerceDeleteCategoryTool>();
+builder.Services.AddScoped<IAgentFlowMcpTool, CommerceSearchBranchesTool>();
+builder.Services.AddScoped<IAgentFlowMcpTool, CommerceCreateBranchTool>();
+builder.Services.AddScoped<IAgentFlowMcpTool, CommerceUpdateBranchTool>();
+builder.Services.AddScoped<IAgentFlowMcpTool, CommerceDeleteBranchTool>();
+builder.Services.AddScoped<IAgentFlowMcpTool, CommerceGetSaleTool>();
+builder.Services.AddScoped<IAgentFlowMcpTool, CommerceUpdateSaleTool>();
+builder.Services.AddScoped<IAgentFlowMcpTool, CommerceSearchOrdersTool>();
+builder.Services.AddScoped<IAgentFlowMcpTool, CommerceGetOrderTool>();
+builder.Services.AddScoped<IAgentFlowMcpTool, CommerceUpdateOrderTool>();
+builder.Services.AddScoped<IAgentFlowMcpTool, CommerceGetStoreSettingsTool>();
+builder.Services.AddScoped<IAgentFlowMcpTool, CommerceUpdateStoreSettingsTool>();
+builder.Services.AddScoped<IAgentFlowMcpTool, CommerceSearchInvoicesTool>();
+builder.Services.AddScoped<IAgentFlowMcpTool, CommerceGetInvoiceTool>();
+builder.Services.AddScoped<IAgentFlowMcpTool, CommerceUpdateInvoiceTool>();
+builder.Services.AddScoped<IAgentFlowMcpTool, CommerceGetInvoicePdfTool>();
+builder.Services.AddScoped<IAgentFlowMcpTool, CommerceGetCustomerTool>();
+builder.Services.AddScoped<IAgentFlowMcpTool, CommerceDeleteCustomerTool>();
 builder.Services.AddScoped<ToolDispatcher>();
 
 // ── Auth ──────────────────────────────────────────────────────────────────────

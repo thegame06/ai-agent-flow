@@ -268,14 +268,41 @@ public sealed class CommerceStore : ICommerceStore
         if (!string.IsNullOrWhiteSpace(query))
         {
             var q = query.Trim();
+            var categoryIds = await _categories.Find(
+                    Builders<CommerceCategoryDocument>.Filter.And(
+                        Builders<CommerceCategoryDocument>.Filter.Eq(x => x.TenantId, tenantId),
+                        Builders<CommerceCategoryDocument>.Filter.Or(
+                            Builders<CommerceCategoryDocument>.Filter.Regex(x => x.Name, new MongoDB.Bson.BsonRegularExpression(q, "i")),
+                            Builders<CommerceCategoryDocument>.Filter.Regex(x => x.Description, new MongoDB.Bson.BsonRegularExpression(q, "i")))))
+                .Project(x => x.Id)
+                .ToListAsync(ct);
+
             filter = Builders<CommerceInventoryItemDocument>.Filter.And(
                 filter,
                 Builders<CommerceInventoryItemDocument>.Filter.Or(
                     Builders<CommerceInventoryItemDocument>.Filter.Regex(x => x.Sku, new MongoDB.Bson.BsonRegularExpression(q, "i")),
-                    Builders<CommerceInventoryItemDocument>.Filter.Regex(x => x.Name, new MongoDB.Bson.BsonRegularExpression(q, "i"))));
+                    Builders<CommerceInventoryItemDocument>.Filter.Regex(x => x.Name, new MongoDB.Bson.BsonRegularExpression(q, "i")),
+                    Builders<CommerceInventoryItemDocument>.Filter.Regex(x => x.Description, new MongoDB.Bson.BsonRegularExpression(q, "i")),
+                    Builders<CommerceInventoryItemDocument>.Filter.ElemMatch(
+                        x => x.Attributes,
+                        Builders<CommerceProductAttributeDocument>.Filter.Or(
+                            Builders<CommerceProductAttributeDocument>.Filter.Regex(x => x.Key, new MongoDB.Bson.BsonRegularExpression(q, "i")),
+                            Builders<CommerceProductAttributeDocument>.Filter.Regex(x => x.Value, new MongoDB.Bson.BsonRegularExpression(q, "i")))),
+                    Builders<CommerceInventoryItemDocument>.Filter.ElemMatch(
+                        x => x.Variations,
+                        Builders<CommerceProductVariationDocument>.Filter.Or(
+                            Builders<CommerceProductVariationDocument>.Filter.Regex(x => x.Sku, new MongoDB.Bson.BsonRegularExpression(q, "i")),
+                            Builders<CommerceProductVariationDocument>.Filter.Regex(x => x.Name, new MongoDB.Bson.BsonRegularExpression(q, "i")))),
+                    categoryIds.Count == 0
+                        ? Builders<CommerceInventoryItemDocument>.Filter.Where(_ => false)
+                        : Builders<CommerceInventoryItemDocument>.Filter.In(x => x.CategoryIds, categoryIds)));
         }
 
-        return await _inventory.Find(filter).Limit(bounded).ToListAsync(ct);
+        return await _inventory.Find(filter)
+            .SortByDescending(x => x.Active)
+            .ThenBy(x => x.Name)
+            .Limit(bounded)
+            .ToListAsync(ct);
     }
 
     public async Task<CommerceInventoryItemDocument> UpsertInventoryItemAsync(

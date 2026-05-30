@@ -94,6 +94,45 @@ public sealed class AgentFlowApiClient
     public async Task<List<CommerceInventoryItem>> SearchInventoryAsync(string tenantId, string? query, int limit, CancellationToken ct) =>
         await GetAsync<List<CommerceInventoryItem>>($"/api/v1/tenants/{tenantId}/commerce/inventory/search?query={Uri.EscapeDataString(query ?? string.Empty)}&limit={Math.Clamp(limit, 1, 100)}", ct) ?? [];
 
+    public async Task<JsonElement?> UpsertInventoryItemAsync(string tenantId, string sku, object body, CancellationToken ct) =>
+        await PutAsync<JsonElement>($"/api/v1/tenants/{tenantId}/commerce/inventory/items/{Uri.EscapeDataString(sku)}", body, ct);
+
+    public async Task<JsonElement?> AdjustInventoryAsync(string tenantId, string sku, object body, CancellationToken ct) =>
+        await PostAsync<JsonElement>($"/api/v1/tenants/{tenantId}/commerce/inventory/items/{Uri.EscapeDataString(sku)}/adjust", body, ct);
+
+    public async Task<JsonElement?> SearchInventoryMovementsAsync(string tenantId, string? sku, int page, int pageSize, CancellationToken ct) =>
+        await GetAsync<JsonElement>($"/api/v1/tenants/{tenantId}/commerce/inventory/movements?sku={Uri.EscapeDataString(sku ?? string.Empty)}&page={Math.Max(0, page)}&pageSize={Math.Clamp(pageSize, 1, 100)}", ct);
+
+    public async Task<JsonElement?> SearchCategoriesAsync(string tenantId, string? query, int page, int pageSize, CancellationToken ct) =>
+        await GetAsync<JsonElement>($"/api/v1/tenants/{tenantId}/commerce/inventory/categories?query={Uri.EscapeDataString(query ?? string.Empty)}&page={Math.Max(0, page)}&pageSize={Math.Clamp(pageSize, 1, 100)}", ct);
+
+    public async Task<JsonElement?> CreateCategoryAsync(string tenantId, object body, CancellationToken ct) =>
+        await PostAsync<JsonElement>($"/api/v1/tenants/{tenantId}/commerce/inventory/categories", body, ct);
+
+    public async Task<JsonElement?> UpdateCategoryAsync(string tenantId, string categoryId, object body, CancellationToken ct) =>
+        await PutAsync<JsonElement>($"/api/v1/tenants/{tenantId}/commerce/inventory/categories/{Uri.EscapeDataString(categoryId)}", body, ct);
+
+    public async Task<bool> DeleteCategoryAsync(string tenantId, string categoryId, CancellationToken ct)
+    {
+        var response = await _http.DeleteAsync($"/api/v1/tenants/{tenantId}/commerce/inventory/categories/{Uri.EscapeDataString(categoryId)}", ct);
+        return response.IsSuccessStatusCode;
+    }
+
+    public async Task<JsonElement?> SearchBranchesAsync(string tenantId, string? query, int page, int pageSize, CancellationToken ct) =>
+        await GetAsync<JsonElement>($"/api/v1/tenants/{tenantId}/commerce/inventory/branches?query={Uri.EscapeDataString(query ?? string.Empty)}&page={Math.Max(0, page)}&pageSize={Math.Clamp(pageSize, 1, 100)}", ct);
+
+    public async Task<JsonElement?> CreateBranchAsync(string tenantId, object body, CancellationToken ct) =>
+        await PostAsync<JsonElement>($"/api/v1/tenants/{tenantId}/commerce/inventory/branches", body, ct);
+
+    public async Task<JsonElement?> UpdateBranchAsync(string tenantId, string branchId, object body, CancellationToken ct) =>
+        await PutAsync<JsonElement>($"/api/v1/tenants/{tenantId}/commerce/inventory/branches/{Uri.EscapeDataString(branchId)}", body, ct);
+
+    public async Task<bool> DeleteBranchAsync(string tenantId, string branchId, CancellationToken ct)
+    {
+        var response = await _http.DeleteAsync($"/api/v1/tenants/{tenantId}/commerce/inventory/branches/{Uri.EscapeDataString(branchId)}", ct);
+        return response.IsSuccessStatusCode;
+    }
+
     public async Task<CommerceSale?> CreateSaleAsync(string tenantId, string partyId, string? currency, string? sessionId, string? threadId, IReadOnlyList<CommerceLineItemPayload> items, CancellationToken ct)
     {
         var body = new { partyId, currency, sessionId, threadId, items };
@@ -134,14 +173,53 @@ public sealed class AgentFlowApiClient
     public async Task<CommerceSaleDetail?> GetSaleByIdAsync(string tenantId, string saleId, CancellationToken ct)
         => await GetAsync<CommerceSaleDetail>($"/api/v1/tenants/{tenantId}/commerce/sales/{saleId}", ct);
 
+    public async Task<JsonElement?> UpdateSaleAsync(string tenantId, string saleId, object body, CancellationToken ct)
+        => await PutAsync<JsonElement>($"/api/v1/tenants/{tenantId}/commerce/sales/{Uri.EscapeDataString(saleId)}", body, ct);
+
     public async Task<SaleCalculationResult?> CalculateSaleAsync(string tenantId, object body, CancellationToken ct)
         => await PostAsync<SaleCalculationResult>($"/api/v1/tenants/{tenantId}/commerce/sales/calculate", body, ct);
+
+    public async Task<CommercePagedResult<CommerceOrder>?> SearchOrdersAsync(string tenantId, string? partyId, string? status, int page, int pageSize, CancellationToken ct)
+        => await GetAsync<CommercePagedResult<CommerceOrder>>($"/api/v1/tenants/{tenantId}/commerce/orders?partyId={Uri.EscapeDataString(partyId ?? string.Empty)}&status={Uri.EscapeDataString(status ?? string.Empty)}&page={Math.Max(0, page)}&pageSize={Math.Clamp(pageSize, 1, 100)}", ct);
+
+    public async Task<JsonElement?> GetOrderByIdAsync(string tenantId, string orderId, CancellationToken ct)
+        => await GetAsync<JsonElement>($"/api/v1/tenants/{tenantId}/commerce/orders/{Uri.EscapeDataString(orderId)}", ct);
+
+    public async Task<JsonElement?> UpdateOrderAsync(string tenantId, string orderId, object body, CancellationToken ct)
+        => await PutAsync<JsonElement>($"/api/v1/tenants/{tenantId}/commerce/orders/{Uri.EscapeDataString(orderId)}", body, ct);
+
+    public async Task<JsonElement?> GetStoreSettingsAsync(string tenantId, CancellationToken ct)
+        => await GetAsync<JsonElement>($"/api/v1/tenants/{tenantId}/commerce/store/settings", ct);
+
+    public async Task<JsonElement?> UpdateStoreSettingsAsync(string tenantId, object body, CancellationToken ct)
+        => await PutAsync<JsonElement>($"/api/v1/tenants/{tenantId}/commerce/store/settings", body, ct);
 
     public async Task<CommercePagedResult<CommerceInvoice>?> SearchInvoicesAsync(string tenantId, string? partyId, string? status, int page, int pageSize, CancellationToken ct)
         => await GetAsync<CommercePagedResult<CommerceInvoice>>($"/api/v1/tenants/{tenantId}/commerce/billing/invoices?partyId={Uri.EscapeDataString(partyId ?? string.Empty)}&status={Uri.EscapeDataString(status ?? string.Empty)}&page={Math.Max(0, page)}&pageSize={Math.Clamp(pageSize, 1, 100)}", ct);
 
+    public async Task<JsonElement?> GetInvoiceByIdAsync(string tenantId, string invoiceId, CancellationToken ct)
+        => await GetAsync<JsonElement>($"/api/v1/tenants/{tenantId}/commerce/billing/invoices/{Uri.EscapeDataString(invoiceId)}", ct);
+
+    public async Task<JsonElement?> UpdateInvoiceAsync(string tenantId, string invoiceId, object body, CancellationToken ct)
+        => await PutAsync<JsonElement>($"/api/v1/tenants/{tenantId}/commerce/billing/invoices/{Uri.EscapeDataString(invoiceId)}", body, ct);
+
     public async Task<CommerceInvoice?> UpdateInvoiceStatusAsync(string tenantId, string invoiceId, string status, CancellationToken ct)
         => await PutAsync<CommerceInvoice>($"/api/v1/tenants/{tenantId}/commerce/billing/invoices/{invoiceId}/status", new { status }, ct);
+
+    public async Task<CommerceParty?> GetCustomerByIdAsync(string tenantId, string partyId, CancellationToken ct) =>
+        await GetAsync<CommerceParty>($"/api/v1/tenants/{tenantId}/commerce/crm/customers/{Uri.EscapeDataString(partyId)}", ct);
+
+    public async Task<(string FileName, string ContentType, string Base64Content)?> GetInvoicePdfAsync(string tenantId, string invoiceId, CancellationToken ct)
+    {
+        var response = await _http.GetAsync($"/api/v1/tenants/{tenantId}/commerce/billing/invoices/{Uri.EscapeDataString(invoiceId)}/pdf", ct);
+        if (!response.IsSuccessStatusCode) return null;
+        var bytes = await response.Content.ReadAsByteArrayAsync(ct);
+        var contentType = response.Content.Headers.ContentType?.MediaType ?? "application/pdf";
+        var fileName = response.Content.Headers.ContentDisposition?.FileNameStar
+            ?? response.Content.Headers.ContentDisposition?.FileName
+            ?? $"invoice-{invoiceId}.pdf";
+        return (fileName.Trim('"'), contentType, Convert.ToBase64String(bytes));
+    }
 
     public async Task<bool> SendInvoiceWhatsAppAsync(string tenantId, string invoiceId, CancellationToken ct)
     {
@@ -224,7 +302,20 @@ public sealed record CommerceConversationContext(
     DateTimeOffset? ExpiresAt, bool IsExpired, CommerceParty? Party);
 
 public sealed record CommerceInventoryItem(
-    string Id, string Sku, string Name, string ItemType, string UnitOfMeasure, bool TracksInventory, decimal UnitPrice, int OnHand, bool Active);
+    string Id,
+    string Sku,
+    string Name,
+    string? Description,
+    string ItemType,
+    string UnitOfMeasure,
+    bool TracksInventory,
+    decimal UnitPrice,
+    int OnHand,
+    bool Active,
+    IReadOnlyList<string>? CategoryIds,
+    IReadOnlyList<string>? CategoryNames,
+    IReadOnlyList<CommerceProductAttribute>? Attributes,
+    IReadOnlyList<CommerceProductVariation>? Variations);
 
 public sealed record CommerceLineItemPayload(
     string Sku, string Name, decimal UnitPrice, decimal Quantity);
@@ -242,3 +333,5 @@ public sealed record CommerceInvoice(
 public sealed record CommerceIdentityLink(string Channel, string Identifier);
 public sealed record CommercePagedResult<T>(IReadOnlyList<T> Items, long Total, int Page, int PageSize);
 public sealed record SaleCalculationResult(decimal Subtotal, decimal Discount, decimal Tax, decimal Total);
+public sealed record CommerceProductAttribute(string Key, string Value);
+public sealed record CommerceProductVariation(string Id, string Sku, string Name, decimal Price, int Stock, bool Active, IReadOnlyList<CommerceProductAttribute>? Attributes);
