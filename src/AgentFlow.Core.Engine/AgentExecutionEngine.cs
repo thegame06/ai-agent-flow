@@ -48,6 +48,7 @@ public sealed class AgentExecutionEngine : IAgentExecutor
     private readonly IIntentScoringEngine? _intentScoringEngine;
     private readonly IRoutingOrchestrator? _routingOrchestrator;
     private readonly IWorkflowEngine? _workflowEngine;
+    private readonly IWorkflowRoutingCatalog? _workflowRoutingCatalog;
     private readonly IConversationInboxService? _conversationInboxService;
     private readonly IHumanEscalationNotifier? _humanEscalationNotifier;
 
@@ -70,7 +71,8 @@ public sealed class AgentExecutionEngine : IAgentExecutor
         IRoutingOrchestrator? routingOrchestrator = null, // ✅ NEW: Optional for backward compatibility
         IWorkflowEngine? workflowEngine = null, // ✅ NEW: Workflow execution engine
         IConversationInboxService? conversationInboxService = null,
-        IHumanEscalationNotifier? humanEscalationNotifier = null)
+        IHumanEscalationNotifier? humanEscalationNotifier = null,
+        IWorkflowRoutingCatalog? workflowRoutingCatalog = null)
     {
         _agentRepo = agentRepo;
         _executionRepo = executionRepo;
@@ -89,6 +91,7 @@ public sealed class AgentExecutionEngine : IAgentExecutor
         _intentScoringEngine = intentScoringEngine; // ✅ NEW
         _routingOrchestrator = routingOrchestrator; // ✅ NEW
         _workflowEngine = workflowEngine; // ✅ NEW
+        _workflowRoutingCatalog = workflowRoutingCatalog;
         _conversationInboxService = conversationInboxService;
         _humanEscalationNotifier = humanEscalationNotifier;
     }
@@ -162,8 +165,13 @@ public sealed class AgentExecutionEngine : IAgentExecutor
                 var assistantThreshold = ReadRoutingThreshold(request.Metadata, "routing.assistant_confidence_threshold", 0.80f);
 
                 // Second level: assistant inference from available intent catalog when rules/scoring had no route.
-                if ((routingDecision.Action == RoutingAction.Fallback || routingDecision.Action == RoutingAction.Queue)
-                    && classification.BestScore < intentThreshold)
+                var shouldTryAssistantFallback =
+                    (routingDecision.Action == RoutingAction.Fallback || routingDecision.Action == RoutingAction.Queue) &&
+                    (classification.BestScore < intentThreshold ||
+                     string.Equals(routingDecision.ReasonCode, "no_rules_configured", StringComparison.OrdinalIgnoreCase) ||
+                     string.Equals(routingDecision.ReasonCode, "no_workflow_configured", StringComparison.OrdinalIgnoreCase));
+
+                if (shouldTryAssistantFallback)
                 {
                     var assisted = await TryAssistantInferenceRoutingAsync(
                         agentDef,
@@ -218,7 +226,7 @@ public sealed class AgentExecutionEngine : IAgentExecutor
                                     Channel = normalizedRoutingChannel,
                                     UserIdentifier = request.UserId,
                                     UserMessage = request.UserMessage,
-                                    DetectedIntentKey = classification.BestMatch?.IntentKey ?? "unknown",
+                                    DetectedIntentKey = routingDecision.IntentKey ?? classification.BestMatch?.IntentKey ?? "unknown",
                                     ConfidenceScore = classification.BestScore,
                                     AdditionalMetadata = new Dictionary<string, object>
                                     {
@@ -2233,19 +2241,31 @@ if (!preResponsePolicy.IsSuccess) return Result<string?>.Failure(preResponsePoli
     {
         try
         {
-            var contextJson = request.ContextJson;
-            if (string.IsNullOrWhiteSpace(contextJson))
+            var catalog = await BuildAssistantRoutingCatalogAsync(request, ct);
+            if (catalog.Count == 0)
                 return null;
 
-            using var contextDoc = JsonDocument.Parse(contextJson);
-            if (!contextDoc.RootElement.TryGetProperty("IntentCatalog", out var catalogEl) ||
-                catalogEl.ValueKind != JsonValueKind.String ||
-                string.IsNullOrWhiteSpace(catalogEl.GetString()))
-                return null;
+            var lexicalFallback = TryResolvePublishedWorkflowTextMatch(
+                request.UserMessage,
+                catalog,
+                classification.BestScore,
+                assistantThreshold);
 
-            using var catalogDoc = JsonDocument.Parse(catalogEl.GetString()!);
-            if (catalogDoc.RootElement.ValueKind != JsonValueKind.Array || catalogDoc.RootElement.GetArrayLength() == 0)
-                return null;
+            if (lexicalFallback is not null)
+                return lexicalFallback;
+
+            var catalogJson = JsonSerializer.Serialize(catalog.Select(item => new
+            {
+                intentKey = item.IntentKey,
+                intentLabel = item.IntentLabel,
+                description = item.IntentDescription,
+                examplePhrases = item.ExamplePhrases,
+                workflowId = item.WorkflowDefinitionId,
+                workflowName = item.WorkflowName,
+                workflowDescription = item.WorkflowDescription,
+                targetAgentId = item.TargetAgentId,
+                confidenceThreshold = item.ConfidenceThreshold
+            }));
 
             var resolve = await _brainResolver.ResolveAsync(
                 request.TenantId,
@@ -2276,7 +2296,7 @@ Rules:
                 CorrelationId = request.CorrelationId,
                 ModelId = routerAgent.Brain.ModelId,
                 SystemPrompt = systemPrompt,
-                UserMessage = $"Message: {request.UserMessage}\nIntentCatalog: {catalogEl.GetString()}",
+                UserMessage = $"Message: {request.UserMessage}\nIntentCatalog: {catalogJson}",
                 Iteration = 1,
                 ConversationStateJson = ExtractConversationStateJson(request.ContextJson)
             }, ct);
@@ -2296,52 +2316,293 @@ Rules:
             var confidence = root.TryGetProperty("confidence", out var confEl) && confEl.TryGetSingle(out var c)
                 ? c
                 : 0f;
-            if (confidence < assistantThreshold)
-                return null;
 
-            JsonElement? matched = null;
-            foreach (var item in catalogDoc.RootElement.EnumerateArray())
-            {
-                if (!item.TryGetProperty("intentKey", out var keyEl)) continue;
-                if (string.Equals(keyEl.GetString(), intentKey, StringComparison.OrdinalIgnoreCase))
-                {
-                    matched = item;
-                    break;
-                }
-            }
+            var matched = catalog.FirstOrDefault(item =>
+                string.Equals(item.IntentKey, intentKey, StringComparison.OrdinalIgnoreCase));
+
             if (matched is null)
                 return null;
 
-            var selected = matched.Value;
-            var workflowId = selected.TryGetProperty("workflowId", out var wfEl) ? wfEl.GetString() : null;
-            var targetAgentId = selected.TryGetProperty("targetAgentId", out var taEl) ? taEl.GetString() : null;
-
-            if (string.IsNullOrWhiteSpace(workflowId) && string.IsNullOrWhiteSpace(targetAgentId))
+            var requiredConfidence = Math.Max(assistantThreshold, (float)matched.ConfidenceThreshold);
+            if (confidence < requiredConfidence)
                 return null;
 
-            return new RoutingDecision
-            {
-                IntentKey = intentKey,
-                WorkflowDefinitionId = string.IsNullOrWhiteSpace(workflowId) ? null : workflowId,
-                TargetAgentId = string.IsNullOrWhiteSpace(targetAgentId) ? null : targetAgentId,
-                Action = RoutingAction.Route,
-                ReasonCode = "assistant_inference_match",
-                ExplanationJson = JsonSerializer.Serialize(new
+            return BuildAssistantRoutingDecision(
+                matched,
+                intentKey,
+                confidence,
+                "assistant_inference_match",
+                new
                 {
                     source = "assistant_inference",
                     assistantConfidence = confidence,
                     assistantThreshold,
+                    candidateThreshold = matched.ConfidenceThreshold,
                     score = classification.BestScore
-                }),
-                DecidedAt = DateTimeOffset.UtcNow,
-                LockId = null
-            };
+                });
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Assistant inference routing fallback failed.");
             return null;
         }
+    }
+
+    private async Task<IReadOnlyList<AssistantRoutingCandidate>> BuildAssistantRoutingCatalogAsync(
+        AgentExecutionRequest request,
+        CancellationToken ct)
+    {
+        var items = new List<AssistantRoutingCandidate>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        if (!string.IsNullOrWhiteSpace(request.ContextJson))
+        {
+            try
+            {
+                using var contextDoc = JsonDocument.Parse(request.ContextJson);
+                if (contextDoc.RootElement.TryGetProperty("IntentCatalog", out var catalogEl) &&
+                    catalogEl.ValueKind == JsonValueKind.String &&
+                    !string.IsNullOrWhiteSpace(catalogEl.GetString()))
+                {
+                    using var catalogDoc = JsonDocument.Parse(catalogEl.GetString()!);
+                    if (catalogDoc.RootElement.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var item in catalogDoc.RootElement.EnumerateArray())
+                        {
+                            var candidate = new AssistantRoutingCandidate
+                            {
+                                IntentKey = item.TryGetProperty("intentKey", out var keyEl) ? keyEl.GetString() ?? string.Empty : string.Empty,
+                                IntentDescription = item.TryGetProperty("description", out var descEl) ? descEl.GetString() : null,
+                                ExamplePhrases = item.TryGetProperty("examplePhrases", out var exEl) && exEl.ValueKind == JsonValueKind.Array
+                                    ? exEl.EnumerateArray().Where(x => x.ValueKind == JsonValueKind.String).Select(x => x.GetString()!).ToArray()
+                                    : Array.Empty<string>(),
+                                WorkflowDefinitionId = item.TryGetProperty("workflowId", out var wfEl) ? wfEl.GetString() : null,
+                                TargetAgentId = item.TryGetProperty("targetAgentId", out var taEl) ? taEl.GetString() : null,
+                                ConfidenceThreshold = 0.7
+                            };
+
+                            AddAssistantRoutingCandidate(items, seen, candidate);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Ignoring malformed IntentCatalog in context fallback.");
+            }
+        }
+
+        if (_workflowRoutingCatalog is not null)
+        {
+            var normalizedRoutingChannel = NormalizeRoutingChannel(request.SessionContext?.ChannelType);
+            var publishedCandidates = await _workflowRoutingCatalog.ListPublishedCandidatesAsync(
+                request.TenantId,
+                normalizedRoutingChannel,
+                ct);
+
+            foreach (var candidate in publishedCandidates)
+            {
+                AddAssistantRoutingCandidate(items, seen, new AssistantRoutingCandidate
+                {
+                    IntentKey = candidate.IntentKey,
+                    IntentLabel = candidate.IntentLabel,
+                    IntentDescription = candidate.IntentDescription,
+                    ExamplePhrases = candidate.ExamplePhrases,
+                    WorkflowDefinitionId = candidate.WorkflowDefinitionId,
+                    WorkflowName = candidate.WorkflowName,
+                    WorkflowDescription = candidate.WorkflowDescription,
+                    TargetAgentId = candidate.TargetAgentId,
+                    ConfidenceThreshold = candidate.ConfidenceThreshold
+                });
+            }
+        }
+
+        return items;
+    }
+
+    private static void AddAssistantRoutingCandidate(
+        ICollection<AssistantRoutingCandidate> items,
+        ISet<string> seen,
+        AssistantRoutingCandidate candidate)
+    {
+        if (string.IsNullOrWhiteSpace(candidate.IntentKey))
+            return;
+
+        var signature = $"{candidate.IntentKey}|{candidate.WorkflowDefinitionId}|{candidate.TargetAgentId}";
+        if (!seen.Add(signature))
+            return;
+
+        items.Add(candidate);
+    }
+
+    private static RoutingDecision? TryResolvePublishedWorkflowTextMatch(
+        string userMessage,
+        IReadOnlyList<AssistantRoutingCandidate> catalog,
+        float classificationScore,
+        float assistantThreshold)
+    {
+        var normalizedMessage = NormalizeRoutingText(userMessage);
+        if (string.IsNullOrWhiteSpace(normalizedMessage))
+            return null;
+
+        AssistantRoutingCandidate? bestCandidate = null;
+        double bestScore = 0d;
+
+        foreach (var candidate in catalog)
+        {
+            var score = ComputeRoutingCandidateScore(normalizedMessage, candidate);
+            if (score > bestScore)
+            {
+                bestScore = score;
+                bestCandidate = candidate;
+            }
+        }
+
+        if (bestCandidate is null)
+            return null;
+
+        var requiredConfidence = Math.Max(assistantThreshold, (float)bestCandidate.ConfidenceThreshold);
+        if (bestScore < requiredConfidence)
+            return null;
+
+        return BuildAssistantRoutingDecision(
+            bestCandidate,
+            bestCandidate.IntentKey,
+            (float)bestScore,
+            "workflow_catalog_text_match",
+            new
+            {
+                source = "workflow_catalog_text_match",
+                assistantThreshold,
+                candidateThreshold = bestCandidate.ConfidenceThreshold,
+                matchedWorkflow = bestCandidate.WorkflowName,
+                score = classificationScore,
+                textMatchScore = bestScore
+            });
+    }
+
+    private static RoutingDecision? BuildAssistantRoutingDecision(
+        AssistantRoutingCandidate candidate,
+        string intentKey,
+        float confidence,
+        string reasonCode,
+        object explanation)
+    {
+        if (string.IsNullOrWhiteSpace(candidate.WorkflowDefinitionId) &&
+            string.IsNullOrWhiteSpace(candidate.TargetAgentId))
+            return null;
+
+        return new RoutingDecision
+        {
+            IntentKey = intentKey,
+            WorkflowDefinitionId = string.IsNullOrWhiteSpace(candidate.WorkflowDefinitionId) ? null : candidate.WorkflowDefinitionId,
+            TargetAgentId = string.IsNullOrWhiteSpace(candidate.TargetAgentId) ? null : candidate.TargetAgentId,
+            Action = RoutingAction.Route,
+            ReasonCode = reasonCode,
+            ExplanationJson = JsonSerializer.Serialize(new
+            {
+                confidence,
+                details = explanation
+            }),
+            DecidedAt = DateTimeOffset.UtcNow,
+            LockId = null
+        };
+    }
+
+    private static double ComputeRoutingCandidateScore(string normalizedMessage, AssistantRoutingCandidate candidate)
+    {
+        var score = 0d;
+
+        foreach (var example in candidate.ExamplePhrases)
+        {
+            var normalizedExample = NormalizeRoutingText(example);
+            if (string.IsNullOrWhiteSpace(normalizedExample))
+                continue;
+
+            if (normalizedMessage.Contains(normalizedExample, StringComparison.Ordinal))
+                score = Math.Max(score, 0.97d);
+
+            score = Math.Max(score, ComputeTokenOverlapScore(normalizedMessage, normalizedExample) * 0.90d);
+        }
+
+        var intentLabel = NormalizeRoutingText(candidate.IntentLabel);
+        if (!string.IsNullOrWhiteSpace(intentLabel))
+        {
+            if (normalizedMessage.Contains(intentLabel, StringComparison.Ordinal))
+                score = Math.Max(score, 0.92d);
+
+            score = Math.Max(score, ComputeTokenOverlapScore(normalizedMessage, intentLabel) * 0.86d);
+        }
+
+        var workflowName = NormalizeRoutingText(candidate.WorkflowName);
+        if (!string.IsNullOrWhiteSpace(workflowName))
+        {
+            if (normalizedMessage.Contains(workflowName, StringComparison.Ordinal))
+                score = Math.Max(score, 0.88d);
+
+            score = Math.Max(score, ComputeTokenOverlapScore(normalizedMessage, workflowName) * 0.82d);
+        }
+
+        var intentDescription = NormalizeRoutingText(candidate.IntentDescription);
+        if (!string.IsNullOrWhiteSpace(intentDescription))
+            score = Math.Max(score, ComputeTokenOverlapScore(normalizedMessage, intentDescription) * 0.78d);
+
+        var workflowDescription = NormalizeRoutingText(candidate.WorkflowDescription);
+        if (!string.IsNullOrWhiteSpace(workflowDescription))
+            score = Math.Max(score, ComputeTokenOverlapScore(normalizedMessage, workflowDescription) * 0.72d);
+
+        return Math.Min(score, 0.99d);
+    }
+
+    private static double ComputeTokenOverlapScore(string message, string candidate)
+    {
+        var messageTokens = message.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(x => x.Length >= 3)
+            .ToHashSet(StringComparer.Ordinal);
+        var candidateTokens = candidate.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(x => x.Length >= 3)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+
+        if (messageTokens.Count == 0 || candidateTokens.Length == 0)
+            return 0d;
+
+        var hits = candidateTokens.Count(messageTokens.Contains);
+        if (hits == 0)
+            return 0d;
+
+        return (double)hits / candidateTokens.Length;
+    }
+
+    private static string NormalizeRoutingText(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+
+        var chars = value
+            .Trim()
+            .ToLowerInvariant()
+            .Select(c => char.IsLetterOrDigit(c) ? c : ' ')
+            .ToArray();
+
+        var cleaned = new string(chars);
+        while (cleaned.Contains("  ", StringComparison.Ordinal))
+            cleaned = cleaned.Replace("  ", " ", StringComparison.Ordinal);
+
+        return cleaned.Trim();
+    }
+
+    private sealed record AssistantRoutingCandidate
+    {
+        public string IntentKey { get; init; } = string.Empty;
+        public string? IntentLabel { get; init; }
+        public string? IntentDescription { get; init; }
+        public IReadOnlyList<string> ExamplePhrases { get; init; } = Array.Empty<string>();
+        public string? WorkflowDefinitionId { get; init; }
+        public string? WorkflowName { get; init; }
+        public string? WorkflowDescription { get; init; }
+        public string? TargetAgentId { get; init; }
+        public double ConfidenceThreshold { get; init; } = 0.7d;
     }
 
     /// <summary>
@@ -2528,6 +2789,8 @@ Rules:
         };
     }
 }
+
+
 
 
 

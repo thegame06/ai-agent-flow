@@ -4,6 +4,7 @@ import { useMemo, useState, useEffect, useCallback } from 'react';
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import Chip from '@mui/material/Chip';
+import Grid from '@mui/material/Grid';
 import Stack from '@mui/material/Stack';
 import Table from '@mui/material/Table';
 import Alert from '@mui/material/Alert';
@@ -25,6 +26,7 @@ import axios, { endpoints } from 'src/lib/axios';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { TermHelp } from 'src/aiagentflow/components/TermHelp';
 import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
+import { BrandPageHeader } from 'src/aiagentflow/components/BrandPageHeader';
 import { useSettingsWorkspace } from 'src/aiagentflow/pages/settings/SettingsWorkspaceContext';
 
 import { Label } from 'src/components/label';
@@ -341,6 +343,8 @@ export default function AuditPage() {
   );
 
   const summary = journey?.summary;
+  const hasLogs = filteredLogs.length > 0;
+  const recentCasesCount = correlations.length;
 
   return (
     <>
@@ -349,108 +353,150 @@ export default function AuditPage() {
       </Helmet>
 
       <DashboardContent maxWidth="xl" disablePadding={embedded}>
-        <Box sx={{ mb: 4 }}>
-          <Stack direction="row" spacing={1} alignItems="center">
-            <Typography variant="h4">Auditoria explicada</Typography>
-            <TermHelp title="Aqui ves la historia completa de un caso: que escribio el cliente, como respondio el sistema, que decisiones tomo y en que termino comercialmente." />
-          </Stack>
-          <Typography variant="body2" sx={{ color: 'text.secondary', mt: 1 }}>
-            Sigue el caso completo desde el primer mensaje del lead hasta el resultado comercial, sin exigir que el usuario entienda reglas internas, motivos detectados, flujos automatizados o herramientas tecnicas.
-          </Typography>
-        </Box>
+        <BrandPageHeader
+          eyebrow="Trazabilidad"
+          title="Auditoria explicada"
+          description="Reconstruye un caso de punta a punta: mensaje inicial, decisiones del sistema, ejecuciones y resultado comercial, sin obligar al usuario a leer eventos tecnicos crudos."
+          icon="mdi:file-search-outline"
+          help={<TermHelp title="Aqui ves la historia completa de un caso: que escribio el cliente, como respondio el sistema, que decisiones tomo y en que termino comercialmente." />}
+          meta={(
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+              <Chip label={`${filteredLogs.length} eventos`} color="primary" variant="soft" />
+              <Chip label={`${issueCount} errores`} color="error" variant="soft" />
+              <Chip label={`${warningsCount} alertas`} color="warning" variant="soft" />
+              <Chip label={`${recentCasesCount} casos recientes`} variant="outlined" />
+            </Stack>
+          )}
+        />
 
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
-        <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 2 }}>
-          <TextField
-            label="ID de seguimiento del caso"
-            value={correlationId}
-            onChange={(e) => setCorrelationId(e.target.value)}
-            helperText="Puedes pegar el ID de la conversacion o elegir un caso reciente abajo."
-            fullWidth
-          />
-          <TextField
-            label="Tipo de evento"
-            value={action}
-            onChange={(e) => setAction(e.target.value)}
-            placeholder="Decision, Transferencia, Venta creada..."
-            fullWidth
-          />
-          <TextField
-            label="Maximo"
-            type="number"
-            value={limit}
-            onChange={(e) => setLimit(Number(e.target.value || 100))}
-            sx={{ minWidth: 120 }}
-          />
-          <TextField
-            label="Desde"
-            type="datetime-local"
-            value={fromAt}
-            onChange={(e) => setFromAt(e.target.value)}
-            InputLabelProps={{ shrink: true }}
-            sx={{ minWidth: 220 }}
-          />
-          <TextField
-            label="Hasta"
-            type="datetime-local"
-            value={toAt}
-            onChange={(e) => setToAt(e.target.value)}
-            InputLabelProps={{ shrink: true }}
-            sx={{ minWidth: 220 }}
-          />
-          <TextField
-            label="Runtime"
-            select
-            value={runtimeFilter}
-            onChange={(e) => setRuntimeFilter(e.target.value as any)}
-            sx={{ minWidth: 180 }}
-          >
-            <MenuItem value="all">Todos</MenuItem>
-            <MenuItem value="Text">Text</MenuItem>
-            <MenuItem value="Voice">Voice</MenuItem>
-            <MenuItem value="MultimodalRealtime">MultimodalRealtime</MenuItem>
-          </TextField>
-          <TextField
-            label="Rol modelo"
-            select
-            value={modelRoleFilter}
-            onChange={(e) => setModelRoleFilter(e.target.value as any)}
-            sx={{ minWidth: 170 }}
-          >
-            <MenuItem value="all">Todos</MenuItem>
-            <MenuItem value="brain">Brain</MenuItem>
-            <MenuItem value="stt">STT</MenuItem>
-            <MenuItem value="tts">TTS</MenuItem>
-          </TextField>
-          <Button variant="contained" onClick={() => void fetchLogs()}>
-            Aplicar
-          </Button>
-          <Button variant="outlined" onClick={() => void downloadAudit('csv')}>
-            Descargar CSV
-          </Button>
-          <Button variant="outlined" onClick={() => void downloadAudit('json')}>
-            Descargar JSON
-          </Button>
-        </Stack>
-
-        <Stack direction="row" spacing={2} sx={{ mb: 3, flexWrap: 'wrap' }} useFlexGap>
-          <Chip label={`${filteredLogs.length} eventos`} color="primary" variant="soft" />
-          <Chip label={`${issueCount} errores`} color="error" variant="soft" />
-          <Chip label={`${warningsCount} alertas`} color="warning" variant="soft" />
-        </Stack>
+        <Card sx={{ mb: 3, p: { xs: 2, md: 2.5 }, border: `1px solid ${alpha(theme.palette.grey[500], 0.12)}` }}>
+          <Stack spacing={2.5}>
+            <Box>
+              <Typography variant="subtitle1" fontWeight={700}>Entrada del caso</Typography>
+              <Typography variant="body2" color="text.secondary">
+                Busca un caso puntual o ajusta el rango para revisar comportamiento operativo, decisiones y resultado.
+              </Typography>
+            </Box>
+            <Grid container spacing={2}>
+              <Grid item xs={12} md={5}>
+                <TextField
+                  label="ID de seguimiento del caso"
+                  value={correlationId}
+                  onChange={(e) => setCorrelationId(e.target.value)}
+                  helperText="Puedes pegar el ID de la conversacion o elegir un caso reciente abajo."
+                  fullWidth
+                />
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <TextField
+                  label="Tipo de evento"
+                  value={action}
+                  onChange={(e) => setAction(e.target.value)}
+                  placeholder="Decision, transferencia, venta creada"
+                  fullWidth
+                />
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <TextField
+                  label="Maximo"
+                  type="number"
+                  value={limit}
+                  onChange={(e) => setLimit(Number(e.target.value || 100))}
+                  fullWidth
+                />
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <TextField
+                  label="Desde"
+                  type="datetime-local"
+                  value={fromAt}
+                  onChange={(e) => setFromAt(e.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                  fullWidth
+                />
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <TextField
+                  label="Hasta"
+                  type="datetime-local"
+                  value={toAt}
+                  onChange={(e) => setToAt(e.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                  fullWidth
+                />
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <TextField
+                  label="Runtime"
+                  select
+                  value={runtimeFilter}
+                  onChange={(e) => setRuntimeFilter(e.target.value as any)}
+                  fullWidth
+                >
+                  <MenuItem value="all">Todos</MenuItem>
+                  <MenuItem value="Text">Texto</MenuItem>
+                  <MenuItem value="Voice">Voz</MenuItem>
+                  <MenuItem value="MultimodalRealtime">Multimodal</MenuItem>
+                </TextField>
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <TextField
+                  label="Rol del modelo"
+                  select
+                  value={modelRoleFilter}
+                  onChange={(e) => setModelRoleFilter(e.target.value as any)}
+                  fullWidth
+                >
+                  <MenuItem value="all">Todos</MenuItem>
+                  <MenuItem value="brain">Cerebro</MenuItem>
+                  <MenuItem value="stt">Transcripcion</MenuItem>
+                  <MenuItem value="tts">Voz sintetizada</MenuItem>
+                </TextField>
+              </Grid>
+            </Grid>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25} justifyContent="space-between" alignItems={{ sm: 'center' }}>
+              <Typography variant="caption" color="text.secondary">
+                Si seleccionas un caso, la vista central construye automaticamente la historia explicada del recorrido.
+              </Typography>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25}>
+                <Button variant="contained" onClick={() => void fetchLogs()}>
+                  Aplicar filtros
+                </Button>
+                <Button variant="outlined" onClick={() => void downloadAudit('csv')}>
+                  Descargar CSV
+                </Button>
+                <Button variant="outlined" onClick={() => void downloadAudit('json')}>
+                  Descargar JSON
+                </Button>
+              </Stack>
+            </Stack>
+          </Stack>
+        </Card>
 
         <Card sx={{ mb: 3, p: 2, border: `1px solid ${alpha(theme.palette.grey[500], 0.12)}` }}>
-          <Typography variant="subtitle2" sx={{ mb: 1.5 }}>Casos recientes</Typography>
+          <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={1.5} sx={{ mb: 1.5 }}>
+            <Box>
+              <Typography variant="subtitle1" fontWeight={700}>Casos recientes</Typography>
+              <Typography variant="body2" color="text.secondary">
+                Atajos para abrir conversaciones recientes sin volver a buscar el identificador.
+              </Typography>
+            </Box>
+            <Chip size="small" variant="outlined" label={`${correlations.length} disponibles`} />
+          </Stack>
           <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
             {correlations.length === 0 ? (
-              <Chip size="small" label="Aun no hay casos recientes" />
+              <Alert severity="info" variant="outlined" sx={{ width: '100%' }}>
+                Aun no hay casos recientes para mostrar.
+              </Alert>
             ) : (
               correlations.map((item) => (
                 <Button
                   key={item.correlationId}
                   size="small"
                   variant={correlationId === item.correlationId ? 'contained' : 'outlined'}
+                  sx={{ justifyContent: 'flex-start' }}
                   onClick={() => {
                     setCorrelationId(item.correlationId);
                     void fetchLogs(item.correlationId);
@@ -694,9 +740,9 @@ export default function AuditPage() {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {filteredLogs.map((entry) => (
+                  {hasLogs ? filteredLogs.map((entry) => (
                     <TableRow key={entry.id} hover>
-                      <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>
+                      <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
                         {new Date(entry.occurredAt).toLocaleString()}
                       </TableCell>
                       <TableCell>{entry.actor || 'Sistema'}</TableCell>
@@ -712,7 +758,18 @@ export default function AuditPage() {
                         {entry.eventJson || '-'}
                       </TableCell>
                     </TableRow>
-                  ))}
+                  )) : (
+                    <TableRow>
+                      <TableCell colSpan={7} sx={{ py: 6 }}>
+                        <Stack spacing={1} alignItems="center" textAlign="center">
+                          <Typography variant="subtitle1">No hay eventos para este filtro</Typography>
+                          <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 520 }}>
+                            Ajusta el rango, el tipo de evento o selecciona un caso reciente para construir la trazabilidad.
+                          </Typography>
+                        </Stack>
+                      </TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
             </TableContainer>

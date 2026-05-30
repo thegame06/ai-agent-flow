@@ -7,6 +7,7 @@ using AgentFlow.Api.Voice;
 using AgentFlow.Api.Workflow;
 using AgentFlow.Application.Channels;
 using AgentFlow.Application.Memory;
+using AgentFlow.Abstractions.Workflows;
 using AgentFlow.Caching.Redis;
 using AgentFlow.Core.Engine;
 using AgentFlow.Domain.Aggregates;
@@ -72,6 +73,7 @@ public static class DependencyInjection
             .AddScoped<IHumanEscalationNotifier, WorkforceHumanEscalationNotifier>()
             .AddSingleton<ICommerceStore, CommerceStore>()
             .AddScoped<IWorkflowStudioStore, MongoWorkflowStudioStore>()
+            .AddScoped<IWorkflowRoutingCatalog, WorkflowRoutingCatalog>()
             .AddScoped<ITenantConnectionStore, MongoTenantConnectionStore>()
             .AddSecurity(configuration)
             .AddIntentRouting()
