@@ -295,7 +295,7 @@ public sealed class CommerceStore : ICommerceStore
                             Builders<CommerceProductVariationDocument>.Filter.Regex(x => x.Name, new MongoDB.Bson.BsonRegularExpression(q, "i")))),
                     categoryIds.Count == 0
                         ? Builders<CommerceInventoryItemDocument>.Filter.Where(_ => false)
-                        : Builders<CommerceInventoryItemDocument>.Filter.In(x => x.CategoryIds, categoryIds)));
+                        : Builders<CommerceInventoryItemDocument>.Filter.AnyIn(x => x.CategoryIds, categoryIds)));
         }
 
         return await _inventory.Find(filter)
