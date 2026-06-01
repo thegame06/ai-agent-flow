@@ -59,11 +59,6 @@ export const navData: NavSectionProps['data'] = [
         path: paths.dashboard.commerce,
         icon: ICONS.commerce,
       },
-      {
-        title: 'Actividad',
-        path: paths.dashboard.executions,
-        icon: ICONS.activity,
-      },
       // {
       //   title: 'KYC y pagos',
       //   path: paths.dashboard.kycPayments,
@@ -74,11 +69,6 @@ export const navData: NavSectionProps['data'] = [
   {
     subheader: 'Construccion',
     items: [
-      {
-        title: 'Crear automatizacion',
-        path: paths.dashboard.annonai,
-        icon: ICONS.automation,
-      },
       {
         title: 'Automatizaciones',
         path: paths.dashboard.workflows,
@@ -97,6 +87,11 @@ export const navData: NavSectionProps['data'] = [
         title: 'Intenciones',
         path: paths.dashboard.intents,
         icon: ICONS.intent,
+      },
+      {
+        title: 'Ejecuciones',
+        path: paths.dashboard.executions,
+        icon: ICONS.activity,
       },
     ],
   },

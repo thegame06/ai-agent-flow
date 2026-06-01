@@ -15,6 +15,7 @@ import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
 import CardContent from '@mui/material/CardContent';
 import LinearProgress from '@mui/material/LinearProgress';
+import { alpha, useTheme } from '@mui/material/styles';
 
 import { paths } from 'src/routes/paths';
 import { RouterLink } from 'src/routes/components';
@@ -49,6 +50,7 @@ type ReadinessItem = {
 export default function OverviewPage() {
   const dispatch = useDispatch<AppDispatch>();
   const tenantId = useTenantId();
+  const theme = useTheme();
   const [orchestratorStatus, setOrchestratorStatus] = useState<SystemOrchestratorStatus | null>(null);
   const [wizardType, setWizardType] = useState<WizardId>('automation');
 
@@ -226,31 +228,107 @@ export default function OverviewPage() {
                 />
 
                 <Grid container spacing={1.5}>
-                  {readinessItems.map((item) => (
+                  {readinessItems.map((item) => {
+                    const isFeaturedReady =
+                      item.ready && (item.key === 'automation' || item.key === 'agents');
+
+                    return (
                     <Grid key={item.key} item xs={12} sm={6}>
                       <Card
                         variant="outlined"
                         sx={{
                           p: 1.75,
                           borderRadius: 2.5,
-                          borderColor: item.ready ? 'success.light' : 'divider',
-                          bgcolor: item.ready ? 'success.lighter' : 'background.paper',
+                          borderColor: isFeaturedReady
+                            ? alpha(theme.palette.success.main, 0.45)
+                            : item.ready
+                              ? alpha(theme.palette.success.main, 0.28)
+                              : 'divider',
+                          bgcolor: isFeaturedReady
+                            ? alpha(theme.palette.success.dark, 0.3)
+                            : item.ready
+                              ? alpha(theme.palette.success.main, 0.08)
+                              : 'background.paper',
+                          backgroundImage: isFeaturedReady
+                            ? `linear-gradient(135deg, ${alpha(theme.palette.success.dark, 0.78)} 0%, ${alpha(theme.palette.success.main, 0.52)} 100%)`
+                            : 'none',
+                          boxShadow: isFeaturedReady
+                            ? `inset 0 1px 0 ${alpha(theme.palette.common.white, 0.08)}`
+                            : 'none',
                         }}
                       >
                         <Stack spacing={1.25}>
-                          <Stack direction="row" spacing={1} alignItems="center">
-                            <Iconify icon={item.icon} width={18} />
-                            <Typography variant="subtitle2">{item.label}</Typography>
+                          <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
+                            <Stack direction="row" spacing={1} alignItems="center">
+                              <Box
+                                sx={{
+                                  width: 28,
+                                  height: 28,
+                                  borderRadius: 1.25,
+                                  display: 'grid',
+                                  placeItems: 'center',
+                                  bgcolor: isFeaturedReady
+                                    ? alpha(theme.palette.common.white, 0.12)
+                                    : item.ready
+                                      ? alpha(theme.palette.success.main, 0.14)
+                                      : alpha(theme.palette.text.primary, 0.05),
+                                  color: isFeaturedReady ? 'common.white' : item.ready ? 'success.main' : 'text.primary',
+                                }}
+                              >
+                                <Iconify icon={item.icon} width={16} />
+                              </Box>
+                              <Typography
+                                variant="subtitle2"
+                                sx={{ color: isFeaturedReady ? 'common.white' : 'text.primary' }}
+                              >
+                                {item.label}
+                              </Typography>
+                            </Stack>
+                            {item.ready && (
+                              <Chip
+                                size="small"
+                                label="Listo"
+                                sx={{
+                                  height: 22,
+                                  bgcolor: isFeaturedReady
+                                    ? alpha(theme.palette.common.white, 0.14)
+                                    : alpha(theme.palette.success.main, 0.12),
+                                  color: isFeaturedReady ? 'common.white' : 'success.dark',
+                                  border: `1px solid ${isFeaturedReady ? alpha(theme.palette.common.white, 0.18) : alpha(theme.palette.success.main, 0.22)}`,
+                                }}
+                              />
+                            )}
                           </Stack>
-                          <Typography variant="body2" color="text.secondary">
+
+                          <Typography
+                            variant={isFeaturedReady ? 'h5' : 'body2'}
+                            sx={{
+                              color: isFeaturedReady ? 'common.white' : item.ready ? 'text.primary' : 'text.secondary',
+                              lineHeight: isFeaturedReady ? 1.05 : undefined,
+                              fontWeight: isFeaturedReady ? 700 : 400,
+                            }}
+                          >
                             {item.countLabel}
                           </Typography>
+
                           <Box>
                             <Button
                               component={RouterLink}
                               href={item.href}
                               size="small"
-                              variant={item.ready ? 'text' : 'outlined'}
+                              variant={isFeaturedReady ? 'contained' : item.ready ? 'text' : 'outlined'}
+                              color={isFeaturedReady ? 'inherit' : item.ready ? 'success' : 'inherit'}
+                              sx={
+                                isFeaturedReady
+                                  ? {
+                                      bgcolor: alpha(theme.palette.common.white, 0.14),
+                                      color: 'common.white',
+                                      '&:hover': {
+                                        bgcolor: alpha(theme.palette.common.white, 0.22),
+                                      },
+                                    }
+                                  : undefined
+                              }
                             >
                               {item.actionLabel}
                             </Button>
@@ -258,7 +336,7 @@ export default function OverviewPage() {
                         </Stack>
                       </Card>
                     </Grid>
-                  ))}
+                  )})}
                 </Grid>
 
                 {missingItems.length > 0 ? (
