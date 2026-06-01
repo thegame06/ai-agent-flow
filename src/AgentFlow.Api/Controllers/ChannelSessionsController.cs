@@ -199,14 +199,13 @@ public sealed class ChannelSessionsController : ControllerBase
         CancellationToken ct)
     {
         var items = channelMessages.Select(MapMessage).ToList();
+        var realMessages = items.ToList();
         if (threadRepo is null || string.IsNullOrWhiteSpace(session.ThreadId))
             return items.OrderBy(x => x.CreatedAt).ToList();
 
         var thread = await threadRepo.GetByIdAsync(session.ThreadId, session.TenantId, ct);
         if (thread is null)
             return items.OrderBy(x => x.CreatedAt).ToList();
-
-        var seen = new HashSet<string>(items.Select(BuildDedupKey), StringComparer.Ordinal);
 
         for (var index = 0; index < thread.Context.Turns.Count; index++)
         {
@@ -227,7 +226,7 @@ public sealed class ChannelSessionsController : ControllerBase
                     DeliveryState = "received",
                     Metadata = new Dictionary<string, string> { ["source"] = "thread" }
                 };
-                if (seen.Add(BuildDedupKey(inbound)))
+                if (!HasEquivalentRealMessage(realMessages, inbound) && !HasEquivalentSyntheticMessage(items, inbound))
                     items.Add(inbound);
             }
 
@@ -250,7 +249,7 @@ public sealed class ChannelSessionsController : ControllerBase
                     DeliveryState = "sent",
                     Metadata = new Dictionary<string, string> { ["source"] = "thread" }
                 };
-                if (seen.Add(BuildDedupKey(outbound)))
+                if (!HasEquivalentRealMessage(realMessages, outbound) && !HasEquivalentSyntheticMessage(items, outbound))
                     items.Add(outbound);
             }
         }
@@ -258,8 +257,30 @@ public sealed class ChannelSessionsController : ControllerBase
         return items.OrderBy(x => x.CreatedAt).ToList();
     }
 
-    private static string BuildDedupKey(ChannelMessageDto message)
-        => $"{message.Direction}|{message.Actor}|{NormalizeForKey(message.Content)}|{message.CreatedAt:yyyyMMddHHmm}";
+    private static bool HasEquivalentRealMessage(
+        IReadOnlyList<ChannelMessageDto> realMessages,
+        ChannelMessageDto candidate)
+        => realMessages.Any(existing => AreEquivalentMessages(existing, candidate));
+
+    private static bool HasEquivalentSyntheticMessage(
+        IReadOnlyList<ChannelMessageDto> items,
+        ChannelMessageDto candidate)
+        => items.Any(existing => IsSyntheticThreadMessage(existing) && AreEquivalentMessages(existing, candidate));
+
+    private static bool AreEquivalentMessages(ChannelMessageDto left, ChannelMessageDto right)
+    {
+        if (!string.Equals(left.Direction, right.Direction, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        if (!string.Equals(NormalizeForKey(left.Content), NormalizeForKey(right.Content), StringComparison.Ordinal))
+            return false;
+
+        var delta = (left.CreatedAt - right.CreatedAt).Duration();
+        return delta <= TimeSpan.FromSeconds(2);
+    }
+
+    private static bool IsSyntheticThreadMessage(ChannelMessageDto message)
+        => string.Equals(message.Metadata.GetValueOrDefault("source"), "thread", StringComparison.OrdinalIgnoreCase);
 
     private static string NormalizeForKey(string value)
     {

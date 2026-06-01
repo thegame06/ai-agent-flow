@@ -43,16 +43,17 @@ export const fetchCheckpoints = createAsyncThunk(
 
 export const decideCheckpoint = createAsyncThunk(
   'checkpoints/decide',
-  async ({ tenantId, executionId, checkpointId, approved, feedback }: {
+  async ({ tenantId, executionId, checkpointId, approved, action, feedback }: {
     tenantId: string;
     executionId: string;
     checkpointId: string;
     approved: boolean;
+    action?: 'approve' | 'reject' | 'fallback';
     feedback?: string;
   }) => {
     const response = await axios.post(
       `/api/v1/tenants/${tenantId}/checkpoints/${executionId}/decide`,
-      { checkpointId, approved, feedback }
+      { checkpointId, approved, action, feedback }
     );
     return { executionId, response: response.data };
   }

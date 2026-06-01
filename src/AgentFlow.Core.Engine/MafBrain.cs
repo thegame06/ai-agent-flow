@@ -251,7 +251,11 @@ public sealed class MafBrain : IAgentBrain
                     Decision = ThinkDecision.Checkpoint,
                     Rationale = "MAF returned a response without a valid decision; routing to checkpoint.",
                     FinalAnswer = null,
-                    TokensUsed = 0
+                    TokensUsed = 0,
+                    Context = BuildTechnicalCheckpointContext(
+                        issueCode: "maf.invalid_decision",
+                        rawResponse: json,
+                        parseError: null)
                 };
             }
 
@@ -276,7 +280,11 @@ public sealed class MafBrain : IAgentBrain
                     Decision = ThinkDecision.Checkpoint,
                     Rationale = "MAF returned non-JSON content; routing to checkpoint.",
                     FinalAnswer = null,
-                    TokensUsed = 0
+                    TokensUsed = 0,
+                    Context = BuildTechnicalCheckpointContext(
+                        issueCode: "maf.non_json_response",
+                        rawResponse: json,
+                        parseError: ex.Message)
                 };
             }
 
@@ -288,7 +296,11 @@ public sealed class MafBrain : IAgentBrain
                     "ThinkResult",
                     [$"Malformed JSON: {ex.Message}"]),
                 FinalAnswer = null,
-                TokensUsed = 0
+                TokensUsed = 0,
+                Context = BuildTechnicalCheckpointContext(
+                    issueCode: "maf.malformed_json",
+                    rawResponse: json,
+                    parseError: ex.Message)
             };
         }
     }
@@ -325,5 +337,26 @@ public sealed class MafBrain : IAgentBrain
             return clean[3..^3].Trim();
 
         return clean;
+    }
+
+    private static IReadOnlyDictionary<string, string> BuildTechnicalCheckpointContext(
+        string issueCode,
+        string? rawResponse,
+        string? parseError)
+    {
+        var context = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["checkpointKind"] = "technical",
+            ["originNode"] = "MafBrain",
+            ["issueCode"] = issueCode
+        };
+
+        if (!string.IsNullOrWhiteSpace(rawResponse))
+            context["rawResponse"] = rawResponse;
+
+        if (!string.IsNullOrWhiteSpace(parseError))
+            context["parseError"] = parseError;
+
+        return context;
     }
 }

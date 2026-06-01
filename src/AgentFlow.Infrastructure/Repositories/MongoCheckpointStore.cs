@@ -23,10 +23,26 @@ public sealed class MongoCheckpointStore : ICheckpointStore
 
     public async Task SaveAsync(AgentCheckpoint checkpoint, CancellationToken ct = default)
     {
-        await _collection.ReplaceOneAsync(
-            x => x.ExecutionId == checkpoint.ExecutionId && x.TenantId == checkpoint.TenantId,
-            Map(checkpoint),
-            new ReplaceOptions { IsUpsert = true },
+        var filter = Builders<CheckpointDocument>.Filter.Where(
+            x => x.ExecutionId == checkpoint.ExecutionId && x.TenantId == checkpoint.TenantId);
+
+        var update = Builders<CheckpointDocument>.Update
+            .SetOnInsert(x => x.MongoId, ObjectId.GenerateNewId())
+            .Set(x => x.ExecutionId, checkpoint.ExecutionId)
+            .Set(x => x.TenantId, checkpoint.TenantId)
+            .Set(x => x.AgentKey, checkpoint.AgentKey)
+            .Set(x => x.CheckpointId, checkpoint.CheckpointId)
+            .Set(x => x.Reason, checkpoint.Reason)
+            .Set(x => x.ToolName, checkpoint.ToolName)
+            .Set(x => x.ToolInputJson, checkpoint.ToolInputJson)
+            .Set(x => x.LlmRationale, checkpoint.LlmRationale)
+            .Set(x => x.CreatedAt, checkpoint.CreatedAt)
+            .Set(x => x.Context, checkpoint.Context.ToDictionary());
+
+        await _collection.UpdateOneAsync(
+            filter,
+            update,
+            new UpdateOptions { IsUpsert = true },
             ct);
     }
 
@@ -51,20 +67,6 @@ public sealed class MongoCheckpointStore : ICheckpointStore
 
         return docs.Select(Map).ToList();
     }
-
-    private static CheckpointDocument Map(AgentCheckpoint checkpoint) => new()
-    {
-        ExecutionId = checkpoint.ExecutionId,
-        TenantId = checkpoint.TenantId,
-        AgentKey = checkpoint.AgentKey,
-        CheckpointId = checkpoint.CheckpointId,
-        Reason = checkpoint.Reason,
-        ToolName = checkpoint.ToolName,
-        ToolInputJson = checkpoint.ToolInputJson,
-        LlmRationale = checkpoint.LlmRationale,
-        CreatedAt = checkpoint.CreatedAt,
-        Context = checkpoint.Context.ToDictionary()
-    };
 
     private static AgentCheckpoint Map(CheckpointDocument doc) => new()
     {

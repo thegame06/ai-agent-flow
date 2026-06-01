@@ -128,18 +128,28 @@ export type ConfidenceLevel = 'High' | 'Medium' | 'Low' | 'NoMatch' | string;
 
 export interface InboxConversation {
   id: string;
-  tenant_id: string;
+  tenantId: string;
   channel: string;
-  user_identifier: string;
-  last_message: string;
+  userIdentifier: string;
+  lastMessage: string;
   state: ConversationState;
   confidence: ConfidenceLevel;
+  detectedIntentKey?: string;
+  assignedAgentId?: string;
+  workflowExecutionId?: string;
+  createdAt: string;
+  updatedAt: string;
+  requiresHumanReview: boolean;
+  reviewNotes?: string;
+  tenant_id?: string;
+  user_identifier?: string;
+  last_message?: string;
   detected_intent_key?: string;
   assigned_agent_id?: string;
   workflow_execution_id?: string;
-  created_at: string;
-  updated_at: string;
-  requires_human_review: boolean;
+  created_at?: string;
+  updated_at?: string;
+  requires_human_review?: boolean;
   review_notes?: string;
 }
 

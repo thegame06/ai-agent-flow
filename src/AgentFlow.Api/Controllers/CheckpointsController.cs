@@ -69,6 +69,7 @@ public sealed class CheckpointsController : ControllerBase
         {
             CheckpointId = body.CheckpointId,
             Approved = body.Approved,
+            Action = body.Action,
             Feedback = body.Feedback,
             ModifiedInputJson = body.ModifiedInputJson,
             ApprovedBy = context.UserId
@@ -101,6 +102,7 @@ public sealed record CheckpointDecisionRequest
 {
     public required string CheckpointId { get; init; }
     public required bool Approved { get; init; }
+    public string? Action { get; init; }
     public string? Feedback { get; init; }
     public string? ModifiedInputJson { get; init; }
 }

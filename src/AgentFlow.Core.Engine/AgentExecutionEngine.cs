@@ -896,7 +896,11 @@ public sealed class AgentExecutionEngine : IAgentExecutor
         var checkpoint = await _checkpointStore.GetAsync(executionId, tenantId, ct);
         if (checkpoint is null) throw new InvalidOperationException("No pending checkpoint found for this execution.");
 
-        if (!decision.Approved)
+        var decisionAction = string.IsNullOrWhiteSpace(decision.Action)
+            ? (decision.Approved ? "approve" : "reject")
+            : decision.Action.Trim().ToLowerInvariant();
+
+        if (decisionAction == "reject" || !decision.Approved && decisionAction != "fallback")
         {
             execution.Fail("Human.Rejected", decision.Feedback ?? "Rejected by human.");
             await _executionRepo.UpdateAsync(execution, ct);
@@ -905,6 +909,20 @@ public sealed class AgentExecutionEngine : IAgentExecutor
         }
 
         execution.ResumeFromReview(decision.ApprovedBy ?? "human");
+
+        if (decisionAction == "fallback")
+        {
+            execution.Complete(new ExecutionOutput
+            {
+                FinalResponse = decision.Feedback ?? "La ejecucion se desvio a un flujo alterno despues de la revision tecnica.",
+                TotalTokensUsed = execution.Steps.Sum(s => s.TokensUsed ?? 0),
+                TotalToolCalls = execution.Steps.Count(s => s.StepType == StepType.Act),
+                TotalIterations = execution.CurrentIteration
+            });
+            await _executionRepo.UpdateAsync(execution, ct);
+            await _checkpointStore.DeleteAsync(executionId, tenantId, ct);
+            return MapToResult(execution, agentDef);
+        }
 
         // If the human provided modified input, we use it for the next step
         // In ReAct, the next step is usually the tool call.
@@ -965,8 +983,56 @@ public sealed class AgentExecutionEngine : IAgentExecutor
             DurationMs = (long)(execution.GetDuration()?.TotalMilliseconds ?? 0),
             ErrorCode = execution.ErrorCode,
             ErrorMessage = execution.ErrorMessage,
-            ThreadId = threadId // ✅ Include thread ID for multi-turn conversations
+            ThreadId = threadId
         };
+    }
+
+    private static string InferCheckpointKind(ThinkResult thinkResult)
+    {
+        if (thinkResult.Context.TryGetValue("checkpointKind", out var explicitKind) &&
+            !string.IsNullOrWhiteSpace(explicitKind))
+        {
+            return explicitKind;
+        }
+
+        var rationale = thinkResult.Rationale ?? string.Empty;
+        if (rationale.Contains("routing to checkpoint", StringComparison.OrdinalIgnoreCase) ||
+            rationale.Contains("BRAIN_CONTRACT_VIOLATION", StringComparison.OrdinalIgnoreCase))
+        {
+            return "technical";
+        }
+
+        return "human";
+    }
+
+    private static IReadOnlyDictionary<string, string> BuildCheckpointContext(
+        AgentExecutionRequest request,
+        string kind,
+        string originNode,
+        IReadOnlyDictionary<string, string>? additional = null)
+    {
+        var context = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["checkpointKind"] = kind,
+            ["originNode"] = originNode
+        };
+
+        if (!string.IsNullOrWhiteSpace(request.CorrelationId))
+            context["correlationId"] = request.CorrelationId;
+
+        if (!string.IsNullOrWhiteSpace(request.UserMessage))
+            context["userMessage"] = request.UserMessage;
+
+        if (additional is not null)
+        {
+            foreach (var entry in additional)
+            {
+                if (!string.IsNullOrWhiteSpace(entry.Key) && !string.IsNullOrWhiteSpace(entry.Value))
+                    context[entry.Key] = entry.Value;
+            }
+        }
+
+        return context;
     }
 
     private async Task<Result<string?>> RunLoopAsync(
@@ -1320,7 +1386,12 @@ if (!preResponsePolicy.IsSuccess) return Result<string?>.Failure(preResponsePoli
                         Reason = thinkResult.Rationale ?? "LLM requested manual verification.",
                         ToolName = thinkResult.NextToolName,
                         ToolInputJson = thinkResult.NextToolInputJson,
-                        LlmRationale = thinkResult.Rationale
+                        LlmRationale = thinkResult.Rationale,
+                        Context = BuildCheckpointContext(
+                            request,
+                            kind: InferCheckpointKind(thinkResult),
+                            originNode: resolvedBrainProvider == BrainProvider.MicrosoftAgentFramework ? "MafBrain" : "AgentBrain",
+                            additional: thinkResult.Context)
                     }, ct);
 
                     goalAchieved = true; // Break loop, but status is HumanReviewPending
@@ -1759,7 +1830,16 @@ if (!preResponsePolicy.IsSuccess) return Result<string?>.Failure(preResponsePoli
                 Reason = $"Security Review: {toolName} requires authorization (Risk: {tool.RiskLevel})",
                 ToolName = toolName,
                 ToolInputJson = toolInputJson,
-                LlmRationale = "Guru Enforcement: High risk tools require manual sign-off."
+                LlmRationale = "Guru Enforcement: High risk tools require manual sign-off.",
+                Context = BuildCheckpointContext(
+                    request,
+                    kind: "human",
+                    originNode: toolName,
+                    additional: new Dictionary<string, string>
+                    {
+                        ["reviewCategory"] = "security",
+                        ["riskLevel"] = tool.RiskLevel.ToString()
+                    })
             }, ct);
 
             return Result<ToolExecutionResult>.Failure(Error.Unauthorized("Execution paused for security verification."));
@@ -2091,7 +2171,18 @@ if (!preResponsePolicy.IsSuccess) return Result<string?>.Failure(preResponsePoli
                 Reason = violation?.Description ?? "Policy Escalation",
                 ToolName = toolName,
                 ToolInputJson = toolInput,
-                LlmRationale = llmResponse ?? result.Decision.ToString()
+                LlmRationale = llmResponse ?? result.Decision.ToString(),
+                Context = BuildCheckpointContext(
+                    request,
+                    kind: "human",
+                    originNode: toolName ?? checkpoint.ToString(),
+                    additional: new Dictionary<string, string>
+                    {
+                        ["reviewCategory"] = "policy",
+                        ["policyCheckpoint"] = checkpoint.ToString(),
+                        ["policyDecision"] = result.Decision.ToString(),
+                        ["violationCode"] = violation?.Code ?? string.Empty
+                    })
             }, ct);
 
             return Result<PolicyResult>.Failure(Error.Unauthorized("Execution paused for human review."));

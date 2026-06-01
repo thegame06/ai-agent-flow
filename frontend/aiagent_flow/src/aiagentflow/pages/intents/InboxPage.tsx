@@ -40,10 +40,58 @@ export default function InboxPage() {
   const [viewConversation, setViewConversation] = useState<InboxConversation | null>(null);
   const [viewConversationDetail, setViewConversationDetail] = useState<any | null>(null);
   const [viewConversationJourney, setViewConversationJourney] = useState<any | null>(null);
+  const [viewConversationSession, setViewConversationSession] = useState<any | null>(null);
+  const [viewConversationMessages, setViewConversationMessages] = useState<any[]>([]);
   const [viewConversationLoading, setViewConversationLoading] = useState(false);
   const [reassignConversation, setReassignConversation] = useState<InboxConversation | null>(null);
   const [resolveConversation, setResolveConversation] = useState<InboxConversation | null>(null);
   const [newIntent, setNewIntent] = useState('');
+
+  const getUserIdentifier = (conversation?: InboxConversation | null) =>
+    conversation?.userIdentifier || conversation?.user_identifier || '';
+  const getLastMessage = (conversation?: InboxConversation | null) =>
+    conversation?.lastMessage || conversation?.last_message || '';
+  const getDetectedIntentKey = (conversation?: InboxConversation | null) =>
+    conversation?.detectedIntentKey || conversation?.detected_intent_key || '';
+  const getAssignedAgentId = (conversation?: InboxConversation | null) =>
+    conversation?.assignedAgentId || conversation?.assigned_agent_id || '';
+  const getWorkflowExecutionId = (conversation?: InboxConversation | null) =>
+    conversation?.workflowExecutionId || conversation?.workflow_execution_id || '';
+  const getReviewNotes = (conversation?: InboxConversation | null) =>
+    conversation?.reviewNotes || conversation?.review_notes || '';
+  const getCreatedAt = (conversation?: InboxConversation | null) =>
+    conversation?.createdAt || conversation?.created_at || '';
+  const getUpdatedAt = (conversation?: InboxConversation | null) =>
+    conversation?.updatedAt || conversation?.updated_at || '';
+
+  const conversationEntries = (() => {
+    if (viewConversationJourney?.timeline?.length) {
+      return viewConversationJourney.timeline
+        .filter((item: any) => item.category === 'customer_message' || item.category === 'reply')
+        .map((item: any) => ({
+          id: item.id,
+          actor: item.category === 'customer_message' ? 'Cliente' : 'Sistema',
+          occurredAt: item.occurredAt,
+          content: item.description || item.detail || item.title,
+        }));
+    }
+
+    if (viewConversationMessages?.length) {
+      return viewConversationMessages.map((item: any) => ({
+        id: item.id,
+        actor:
+          item.direction === 'Incoming'
+            ? 'Cliente'
+            : item.actor?.startsWith('agent:')
+              ? item.actor.replace('agent:', 'Agente ')
+              : item.actor || 'Sistema',
+        occurredAt: item.createdAt,
+        content: item.content,
+      }));
+    }
+
+    return [];
+  })();
 
   const normalizeState = (state: unknown) => (typeof state === 'string' ? state : String(state ?? 'Unknown'));
   const normalizeConfidence = (confidence: unknown) => (typeof confidence === 'string' ? confidence : String(confidence ?? 'Unknown'));
@@ -93,11 +141,20 @@ export default function InboxPage() {
       setLoading(true);
       setError(null);
       const [conversationsRes, statsRes] = await Promise.all([
-        axios.get(endpoints.agentflow.intentRouting.conversations(tenantId)),
-        axios.get(endpoints.agentflow.intentRouting.stats(tenantId)),
+        axios.get(endpoints.agentflow.inbox.list(tenantId)),
+        axios.get(endpoints.agentflow.inbox.stats(tenantId)),
       ]);
-      setConversations(conversationsRes.data || []);
-      setStats(statsRes.data || null);
+      setConversations(conversationsRes.data?.items || []);
+      const statsPayload = statsRes.data || {};
+      setStats({
+        total: statsPayload.totalConversations ?? statsPayload.total ?? 0,
+        awaiting_classification: statsPayload.awaitingClassification ?? statsPayload.awaiting_classification ?? 0,
+        classified: statsPayload.classified ?? statsPayload.byState?.Classified ?? 0,
+        in_progress: statsPayload.inProgress ?? statsPayload.in_progress ?? 0,
+        resolved_today: statsPayload.resolvedToday ?? statsPayload.resolved_today ?? 0,
+        avg_confidence: statsPayload.avgConfidence ?? statsPayload.avg_confidence ?? 0,
+        requires_review: statsPayload.requiresReview ?? statsPayload.requires_review ?? 0,
+      });
       const rulesRes = await axios.get(endpoints.agentflow.intentRouting.rules(tenantId));
       const keys: string[] = Array.from(
         new Set<string>(
@@ -132,10 +189,24 @@ export default function InboxPage() {
 
       setViewConversationDetail(detailRes.status === 'fulfilled' ? detailRes.value.data : conversation);
       setViewConversationJourney(journeyRes.status === 'fulfilled' ? journeyRes.value.data : null);
+
+      const [sessionRes, messagesRes] = await Promise.allSettled([
+        axios.get(endpoints.agentflow.channelSessions.detail(tenantId, conversation.id)),
+        axios.get(endpoints.agentflow.channelSessions.messages(tenantId, conversation.id)),
+      ]);
+
+      setViewConversationSession(sessionRes.status === 'fulfilled' ? sessionRes.value.data : null);
+      setViewConversationMessages(
+        messagesRes.status === 'fulfilled'
+          ? (messagesRes.value.data?.items || messagesRes.value.data || [])
+          : []
+      );
     } catch (err) {
       console.error('Failed to load conversation detail:', err);
       setViewConversationDetail(conversation);
       setViewConversationJourney(null);
+      setViewConversationSession(null);
+      setViewConversationMessages([]);
     } finally {
       setViewConversationLoading(false);
     }
@@ -254,6 +325,8 @@ export default function InboxPage() {
             setViewConversation(null);
             setViewConversationDetail(null);
             setViewConversationJourney(null);
+            setViewConversationSession(null);
+            setViewConversationMessages([]);
           }}
           maxWidth="md"
           fullWidth
@@ -270,13 +343,13 @@ export default function InboxPage() {
               <Paper variant="outlined" sx={{ p: 2 }}>
                 <Stack spacing={1.25}>
                   <Typography variant="body2"><b>ID:</b> {viewConversationDetail?.id || viewConversation?.id || '-'}</Typography>
-                  <Typography variant="body2"><b>Usuario:</b> {viewConversationDetail?.user_identifier || viewConversation?.user_identifier || viewConversationJourney?.summary?.customer?.identifier || '-'}</Typography>
-                  <Typography variant="body2"><b>Intencion detectada:</b> {viewConversationDetail?.detected_intent_key || viewConversation?.detected_intent_key || 'Sin intencion detectada'}</Typography>
-                  <Typography variant="body2"><b>Agente asignado:</b> {viewConversationDetail?.assigned_agent_id || viewConversation?.assigned_agent_id || '-'}</Typography>
-                  <Typography variant="body2"><b>Ejecucion de workflow:</b> {viewConversationDetail?.workflow_execution_id || viewConversation?.workflow_execution_id || '-'}</Typography>
-                  <Typography variant="body2"><b>Nota del sistema:</b> {viewConversationDetail?.review_notes || viewConversation?.review_notes || '-'}</Typography>
-                  <Typography variant="body2"><b>Creado:</b> {toDate(viewConversationDetail?.created_at || viewConversation?.created_at || viewConversationJourney?.summary?.startedAt)}</Typography>
-                  <Typography variant="body2"><b>Actualizado:</b> {toDate(viewConversationDetail?.updated_at || viewConversation?.updated_at || viewConversationJourney?.summary?.lastUpdatedAt)}</Typography>
+                  <Typography variant="body2"><b>Usuario:</b> {getUserIdentifier(viewConversationDetail) || getUserIdentifier(viewConversation) || viewConversationSession?.identifier || viewConversationJourney?.summary?.customer?.identifier || '-'}</Typography>
+                  <Typography variant="body2"><b>Intencion detectada:</b> {getDetectedIntentKey(viewConversationDetail) || getDetectedIntentKey(viewConversation) || 'Sin intencion detectada'}</Typography>
+                  <Typography variant="body2"><b>Agente asignado:</b> {getAssignedAgentId(viewConversationDetail) || getAssignedAgentId(viewConversation) || viewConversationSession?.agentId || '-'}</Typography>
+                  <Typography variant="body2"><b>Ejecucion de workflow:</b> {getWorkflowExecutionId(viewConversationDetail) || getWorkflowExecutionId(viewConversation) || '-'}</Typography>
+                  <Typography variant="body2"><b>Nota del sistema:</b> {getReviewNotes(viewConversationDetail) || getReviewNotes(viewConversation) || '-'}</Typography>
+                  <Typography variant="body2"><b>Creado:</b> {toDate(getCreatedAt(viewConversationDetail) || getCreatedAt(viewConversation) || viewConversationJourney?.summary?.startedAt)}</Typography>
+                  <Typography variant="body2"><b>Actualizado:</b> {toDate(getUpdatedAt(viewConversationDetail) || getUpdatedAt(viewConversation) || viewConversationSession?.lastActivityAt || viewConversationJourney?.summary?.lastUpdatedAt)}</Typography>
                 </Stack>
               </Paper>
 
@@ -292,8 +365,8 @@ export default function InboxPage() {
                   }}
                 >
                   <Typography variant="body2">
-                    {viewConversationDetail?.last_message?.trim()
-                      || viewConversation?.last_message?.trim()
+                    {getLastMessage(viewConversationDetail)?.trim()
+                      || getLastMessage(viewConversation)?.trim()
                       || viewConversationJourney?.summary?.firstCustomerMessage?.trim()
                       || 'Sin mensaje'}
                   </Typography>
@@ -305,17 +378,15 @@ export default function InboxPage() {
                 <Paper variant="outlined" sx={{ p: 1.5, maxHeight: 320, overflow: 'auto' }}>
                   <Stack spacing={1.25}>
                     {viewConversationLoading && <Typography variant="body2" color="text.secondary">Cargando detalle...</Typography>}
-                    {!viewConversationLoading && viewConversationJourney?.timeline?.length ? (
-                      viewConversationJourney.timeline
-                        .filter((item: any) => item.category === 'customer_message' || item.category === 'reply')
-                        .map((item: any) => (
-                          <Stack key={item.id} spacing={0.25}>
-                            <Typography variant="caption" color="text.secondary">
-                              {item.category === 'customer_message' ? 'Cliente' : 'Sistema'} · {toDate(item.occurredAt)}
-                            </Typography>
-                            <Typography variant="body2">{item.description || item.detail || item.title}</Typography>
-                          </Stack>
-                        ))
+                    {!viewConversationLoading && conversationEntries.length ? (
+                      conversationEntries.map((item: any) => (
+                        <Stack key={item.id} spacing={0.25}>
+                          <Typography variant="caption" color="text.secondary">
+                            {item.actor} · {toDate(item.occurredAt)}
+                          </Typography>
+                          <Typography variant="body2">{item.content}</Typography>
+                        </Stack>
+                      ))
                     ) : !viewConversationLoading ? (
                       <Typography variant="body2" color="text.secondary">No hay detalle conversacional disponible.</Typography>
                     ) : null}
@@ -329,6 +400,8 @@ export default function InboxPage() {
               setViewConversation(null);
               setViewConversationDetail(null);
               setViewConversationJourney(null);
+              setViewConversationSession(null);
+              setViewConversationMessages([]);
             }}>Cerrar</Button>
           </DialogActions>
         </Dialog>

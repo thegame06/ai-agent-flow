@@ -60,6 +60,12 @@ const normalizeConfidence = (confidence: unknown): string => {
   return 'Unknown';
 };
 
+const getUserIdentifier = (conv: InboxConversation) => conv.userIdentifier || conv.user_identifier || '-';
+const getLastMessage = (conv: InboxConversation) => conv.lastMessage || conv.last_message || 'Sin mensaje';
+const getDetectedIntentKey = (conv: InboxConversation) => conv.detectedIntentKey || conv.detected_intent_key || '';
+const getCreatedAt = (conv: InboxConversation) => conv.createdAt || conv.created_at || '';
+const requiresHumanReview = (conv: InboxConversation) => Boolean(conv.requiresHumanReview ?? conv.requires_human_review);
+
 const stateColor = (state: string) => {
   switch (state) {
     case 'AwaitingClassification': return 'warning';
@@ -132,14 +138,14 @@ export function InboxTable({ conversations, loading, onView, onReassign, onResol
                 key={conv.id} 
                 hover
                 sx={{
-                  bgcolor: conv.requires_human_review ? 'warning.lighter' : 'inherit',
+                  bgcolor: requiresHumanReview(conv) ? 'warning.lighter' : 'inherit',
                 }}
               >
                 <TableCell>
                   <Stack spacing={0.5}>
                     <Stack direction="row" spacing={1} alignItems="center">
-                      <Typography variant="subtitle2">{conv.user_identifier}</Typography>
-                      {conv.requires_human_review && (
+                      <Typography variant="subtitle2">{getUserIdentifier(conv)}</Typography>
+                      {requiresHumanReview(conv) && (
                         <Iconify icon="eva:alert-triangle-fill" color="warning.main" width={16} />
                       )}
                     </Stack>
@@ -162,7 +168,7 @@ export function InboxTable({ conversations, loading, onView, onReassign, onResol
                       whiteSpace: 'nowrap',
                     }}
                   >
-                    {conv.last_message}
+                    {getLastMessage(conv)}
                   </Typography>
                 </TableCell>
                 <TableCell>
@@ -173,8 +179,8 @@ export function InboxTable({ conversations, loading, onView, onReassign, onResol
                   />
                 </TableCell>
                 <TableCell>
-                  {conv.detected_intent_key ? (
-                    <Typography variant="body2">{conv.detected_intent_key}</Typography>
+                  {getDetectedIntentKey(conv) ? (
+                    <Typography variant="body2">{getDetectedIntentKey(conv)}</Typography>
                   ) : (
                     <Typography variant="body2" color="text.disabled">
                       —
@@ -190,7 +196,7 @@ export function InboxTable({ conversations, loading, onView, onReassign, onResol
                 </TableCell>
                 <TableCell>
                   <Typography variant="caption" color="text.secondary">
-                    {dayjs(conv.created_at).format('MMM DD, HH:mm')}
+                    {dayjs(getCreatedAt(conv)).format('MMM DD, HH:mm')}
                   </Typography>
                 </TableCell>
                 <TableCell align="right">

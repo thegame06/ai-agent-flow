@@ -18,7 +18,8 @@ internal static class BrainContractValidator
             Decision = ThinkDecision.Checkpoint,
             Rationale = SerializeContractErrors(brainName, "ThinkResult", errors),
             FinalAnswer = null,
-            TokensUsed = candidate.TokensUsed
+            TokensUsed = candidate.TokensUsed,
+            Context = candidate.Context
         };
     }
 

@@ -224,6 +224,7 @@ public sealed record ThinkResult
     public string? FinalAnswer { get; init; }
     public int TokensUsed { get; init; }
     public bool PromptInjectionDetected { get; init; }
+    public IReadOnlyDictionary<string, string> Context { get; init; } = new Dictionary<string, string>();
 }
 
 public enum ThinkDecision { UseTool, ProvideFinalAnswer, Checkpoint, RequestMoreContext }
@@ -1018,6 +1019,7 @@ public sealed record CheckpointDecision
 {
     public required string CheckpointId { get; init; }
     public required bool Approved { get; init; }
+    public string? Action { get; init; }
     public string? Feedback { get; init; }
     public string? ModifiedInputJson { get; init; }
     public string? ApprovedBy { get; init; }
