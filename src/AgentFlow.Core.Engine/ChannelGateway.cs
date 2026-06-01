@@ -24,6 +24,7 @@ public sealed class ChannelGateway : IChannelGateway
     private readonly IAuditMemory _auditMemory;
     private readonly IChannelDeliveryPolicy _deliveryPolicy;
     private readonly IChannelCapabilityPolicy _capabilityPolicy;
+    private readonly IHumanEscalationNotifier? _humanEscalationNotifier;
     private readonly ILogger<ChannelGateway> _logger;
 
     public ChannelGateway(
@@ -38,6 +39,7 @@ public sealed class ChannelGateway : IChannelGateway
         IAuditMemory auditMemory,
         IChannelCapabilityPolicy capabilityPolicy,
         IEnumerable<IChannelHandler> handlers,
+        IHumanEscalationNotifier? humanEscalationNotifier,
         ILogger<ChannelGateway> logger,
         IChannelDeliveryPolicy? deliveryPolicy = null)
     {
@@ -50,6 +52,7 @@ public sealed class ChannelGateway : IChannelGateway
         _executionRequestFactory = executionRequestFactory;
         _auditMemory = auditMemory;
         _capabilityPolicy = capabilityPolicy;
+        _humanEscalationNotifier = humanEscalationNotifier;
         _deliveryPolicy = deliveryPolicy ?? new ChannelDeliveryPolicy(agentRepo, auditMemory);
         _logger = logger;
 
@@ -74,6 +77,39 @@ public sealed class ChannelGateway : IChannelGateway
     {
         _logger.LogInformation("Processing message from channel {ChannelId}, session {SessionId}",
             incomingMessage.ChannelId, incomingMessage.SessionId);
+
+        if (incomingMessage.Direction == MessageDirection.Incoming &&
+            !string.IsNullOrWhiteSpace(incomingMessage.ExternalMessageId))
+        {
+            var existingIncoming = await _messageRepo.GetByExternalMessageIdAsync(
+                incomingMessage.TenantId,
+                incomingMessage.ChannelId,
+                incomingMessage.ExternalMessageId,
+                MessageDirection.Incoming,
+                ct);
+
+            if (existingIncoming is not null)
+            {
+                _logger.LogInformation(
+                    "Skipping duplicate inbound message. Tenant={TenantId} Channel={ChannelId} ExternalMessageId={ExternalMessageId} ExistingMessageId={ExistingMessageId}",
+                    incomingMessage.TenantId,
+                    incomingMessage.ChannelId,
+                    incomingMessage.ExternalMessageId,
+                    existingIncoming.Id);
+
+                if (!string.IsNullOrWhiteSpace(existingIncoming.AgentExecutionId))
+                {
+                    var existingOutgoing = await _messageRepo.GetLatestOutgoingByExecutionIdAsync(
+                        incomingMessage.TenantId,
+                        existingIncoming.AgentExecutionId,
+                        ct);
+                    if (existingOutgoing is not null)
+                        return existingOutgoing;
+                }
+
+                return existingIncoming;
+            }
+        }
 
         // Load channel definition
         var channel = await _channelRepo.GetByIdAsync(incomingMessage.ChannelId, incomingMessage.TenantId, ct);
@@ -135,6 +171,7 @@ public sealed class ChannelGateway : IChannelGateway
                 _agentExecutor,
                 _handoffExecutor,
                 _handoffPolicy,
+                _humanEscalationNotifier,
                 _sessionRepo,
                 _messageRepo,
                 _logger,

@@ -32,6 +32,11 @@ public sealed class ChannelMessage
     /// Raw channel-specific payload for reference/debugging
     /// </summary>
     public string? RawPayload { get; private set; }
+
+    /// <summary>
+    /// Provider/native message id used for idempotency across inbound channel deliveries.
+    /// </summary>
+    public string? ExternalMessageId { get; private set; }
     
     public Dictionary<string, string> Metadata { get; private set; } = new();
     public DateTimeOffset CreatedAt { get; private set; } = DateTimeOffset.UtcNow;
@@ -39,7 +44,14 @@ public sealed class ChannelMessage
     public MessageStatus Status { get; set; } = MessageStatus.Pending;
     public string? ErrorMessage { get; private set; }
 
-    public static ChannelMessage CreateIncoming(string tenantId, string channelId, string sessionId, string from, string content, string? rawPayload = null)
+    public static ChannelMessage CreateIncoming(
+        string tenantId,
+        string channelId,
+        string sessionId,
+        string from,
+        string content,
+        string? rawPayload = null,
+        string? externalMessageId = null)
     {
         return new ChannelMessage
         {
@@ -50,6 +62,7 @@ public sealed class ChannelMessage
             From = from,
             Content = content,
             RawPayload = rawPayload,
+            ExternalMessageId = externalMessageId,
             Status = MessageStatus.Received
         };
     }

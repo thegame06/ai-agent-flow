@@ -76,7 +76,13 @@ public sealed class GenericWebhooksController : ControllerBase
         ChannelMessage? incomingMessage = null;
         if (channelSession is not null)
         {
-            incomingMessage = ChannelMessage.CreateIncoming(tenantId, channelSession.ChannelId, channelSession.Id, recipient, content);
+            incomingMessage = ChannelMessage.CreateIncoming(
+                tenantId,
+                channelSession.ChannelId,
+                channelSession.Id,
+                recipient,
+                content,
+                externalMessageId: externalEventKey);
             incomingMessage.Metadata["actor"] = "customer";
             incomingMessage.Metadata["source"] = "generic-webhook";
             channelSession.RecordIncomingMessage(content);

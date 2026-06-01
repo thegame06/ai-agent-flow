@@ -175,12 +175,18 @@ public sealed class ChannelsController : ControllerBase
             channel.Type, channel.Id, correlationId, from, request.DisplayName);
         var session = await handler.GetOrCreateSessionAsync(channelCtx, channel, ct);
 
+        var externalMessageId = request.Metadata?.GetValueOrDefault("externalMessageId")
+            ?? request.Metadata?.GetValueOrDefault("channelMessageId")
+            ?? request.Metadata?.GetValueOrDefault("messageId")
+            ?? request.Metadata?.GetValueOrDefault("eventId");
+
         var incoming = AgentFlow.Domain.Aggregates.ChannelMessage.CreateIncoming(
             tenantId:   tenantId,
             channelId:  channelId,
             sessionId:  session.Id,
             from:       from,
-            content:    request.Content);
+            content:    request.Content,
+            externalMessageId: externalMessageId);
 
         incoming.Metadata["correlation_id"] = correlationId;
         if (request.Metadata is not null)

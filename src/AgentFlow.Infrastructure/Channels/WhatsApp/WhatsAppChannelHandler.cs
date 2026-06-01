@@ -108,7 +108,8 @@ public sealed class WhatsAppChannelHandler : IChannelHandler, IChannelQrProvider
             sessionId: session.Id,
             from: phoneNumber,
             content: content,
-            rawPayload: System.Text.Json.JsonSerializer.Serialize(waMessage)
+            rawPayload: System.Text.Json.JsonSerializer.Serialize(waMessage),
+            externalMessageId: waMessage.Id
         );
 
         message.Metadata.TryAdd("wa_message_id", waMessage.Id);

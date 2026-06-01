@@ -26,6 +26,7 @@ public static class ChannelPostExecutionCoordinator
         IAgentExecutor agentExecutor,
         IAgentHandoffExecutor handoffExecutor,
         IManagerHandoffPolicy handoffPolicy,
+        IHumanEscalationNotifier? humanEscalationNotifier,
         IChannelSessionRepository sessionRepo,
         IChannelMessageRepository messageRepo,
         ILogger logger,
@@ -40,12 +41,45 @@ public static class ChannelPostExecutionCoordinator
             var fallbackDirective = ChannelGatewayResponseInterpreter.TryParseFallbackDirective(finalResponse);
             if (fallbackDirective is not null)
             {
+                var escalationTarget = fallbackDirective.EscalationTarget
+                    ?? session.Metadata.GetValueOrDefault("routing.fallback.escalation_target")
+                    ?? executionRequest.Metadata.GetValueOrDefault("routing.fallback_escalation_target");
+
                 session.Metadata["routing.fallback.state"] = fallbackDirective.State;
                 session.Metadata["routing.fallback.turn"] = fallbackDirective.NextTurn.ToString();
                 session.Metadata["routing.fallback.reason"] = fallbackDirective.ReasonCode ?? string.Empty;
                 session.Metadata["requires_human_review"] = fallbackDirective.RequiresHumanReview ? "true" : "false";
-                if (!string.IsNullOrWhiteSpace(fallbackDirective.EscalationTarget))
-                    session.Metadata["routing.fallback.escalation_target"] = fallbackDirective.EscalationTarget!;
+                if (!string.IsNullOrWhiteSpace(escalationTarget))
+                    session.Metadata["routing.fallback.escalation_target"] = escalationTarget;
+
+                if (fallbackDirective.RequiresHumanReview &&
+                    string.Equals(fallbackDirective.State, "escalated_human", StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(executionRequest.AgentKey, channel.RouterAgentId, StringComparison.OrdinalIgnoreCase) &&
+                    !string.IsNullOrWhiteSpace(escalationTarget) &&
+                    humanEscalationNotifier is not null)
+                {
+                    var notifyResult = await humanEscalationNotifier.NotifyAsync(
+                        new HumanEscalationNotificationRequest
+                        {
+                            TenantId = incomingMessage.TenantId,
+                            QueueId = escalationTarget,
+                            ConversationId = incomingMessage.SessionId,
+                            UserId = incomingMessage.From,
+                            Channel = channel.Type.ToString().ToLowerInvariant(),
+                            LastMessage = incomingMessage.Content,
+                            ReasonCode = fallbackDirective.ReasonCode ?? "agent_requested_human_handoff",
+                            ExecutionId = executionIdForOutgoing,
+                            CorrelationId = incomingMessage.SessionId
+                        },
+                        ct);
+
+                    session.Metadata["routing.fallback.escalation_status"] = notifyResult.Delivered ? "delivered" : "failed";
+                    if (!string.IsNullOrWhiteSpace(notifyResult.TicketId))
+                        session.Metadata["routing.fallback.ticket_id"] = notifyResult.TicketId;
+                    if (!string.IsNullOrWhiteSpace(notifyResult.QueueId))
+                        session.Metadata["routing.fallback.queue_id"] = notifyResult.QueueId;
+                }
+
                 await sessionRepo.UpdateAsync(session, ct);
                 finalResponse = fallbackDirective.CustomerMessage;
             }

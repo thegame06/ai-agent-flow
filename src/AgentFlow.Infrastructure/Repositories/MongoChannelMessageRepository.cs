@@ -27,11 +27,41 @@ public sealed class MongoChannelMessageRepository : IChannelMessageRepository
                 .Ascending(x => x.ChannelId)
                 .Descending(x => x.CreatedAt)
         ));
+
+        _collection.Indexes.CreateOne(new CreateIndexModel<ChannelMessage>(
+            Builders<ChannelMessage>.IndexKeys
+                .Ascending(x => x.TenantId)
+                .Ascending(x => x.ChannelId)
+                .Ascending(x => x.Direction)
+                .Ascending(x => x.ExternalMessageId),
+            new CreateIndexOptions
+            {
+                Name = "ux_channel_messages_external_message",
+                Unique = true,
+                Sparse = true
+            }
+        ));
     }
 
     public async Task<ChannelMessage?> GetByIdAsync(string messageId, string tenantId, CancellationToken ct = default)
     {
         return await _collection.Find(x => x.Id == messageId && x.TenantId == tenantId)
+            .FirstOrDefaultAsync(ct);
+    }
+
+    public async Task<ChannelMessage?> GetByExternalMessageIdAsync(
+        string tenantId,
+        string channelId,
+        string externalMessageId,
+        MessageDirection direction,
+        CancellationToken ct = default)
+    {
+        return await _collection.Find(x =>
+                x.TenantId == tenantId &&
+                x.ChannelId == channelId &&
+                x.Direction == direction &&
+                x.ExternalMessageId == externalMessageId)
+            .SortByDescending(x => x.CreatedAt)
             .FirstOrDefaultAsync(ct);
     }
 
@@ -71,6 +101,16 @@ public sealed class MongoChannelMessageRepository : IChannelMessageRepository
             .SortByDescending(x => x.CreatedAt)
             .Limit(limit)
             .ToListAsync(ct);
+    }
+
+    public async Task<ChannelMessage?> GetLatestOutgoingByExecutionIdAsync(string tenantId, string executionId, CancellationToken ct = default)
+    {
+        return await _collection.Find(x =>
+                x.TenantId == tenantId &&
+                x.Direction == MessageDirection.Outgoing &&
+                x.AgentExecutionId == executionId)
+            .SortByDescending(x => x.CreatedAt)
+            .FirstOrDefaultAsync(ct);
     }
 
     public async Task<Result> InsertAsync(ChannelMessage message, CancellationToken ct = default)

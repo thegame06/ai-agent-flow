@@ -106,15 +106,46 @@ public sealed class WhatsAppWebhookController : ControllerBase
             {
                 try
                 {
+                    var externalEventKey = BuildExternalEventKey("wa-meta", waMessage);
+                    if (!string.IsNullOrWhiteSpace(externalEventKey))
+                    {
+                        var existing = await _connectStore.GetInboxMessageByExternalKeyAsync(tenantId, externalEventKey, ct);
+                        if (existing is not null)
+                        {
+                            results.Add(new
+                            {
+                                from = waMessage.From,
+                                status = "duplicate_accepted",
+                                inboxMessageId = existing.Id
+                            });
+                            continue;
+                        }
+                    }
+
                     var channelMessage = await ProcessWhatsAppMessage(waMessage, activeChannel, ct);
                     if (channelMessage != null)
                     {
+                        var inboxMessage = await _connectStore.CreateInboxMessageAsync(new ConnectInboxMessageContract
+                        {
+                            Id = Guid.NewGuid().ToString("N"),
+                            TenantId = tenantId,
+                            Channel = "whatsapp",
+                            Recipient = waMessage.From,
+                            Content = waMessage.Text?.Body ?? waMessage.Caption ?? string.Empty,
+                            ExternalEventKey = externalEventKey,
+                            Status = ConnectOperationalStatus.Queued,
+                            CreatedAt = DateTimeOffset.UtcNow,
+                            UpdatedAt = DateTimeOffset.UtcNow,
+                            UpdatedBy = "meta-webhook"
+                        }, ct);
+
                         var response = await _gateway.ProcessMessageAsync(channelMessage, ct);
                         results.Add(new
                         {
                             from = waMessage.From,
                             status = "processed",
-                            response_id = response.Id
+                            response_id = response.Id,
+                            inboxMessageId = inboxMessage.Id
                         });
                     }
                 }
@@ -150,6 +181,19 @@ public sealed class WhatsAppWebhookController : ControllerBase
         try
         {
             _logger.LogInformation("Received QR WhatsApp message from {From}", message.From);
+            var externalEventKey = BuildExternalEventKey("wa-qr", message.Id, message.From, message.Timestamp, message.Content);
+            if (!string.IsNullOrWhiteSpace(externalEventKey))
+            {
+                var existing = await _connectStore.GetInboxMessageByExternalKeyAsync(tenantId, externalEventKey, ct);
+                if (existing is not null)
+                {
+                    return Ok(new
+                    {
+                        status = "duplicate_accepted",
+                        inboxMessageId = existing.Id
+                    });
+                }
+            }
 
             var channels = await _channelRepo.GetByTypeAsync(ChannelType.WhatsApp, tenantId, ct);
             var activeChannel = channels.FirstOrDefault(c => c.Status == ChannelStatus.Active && c.Config.GetValueOrDefault("AuthMode") == "qr");
@@ -181,19 +225,20 @@ public sealed class WhatsAppWebhookController : ControllerBase
                 Channel = "whatsapp",
                 Recipient = message.From,
                 Content = message.Content,
-                ExternalEventKey = string.IsNullOrWhiteSpace(message.Id) ? null : $"wa-qr:{message.Id}",
+                ExternalEventKey = externalEventKey,
                 Status = ConnectOperationalStatus.Queued,
                 CreatedAt = DateTimeOffset.UtcNow,
                 UpdatedAt = DateTimeOffset.UtcNow,
                 UpdatedBy = "qr-webhook"
             }, ct);
 
-                        // --- Route through channel gateway as primary path ---
+            // --- Route through channel gateway as primary path ---
             // Router + intent rules decide whether to trigger a workflow.
             var response = await _gateway.ProcessMessageAsync(channelMessage, ct);
             var agentResponse = response.Content;
             var agentExecutionId = response.AgentExecutionId;
-return Ok(new
+
+            return Ok(new
             {
                 status = "success",
                 inboxMessageId = inboxMessage.Id,
@@ -215,6 +260,23 @@ return Ok(new
         if (handler == null) return null;
 
         return await handler.ProcessIncomingMessageAsync(waMessage, channel, ct);
+    }
+
+    private static string? BuildExternalEventKey(string prefix, WhatsAppIncomingMessage message)
+    {
+        var content = message.Text?.Body ?? message.Caption ?? string.Empty;
+        return BuildExternalEventKey(prefix, message.Id, message.From, message.Timestamp, content);
+    }
+
+    private static string? BuildExternalEventKey(string prefix, string? nativeId, string? from, long? timestamp, string? content)
+    {
+        if (!string.IsNullOrWhiteSpace(nativeId))
+            return $"{prefix}:{nativeId}";
+
+        if (string.IsNullOrWhiteSpace(from) && timestamp is null && string.IsNullOrWhiteSpace(content))
+            return null;
+
+        return $"{prefix}:{from}:{timestamp}:{content}".Trim();
     }
 }
 
