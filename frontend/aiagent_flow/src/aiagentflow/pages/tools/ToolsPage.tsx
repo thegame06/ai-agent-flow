@@ -22,6 +22,7 @@ import { DashboardContent } from 'src/layouts/dashboard';
 import { TermHelp } from 'src/aiagentflow/components/TermHelp';
 import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
 import { BrandPageHeader } from 'src/aiagentflow/components/BrandPageHeader';
+import { normalizeToolLabel } from 'src/aiagentflow/utils/toolLabels';
 
 import { Label } from 'src/components/label';
 import { Iconify } from 'src/components/iconify';
@@ -37,6 +38,14 @@ interface ToolRow {
   checkedAt?: string;
   inputSchemaJson?: string;
 }
+
+const HIDDEN_INTERNAL_TOOL_PATTERNS = [
+  /^af_(list|get|preview|draft|refine|validate|create|update|publish|pause|resume|run|retry)_campaign/i,
+  /^af_.*campaign.*(playbook|outcome|segment|run|contact)/i,
+];
+
+const isVisibleOperationalTool = (tool: ToolRow) =>
+  !HIDDEN_INTERNAL_TOOL_PATTERNS.some((pattern) => pattern.test(tool.name));
 
 function schemaToPayload(schemaJson?: string) {
   if (!schemaJson) return '{}';
@@ -73,7 +82,7 @@ export default function ToolsPage() {
     setError(null);
     try {
       const res = await axios.get(`/api/v1/tenants/${tenantId}/tools/status`);
-      setTools(res.data ?? []);
+      setTools(((res.data ?? []) as ToolRow[]).filter(isVisibleOperationalTool));
     } catch (err: any) {
       setError(err?.message || 'No se pudieron cargar las herramientas');
     } finally {
@@ -111,7 +120,13 @@ export default function ToolsPage() {
   };
 
   const columns: any[] = [
-    { field: 'name', headerName: 'Herramienta', minWidth: 190, flex: 1 },
+    {
+      field: 'name',
+      headerName: 'Herramienta',
+      minWidth: 190,
+      flex: 1,
+      renderCell: (params: any) => normalizeToolLabel(params.value),
+    },
     { field: 'version', headerName: 'Version', width: 120 },
     {
       field: 'riskLevel',
@@ -157,9 +172,9 @@ export default function ToolsPage() {
 
         <Grid container spacing={2} sx={{ mb: 3 }}>
           {[
-            ['Integraciones', 'Instala nuevas conexiones', paths.dashboard.marketplace, 'mdi:storefront-outline'],
+            ['Integraciones', 'Administra conexiones instaladas y credenciales', paths.dashboard.marketplace, 'mdi:storefront-outline'],
             ['Canales', 'Conecta WhatsApp, web chat y APIs', paths.dashboard.system.channels, 'mdi:message-processing-outline'],
-            ['Conectores avanzados', 'Habilita conexiones avanzadas para asistentes', paths.dashboard.system.mcp, 'mdi:connection'],
+            ['Conectores avanzados', 'Habilita conectores y herramientas avanzadas para asistentes', paths.dashboard.system.mcp, 'mdi:connection'],
           ].map(([title, subtitle, href, icon]) => (
             <Grid item xs={12} md={4} key={title}>
               <Card
@@ -209,7 +224,7 @@ export default function ToolsPage() {
               <CardContent>
                 <Stack spacing={2}>
                   <Typography variant="subtitle1">
-                    {selectedTool ? `Probar herramienta: ${selectedTool.name}` : 'Selecciona una herramienta'}
+                    {selectedTool ? `Probar herramienta: ${normalizeToolLabel(selectedTool.name)}` : 'Selecciona una herramienta'}
                   </Typography>
 
                   <TextField

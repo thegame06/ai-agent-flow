@@ -669,6 +669,9 @@ export function WorkflowVisualDesigner({
     [activities, selectedIndex]
   );
   const selectedStart = selectedIndex === -1;
+  const closeInspector = useCallback(() => {
+    setSelectedIndex(null);
+  }, []);
   const requiredKeys = selected ? requiredConfigByType[selected.type] ?? [] : [];
   const handleSelectedTypeChange = (type: string) => {
     if (selectedIndex === null) return;
@@ -974,6 +977,7 @@ export function WorkflowVisualDesigner({
             const activity = activities[index];
             setInspectorSection(activity?.type === 'ai.agent' ? 'ia' : 'general');
           }}
+          onPaneClick={closeInspector}
           fitView
         >
           <MiniMap />
@@ -1120,7 +1124,7 @@ export function WorkflowVisualDesigner({
       <Drawer
         anchor="right"
         open={selected !== null || selectedStart}
-        onClose={() => setSelectedIndex(null)}
+        onClose={closeInspector}
         hideBackdrop
         ModalProps={{ keepMounted: true }}
         PaperProps={{
@@ -1143,7 +1147,12 @@ export function WorkflowVisualDesigner({
                   Las intenciones son formas entendibles de arrancar el flujo; internamente disparan un evento.
                 </Typography>
               </Box>
-              <Chip size="small" label="Trigger" />
+              <Stack direction="row" spacing={1} alignItems="center">
+                <Chip size="small" label="Trigger" />
+                <IconButton size="small" onClick={closeInspector} aria-label="Cerrar panel">
+                  <Iconify icon="mingcute:close-line" />
+                </IconButton>
+              </Stack>
             </Stack>
             <Divider />
             <TextField
@@ -1350,7 +1359,12 @@ export function WorkflowVisualDesigner({
                     : 'Configura solo lo esencial. Lo técnico está en Runtime y Depuración.'}
                 </Typography>
               </Box>
-              <Chip size="small" label={activityTypeLabel(selected.type)} />
+              <Stack direction="row" spacing={1} alignItems="center">
+                <Chip size="small" label={activityTypeLabel(selected.type)} />
+                <IconButton size="small" onClick={closeInspector} aria-label="Cerrar panel">
+                  <Iconify icon="mingcute:close-line" />
+                </IconButton>
+              </Stack>
             </Stack>
             <Divider />
             {selectedIntegration && (

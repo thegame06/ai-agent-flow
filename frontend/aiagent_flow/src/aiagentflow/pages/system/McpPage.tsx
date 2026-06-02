@@ -1,4 +1,4 @@
-import { Helmet } from 'react-helmet-async';
+ï»¿import { Helmet } from 'react-helmet-async';
 import { useState, useEffect, useCallback } from 'react';
 
 import Box from '@mui/material/Box';
@@ -242,7 +242,7 @@ export default function McpPage() {
               ) : undefined
             }
           >
-            Conexion avanzada: <b>{settings.enabled ? 'Activa' : 'Inactiva'}</b> · Runtime: <b>{settings.runtime}</b> · Timeout: {settings.timeoutSeconds}s · Reintentos: {settings.retryCount}
+            Conexion avanzada: <b>{settings.enabled ? 'Activa' : 'Inactiva'}</b> - Runtime: <b>{settings.runtime}</b> - Timeout: {settings.timeoutSeconds}s - Reintentos: {settings.retryCount}
           </Alert>
         )}
 
@@ -346,3 +346,4 @@ export default function McpPage() {
     </>
   );
 }
+

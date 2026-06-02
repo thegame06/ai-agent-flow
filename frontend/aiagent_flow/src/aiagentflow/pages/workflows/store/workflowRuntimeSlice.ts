@@ -86,6 +86,7 @@ const workflowRuntimeSlice = createSlice({
             ({
               id: agent.id,
               name: agent.name,
+              runtimeKind: agent.runtimeKind ?? agent.RuntimeKind ?? 'Text',
               description: agent.description,
               status: agent.status,
               version: agent.version,
