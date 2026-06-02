@@ -13,8 +13,8 @@ import Paper from '@mui/material/Paper';
 import Alert from '@mui/material/Alert';
 import Button from '@mui/material/Button';
 import Divider from '@mui/material/Divider';
-import MenuItem from '@mui/material/MenuItem';
 import { alpha } from '@mui/material/styles';
+import MenuItem from '@mui/material/MenuItem';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import ListItemText from '@mui/material/ListItemText';
@@ -23,9 +23,10 @@ import LinearProgress from '@mui/material/LinearProgress';
 import CircularProgress from '@mui/material/CircularProgress';
 
 import { CONFIG } from 'src/global-config';
-import axios, { endpoints } from 'src/lib/axios';
 import { paths } from 'src/routes/paths';
+
 import { DashboardContent } from 'src/layouts/dashboard';
+import axios, { endpoints } from 'src/lib/axios';
 import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
 import { BrandPageHeader } from 'src/aiagentflow/components/BrandPageHeader';
 
@@ -62,6 +63,30 @@ type SegmentItem = {
   description?: string;
   estimatedCount?: number | null;
   updatedAt: string;
+};
+
+type ChannelOption = {
+  id: string;
+  name: string;
+  type?: string;
+};
+
+type WorkflowOption = {
+  id: string;
+  name: string;
+};
+
+type AssistantOption = {
+  id: string;
+  name: string;
+  runtimeKind?: string;
+};
+
+type RuntimeProfileOption = {
+  id: string;
+  name: string;
+  runtimeKind?: string;
+  isDefault?: boolean;
 };
 
 type RunItem = {
@@ -116,6 +141,7 @@ type ManualCampaignForm = {
   scheduleExpression: string;
   startAt: string;
   segmentId: string;
+  audiencePreset: string;
   audienceFilterJson: string;
   workflowDefinitionId: string;
   runtimeModelProfileId: string;
@@ -127,6 +153,7 @@ type ManualCampaignForm = {
 type ManualSegmentForm = {
   name: string;
   description: string;
+  preset: string;
   filterJson: string;
 };
 
@@ -149,6 +176,14 @@ const campaignTypeOptions = ['Sales', 'Collections', 'Reminder', 'Reactivation',
 const executionModeOptions = ['Workflow', 'Direct', 'Hybrid'];
 const channelActionOptions = ['Message', 'Call', 'WorkflowStart'];
 const scheduleTypeOptions = ['Once', 'Hourly', 'Daily', 'Weekly', 'Cron'];
+const audiencePresetOptions = [
+  { value: 'all', label: 'Toda la audiencia disponible', filterJson: '{}' },
+  { value: 'recent_leads', label: 'Leads recientes', filterJson: '{"kind":"lead"}' },
+  { value: 'collections', label: 'Cobranza con saldo pendiente', filterJson: '{"invoiceStatus":"pending","minOutstandingAmount":1}' },
+  { value: 'buyers', label: 'Clientes con compras previas', filterJson: '{"kind":"customer","minPurchaseCount":1}' },
+  { value: 'fallback', label: 'Casos sin resolver', filterJson: '{"onlyFallbackCases":true}' },
+  { value: 'advanced', label: 'Filtro avanzado', filterJson: '{}' },
+];
 
 const defaultManualCampaign = (): ManualCampaignForm => ({
   name: '',
@@ -161,6 +196,7 @@ const defaultManualCampaign = (): ManualCampaignForm => ({
   scheduleExpression: '',
   startAt: new Date().toISOString().slice(0, 16),
   segmentId: '',
+  audiencePreset: 'all',
   audienceFilterJson: '{}',
   workflowDefinitionId: '',
   runtimeModelProfileId: '',
@@ -172,6 +208,7 @@ const defaultManualCampaign = (): ManualCampaignForm => ({
 const defaultManualSegment = (): ManualSegmentForm => ({
   name: '',
   description: '',
+  preset: 'all',
   filterJson: '{}',
 });
 
@@ -221,6 +258,27 @@ function prettyJson(value: unknown) {
   }
 }
 
+function audiencePresetToFilterJson(preset: string) {
+  return audiencePresetOptions.find((option) => option.value === preset)?.filterJson ?? '{}';
+}
+
+function scheduleHelperText(scheduleType: string) {
+  switch (scheduleType) {
+    case 'Once':
+      return 'Se ejecuta una sola vez en la fecha de inicio.';
+    case 'Hourly':
+      return 'Escribe cada cuantas horas. Ejemplo: 4';
+    case 'Daily':
+      return 'Escribe la hora diaria. Ejemplo: 09:30';
+    case 'Weekly':
+      return 'Escribe dia y hora. Ejemplo: Mon 09:30';
+    case 'Cron':
+      return 'Usa cron solo para casos avanzados.';
+    default:
+      return '';
+  }
+}
+
 export default function CampaignsPage() {
   const tenantId = useTenantId();
   const [activeSection, setActiveSection] = useState<SectionKey>('summary');
@@ -229,6 +287,10 @@ export default function CampaignsPage() {
   const [campaigns, setCampaigns] = useState<CampaignItem[]>([]);
   const [segments, setSegments] = useState<SegmentItem[]>([]);
   const [runs, setRuns] = useState<RunItem[]>([]);
+  const [channels, setChannels] = useState<ChannelOption[]>([]);
+  const [workflows, setWorkflows] = useState<WorkflowOption[]>([]);
+  const [assistants, setAssistants] = useState<AssistantOption[]>([]);
+  const [runtimeProfiles, setRuntimeProfiles] = useState<RuntimeProfileOption[]>([]);
   const [manualCampaign, setManualCampaign] = useState<ManualCampaignForm>(defaultManualCampaign);
   const [manualSegment, setManualSegment] = useState<ManualSegmentForm>(defaultManualSegment);
   const [segmentPreview, setSegmentPreview] = useState<SegmentPreview | null>(null);
@@ -264,15 +326,42 @@ export default function CampaignsPage() {
     setLoading(true);
     setError(null);
     try {
-      const [campaignsRes, segmentsRes, runsRes] = await Promise.all([
+      const [campaignsRes, segmentsRes, runsRes, channelsRes, workflowsRes, assistantsRes, runtimeProfilesRes] = await Promise.all([
         axios.get(endpoints.agentflow.campaigns.list(tenantId)),
         axios.get(endpoints.agentflow.campaignSegments.list(tenantId)),
         axios.get(endpoints.agentflow.campaigns.allRuns(tenantId, null, 25)),
+        axios.get(endpoints.agentflow.channels.list(tenantId)).catch(() => ({ data: [] })),
+        axios.get(endpoints.agentflow.workflows.list(tenantId)).catch(() => ({ data: [] })),
+        axios.get(endpoints.agentflow.agents.list(tenantId)).catch(() => ({ data: [] })),
+        axios.get(endpoints.agentflow.runtimeModelProfiles.list(tenantId)).catch(() => ({ data: [] })),
       ]);
 
       setCampaigns(campaignsRes.data ?? []);
       setSegments(segmentsRes.data ?? []);
       setRuns(runsRes.data ?? []);
+      setChannels(
+        ((channelsRes.data ?? []) as any[])
+          .filter((item) => item?.id && item?.name)
+          .map((item) => ({ id: item.id, name: item.name, type: item.type }))
+      );
+      setWorkflows(
+        ((workflowsRes.data ?? []) as any[])
+          .filter((item) => item?.id && item?.name)
+          .map((item) => ({ id: item.id, name: item.name }))
+      );
+      setAssistants(
+        ((assistantsRes.data ?? []) as any[])
+          .filter((item) => item?.id && item?.name && item.status !== 'Archived')
+          .map((item) => ({ id: item.id, name: item.name, runtimeKind: item.session?.runtimeKind ?? item.runtimeKind }))
+      );
+      setRuntimeProfiles(
+        ((runtimeProfilesRes.data ?? []) as any[]).map((item) => ({
+          id: item.id,
+          name: item.name,
+          runtimeKind: item.runtimeKind,
+          isDefault: item.isDefault,
+        }))
+      );
     } catch (err: any) {
       setError(err?.message ?? 'No fue posible cargar campañas.');
     } finally {
@@ -283,6 +372,14 @@ export default function CampaignsPage() {
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    if (!channels.length) return;
+    setManualCampaign((prev) => {
+      if (channels.some((item) => item.id === prev.channel)) return prev;
+      return { ...prev, channel: channels[0].id };
+    });
+  }, [channels]);
 
   const handleDraft = async () => {
     if (!prompt.trim()) return;
@@ -372,8 +469,13 @@ export default function CampaignsPage() {
         scheduleExpression: manualCampaign.scheduleExpression || null,
         startAt: toIsoOrNow(manualCampaign.startAt),
         segmentId: manualCampaign.segmentId || null,
-        audienceFilterJson: manualCampaign.audienceFilterJson,
+        audienceFilterJson: manualCampaign.segmentId
+          ? '{}'
+          : manualCampaign.audiencePreset === 'advanced'
+            ? manualCampaign.audienceFilterJson
+            : audiencePresetToFilterJson(manualCampaign.audiencePreset),
         workflowDefinitionId: manualCampaign.workflowDefinitionId || null,
+        assistantId: manualCampaign.assistantId || null,
         runtimeModelProfileId: manualCampaign.runtimeModelProfileId || null,
         messageDraft: manualCampaign.messageDraft || null,
         callScriptDraft: manualCampaign.callScriptDraft || null,
@@ -397,7 +499,9 @@ export default function CampaignsPage() {
     setError(null);
     try {
       const response = await axios.post(endpoints.agentflow.campaignSegments.preview(tenantId), {
-        filterJson: manualSegment.filterJson,
+        filterJson: manualSegment.preset === 'advanced'
+          ? manualSegment.filterJson
+          : audiencePresetToFilterJson(manualSegment.preset),
       });
       setSegmentPreview(response.data as SegmentPreview);
     } catch (err: any) {
@@ -421,7 +525,9 @@ export default function CampaignsPage() {
         name: manualSegment.name,
         description: manualSegment.description,
         sourceModules: ['commerce', 'inbox', 'audit', 'threads'],
-        filterJson: manualSegment.filterJson,
+        filterJson: manualSegment.preset === 'advanced'
+          ? manualSegment.filterJson
+          : audiencePresetToFilterJson(manualSegment.preset),
       });
       setManualSegment(defaultManualSegment());
       setSegmentPreview(null);
@@ -678,7 +784,26 @@ export default function CampaignsPage() {
                           <TextField fullWidth label="Nombre" value={manualCampaign.name} onChange={(e) => setManualCampaign((prev) => ({ ...prev, name: e.target.value }))} />
                         </Grid>
                         <Grid item xs={12} md={6}>
-                          <TextField fullWidth label="Canal de salida" value={manualCampaign.channel} onChange={(e) => setManualCampaign((prev) => ({ ...prev, channel: e.target.value }))} helperText="Ejemplo: whatsapp, voice, sms o email" />
+                          <TextField
+                            select
+                            fullWidth
+                            label="Canal de salida"
+                            value={manualCampaign.channel}
+                            onChange={(e) => setManualCampaign((prev) => ({ ...prev, channel: e.target.value }))}
+                            helperText="Selecciona un canal existente. No necesitas escribir IDs."
+                          >
+                            {channels.length === 0 ? (
+                              <MenuItem value="" disabled>
+                                No hay canales configurados
+                              </MenuItem>
+                            ) : (
+                              channels.map((channel) => (
+                                <MenuItem key={channel.id} value={channel.id}>
+                                  {channel.name} {channel.type ? `(${channel.type})` : ''}
+                                </MenuItem>
+                              ))
+                            )}
+                          </TextField>
                         </Grid>
                         <Grid item xs={12}>
                           <TextField fullWidth label="Descripción" value={manualCampaign.description} onChange={(e) => setManualCampaign((prev) => ({ ...prev, description: e.target.value }))} />
@@ -709,6 +834,9 @@ export default function CampaignsPage() {
                         <Grid item xs={12} md={4}>
                           <TextField fullWidth type="datetime-local" label="Inicio" InputLabelProps={{ shrink: true }} value={manualCampaign.startAt} onChange={(e) => setManualCampaign((prev) => ({ ...prev, startAt: e.target.value }))} />
                         </Grid>
+                        <Grid item xs={12}>
+                          <Alert severity="info">{scheduleHelperText(manualCampaign.scheduleType)}</Alert>
+                        </Grid>
                         <Grid item xs={12} md={6}>
                           <TextField select fullWidth label="Segmento guardado" value={manualCampaign.segmentId} onChange={(e) => setManualCampaign((prev) => ({ ...prev, segmentId: e.target.value }))} helperText="Opcional. También puedes usar filtro inline abajo.">
                             <MenuItem value="">Sin segmento enlazado</MenuItem>
@@ -716,10 +844,38 @@ export default function CampaignsPage() {
                           </TextField>
                         </Grid>
                         <Grid item xs={12} md={6}>
-                          <TextField fullWidth label="Flujo a usar" value={manualCampaign.workflowDefinitionId} onChange={(e) => setManualCampaign((prev) => ({ ...prev, workflowDefinitionId: e.target.value }))} helperText="Usalo cuando el modo sea Workflow o Hybrid." />
+                          <TextField
+                            select
+                            fullWidth
+                            label="Flujo a usar"
+                            value={manualCampaign.workflowDefinitionId}
+                            onChange={(e) => setManualCampaign((prev) => ({ ...prev, workflowDefinitionId: e.target.value }))}
+                            helperText="Selecciona la automatización desde la lista."
+                          >
+                            <MenuItem value="">Sin flujo vinculado</MenuItem>
+                            {workflows.map((workflow) => (
+                              <MenuItem key={workflow.id} value={workflow.id}>
+                                {workflow.name}
+                              </MenuItem>
+                            ))}
+                          </TextField>
                         </Grid>
                         <Grid item xs={12} md={6}>
-                          <TextField fullWidth label="Perfil runtime (avanzado)" value={manualCampaign.runtimeModelProfileId} onChange={(e) => setManualCampaign((prev) => ({ ...prev, runtimeModelProfileId: e.target.value }))} helperText="Opcional avanzado para campanas de voz o salidas especializadas." />
+                          <TextField
+                            select
+                            fullWidth
+                            label="Perfil runtime (avanzado)"
+                            value={manualCampaign.runtimeModelProfileId}
+                            onChange={(e) => setManualCampaign((prev) => ({ ...prev, runtimeModelProfileId: e.target.value }))}
+                            helperText="Opcional. Normalmente el canal o flujo ya resuelve esto."
+                          >
+                            <MenuItem value="">Usar perfil automático</MenuItem>
+                            {runtimeProfiles.map((profile) => (
+                              <MenuItem key={profile.id} value={profile.id}>
+                                {profile.name} {profile.isDefault ? '(default)' : ''}
+                              </MenuItem>
+                            ))}
+                          </TextField>
                         </Grid>
                         <Grid item xs={12} md={6}>
                           <TextField fullWidth label="Mensaje inicial" value={manualCampaign.messageDraft} onChange={(e) => setManualCampaign((prev) => ({ ...prev, messageDraft: e.target.value }))} />
