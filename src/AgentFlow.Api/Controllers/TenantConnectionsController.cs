@@ -59,6 +59,8 @@ public sealed class TenantConnectionsController : ControllerBase
     public async Task<IActionResult> Upsert([FromRoute] string tenantId, [FromRoute] string connectionId, [FromBody] UpsertConnectionRequest request, CancellationToken ct)
     {
         if (!CanAccess(tenantId, AgentFlowPermissions.ConnectManage)) return Forbid();
+        if (!Enum.TryParse<TenantConnectionType>(request.Type, true, out var parsedType))
+            return BadRequest(new { message = $"Tipo de conexion invalido '{request.Type}'. Usa Sql|NoSql|Rest|Sheets|Messaging|Storage|Mcp." });
 
         var now = DateTimeOffset.UtcNow;
         var actor = _tenantContext.Current!.UserId;
@@ -69,7 +71,7 @@ public sealed class TenantConnectionsController : ControllerBase
             Id = connectionId,
             TenantId = tenantId,
             Name = request.Name,
-            Type = request.Type,
+            Type = parsedType,
             ConnectorId = request.ConnectorId,
             Config = request.Config,
             AllowedAgentIds = request.AllowedAgentIds,
@@ -531,7 +533,7 @@ public sealed class TenantConnectionsController : ControllerBase
 
 public sealed record UpsertConnectionRequest(
     string Name,
-    TenantConnectionType Type,
+    string Type,
     string ConnectorId,
     IReadOnlyDictionary<string, string> Config,
     IReadOnlyList<string> AllowedAgentIds,

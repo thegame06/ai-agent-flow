@@ -176,8 +176,8 @@ export default function MarketplacePage() {
       const [catalogRes, statesRes, connectionsRes, resourcesRes] = await Promise.all([
         axios.get('/api/v1/extensions/catalog', { params: query ? { q: query } : {} }),
         axios.get(`/api/v1/extensions/tenants/${tenantId}/states`),
-        axios.get(endpoints.agentflow.connections.list(tenantId)).catch(() => ({ data: [] })),
-        axios.get(endpoints.agentflow.connections.resources(tenantId)).catch(() => ({ data: [] })),
+        axios.get(endpoints.agentflow.connections.list(tenantId)),
+        axios.get(endpoints.agentflow.connections.resources(tenantId)),
       ]);
 
       setEntries(catalogRes.data ?? []);
@@ -213,14 +213,16 @@ export default function MarketplacePage() {
     connections.find((connection) => connection.connectorId === connectorId);
 
   const openQuickConnection = (preset: (typeof QUICK_CONNECTIONS)[number]) => {
+    const existing = configuredByConnectorId(preset.connectorId);
     setConnectionForm({
-      id: preset.id === 'twilio' ? 'twilio-main' : `${preset.id}-main`,
-      name: preset.title,
-      type: preset.type,
-      connectorId: preset.connectorId,
-      configJson: JSON.stringify(preset.config, null, 2),
-      secret: preset.secretHint,
+      id: existing?.id || (preset.id === 'twilio' ? 'twilio-main' : `${preset.id}-main`),
+      name: existing?.name || preset.title,
+      type: existing?.type || preset.type,
+      connectorId: existing?.connectorId || preset.connectorId,
+      configJson: JSON.stringify(existing?.config || preset.config, null, 2),
+      secret: '',
     });
+    setError(null);
     setOpenConnection(true);
   };
 
@@ -471,6 +473,10 @@ export default function MarketplacePage() {
         return;
       }
 
+      if (!(config.statusCallbackUrl ?? '').trim()) {
+        config.statusCallbackUrl = `${CONFIG.serverUrl}/api/v1/tenants/${tenantId}/webhooks/twilio/voice/status`;
+      }
+
       const normalizeCsv = (value: string) =>
         value
           .split(',')
@@ -489,26 +495,46 @@ export default function MarketplacePage() {
       config.callControlProvidersCsv = normalizeCsv(config.callControlProvidersCsv || callPreferred);
     }
 
-    await axios.put(endpoints.agentflow.connections.upsert(tenantId, connectionForm.id), {
-      name: connectionForm.name,
-      type: connectionForm.type,
-      connectorId: connectionForm.connectorId,
-      config,
-      allowedAgentIds: [],
-      allowedNodeIds: [],
-      allowedConnectorIds: [],
-    });
-
-    if (connectionForm.secret.trim()) {
-      await axios.post(endpoints.agentflow.connections.secret(tenantId, connectionForm.id), {
-        secret: connectionForm.secret,
-        expiresAt: null,
+    try {
+      setError(null);
+      const upsertRes = await axios.put(endpoints.agentflow.connections.upsert(tenantId, connectionForm.id), {
+        name: connectionForm.name,
+        type: connectionForm.type,
+        connectorId: connectionForm.connectorId,
+        config,
+        allowedAgentIds: [],
+        allowedNodeIds: [],
+        allowedConnectorIds: [],
       });
-    }
 
-    setOpenConnection(false);
-    setHealthMessage('Integracion guardada. Ya puede usarse desde canales, asistentes y automatizaciones.');
-    await load();
+      const rawSecret = connectionForm.secret.trim();
+      if (rawSecret) {
+        let normalizedSecret = rawSecret;
+        if (connectionForm.connectorId === 'twilio' && !rawSecret.startsWith('{')) {
+          normalizedSecret = JSON.stringify({ authToken: rawSecret }, null, 2);
+        }
+
+        await axios.post(endpoints.agentflow.connections.secret(tenantId, connectionForm.id), {
+          secret: normalizedSecret,
+          expiresAt: null,
+        });
+      }
+
+      setConnections((prev) => {
+        const next = Array.isArray(prev) ? [...prev] : [];
+        const saved = upsertRes.data as TenantConnection;
+        const index = next.findIndex((item) => item.id === saved.id);
+        if (index >= 0) next[index] = saved;
+        else next.unshift(saved);
+        return next;
+      });
+      setOpenConnection(false);
+      setHealthMessage('Integracion guardada. Ya puede usarse desde canales, asistentes y automatizaciones.');
+      await load();
+    } catch (err: any) {
+      setHealthMessage(null);
+      setError(err?.message || 'No se pudo guardar la integracion.');
+    }
   };
 
   const checkConnectionHealth = async (connectionId: string) => {
