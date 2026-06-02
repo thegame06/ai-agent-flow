@@ -196,9 +196,14 @@ export default function AgentsPage() {
         <BrandPageHeader
           eyebrow="Asistentes reutilizables"
           title="Asistentes"
-          description="Disena asistentes reutilizables para canales y automatizaciones. Cada asistente puede tener modelo, memoria, herramientas, conexiones externas y reglas de seguridad."
+          description="Define quien conversa. Los asistentes son reutilizables por modalidad y luego se vinculan desde canales, automatizaciones o campanas."
           icon="mdi:robot-happy-outline"
-          meta={runtimeKind ? <Chip size="small" color="info" label={`Modalidad ${runtimeKind}`} variant="outlined" /> : undefined}
+          meta={
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+              {runtimeKind ? <Chip size="small" color="info" label={`Modalidad ${runtimeKind}`} variant="outlined" /> : null}
+              <Chip size="small" variant="outlined" label="Entidad reusable de primer nivel" />
+            </Stack>
+          }
           actions={
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent={{ md: 'flex-end' }}>
               <Button

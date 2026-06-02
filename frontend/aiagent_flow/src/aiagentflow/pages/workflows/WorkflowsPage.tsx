@@ -18,6 +18,8 @@ import Typography from '@mui/material/Typography';
 import ToggleButton from '@mui/material/ToggleButton';
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 
+import { paths } from 'src/routes/paths';
+
 import { CONFIG } from 'src/global-config';
 import axios, { endpoints } from 'src/lib/axios';
 import { DashboardContent } from 'src/layouts/dashboard';
@@ -452,11 +454,16 @@ export default function WorkflowsPage() {
           </Alert>
         )}
 
+        <Alert severity="info" sx={{ mb: 2 }}>
+          Modelo de producto: <strong>Canales</strong> define por donde entra o sale la interaccion, <strong>Asistentes</strong> define quien conversa,
+          <strong> Automatizaciones</strong> define la logica y <strong>Campanas</strong> solo se usa para outbound programado.
+        </Alert>
+
 
         <BrandPageHeader
-          eyebrow="Construccion operativa"
+          eyebrow="Automatizaciones"
           title="Automatizaciones"
-          description="Disena el recorrido completo del caso: entrada del cliente, validaciones, respuestas, pagos, revision humana y cierre."
+          description="Disena la logica completa del caso. La modalidad cambia la experiencia, pero el constructor sigue siendo uno solo para texto, voz y multimodal."
           icon="mdi:source-branch"
           help={<TermHelp title="Flujo automatizado es la secuencia de pasos que el sistema ejecuta para atender un caso de principio a fin." />}
           meta={
@@ -478,6 +485,9 @@ export default function WorkflowsPage() {
             <Stack direction="row" spacing={1} flexWrap="wrap">
               <Button variant="contained" startIcon={<Iconify icon="mingcute:add-line" />} onClick={handleCreateBlank}>
                 Crear automatizacion
+              </Button>
+              <Button variant="outlined" startIcon={<Iconify icon="mdi:robot-outline" />} href={paths.dashboard.agents}>
+                Ver asistentes
               </Button>
               <Button variant="outlined" startIcon={<Iconify icon="mdi:refresh" />} onClick={loadAll}>
                 Actualizar
@@ -552,6 +562,66 @@ export default function WorkflowsPage() {
             {hasSelection && (
         <Card variant="outlined" sx={{ p: { xs: 2, md: 2.5 }, mb: 2.5, borderRadius: 3 }}>
           <Stack spacing={2}>
+            <Grid container spacing={1.2}>
+              {[
+                {
+                  label: 'Canal listo',
+                  ready: Boolean(workflowChannel),
+                  detail: workflowChannel?.name ?? 'Falta asociar un canal de referencia',
+                  cta: 'Configurar canal',
+                  href: paths.dashboard.system.channels,
+                },
+                {
+                  label: 'Asistente compatible',
+                  ready: hasAiAgentNode,
+                  detail: hasAiAgentNode ? 'Ya existe un asistente en el flujo' : 'Falta definir quien conversa',
+                  cta: 'Asignar asistente',
+                  href: paths.dashboard.agents,
+                },
+                {
+                  label: 'Perfil runtime listo',
+                  ready: Boolean(selectedRuntimeProfileId) || scopedRuntimeProfiles.length > 0,
+                  detail: selectedRuntimeProfileId || (scopedRuntimeProfiles.length > 0 ? 'Hay perfiles disponibles para esta modalidad' : 'Sin perfiles de runtime cargados'),
+                  cta: 'Elegir perfil',
+                  href: paths.dashboard.runtimeStudio(
+                    selectedRuntimeKind === 'Voice' ? 'voice' : selectedRuntimeKind === 'MultimodalRealtime' ? 'multimodal' : 'text'
+                  ),
+                },
+                {
+                  label: 'Mensaje inicial listo',
+                  ready: startIntents.length > 0,
+                  detail: startIntents.length > 0 ? `${startIntents.length} motivo(s) configurados` : 'Falta definir como inicia el flujo',
+                  cta: 'Agregar saludo',
+                  href: undefined,
+                },
+                {
+                  label: 'Publicable',
+                  ready: readyToPublish,
+                  detail: readyToPublish ? 'El flujo no tiene bloqueos visibles' : 'Todavia hay validaciones por resolver',
+                  cta: 'Probar ahora',
+                  href: undefined,
+                },
+              ].map((item) => (
+                <Grid item xs={12} md={6} lg={4} key={item.label}>
+                  <Card variant="outlined" sx={{ p: 1.25, borderRadius: 2, height: '100%' }}>
+                    <Stack spacing={0.7}>
+                      <Chip size="small" color={item.ready ? 'success' : 'warning'} label={item.ready ? 'OK' : 'Pendiente'} sx={{ alignSelf: 'flex-start' }} />
+                      <Typography variant="subtitle2">{item.label}</Typography>
+                      <Typography variant="caption" color="text.secondary">{item.detail}</Typography>
+                      <Button
+                        size="small"
+                        variant={item.ready ? 'outlined' : 'contained'}
+                        href={item.href}
+                        onClick={!item.href && item.label === 'Publicable' ? () => runEvent(editor.triggerEventName) : undefined}
+                      >
+                        {item.cta}
+                      </Button>
+                    </Stack>
+                  </Card>
+                </Grid>
+              ))}
+            </Grid>
+
             <Stack direction={{ xs: 'column', lg: 'row' }} justifyContent="space-between" spacing={1.5} alignItems={{ lg: 'center' }}>
               <Stack direction="row" spacing={0.8} flexWrap="wrap" alignItems="center">
                 <Chip size="small" color={selectedWorkflow?.status === 'Published' ? 'success' : 'default'} label={selectedWorkflow?.status === 'Published' ? 'Publicado' : 'Borrador'} />

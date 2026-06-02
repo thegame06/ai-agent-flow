@@ -534,9 +534,9 @@ export default function ChannelsPage() {
 
       <DashboardContent maxWidth="xl">
         <BrandPageHeader
-          eyebrow="Conversaciones e integraciones"
+          eyebrow="Canales"
           title="Canales de atencion"
-          description="Conecta WhatsApp, web chat, voz, centro de llamadas, email y APIs para usarlos en la bandeja, ventas y automatizaciones."
+          description="Prepara por donde entra o sale la conversacion. Un canal referencia una integracion reusable y luego se vincula con asistentes y automatizaciones."
           icon="mdi:access-point"
           help={<TermHelp title="Un canal es el medio por donde escribe o llama el cliente, por ejemplo WhatsApp, web chat, email o voz." />}
           actions={
@@ -544,10 +544,18 @@ export default function ChannelsPage() {
               <Button
                 variant="outlined"
                 component={RouterLink}
-                href={paths.dashboard.automationNew}
-                startIcon={<Iconify icon="mdi:auto-fix" />}
+                href={paths.dashboard.workflows}
+                startIcon={<Iconify icon="mdi:source-branch" />}
               >
                 Crear automatizacion
+              </Button>
+              <Button
+                variant="outlined"
+                component={RouterLink}
+                href={paths.dashboard.agents}
+                startIcon={<Iconify icon="mdi:robot-outline" />}
+              >
+                Crear asistente compatible
               </Button>
               <Button
                 variant="outlined"
@@ -567,6 +575,12 @@ export default function ChannelsPage() {
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
         <Grid container spacing={2.5}>
+          <Grid item xs={12}>
+            <Alert severity="info" sx={{ borderRadius: 2 }}>
+              Uso recomendado: primero conectas el proveedor en <strong>Integraciones</strong>, luego creas el <strong>Canal</strong>, despues eliges el
+              <strong> Asistente</strong> por defecto y finalmente enlazas la <strong>Automatizacion</strong> de entrada si hace falta.
+            </Alert>
+          </Grid>
           <Grid item xs={12}>
             <Grid container spacing={2}>
               {[
@@ -632,11 +646,71 @@ export default function ChannelsPage() {
             </Card>
           </Grid>
 
+          <Grid item xs={12}>
+            <Grid container spacing={2}>
+              {[
+                {
+                  label: 'Integracion lista',
+                  ready: twilioConnections.length > 0,
+                  detail: twilioConnections.length > 0 ? 'Twilio conectado y reusable' : 'Falta conectar Twilio u otro proveedor',
+                  cta: 'Configurar integracion',
+                  href: paths.dashboard.marketplace,
+                  action: undefined,
+                },
+                {
+                  label: 'Canal listo',
+                  ready: activeChannels > 0,
+                  detail: activeChannels > 0 ? `${activeChannels} canal(es) activos` : 'No hay canales activos todavia',
+                  cta: 'Agregar canal',
+                  href: undefined,
+                  action: () => setOpenCreate(true),
+                },
+                {
+                  label: 'Asistente compatible',
+                  ready: candidateAgents.length > 0,
+                  detail: candidateAgents.length > 0 ? `${candidateAgents.length} asistentes disponibles` : 'Falta definir quien atiende',
+                  cta: 'Crear asistente',
+                  href: paths.dashboard.agents,
+                  action: undefined,
+                },
+                {
+                  label: 'Prueba ejecutada',
+                  ready: sessions.length > 0,
+                  detail: sessions.length > 0 ? 'Ya existen conversaciones o pruebas registradas' : 'Aun no hay prueba registrada',
+                  cta: 'Probar canal',
+                  href: undefined,
+                  action: () => {
+                    setTestPanelChannel((prev) => prev ?? channels[0] ?? null);
+                    setOpenTestPanel(true);
+                  },
+                },
+              ].map((item) => (
+                <Grid item xs={12} md={3} key={item.label}>
+                  <Card variant="outlined" sx={{ p: 2, borderRadius: 3, height: '100%' }}>
+                    <Stack spacing={1}>
+                      <Chip size="small" color={item.ready ? 'success' : 'warning'} label={item.ready ? 'OK' : 'Pendiente'} sx={{ alignSelf: 'flex-start' }} />
+                      <Typography variant="subtitle2">{item.label}</Typography>
+                      <Typography variant="caption" color="text.secondary">{item.detail}</Typography>
+                      <Button
+                        size="small"
+                        variant={item.ready ? 'outlined' : 'contained'}
+                        href={item.href}
+                        onClick={item.action}
+                      >
+                        {item.cta}
+                      </Button>
+                    </Stack>
+                  </Card>
+                </Grid>
+              ))}
+            </Grid>
+          </Grid>
+
           <Grid item xs={12} md={7}>
             <Card variant="outlined" sx={{ p: { xs: 2, md: 2.5 }, borderRadius: 3, height: '100%' }}>
               <Typography variant="h6" sx={{ mb: 0.5 }}>Canales conectados</Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Estos canales alimentan la bandeja y aparecen como entradas disponibles en flujos automatizados.
+                Estos canales alimentan la bandeja y aparecen como entradas disponibles en automatizaciones.
               </Typography>
               {loading ? (
                 <Box sx={{ py: 4, textAlign: 'center' }}><CircularProgress /></Box>
@@ -692,7 +766,7 @@ export default function ChannelsPage() {
                             <IconButton size="small" title="Cargar intenciones" onClick={() => openIntentsDialog(c)}>
                               <Iconify icon="mdi:playlist-check" />
                             </IconButton>
-                            <IconButton size="small" title="Probar mensajes" onClick={() => { setTestPanelChannel(c); setTestResult(null); setTestMsg({ content: '', from: '', callbackUrl: '', asyncMode: false }); setOpenTestPanel(true); }}>
+                            <IconButton size="small" title="Probar canal" onClick={() => { setTestPanelChannel(c); setTestResult(null); setTestMsg({ content: '', from: '', callbackUrl: '', asyncMode: false }); setOpenTestPanel(true); }}>
                               <Iconify icon="mdi:message-flash-outline" />
                             </IconButton>
                             <IconButton size="small" onClick={() => openRoutingDialog(c)}>
@@ -792,11 +866,14 @@ export default function ChannelsPage() {
         <DialogTitle sx={{ pb: 1 }}>
           <Typography variant="h6">Agregar canal de atencion</Typography>
           <Typography variant="body2" color="text.secondary">
-            Define el canal, el asistente principal y la forma de conexion.
+            Define la via de comunicacion, el asistente por defecto y la integracion reusable que la soporta.
           </Typography>
         </DialogTitle>
         <DialogContent>
           <Stack spacing={2.25} sx={{ pt: 1 }}>
+            <Alert severity="info">
+              Aqui defines la via de comunicacion. La logica vive en Automatizaciones y la conversacion vive en Asistentes.
+            </Alert>
             <TextField
               label="Nombre del canal"
               value={form.name}
@@ -862,13 +939,13 @@ export default function ChannelsPage() {
                 </Alert>
                 <TextField
                   select
-                  label="Conexion Twilio"
+                  label="Integracion Twilio"
                   value={form.connectionId}
                   onChange={(e) => setForm((p) => ({ ...p, connectionId: e.target.value, provider: 'twilio' }))}
                   fullWidth
-                  helperText={connections.length === 0 ? 'No hay conexiones creadas. Ve a Marketplace para crear Twilio.' : 'Se reutiliza para todos los canales de voz.'}
+                  helperText={connections.length === 0 ? 'No hay integraciones creadas. Ve a Integraciones para crear Twilio.' : 'Se reutiliza para todos los canales de voz.'}
                 >
-                  <MenuItem value="">Detectar por provider twilio</MenuItem>
+                  <MenuItem value="">Detectar por proveedor Twilio</MenuItem>
                   {connections
                     .filter((connection) => connection.connectorId === 'twilio' || connection.config?.provider === 'twilio' || connection.type === 'Messaging')
                     .map((connection) => (
@@ -882,12 +959,13 @@ export default function ChannelsPage() {
 
             <TextField
               select
-              label="Asistente principal"
+              label="Asistente por defecto"
               value={form.defaultAgentId}
               onChange={(e) => setForm((p) => ({ ...p, defaultAgentId: e.target.value }))}
               fullWidth
-              helperText={candidateAgents.length === 0 ? 'No hay asistentes disponibles' : 'Asistente que responde cuando no aplica ninguna regla especial.'}
+              helperText={candidateAgents.length === 0 ? 'No hay asistentes disponibles' : 'Define quien atiende por defecto cuando no aplica ninguna regla especial.'}
             >
+              <MenuItem value=""><em>Sin asistente por defecto</em></MenuItem>
               {candidateAgents.map((agent) => (
                 <MenuItem key={agent.id} value={agent.id}>
                   {agent.name}
@@ -896,7 +974,7 @@ export default function ChannelsPage() {
             </TextField>
 
             <Divider textAlign="left" sx={{ pt: 0.5 }}>
-              <Typography variant="caption" color="text.secondary">Asignacion automatica (opcional)</Typography>
+              <Typography variant="caption" color="text.secondary">Decision de entrada (opcional)</Typography>
             </Divider>
 
             <FormControl fullWidth>
@@ -919,7 +997,7 @@ export default function ChannelsPage() {
                   <MenuItem key={agent.id} value={agent.id}>{agent.name}</MenuItem>
                 ))}
               </Select>
-              <FormHelperText>El sistema repartira nuevas conversaciones entre estos agentes de intencion segun su carga actual. Dejalo vacio para usar solo el agente de respaldo.</FormHelperText>
+              <FormHelperText>El sistema repartira nuevas conversaciones entre estos asistentes segun su carga actual. Dejalo vacio para usar solo el asistente por defecto.</FormHelperText>
             </FormControl>
 
             {form.type === 'WhatsApp' && (
@@ -962,7 +1040,7 @@ export default function ChannelsPage() {
         <DialogActions>
           <Button onClick={() => setOpenCreate(false)}>Cancelar</Button>
           <Button variant="contained" onClick={handleCreate} disabled={saving || !form.name}>
-            {saving ? 'Agregando...' : 'Agregar'}
+            {saving ? 'Agregando...' : 'Guardar canal'}
           </Button>
         </DialogActions>
       </Dialog>

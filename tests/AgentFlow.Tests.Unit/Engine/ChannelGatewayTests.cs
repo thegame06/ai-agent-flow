@@ -62,7 +62,9 @@ public sealed class ChannelGatewayTests
             Mock.Of<IAgentDefinitionRepository>(),
             Mock.Of<IAuditMemory>(),
             Mock.Of<IChannelCapabilityPolicy>(),
+            null,
             new[] { new TestChannelHandler(ChannelType.Api) },
+            null,
             NullLogger<ChannelGateway>.Instance);
 
         var incoming = ChannelMessage.CreateIncoming("tenant-1", channel.Id, session.Id, "user-1", "hello");
@@ -120,7 +122,9 @@ public sealed class ChannelGatewayTests
             Mock.Of<IAgentDefinitionRepository>(),
             Mock.Of<IAuditMemory>(),
             Mock.Of<IChannelCapabilityPolicy>(),
+            null,
             new[] { new TestChannelHandler(ChannelType.Api) },
+            null,
             NullLogger<ChannelGateway>.Instance);
 
         var incoming = ChannelMessage.CreateIncoming("tenant-1", channel.Id, "missing-session", "user-1", "hello");
@@ -193,7 +197,9 @@ public sealed class ChannelGatewayTests
             Mock.Of<IAgentDefinitionRepository>(),
             Mock.Of<IAuditMemory>(),
             Mock.Of<IChannelCapabilityPolicy>(),
+            null,
             new[] { new TestChannelHandler(ChannelType.Api) },
+            null,
             NullLogger<ChannelGateway>.Instance);
 
         var incoming = ChannelMessage.CreateIncoming("tenant-1", channel.Id, session.Id, "user-1", "hello");

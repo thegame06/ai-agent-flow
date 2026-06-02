@@ -4,6 +4,7 @@ import { useMemo, useState, useEffect } from 'react';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
+import Alert from '@mui/material/Alert';
 import Stack from '@mui/material/Stack';
 import Button from '@mui/material/Button';
 import TextField from '@mui/material/TextField';
@@ -173,8 +174,11 @@ export default function AutomationWizardPage() {
       </Helmet>
       <DashboardContent maxWidth="lg">
         <Stack spacing={2}>
+          <Alert severity="warning">
+            Esta vista queda como apoyo temporal. El flujo principal del producto ahora vive en Canales, Asistentes, Automatizaciones y Campanas.
+          </Alert>
           <Stack direction="row" justifyContent="space-between" alignItems="center">
-            <Typography variant="h4">Crear automatizacion</Typography>
+            <Typography variant="h4">Asistente guiado legado</Typography>
             <Stack direction="row" spacing={1}>
               <Button variant={viewMode === 'focus' ? 'contained' : 'outlined'} onClick={() => setViewMode('focus')}>
                 Enfoque
@@ -188,8 +192,19 @@ export default function AutomationWizardPage() {
           {viewMode === 'focus' ? (
             <Stack spacing={2}>
               <Typography variant="body2" color="text.secondary">
-                Asistente guiado reusable para crear automatizaciones. Tambien puede incrustarse en Inicio y otros modulos.
+                Se mantiene para casos asistidos, pero el diseno principal debe hacerse dentro del modulo correspondiente.
               </Typography>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                <Button variant="contained" href="/dashboard/studio/workflows">
+                  Abrir automatizaciones
+                </Button>
+                <Button variant="outlined" href="/dashboard/system/channels">
+                  Abrir canales
+                </Button>
+                <Button variant="outlined" href="/dashboard/campaigns">
+                  Abrir campanas
+                </Button>
+              </Stack>
               <WizardLauncher value={wizardId} onChange={setWizardId} initialChannelId={channelId} />
             </Stack>
           ) : (

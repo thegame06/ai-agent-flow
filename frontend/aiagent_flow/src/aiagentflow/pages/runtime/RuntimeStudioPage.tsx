@@ -55,10 +55,10 @@ export default function RuntimeStudioPage() {
         icon: 'mdi:source-branch',
       },
       {
-        title: 'Subflujos reutilizables',
-        description: 'Crea piezas especializadas para reutilizar en otras automatizaciones.',
-        href: `${paths.dashboard.automationNew}?wizard=agentSubflow&${runtimeQuery}`,
-        icon: 'mdi:vector-polyline',
+        title: 'Biblioteca reutilizable',
+        description: 'Gestiona asistentes y automatizaciones reutilizables sin depender de wizards separados.',
+        href: `${paths.dashboard.workflows}?${runtimeQuery}`,
+        icon: 'mdi:shape-outline',
       },
       {
         title: 'Centro de pruebas',
@@ -77,7 +77,7 @@ export default function RuntimeStudioPage() {
       </Helmet>
       <RuntimeWorkspaceShell
         title={`Runtime avanzado - ${runtime.uiLabel}`}
-        description="Espacio por modalidad para asistentes, automatizaciones reutilizables y pruebas operativas."
+        description="Espacio por modalidad para asistentes, automatizaciones y pruebas operativas. La modalidad ajusta la experiencia, pero el constructor sigue siendo uno solo."
         runtimeKind={runtime.label}
         actions={[
           {

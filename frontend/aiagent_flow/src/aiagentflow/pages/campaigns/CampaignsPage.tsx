@@ -24,6 +24,7 @@ import CircularProgress from '@mui/material/CircularProgress';
 
 import { CONFIG } from 'src/global-config';
 import axios, { endpoints } from 'src/lib/axios';
+import { paths } from 'src/routes/paths';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
 import { BrandPageHeader } from 'src/aiagentflow/components/BrandPageHeader';
@@ -120,6 +121,7 @@ type ManualCampaignForm = {
   runtimeModelProfileId: string;
   messageDraft: string;
   callScriptDraft: string;
+  assistantId: string;
 };
 
 type ManualSegmentForm = {
@@ -164,6 +166,7 @@ const defaultManualCampaign = (): ManualCampaignForm => ({
   runtimeModelProfileId: '',
   messageDraft: '',
   callScriptDraft: '',
+  assistantId: '',
 });
 
 const defaultManualSegment = (): ManualSegmentForm => ({
@@ -441,6 +444,33 @@ export default function CampaignsPage() {
     </Stack>
   );
 
+  const readyChannel = campaigns.some((item) => item.channel?.trim());
+  const readyWorkflow = campaigns.some((item) => item.workflowDefinitionId?.trim());
+  const readyInitialMessage = campaigns.some((item) => item.runtimeModelProfileId?.trim() || item.workflowDefinitionId?.trim());
+  const readinessItems = [
+    {
+      label: 'Canal listo',
+      ready: readyChannel,
+      detail: readyChannel ? 'Ya hay campanas con canal configurado' : 'Falta elegir canal de salida',
+      cta: 'Configurar canal',
+      href: paths.dashboard.system.channels,
+    },
+    {
+      label: 'Automatizacion asociada',
+      ready: readyWorkflow,
+      detail: readyWorkflow ? 'Ya existe al menos un flujo vinculado' : 'Falta elegir que flujo inicia la campana',
+      cta: 'Ir a automatizaciones',
+      href: paths.dashboard.workflows,
+    },
+    {
+      label: 'Mensaje inicial listo',
+      ready: readyInitialMessage,
+      detail: readyInitialMessage ? 'Hay guiones, perfiles o flujos definidos' : 'Falta definir mensaje, guion o flujo inicial',
+      cta: 'Completar borrador',
+      href: '',
+    },
+  ];
+
   return (
     <>
       <Helmet>
@@ -467,12 +497,20 @@ export default function CampaignsPage() {
               >
                 Generar desde prompt
               </Button>
+              <Button variant="outlined" href={paths.dashboard.workflows} startIcon={<Iconify icon="mdi:source-branch" width={18} />}>
+                Ir a automatizaciones
+              </Button>
               <Button variant="outlined" startIcon={<Iconify icon="mdi:refresh" width={18} />} onClick={refresh}>
                 Actualizar
               </Button>
             </Stack>
           }
         />
+
+        <Alert severity="info" sx={{ mb: 2.5 }}>
+          Regla de uso: <strong>Campanas</strong> decide a quien y cuando contactar. <strong>Canales</strong> define por donde sale la interaccion,
+          <strong> Automatizaciones</strong> define la logica y <strong>Asistentes</strong> define quien conversa.
+        </Alert>
 
         {error && <Alert severity="error" sx={{ mb: 2.5 }}>{error}</Alert>}
         {notice && <Alert severity="success" sx={{ mb: 2.5 }}>{notice}</Alert>}
@@ -502,11 +540,33 @@ export default function CampaignsPage() {
 
           <Grid item xs={12} lg={9}>
             <Stack spacing={2.5}>
+              <Card variant="outlined" sx={{ p: { xs: 2, md: 2.5 }, borderRadius: 3 }}>
+                <Stack spacing={1.5}>
+                  <Typography variant="subtitle1">Estado operativo</Typography>
+                  <Grid container spacing={1.5}>
+                    {readinessItems.map((item) => (
+                      <Grid item xs={12} md={4} key={item.label}>
+                        <Card variant="outlined" sx={{ p: 1.5, borderRadius: 2, height: '100%' }}>
+                          <Stack spacing={1}>
+                            <Chip size="small" color={item.ready ? 'success' : 'warning'} label={item.ready ? 'OK' : 'Pendiente'} sx={{ alignSelf: 'flex-start' }} />
+                            <Typography variant="subtitle2">{item.label}</Typography>
+                            <Typography variant="caption" color="text.secondary">{item.detail}</Typography>
+                            <Button size="small" variant={item.ready ? 'outlined' : 'contained'} href={item.href || undefined}>
+                              {item.cta}
+                            </Button>
+                          </Stack>
+                        </Card>
+                      </Grid>
+                    ))}
+                  </Grid>
+                </Stack>
+              </Card>
+
               <Card variant="outlined" sx={{ borderRadius: 3, p: { xs: 2, md: 2.5 } }}>
                 <Stack spacing={2}>
                   <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={2} flexWrap="wrap" useFlexGap>
                     <Box>
-                      <Typography variant="subtitle1">Creador asistido</Typography>
+                      <Typography variant="subtitle1">Borrador asistido</Typography>
                       <Typography variant="body2" color="text.secondary">
                         Describe la campaña en lenguaje natural y deja que el asistente proponga un borrador editable.
                       </Typography>
@@ -530,7 +590,7 @@ export default function CampaignsPage() {
                           <Chip size="small" color="info" label={draft.campaignDraft.channel ?? 'canal'} />
                           <Chip size="small" variant="outlined" label={draft.campaignDraft.executionMode ?? 'modo'} />
                           {draft.campaignDraft.runtimeModelProfileId && (
-                            <Chip size="small" variant="outlined" label={`Runtime ${draft.campaignDraft.runtimeModelProfileId}`} />
+                            <Chip size="small" variant="outlined" label={`Perfil runtime ${draft.campaignDraft.runtimeModelProfileId}`} />
                           )}
                         </Stack>
                         <Typography variant="body2" color="text.secondary">
@@ -618,7 +678,7 @@ export default function CampaignsPage() {
                           <TextField fullWidth label="Nombre" value={manualCampaign.name} onChange={(e) => setManualCampaign((prev) => ({ ...prev, name: e.target.value }))} />
                         </Grid>
                         <Grid item xs={12} md={6}>
-                          <TextField fullWidth label="Canal" value={manualCampaign.channel} onChange={(e) => setManualCampaign((prev) => ({ ...prev, channel: e.target.value }))} helperText="Ejemplo: whatsapp, voice, sms o email" />
+                          <TextField fullWidth label="Canal de salida" value={manualCampaign.channel} onChange={(e) => setManualCampaign((prev) => ({ ...prev, channel: e.target.value }))} helperText="Ejemplo: whatsapp, voice, sms o email" />
                         </Grid>
                         <Grid item xs={12}>
                           <TextField fullWidth label="Descripción" value={manualCampaign.description} onChange={(e) => setManualCampaign((prev) => ({ ...prev, description: e.target.value }))} />
@@ -656,19 +716,19 @@ export default function CampaignsPage() {
                           </TextField>
                         </Grid>
                         <Grid item xs={12} md={6}>
-                          <TextField fullWidth label="WorkflowDefinitionId" value={manualCampaign.workflowDefinitionId} onChange={(e) => setManualCampaign((prev) => ({ ...prev, workflowDefinitionId: e.target.value }))} helperText="Úsalo cuando el modo sea Workflow o Hybrid." />
+                          <TextField fullWidth label="Flujo a usar" value={manualCampaign.workflowDefinitionId} onChange={(e) => setManualCampaign((prev) => ({ ...prev, workflowDefinitionId: e.target.value }))} helperText="Usalo cuando el modo sea Workflow o Hybrid." />
                         </Grid>
                         <Grid item xs={12} md={6}>
-                          <TextField fullWidth label="RuntimeModelProfileId" value={manualCampaign.runtimeModelProfileId} onChange={(e) => setManualCampaign((prev) => ({ ...prev, runtimeModelProfileId: e.target.value }))} helperText="Opcional para campañas de voz o salidas especializadas." />
+                          <TextField fullWidth label="Perfil runtime (avanzado)" value={manualCampaign.runtimeModelProfileId} onChange={(e) => setManualCampaign((prev) => ({ ...prev, runtimeModelProfileId: e.target.value }))} helperText="Opcional avanzado para campanas de voz o salidas especializadas." />
                         </Grid>
                         <Grid item xs={12} md={6}>
-                          <TextField fullWidth label="Mensaje base" value={manualCampaign.messageDraft} onChange={(e) => setManualCampaign((prev) => ({ ...prev, messageDraft: e.target.value }))} />
+                          <TextField fullWidth label="Mensaje inicial" value={manualCampaign.messageDraft} onChange={(e) => setManualCampaign((prev) => ({ ...prev, messageDraft: e.target.value }))} />
                         </Grid>
                         <Grid item xs={12}>
                           <TextField fullWidth multiline minRows={3} label="Filtro de audiencia inline (JSON)" value={manualCampaign.audienceFilterJson} onChange={(e) => setManualCampaign((prev) => ({ ...prev, audienceFilterJson: e.target.value }))} />
                         </Grid>
                         <Grid item xs={12}>
-                          <TextField fullWidth multiline minRows={3} label="Script de llamada" value={manualCampaign.callScriptDraft} onChange={(e) => setManualCampaign((prev) => ({ ...prev, callScriptDraft: e.target.value }))} />
+                          <TextField fullWidth multiline minRows={3} label="Guion de llamada" value={manualCampaign.callScriptDraft} onChange={(e) => setManualCampaign((prev) => ({ ...prev, callScriptDraft: e.target.value }))} />
                         </Grid>
                       </Grid>
                       <Stack direction="row" spacing={1}>
@@ -705,7 +765,7 @@ export default function CampaignsPage() {
                                 </Stack>
                               </Stack>
                               <Typography variant="body2" color="text.secondary">
-                                Tipo {campaign.campaignType} - Acción {campaign.channelAction} - Actualizada {formatDate(campaign.updatedAt)}
+                                Tipo {campaign.campaignType} - Inicia {campaign.channelAction} - Actualizada {formatDate(campaign.updatedAt)}
                               </Typography>
                             </Stack>
                           </Paper>

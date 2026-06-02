@@ -35,25 +35,25 @@ export const TOOL_ACTIVITY_TYPES = [
 ] as const;
 
 export const ACTIVITY_TYPE_LABELS_ES: Record<string, string> = {
-  'ai.agent': 'Agente de IA',
-  'channel.send': 'Enviar por canal',
+  'ai.agent': 'Hablar con asistente',
+  'channel.send': 'Enviar mensaje',
   'connect.send_whatsapp_template': 'Enviar plantilla de WhatsApp',
   'connect.update_inbox_status': 'Actualizar estado de conversacion',
-  'connect.enqueue_campaign_message': 'Encolar mensaje de campana',
-  'human.assign': 'Asignar a agente',
-  'human.handoff': 'Escalar a atencion humana',
+  'connect.enqueue_campaign_message': 'Programar mensaje outbound',
+  'human.assign': 'Asignar a responsable',
+  'human.handoff': 'Transferir a humano',
   'intent.branch': 'Bifurcacion por intencion',
   'kyc.document_check': 'Validacion de documento KYC',
   'kyc.review_case': 'Revision humana KYC',
   'payments.create_intent': 'Crear intencion de pago',
-  'http.request': 'Consultar API',
-  'webhook.call': 'Llamar webhook',
-  'files.read': 'Leer archivo',
+  'http.request': 'Consultar sistema',
+  'webhook.call': 'Ejecutar webhook',
+  'files.read': 'Capturar archivo',
   'drive.lookup': 'Buscar en Drive',
-  'storage.write': 'Guardar en storage',
-  'mcp.tool_call': 'Usar conector avanzado',
-  'voice.call': 'Llamada de voz',
-  'callcenter.outbound_call': 'Llamada call center',
+  'storage.write': 'Guardar resultado',
+  'mcp.tool_call': 'Usar herramienta avanzada',
+  'voice.call': 'Iniciar llamada',
+  'callcenter.outbound_call': 'Iniciar llamada outbound',
 };
 
 export const ACTIVITY_TYPE_CATEGORY_ES: Record<string, string> = {

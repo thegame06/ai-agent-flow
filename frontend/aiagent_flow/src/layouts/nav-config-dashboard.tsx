@@ -81,7 +81,7 @@ export const navData: NavSectionProps['data'] = [
         icon: ICONS.workflow,
         children: [
           { title: 'Ver automatizaciones', path: paths.dashboard.workflows },
-          { title: 'Runtime avanzado', path: paths.dashboard.runtimeStudio('text') },
+          { title: 'Espacios por modalidad', path: paths.dashboard.runtimeStudio('text') },
         ],
       },
       {

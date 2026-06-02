@@ -99,11 +99,11 @@ const NODE_LABELS: Record<string, string> = {
 const QUICK_CONNECTIONS = [
   {
     id: 'twilio',
-    title: 'Twilio omnicanal',
+    title: 'Twilio como proveedor de comunicacion',
     type: 'Messaging',
     connectorId: 'twilio',
     icon: 'mdi:phone-in-talk-outline',
-    description: 'Una sola configuracion para voz, call center, SMS y futuros canales WhatsApp por Twilio.',
+    description: 'Conexion reusable del tenant para voz, call center, SMS y futuros canales WhatsApp por Twilio.',
     config: { provider: 'twilio', accountSid: '', fromPhoneNumber: '', statusCallbackUrl: '' },
     secretHint: '{"authToken":"..."}',
     capabilities: ['voice.call', 'callcenter.outbound_call', 'sms', 'status callbacks'],
@@ -261,9 +261,9 @@ export default function MarketplacePage() {
         <Card variant="outlined" sx={{ p: 2, bgcolor: 'background.neutral' }}>
           <Stack spacing={1.5}>
             <Box>
-              <Typography variant="subtitle2">Twilio omnicanal</Typography>
+              <Typography variant="subtitle2">Twilio como proveedor de comunicacion</Typography>
               <Typography variant="caption" color="text.secondary">
-                Esta conexion vive en backend por tenant. Luego canales de voz, call center, SMS o WhatsApp por Twilio solo referencian este ID.
+                Esta integracion vive en backend por tenant. Luego los canales de voz, call center, SMS o WhatsApp por Twilio solo referencian este ID.
               </Typography>
             </Box>
             <TextField
@@ -286,7 +286,7 @@ export default function MarketplacePage() {
               fullWidth
             />
             <Divider />
-            <Typography variant="subtitle2">Cadena de providers (voz)</Typography>
+            <Typography variant="subtitle2">Opciones avanzadas de voz</Typography>
             <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.2}>
               <TextField
                 label="STT preferido"
@@ -589,15 +589,24 @@ export default function MarketplacePage() {
         <Stack spacing={2.5} sx={{ mb: 3 }}>
           <BrandPageHeader
             eyebrow="Integraciones"
-            title="Marketplace de conexiones"
-            description="Instala y configura capacidades para automatizaciones, asistentes, canales y conexiones externas."
+            title="Integraciones"
+            description="Conecta infraestructura reusable del tenant. Aqui vive Twilio; luego Canales, Asistentes y Automatizaciones solo referencian esa integracion."
             icon="mdi:storefront-outline"
             actions={
-              <Button variant="contained" href={paths.dashboard.workflows}>
-                Usar en automatizaciones
-              </Button>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                <Button variant="contained" href={paths.dashboard.system.channels}>
+                  Ir a canales
+                </Button>
+                <Button variant="outlined" href={paths.dashboard.workflows}>
+                  Ir a automatizaciones
+                </Button>
+              </Stack>
             }
           />
+
+          <Alert severity="info" sx={{ borderRadius: 2 }}>
+            Modelo recomendado: primero conectas el proveedor aqui, luego creas un canal que lo use. Twilio no define la logica del negocio ni reemplaza asistentes, workflows o campanas.
+          </Alert>
 
           <Grid container spacing={2}>
             {[
@@ -644,9 +653,9 @@ export default function MarketplacePage() {
         <Card variant="outlined" sx={{ p: 2, mb: 3 }}>
           <Stack spacing={1.5}>
             <Box>
-              <Typography variant="h6">Integraciones listas para automatizaciones</Typography>
+              <Typography variant="h6">Integraciones listas para reutilizar</Typography>
               <Typography variant="body2" color="text.secondary">
-                Configura una vez y reutiliza en canales, nodos, agentes y workflows.
+                Configura una vez y reutiliza en canales, asistentes, automatizaciones y campanas.
               </Typography>
             </Box>
             <Grid container spacing={2}>
@@ -682,7 +691,7 @@ export default function MarketplacePage() {
                               {configured ? 'Editar' : 'Configurar'}
                             </Button>
                             <Button size="small" variant="outlined" href={paths.dashboard.workflows}>
-                              Usar en automatizacion
+                              Ir a automatizaciones
                             </Button>
                             {configuredConnection && (
                               <Button size="small" variant="text" onClick={() => checkConnectionHealth(configuredConnection.id)}>
@@ -715,9 +724,9 @@ export default function MarketplacePage() {
         <Card variant="outlined" sx={{ p: 2, mb: 3 }}>
           <Stack spacing={1.5}>
             <Box>
-              <Typography variant="h6">Recursos disponibles para asistentes y automatizaciones</Typography>
+              <Typography variant="h6">Estado operativo reutilizable</Typography>
               <Typography variant="body2" color="text.secondary">
-                Esta es la lista real que consumen las automatizaciones. Si algo aparece pendiente, el nodo lo avisara antes de publicar.
+                Esta es la salud real de las conexiones que consumen canales y automatizaciones. Si algo aparece pendiente, el sistema debe avisarlo antes de publicar.
               </Typography>
             </Box>
             {resources.length === 0 ? (
@@ -851,7 +860,7 @@ export default function MarketplacePage() {
       </DashboardContent>
 
       <Dialog open={openConnection} onClose={() => setOpenConnection(false)} fullWidth maxWidth="sm">
-        <DialogTitle>Configurar conexion</DialogTitle>
+        <DialogTitle>Configurar integracion reusable</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ pt: 1 }}>
             <TextField

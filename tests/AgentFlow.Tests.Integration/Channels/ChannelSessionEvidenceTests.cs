@@ -103,6 +103,12 @@ public class ChannelSessionEvidenceTests
         public Task<IReadOnlyList<ChannelMessage>> GetByChannelAsync(string channelId, string tenantId, int limit = 50, CancellationToken ct = default)
             => Task.FromResult<IReadOnlyList<ChannelMessage>>(Array.Empty<ChannelMessage>());
 
+        public Task<ChannelMessage?> GetByExternalMessageIdAsync(string tenantId, string channelId, string externalMessageId, MessageDirection direction, CancellationToken ct = default)
+            => Task.FromResult<ChannelMessage?>(null);
+
+        public Task<ChannelMessage?> GetLatestOutgoingByExecutionIdAsync(string tenantId, string executionId, CancellationToken ct = default)
+            => Task.FromResult<ChannelMessage?>(null);
+
         public Task<AgentFlow.Abstractions.Result> InsertAsync(ChannelMessage message, CancellationToken ct = default)
             => Task.FromResult(AgentFlow.Abstractions.Result.Success());
 

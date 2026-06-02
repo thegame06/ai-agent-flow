@@ -131,11 +131,11 @@ export default function OverviewPage() {
   const nextStep = missingItems[0] ?? readinessItems[0];
 
   const quickLinks = [
-    { label: 'Crear automatizacion', icon: 'mdi:auto-fix', href: paths.dashboard.automationNew },
+    { label: 'Automatizaciones', icon: 'mdi:source-branch', href: paths.dashboard.workflows },
     { label: 'Canales', icon: 'mdi:message-processing-outline', href: paths.dashboard.system.channels },
     { label: 'Integraciones', icon: 'mdi:connection', href: paths.dashboard.marketplace },
     { label: 'Asistentes', icon: 'mdi:robot-outline', href: paths.dashboard.agents },
-    { label: 'Actividad', icon: 'mdi:chart-timeline-variant', href: paths.dashboard.executions },
+    { label: 'Campanas', icon: 'mdi:bullhorn-variant-outline', href: paths.dashboard.campaigns },
   ];
 
   return (
@@ -150,7 +150,7 @@ export default function OverviewPage() {
         <BrandPageHeader
           eyebrow="Centro operativo"
           title="Preparacion de la plataforma"
-          description="Revisa lo que falta para operar, publica automatizaciones y corrige bloqueos sin entrar a configuraciones tecnicas."
+          description="Empieza por el modulo correcto: integra proveedores, prepara canales, define asistentes, orquesta automatizaciones y lanza campanas outbound sin mezclar infraestructura con logica."
           icon="mdi:view-dashboard-outline"
           meta={
             <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
@@ -171,11 +171,11 @@ export default function OverviewPage() {
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
               <Button
                 component={RouterLink}
-                href={paths.dashboard.automationNew}
+                href={paths.dashboard.workflows}
                 variant="contained"
-                startIcon={<Iconify icon="mdi:auto-fix" width={18} />}
+                startIcon={<Iconify icon="mdi:source-branch" width={18} />}
               >
-                Crear automatizacion
+                Abrir automatizaciones
               </Button>
               <Button
                 component={RouterLink}
@@ -190,6 +190,12 @@ export default function OverviewPage() {
         />
 
         <Grid container spacing={2.5}>
+          <Grid item xs={12}>
+            <Alert severity="info" sx={{ borderRadius: 2 }}>
+              Mapa del producto: <strong>Integraciones</strong> conecta proveedores como Twilio, <strong>Canales</strong> define por donde entra o sale la conversacion,
+              <strong> Asistentes</strong> define quien conversa, <strong>Automatizaciones</strong> define la logica y <strong>Campanas</strong> se usa solo para outbound programado.
+            </Alert>
+          </Grid>
           <Grid item xs={12} lg={8}>
             <Card variant="outlined" sx={{ p: { xs: 2, md: 2.5 }, borderRadius: 3, height: '100%' }}>
               <Stack spacing={2}>
@@ -369,7 +375,7 @@ export default function OverviewPage() {
                       ? 'Ya tienes la base lista. Aprovecha para construir o mejorar una automatizacion con impacto directo.'
                       : `Aun falta completar ${nextStep.label.toLowerCase()} para operar con menos friccion.`
                   }
-                  href={nextStep.ready ? paths.dashboard.automationNew : nextStep.href}
+                  href={nextStep.ready ? paths.dashboard.workflows : nextStep.href}
                   cta={nextStep.ready ? 'Abrir creador' : nextStep.actionLabel}
                   icon={nextStep.ready ? 'mdi:auto-fix' : nextStep.icon}
                 />
@@ -421,6 +427,9 @@ export default function OverviewPage() {
                     Usa una guia conversacional para preparar la siguiente automatizacion.
                   </Typography>
                 </Box>
+                <Alert severity="warning" sx={{ mb: 2 }}>
+                  Este asistente guiado sigue disponible como apoyo, pero el camino principal ahora es trabajar desde Canales, Asistentes, Automatizaciones o Campanas segun el objetivo.
+                </Alert>
                 <WizardLauncher value={wizardType} onChange={setWizardType} />
               </Stack>
             </Card>

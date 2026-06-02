@@ -346,6 +346,9 @@ public sealed class CommerceControllerTests
         private readonly List<CommerceOrderDocument> _orders = [];
         private readonly List<CommerceInvoiceDocument> _invoices = [];
         private readonly List<CommerceInventoryItemDocument> _inventory = [];
+        private readonly List<CommerceCategoryDocument> _categories = [];
+        private readonly List<CommerceBranchDocument> _branches = [];
+        private CommerceStoreSettingsDocument? _storeSettings;
 
         public void SeedInventory(string tenantId, string sku, string name, decimal unitPrice, int onHand, string itemType = "physical", string unitOfMeasure = "unit", bool tracksInventory = true)
         {
@@ -439,7 +442,25 @@ public sealed class CommerceControllerTests
         public Task<CommerceInventoryItemDocument?> GetInventoryBySkuAsync(string tenantId, string sku, CancellationToken ct)
             => Task.FromResult(_inventory.SingleOrDefault(x => x.TenantId == tenantId && x.Sku == sku));
 
-        public Task<CommerceInventoryItemDocument> UpsertInventoryItemAsync(string tenantId, string sku, string name, decimal unitPrice, int onHand, bool active, string? itemType, string? unitOfMeasure, bool? tracksInventory, CancellationToken ct)
+        public Task<CommerceInventoryItemDocument> UpsertInventoryItemAsync(
+            string tenantId,
+            string sku,
+            string name,
+            decimal unitPrice,
+            int onHand,
+            bool active,
+            string? itemType,
+            string? unitOfMeasure,
+            bool? tracksInventory,
+            string? description,
+            IReadOnlyList<string>? categoryIds,
+            IReadOnlyList<string>? branchIds,
+            IReadOnlyList<string>? imageUrls,
+            IReadOnlyList<CommerceProductAttributeDocument>? attributes,
+            CommerceProductDiscountDocument? discount,
+            IReadOnlyList<CommerceProductVariationDocument>? variations,
+            IReadOnlyList<CommerceBranchStockDocument>? branchStocks,
+            CancellationToken ct)
         {
             var current = _inventory.SingleOrDefault(x => x.TenantId == tenantId && x.Sku == sku);
             var normalizedType = string.IsNullOrWhiteSpace(itemType) ? "physical" : itemType.Trim().ToLowerInvariant();
@@ -447,21 +468,126 @@ public sealed class CommerceControllerTests
             var resolvedTracks = tracksInventory ?? (normalizedType is "physical" or "combo" or "kit");
             if (current is null)
             {
-                current = new CommerceInventoryItemDocument { TenantId = tenantId, Sku = sku, Name = name, ItemType = normalizedType, UnitOfMeasure = normalizedUnit, TracksInventory = resolvedTracks, UnitPrice = unitPrice, OnHand = resolvedTracks ? onHand : 0, Active = active };
+                current = new CommerceInventoryItemDocument
+                {
+                    TenantId = tenantId,
+                    Sku = sku,
+                    Name = name,
+                    ItemType = normalizedType,
+                    Description = description,
+                    UnitOfMeasure = normalizedUnit,
+                    TracksInventory = resolvedTracks,
+                    UnitPrice = unitPrice,
+                    OnHand = resolvedTracks ? onHand : 0,
+                    Active = active,
+                    CategoryIds = categoryIds?.ToList(),
+                    BranchIds = branchIds?.ToList(),
+                    ImageUrls = imageUrls?.ToList(),
+                    Attributes = attributes?.ToList(),
+                    Discount = discount,
+                    Variations = variations?.ToList(),
+                    BranchStocks = branchStocks?.ToList()
+                };
                 _inventory.Add(current);
             }
             else
             {
                 current.Name = name;
                 current.ItemType = normalizedType;
+                current.Description = description;
                 current.UnitOfMeasure = normalizedUnit;
                 current.TracksInventory = resolvedTracks;
                 current.UnitPrice = unitPrice;
                 current.OnHand = resolvedTracks ? onHand : 0;
                 current.Active = active;
+                current.CategoryIds = categoryIds?.ToList();
+                current.BranchIds = branchIds?.ToList();
+                current.ImageUrls = imageUrls?.ToList();
+                current.Attributes = attributes?.ToList();
+                current.Discount = discount;
+                current.Variations = variations?.ToList();
+                current.BranchStocks = branchStocks?.ToList();
             }
             return Task.FromResult(current);
         }
+
+        public Task<IReadOnlyList<CommerceCategoryDocument>> SearchCategoriesAsync(string tenantId, string? query, int page, int pageSize, CancellationToken ct)
+        {
+            var rows = _categories.Where(x => x.TenantId == tenantId &&
+                                              (string.IsNullOrWhiteSpace(query) ||
+                                               x.Id.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                                               x.Name.Contains(query, StringComparison.OrdinalIgnoreCase)))
+                .Skip(Math.Max(page, 0) * pageSize)
+                .Take(pageSize)
+                .ToList();
+            return Task.FromResult<IReadOnlyList<CommerceCategoryDocument>>(rows);
+        }
+
+        public Task<long> CountCategoriesAsync(string tenantId, string? query, CancellationToken ct)
+            => Task.FromResult((long)_categories.Count(x => x.TenantId == tenantId &&
+                                                            (string.IsNullOrWhiteSpace(query) ||
+                                                             x.Id.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                                                             x.Name.Contains(query, StringComparison.OrdinalIgnoreCase))));
+
+        public Task<CommerceCategoryDocument> UpsertCategoryAsync(CommerceCategoryDocument category, CancellationToken ct)
+        {
+            var current = _categories.SingleOrDefault(x => x.TenantId == category.TenantId && x.Id == category.Id);
+            if (current is null)
+            {
+                _categories.Add(category);
+            }
+            else
+            {
+                _categories[_categories.IndexOf(current)] = category;
+            }
+
+            return Task.FromResult(category);
+        }
+
+        public Task<CommerceCategoryDocument?> GetCategoryByIdAsync(string tenantId, string categoryId, CancellationToken ct)
+            => Task.FromResult(_categories.SingleOrDefault(x => x.TenantId == tenantId && x.Id == categoryId));
+
+        public Task<bool> DeleteCategoryAsync(string tenantId, string categoryId, CancellationToken ct)
+            => Task.FromResult(_categories.RemoveAll(x => x.TenantId == tenantId && x.Id == categoryId) > 0);
+
+        public Task<IReadOnlyList<CommerceBranchDocument>> SearchBranchesAsync(string tenantId, string? query, int page, int pageSize, CancellationToken ct)
+        {
+            var rows = _branches.Where(x => x.TenantId == tenantId &&
+                                            (string.IsNullOrWhiteSpace(query) ||
+                                             x.Id.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                                             x.Name.Contains(query, StringComparison.OrdinalIgnoreCase)))
+                .Skip(Math.Max(page, 0) * pageSize)
+                .Take(pageSize)
+                .ToList();
+            return Task.FromResult<IReadOnlyList<CommerceBranchDocument>>(rows);
+        }
+
+        public Task<long> CountBranchesAsync(string tenantId, string? query, CancellationToken ct)
+            => Task.FromResult((long)_branches.Count(x => x.TenantId == tenantId &&
+                                                          (string.IsNullOrWhiteSpace(query) ||
+                                                           x.Id.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                                                           x.Name.Contains(query, StringComparison.OrdinalIgnoreCase))));
+
+        public Task<CommerceBranchDocument> UpsertBranchAsync(CommerceBranchDocument branch, CancellationToken ct)
+        {
+            var current = _branches.SingleOrDefault(x => x.TenantId == branch.TenantId && x.Id == branch.Id);
+            if (current is null)
+            {
+                _branches.Add(branch);
+            }
+            else
+            {
+                _branches[_branches.IndexOf(current)] = branch;
+            }
+
+            return Task.FromResult(branch);
+        }
+
+        public Task<CommerceBranchDocument?> GetBranchByIdAsync(string tenantId, string branchId, CancellationToken ct)
+            => Task.FromResult(_branches.SingleOrDefault(x => x.TenantId == tenantId && x.Id == branchId));
+
+        public Task<bool> DeleteBranchAsync(string tenantId, string branchId, CancellationToken ct)
+            => Task.FromResult(_branches.RemoveAll(x => x.TenantId == tenantId && x.Id == branchId) > 0);
 
         public Task<CommerceInventoryItemDocument> AdjustInventoryAsync(string tenantId, string sku, int delta, string reason, string? referenceId, CancellationToken ct)
         {
@@ -508,6 +634,40 @@ public sealed class CommerceControllerTests
             return Task.FromResult(order);
         }
 
+        public Task<CommerceOrderDocument?> GetOrderByIdAsync(string tenantId, string orderId, CancellationToken ct)
+            => Task.FromResult(_orders.SingleOrDefault(x => x.TenantId == tenantId && x.Id == orderId));
+
+        public Task<IReadOnlyList<CommerceOrderDocument>> SearchOrdersAsync(string tenantId, string? partyId, string? status, int page, int pageSize, CancellationToken ct)
+        {
+            var rows = _orders.Where(x => x.TenantId == tenantId &&
+                                          (string.IsNullOrWhiteSpace(partyId) || x.PartyId == partyId) &&
+                                          (string.IsNullOrWhiteSpace(status) || string.Equals(x.Status, status, StringComparison.OrdinalIgnoreCase)))
+                .Skip(Math.Max(page, 0) * pageSize)
+                .Take(pageSize)
+                .ToList();
+            return Task.FromResult<IReadOnlyList<CommerceOrderDocument>>(rows);
+        }
+
+        public Task<long> CountOrdersAsync(string tenantId, string? partyId, string? status, CancellationToken ct)
+            => Task.FromResult((long)_orders.Count(x => x.TenantId == tenantId &&
+                                                        (string.IsNullOrWhiteSpace(partyId) || x.PartyId == partyId) &&
+                                                        (string.IsNullOrWhiteSpace(status) || string.Equals(x.Status, status, StringComparison.OrdinalIgnoreCase))));
+
+        public Task<CommerceOrderDocument> UpdateOrderAsync(CommerceOrderDocument order, CancellationToken ct)
+        {
+            var current = _orders.SingleOrDefault(x => x.TenantId == order.TenantId && x.Id == order.Id);
+            if (current is null)
+            {
+                _orders.Add(order);
+            }
+            else
+            {
+                _orders[_orders.IndexOf(current)] = order;
+            }
+
+            return Task.FromResult(order);
+        }
+
         public Task<CommerceInvoiceDocument> CreateInvoiceAsync(CommerceInvoiceDocument invoice, CancellationToken ct)
         {
             invoice.CreatedAt = DateTimeOffset.UtcNow;
@@ -532,6 +692,25 @@ public sealed class CommerceControllerTests
             var invoice = _invoices.Single(x => x.TenantId == tenantId && x.Id == invoiceId);
             invoice.Status = status;
             return Task.FromResult(invoice);
+        }
+
+        public Task<CommerceStoreSettingsDocument> GetStoreSettingsAsync(string tenantId, CancellationToken ct)
+        {
+            if (_storeSettings is null || _storeSettings.TenantId != tenantId)
+            {
+                _storeSettings = new CommerceStoreSettingsDocument
+                {
+                    TenantId = tenantId
+                };
+            }
+
+            return Task.FromResult(_storeSettings);
+        }
+
+        public Task<CommerceStoreSettingsDocument> UpsertStoreSettingsAsync(CommerceStoreSettingsDocument settings, CancellationToken ct)
+        {
+            _storeSettings = settings;
+            return Task.FromResult(settings);
         }
     }
 

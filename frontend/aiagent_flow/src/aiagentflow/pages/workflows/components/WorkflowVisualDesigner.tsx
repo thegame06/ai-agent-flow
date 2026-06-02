@@ -136,10 +136,10 @@ const nodeColorByType = (type: string) => {
 
 const dockItems = [
   {
-    label: 'Agente',
+    label: 'Hablar',
     group: 'Conversar',
     icon: 'mdi:brain',
-    helper: 'Usa un bot publicado para entender intenciones y ejecutar tareas.',
+    helper: 'Usa un asistente publicado para entender intenciones y ejecutar tareas.',
     types: ['ai.agent'],
   },
   {
@@ -150,17 +150,17 @@ const dockItems = [
     types: ['connect.send_whatsapp_template'],
   },
   {
-    label: 'Mensaje',
+    label: 'Enviar mensaje',
     group: 'Conversar',
     icon: 'mdi:message-text-outline',
-    helper: 'Agenda o actualiza mensajes en la bandeja/campana.',
+    helper: 'Agenda o actualiza mensajes de salida y bandeja.',
     types: ['connect.enqueue_campaign_message', 'connect.update_inbox_status'],
   },
   {
-    label: 'Voz / llamada',
+    label: 'Iniciar llamada',
     group: 'Conversar',
     icon: 'mdi:phone-in-talk-outline',
-    helper: 'Reservado para canales como Twilio voice o call center.',
+    helper: 'Usa un canal de voz ya preparado, por ejemplo Twilio o call center.',
     types: ['voice.call', 'callcenter.outbound_call'],
   },
   {
@@ -178,7 +178,7 @@ const dockItems = [
     types: ['files.read', 'drive.lookup', 'storage.write'],
   },
   {
-    label: 'Conectores avanzados',
+    label: 'Herramienta avanzada',
     group: 'Datos',
     icon: 'mdi:connection',
     helper: 'Usa conexiones avanzadas disponibles en la plataforma.',
@@ -909,12 +909,12 @@ export function WorkflowVisualDesigner({
   return (
     <Card variant="outlined" sx={{ p: 1.5, borderRadius: 2, boxShadow: '0 2px 10px rgba(15,23,42,0.06)' }}>
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
-        <Typography variant="subtitle1">Estudio de Flujos</Typography>
+        <Typography variant="subtitle1">Studio unificado</Typography>
         <Stack direction="row" spacing={1}>
           <TextField
             select
             size="small"
-            label="Canal"
+            label="Canal de referencia"
             value={selectedWorkflowChannel?.id ?? ''}
             onChange={(event) => setWorkflowChannelId(event.target.value)}
             sx={{ minWidth: 210 }}
@@ -933,7 +933,7 @@ export function WorkflowVisualDesigner({
           <Tooltip title="Auto layout en grilla">
             <IconButton size="small" onClick={applyAutoLayoutGrid}><Iconify icon="mdi:grid" /></IconButton>
           </Tooltip>
-          <Button size="small" onClick={() => onAddActivity()} startIcon={<Iconify icon="mingcute:add-line" />}>Nodo basico</Button>
+          <Button size="small" onClick={() => onAddActivity()} startIcon={<Iconify icon="mingcute:add-line" />}>Paso basico</Button>
         </Stack>
       </Stack>
 
@@ -1013,8 +1013,8 @@ export function WorkflowVisualDesigner({
               <Box>
                 <Typography variant="subtitle1">Construye tu flujo</Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Empieza con un Agente de IA para entender la intencion y luego agrega acciones como WhatsApp,
-                  API, conectores avanzados o atencion humana.
+                  Empieza con un asistente para entender la intencion y luego agrega pasos de negocio como mensajes,
+                  llamadas, consultas a sistemas o transferencia a humano.
                 </Typography>
               </Box>
               <Stack
@@ -1022,7 +1022,7 @@ export function WorkflowVisualDesigner({
                 spacing={1}
                 sx={{ width: 1 }}
               >
-                {['ai.agent', 'channel.send', 'connect.send_whatsapp_template', 'human.handoff'].map((type) => (
+                {['ai.agent', 'voice.call', 'channel.send', 'human.handoff'].map((type) => (
                   <Button
                     key={type}
                     size="small"
@@ -1142,7 +1142,7 @@ export function WorkflowVisualDesigner({
           <Stack spacing={1.4}>
             <Stack direction="row" justifyContent="space-between" alignItems="center">
               <Box>
-                <Typography variant="subtitle1">Inicio del workflow</Typography>
+                <Typography variant="subtitle1">Objetivo del flujo</Typography>
                 <Typography variant="caption" color="text.secondary">
                   Las intenciones son formas entendibles de arrancar el flujo; internamente disparan un evento.
                 </Typography>
@@ -1163,17 +1163,17 @@ export function WorkflowVisualDesigner({
               helperText="Ejemplo: connect.message.received. El backend ejecuta workflows publicados con este evento."
             />
             <FormControl size="small">
-              <InputLabel>Modo runtime</InputLabel>
+              <InputLabel>Modalidad</InputLabel>
               <Select
-                label="Modo runtime"
+                label="Modalidad"
                 value={runtimeKind}
                 onChange={(e: SelectChangeEvent) =>
                   onChangeRuntimeKind(e.target.value as 'Text' | 'Voice' | 'MultimodalRealtime')
                 }
               >
-                <MenuItem value="Text">Runtime de texto</MenuItem>
-                <MenuItem value="Voice">Runtime de voz</MenuItem>
-                <MenuItem value="MultimodalRealtime">Multimodal runtime</MenuItem>
+                <MenuItem value="Text">Texto</MenuItem>
+                <MenuItem value="Voice">Voz</MenuItem>
+                <MenuItem value="MultimodalRealtime">Multimodal</MenuItem>
               </Select>
             </FormControl>
             <Alert severity="info">
@@ -1355,7 +1355,7 @@ export function WorkflowVisualDesigner({
                 <Typography variant="subtitle1">{selected.name || activityTypeLabel(selected.type)}</Typography>
                 <Typography variant="caption" color="text.secondary">
                   {selected.type === 'ai.agent'
-                    ? 'Selecciona un agente publicado y define que datos del flujo recibe.'
+                    ? 'Selecciona un asistente publicado y define que datos del flujo recibe.'
                     : 'Configura solo lo esencial. Lo técnico está en Runtime y Depuración.'}
                 </Typography>
               </Box>
@@ -1865,7 +1865,7 @@ export function WorkflowVisualDesigner({
                     !selected.type.startsWith('payments.') &&
                     !['http.request', 'webhook.call', 'files.read', 'drive.lookup', 'storage.write', 'mcp.tool_call', 'voice.call', 'callcenter.outbound_call'].includes(selected.type) && (
                       <Alert severity="info">
-                        Este tipo de nodo aun no tiene formulario guiado. Usa Avanzado para configurar sus campos.
+                        Este tipo de paso aun no tiene formulario guiado. Usa Avanzado para configurar sus campos.
                       </Alert>
                     )}
                 </Stack>
@@ -1997,9 +1997,9 @@ export function WorkflowVisualDesigner({
             {selected.type === 'ai.agent' && (
               <Card variant="outlined" sx={{ p: 1.2 }}>
                 <Tabs value={aiTab} onChange={(_, v) => setAiTab(v)} variant="scrollable">
-                  <Tab label="General" />
-                  <Tab label="Herramientas" />
-                  <Tab label="Contexto" />
+                  <Tab label="Que hace" />
+                  <Tab label="Que recibe" />
+                  <Tab label="Experiencia" />
                   <Tab label="Avanzado" />
                 </Tabs>
                 {aiTab === 0 && (
