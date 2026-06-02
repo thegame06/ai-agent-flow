@@ -22,11 +22,11 @@ import ListItemButton from '@mui/material/ListItemButton';
 import LinearProgress from '@mui/material/LinearProgress';
 import CircularProgress from '@mui/material/CircularProgress';
 
-import { CONFIG } from 'src/global-config';
 import { paths } from 'src/routes/paths';
 
-import { DashboardContent } from 'src/layouts/dashboard';
+import { CONFIG } from 'src/global-config';
 import axios, { endpoints } from 'src/lib/axios';
+import { DashboardContent } from 'src/layouts/dashboard';
 import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
 import { BrandPageHeader } from 'src/aiagentflow/components/BrandPageHeader';
 
@@ -74,12 +74,6 @@ type ChannelOption = {
 type WorkflowOption = {
   id: string;
   name: string;
-};
-
-type AssistantOption = {
-  id: string;
-  name: string;
-  runtimeKind?: string;
 };
 
 type RuntimeProfileOption = {
@@ -289,7 +283,6 @@ export default function CampaignsPage() {
   const [runs, setRuns] = useState<RunItem[]>([]);
   const [channels, setChannels] = useState<ChannelOption[]>([]);
   const [workflows, setWorkflows] = useState<WorkflowOption[]>([]);
-  const [assistants, setAssistants] = useState<AssistantOption[]>([]);
   const [runtimeProfiles, setRuntimeProfiles] = useState<RuntimeProfileOption[]>([]);
   const [manualCampaign, setManualCampaign] = useState<ManualCampaignForm>(defaultManualCampaign);
   const [manualSegment, setManualSegment] = useState<ManualSegmentForm>(defaultManualSegment);
@@ -326,13 +319,12 @@ export default function CampaignsPage() {
     setLoading(true);
     setError(null);
     try {
-      const [campaignsRes, segmentsRes, runsRes, channelsRes, workflowsRes, assistantsRes, runtimeProfilesRes] = await Promise.all([
+      const [campaignsRes, segmentsRes, runsRes, channelsRes, workflowsRes, runtimeProfilesRes] = await Promise.all([
         axios.get(endpoints.agentflow.campaigns.list(tenantId)),
         axios.get(endpoints.agentflow.campaignSegments.list(tenantId)),
         axios.get(endpoints.agentflow.campaigns.allRuns(tenantId, null, 25)),
         axios.get(endpoints.agentflow.channels.list(tenantId)).catch(() => ({ data: [] })),
         axios.get(endpoints.agentflow.workflows.list(tenantId)).catch(() => ({ data: [] })),
-        axios.get(endpoints.agentflow.agents.list(tenantId)).catch(() => ({ data: [] })),
         axios.get(endpoints.agentflow.runtimeModelProfiles.list(tenantId)).catch(() => ({ data: [] })),
       ]);
 
@@ -348,11 +340,6 @@ export default function CampaignsPage() {
         ((workflowsRes.data ?? []) as any[])
           .filter((item) => item?.id && item?.name)
           .map((item) => ({ id: item.id, name: item.name }))
-      );
-      setAssistants(
-        ((assistantsRes.data ?? []) as any[])
-          .filter((item) => item?.id && item?.name && item.status !== 'Archived')
-          .map((item) => ({ id: item.id, name: item.name, runtimeKind: item.session?.runtimeKind ?? item.runtimeKind }))
       );
       setRuntimeProfiles(
         ((runtimeProfilesRes.data ?? []) as any[]).map((item) => ({

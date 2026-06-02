@@ -21,8 +21,8 @@ import { CONFIG } from 'src/global-config';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { TermHelp } from 'src/aiagentflow/components/TermHelp';
 import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
-import { BrandPageHeader } from 'src/aiagentflow/components/BrandPageHeader';
 import { normalizeToolLabel } from 'src/aiagentflow/utils/toolLabels';
+import { BrandPageHeader } from 'src/aiagentflow/components/BrandPageHeader';
 
 import { Label } from 'src/components/label';
 import { Iconify } from 'src/components/iconify';
@@ -39,13 +39,20 @@ interface ToolRow {
   inputSchemaJson?: string;
 }
 
-const HIDDEN_INTERNAL_TOOL_PATTERNS = [
-  /^af_(list|get|preview|draft|refine|validate|create|update|publish|pause|resume|run|retry)_campaign/i,
-  /^af_.*campaign.*(playbook|outcome|segment|run|contact)/i,
-];
+const isVisibleOperationalTool = (tool: ToolRow) => !!tool?.name;
 
-const isVisibleOperationalTool = (tool: ToolRow) =>
-  !HIDDEN_INTERNAL_TOOL_PATTERNS.some((pattern) => pattern.test(tool.name));
+const toolIcon = (toolName?: string) => {
+  const name = String(toolName || '').toLowerCase();
+  if (name.includes('campaign')) return 'mdi:bullhorn-variant-outline';
+  if (name.includes('invoice') || name.includes('payment') || name.includes('billing')) return 'mdi:cash-multiple';
+  if (name.includes('sale') || name.includes('commerce') || name.includes('product')) return 'mdi:cart-outline';
+  if (name.includes('channel') || name.includes('message') || name.includes('whatsapp')) return 'mdi:message-processing-outline';
+  if (name.includes('voice') || name.includes('call')) return 'mdi:phone-in-talk-outline';
+  if (name.includes('agent') || name.includes('assistant')) return 'mdi:robot-outline';
+  if (name.includes('workflow') || name.includes('automation')) return 'mdi:source-branch';
+  if (name.includes('tool') || name.includes('mcp')) return 'mdi:puzzle-outline';
+  return 'mdi:wrench-outline';
+};
 
 function schemaToPayload(schemaJson?: string) {
   if (!schemaJson) return '{}';
@@ -125,7 +132,27 @@ export default function ToolsPage() {
       headerName: 'Herramienta',
       minWidth: 190,
       flex: 1,
-      renderCell: (params: any) => normalizeToolLabel(params.value),
+      renderCell: (params: any) => (
+        <Stack direction="row" spacing={1.25} alignItems="center" sx={{ minWidth: 0 }}>
+          <Box
+            sx={{
+              width: 32,
+              height: 32,
+              borderRadius: 1.5,
+              display: 'grid',
+              placeItems: 'center',
+              bgcolor: 'success.lighter',
+              color: 'success.darker',
+              flexShrink: 0,
+            }}
+          >
+            <Iconify icon={toolIcon(params.row?.name)} width={18} />
+          </Box>
+          <Typography variant="body2" noWrap>
+            {normalizeToolLabel(params.value)}
+          </Typography>
+        </Stack>
+      ),
     },
     { field: 'version', headerName: 'Version', width: 120 },
     {
@@ -163,18 +190,18 @@ export default function ToolsPage() {
       <DashboardContent maxWidth="xl">
         <BrandPageHeader
           eyebrow="Capacidades operativas"
-          title="Herramientas y conexiones"
-          description="Administra capacidades disponibles para asistentes, automatizaciones y conexiones externas."
+          title="Herramientas operativas"
+          description="Administra capacidades usadas por campañas, asistentes y automatizaciones. Aquí se prueban y activan herramientas del producto."
           icon="mdi:tools"
-          help={<TermHelp title="Aqui administras herramientas disponibles para los asistentes y conexiones con sistemas externos." />}
+          help={<TermHelp title="Aqui administras herramientas disponibles para campañas, asistentes y automatizaciones. Las integraciones viven aparte y no se instalan desde esta vista." />}
           actions={<Button variant="outlined" onClick={fetchTools}>Actualizar</Button>}
         />
 
         <Grid container spacing={2} sx={{ mb: 3 }}>
           {[
-            ['Integraciones', 'Administra conexiones instaladas y credenciales', paths.dashboard.marketplace, 'mdi:storefront-outline'],
-            ['Canales', 'Conecta WhatsApp, web chat y APIs', paths.dashboard.system.channels, 'mdi:message-processing-outline'],
-            ['Conectores avanzados', 'Habilita conectores y herramientas avanzadas para asistentes', paths.dashboard.system.mcp, 'mdi:connection'],
+            ['Campañas', 'Usa estas herramientas desde salidas comerciales y follow-ups', paths.dashboard.campaigns, 'mdi:bullhorn-variant-outline'],
+            ['Canales', 'Vincula herramientas a WhatsApp, voz, web chat y APIs', paths.dashboard.system.channels, 'mdi:message-processing-outline'],
+            ['Conectores avanzados', 'Amplía automatizaciones y asistentes con conectores especializados', paths.dashboard.system.mcp, 'mdi:connection'],
           ].map(([title, subtitle, href, icon]) => (
             <Grid item xs={12} md={4} key={title}>
               <Card
@@ -183,7 +210,20 @@ export default function ToolsPage() {
                 sx={{ p: 2, textDecoration: 'none', color: 'inherit', height: '100%' }}
               >
                 <Stack direction="row" spacing={1.5} alignItems="center">
-                  <Iconify icon={icon} width={28} sx={{ color: 'primary.main' }} />
+                  <Box
+                    sx={{
+                      width: 44,
+                      height: 44,
+                      borderRadius: 2,
+                      display: 'grid',
+                      placeItems: 'center',
+                      bgcolor: 'success.lighter',
+                      color: 'success.darker',
+                      flexShrink: 0,
+                    }}
+                  >
+                    <Iconify icon={icon} width={24} />
+                  </Box>
                   <Box>
                     <Typography variant="subtitle2">{title}</Typography>
                     <Typography variant="caption" color="text.secondary">{subtitle}</Typography>
@@ -226,6 +266,26 @@ export default function ToolsPage() {
                   <Typography variant="subtitle1">
                     {selectedTool ? `Probar herramienta: ${normalizeToolLabel(selectedTool.name)}` : 'Selecciona una herramienta'}
                   </Typography>
+                  {selectedTool && (
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <Box
+                        sx={{
+                          width: 36,
+                          height: 36,
+                          borderRadius: 1.5,
+                          display: 'grid',
+                          placeItems: 'center',
+                          bgcolor: 'success.lighter',
+                          color: 'success.darker',
+                        }}
+                      >
+                        <Iconify icon={toolIcon(selectedTool.name)} width={20} />
+                      </Box>
+                      <Typography variant="body2" color="text.secondary">
+                        {selectedTool.description || 'Herramienta lista para prueba manual.'}
+                      </Typography>
+                    </Stack>
+                  )}
 
                   <TextField
                     label="Entrada JSON"
