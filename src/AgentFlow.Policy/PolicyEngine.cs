@@ -1,6 +1,7 @@
 using AgentFlow.Abstractions;
 using Microsoft.Extensions.Logging;
 using System.Text.RegularExpressions;
+using System.Collections.Concurrent;
 
 namespace AgentFlow.Policy;
 
@@ -104,7 +105,13 @@ public sealed class PromptInjectionEvaluator : IPolicyEvaluator
         PolicyEvaluationContext context,
         CancellationToken ct = default)
     {
-        var textToCheck = context.UserMessage ?? context.LlmResponse ?? string.Empty;
+        var textToCheck = context.Checkpoint switch
+        {
+            PolicyCheckpoint.PostLLM => context.LlmResponse,
+            PolicyCheckpoint.PreTool => context.ToolInputJson,
+            PolicyCheckpoint.PreResponse => context.FinalResponse,
+            _ => context.UserMessage
+        } ?? string.Empty;
 
         foreach (var (pattern, description) in InjectionPatterns)
         {
@@ -119,6 +126,8 @@ public sealed class PromptInjectionEvaluator : IPolicyEvaluator
 
 public sealed class RateLimitPolicyEvaluator : IPolicyEvaluator
 {
+    private static readonly ConcurrentDictionary<string, ConcurrentQueue<DateTimeOffset>> Events = new(StringComparer.OrdinalIgnoreCase);
+
     public string ExtensionId => "core.policy.ratelimit";
     public string Version => "1.0.0";
     public string PolicyType => "rate-limit";
@@ -132,7 +141,44 @@ public sealed class RateLimitPolicyEvaluator : IPolicyEvaluator
         PolicyEvaluationContext context,
         CancellationToken ct = default)
     {
+        var maxEvents = TryParseInt(policy.Config, "maxEvents", 5);
+        var windowSeconds = TryParseInt(policy.Config, "windowSeconds", 60);
+        var groupBy = policy.Config.GetValueOrDefault("groupBy", "tenant:user");
+        var key = BuildKey(groupBy, context, policy.PolicyId);
+        var now = DateTimeOffset.UtcNow;
+        var windowStart = now.AddSeconds(-windowSeconds);
+
+        var queue = Events.GetOrAdd(key, _ => new ConcurrentQueue<DateTimeOffset>());
+        queue.Enqueue(now);
+
+        while (queue.TryPeek(out var ts) && ts < windowStart)
+            queue.TryDequeue(out _);
+
+        if (queue.Count > maxEvents)
+        {
+            return Task.FromResult((true, (string?)$"Rate limit exceeded for key '{key}'. Count={queue.Count}, WindowSeconds={windowSeconds}, MaxEvents={maxEvents}"));
+        }
+
         return Task.FromResult((false, (string?)null));
+    }
+
+    private static string BuildKey(string groupBy, PolicyEvaluationContext context, string policyId)
+    {
+        return groupBy.Trim().ToLowerInvariant() switch
+        {
+            "tenant" => $"{policyId}|tenant:{context.TenantId}",
+            "user" => $"{policyId}|user:{context.UserId}",
+            "tool" => $"{policyId}|tenant:{context.TenantId}|tool:{context.ToolName ?? "none"}",
+            "execution" => $"{policyId}|execution:{context.ExecutionId}",
+            _ => $"{policyId}|tenant:{context.TenantId}|user:{context.UserId}"
+        };
+    }
+
+    private static int TryParseInt(IReadOnlyDictionary<string, string> config, string key, int fallback)
+    {
+        return config.TryGetValue(key, out var raw) && int.TryParse(raw, out var parsed) && parsed > 0
+            ? parsed
+            : fallback;
     }
 }
 

@@ -21,17 +21,20 @@ public sealed class ToolExecutorService : IToolExecutor
     private readonly IToolRegistry _registry;
     private readonly IToolAuthorizationService _authz;
     private readonly IToolSandbox _sandbox;
+    private readonly ITenantRuntimeSettingsReader? _tenantRuntimeSettingsReader;
     private readonly ILogger<ToolExecutorService> _logger;
 
     public ToolExecutorService(
         IToolRegistry registry,
         IToolAuthorizationService authz,
         IToolSandbox sandbox,
+        ITenantRuntimeSettingsReader? tenantRuntimeSettingsReader,
         ILogger<ToolExecutorService> logger)
     {
         _registry = registry;
         _authz = authz;
         _sandbox = sandbox;
+        _tenantRuntimeSettingsReader = tenantRuntimeSettingsReader;
         _logger = logger;
     }
 
@@ -96,7 +99,14 @@ public sealed class ToolExecutorService : IToolExecutor
             
             // In Phase 2, we use the sandbox for High and Critical risks.
             // RiskLevel.Low/Medium run direct.
-            if (tool.RiskLevel >= ToolRiskLevel.High)
+            var shouldSandbox = tool.RiskLevel >= ToolRiskLevel.High;
+            if (shouldSandbox && _tenantRuntimeSettingsReader is not null)
+            {
+                var tenantSettings = await _tenantRuntimeSettingsReader.GetAsync(request.TenantId, ct);
+                shouldSandbox = tenantSettings.SandboxDangerousTools;
+            }
+
+            if (shouldSandbox)
             {
                 pluginResult = await _sandbox.ExecuteInSandboxAsync(tool, context, ct);
             }

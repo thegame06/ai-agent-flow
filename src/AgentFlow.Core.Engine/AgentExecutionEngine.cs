@@ -51,6 +51,9 @@ public sealed class AgentExecutionEngine : IAgentExecutor
     private readonly IWorkflowRoutingCatalog? _workflowRoutingCatalog;
     private readonly IConversationInboxService? _conversationInboxService;
     private readonly IHumanEscalationNotifier? _humanEscalationNotifier;
+    private readonly ITenantAgentContextComposer? _tenantAgentContextComposer;
+    private readonly ITenantRuntimeSettingsReader? _tenantRuntimeSettingsReader;
+    private readonly IReadOnlyDictionary<string, IPolicyEvaluator> _policyEvaluators;
 
     public AgentExecutionEngine(
         IAgentDefinitionRepository agentRepo,
@@ -72,7 +75,10 @@ public sealed class AgentExecutionEngine : IAgentExecutor
         IWorkflowEngine? workflowEngine = null, // ✅ NEW: Workflow execution engine
         IConversationInboxService? conversationInboxService = null,
         IHumanEscalationNotifier? humanEscalationNotifier = null,
-        IWorkflowRoutingCatalog? workflowRoutingCatalog = null)
+        IWorkflowRoutingCatalog? workflowRoutingCatalog = null,
+        ITenantAgentContextComposer? tenantAgentContextComposer = null,
+        ITenantRuntimeSettingsReader? tenantRuntimeSettingsReader = null,
+        IEnumerable<IPolicyEvaluator>? policyEvaluators = null)
     {
         _agentRepo = agentRepo;
         _executionRepo = executionRepo;
@@ -94,6 +100,11 @@ public sealed class AgentExecutionEngine : IAgentExecutor
         _workflowRoutingCatalog = workflowRoutingCatalog;
         _conversationInboxService = conversationInboxService;
         _humanEscalationNotifier = humanEscalationNotifier;
+        _tenantAgentContextComposer = tenantAgentContextComposer;
+        _tenantRuntimeSettingsReader = tenantRuntimeSettingsReader;
+        _policyEvaluators = (policyEvaluators ?? Array.Empty<IPolicyEvaluator>())
+            .GroupBy(x => x.PolicyType, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(x => x.Key, x => x.Last(), StringComparer.OrdinalIgnoreCase);
     }
 
     public async Task<AgentExecutionResult> ExecuteAsync(
@@ -115,6 +126,29 @@ public sealed class AgentExecutionEngine : IAgentExecutor
                 Status = ExecutionStatus.Failed,
                 ErrorCode = "NotFound",
                 ErrorMessage = $"AgentDefinition:{request.AgentKey}"
+            };
+        }
+
+        var preAgentExecutionId = request.CorrelationId ?? Guid.NewGuid().ToString("N");
+        var preAgentPolicy = await EvaluatePreAgentPoliciesAsync(agentDef, request, preAgentExecutionId, ct);
+        if (!preAgentPolicy.IsSuccess || preAgentPolicy.Value?.Decision is PolicyDecision.Block or PolicyDecision.Escalate)
+        {
+            var preAgentError = preAgentPolicy.Error?.Message
+                ?? preAgentPolicy.Value?.Violations.FirstOrDefault()?.Description
+                ?? "Runtime policy blocked the request.";
+            AgentFlowTelemetry.ExecutionsFailed.Add(1, new TagList { { "error", preAgentPolicy.Error?.Code ?? "PolicyBlocked" } });
+            return new AgentExecutionResult
+            {
+                ExecutionId = preAgentExecutionId,
+                AgentKey = request.AgentKey,
+                AgentVersion = agentDef.Version.ToString(),
+                Status = ExecutionStatus.Failed,
+                ErrorCode = preAgentPolicy.Error?.Code ?? "PolicyBlocked",
+                ErrorMessage = preAgentError,
+                FinalResponse = "No pude procesar esa solicitud de forma segura.",
+                TotalSteps = 0,
+                TotalTokensUsed = 0,
+                DurationMs = 0
             };
         }
 
@@ -1084,6 +1118,7 @@ public sealed class AgentExecutionEngine : IAgentExecutor
             ? 1 
             : agentDef.LoopConfig.MaxIterations;
         var maxAllowedSteps = Math.Max(4, maxIterations * 4);
+        var effectiveSystemPrompt = await ComposeSystemPromptAsync(agentDef, request, ct);
 
         if (RequiresPlanningPhase(agentDef))
         {
@@ -1103,7 +1138,7 @@ public sealed class AgentExecutionEngine : IAgentExecutor
                 TenantId = request.TenantId,
                 ExecutionId = execution.Id,
                 Goal = request.UserMessage,
-                SystemPrompt = agentDef.Brain.SystemPromptTemplate,
+                SystemPrompt = effectiveSystemPrompt,
                 PlannerType = agentDef.LoopConfig.PlannerType,
                 MaxSteps = maxIterations,
                 TokenBudget = request.TokenBudget,
@@ -1116,7 +1151,7 @@ public sealed class AgentExecutionEngine : IAgentExecutor
         if (agentDef.LoopConfig.PlannerType == PlannerType.Sequential && agentDef.WorkflowSteps.Count > 0)
         {
             var sequentialResult = await RunSequentialWorkflowAsync(
-                execution, agentDef, request, resolvedBrain, currentMessage, latestPayload, maxIterations, ct);
+                execution, agentDef, request, resolvedBrain, effectiveSystemPrompt, currentMessage, latestPayload, maxIterations, ct);
 
             if (!sequentialResult.IsSuccess)
                 return Result<string?>.Failure(sequentialResult.Error!);
@@ -1187,7 +1222,7 @@ public sealed class AgentExecutionEngine : IAgentExecutor
                 ExecutionId = execution.Id,
                 CorrelationId = request.CorrelationId ?? execution.Id,
                 ModelId = agentDef.Brain.ModelId,
-                SystemPrompt = agentDef.Brain.SystemPromptTemplate,
+                SystemPrompt = effectiveSystemPrompt,
                 UserMessage = currentMessage,
                 Iteration = execution.CurrentIteration,
                 History = execution.Steps.Cast<object>().ToList(),
@@ -1321,7 +1356,7 @@ if (!preResponsePolicy.IsSuccess) return Result<string?>.Failure(preResponsePoli
                                     TenantId = request.TenantId,
                                     ExecutionId = execution.Id,
                                     Goal = request.UserMessage,
-                                    SystemPrompt = agentDef.Brain.SystemPromptTemplate,
+                                    SystemPrompt = effectiveSystemPrompt,
                                     PlannerType = agentDef.LoopConfig.PlannerType,
                                     MaxSteps = maxIterations,
                                     TokenBudget = request.TokenBudget,
@@ -1479,6 +1514,7 @@ if (!preResponsePolicy.IsSuccess) return Result<string?>.Failure(preResponsePoli
         AgentDefinition agentDef,
         AgentExecutionRequest request,
         IAgentBrain brain,
+        string effectiveSystemPrompt,
         string currentMessage,
         string? latestPayload,
         int maxIterations,
@@ -1520,7 +1556,7 @@ if (!preResponsePolicy.IsSuccess) return Result<string?>.Failure(preResponsePoli
                                 ExecutionId = execution.Id,
                                 CorrelationId = request.CorrelationId ?? execution.Id,
                                 ModelId = agentDef.Brain.ModelId,
-                                SystemPrompt = agentDef.Brain.SystemPromptTemplate,
+                                SystemPrompt = effectiveSystemPrompt,
                                 UserMessage = prompt,
                                 Iteration = execution.CurrentIteration,
                                 History = execution.Steps.Cast<object>().ToList(),
@@ -2142,7 +2178,7 @@ if (!preResponsePolicy.IsSuccess) return Result<string?>.Failure(preResponsePoli
             TenantId = request.TenantId,
             AgentKey = agentDef.Id.ToString(),
             AgentVersion = agentDef.Version.ToString(),
-            PolicySetId = agentDef.LoopConfig.PlannerType.ToString(), // Temporary mapping
+            PolicySetId = ResolveExplicitPolicySetId(request.Metadata),
             ExecutionId = execution.Id,
             UserId = request.UserId,
             Checkpoint = checkpoint,
@@ -2151,10 +2187,60 @@ if (!preResponsePolicy.IsSuccess) return Result<string?>.Failure(preResponsePoli
             ToolInputJson = toolInput,
             ToolOutputJson = toolOutput,
             LlmResponse = llmResponse,
-            FinalResponse = finalResponse
+            FinalResponse = finalResponse,
+            Metadata = request.Metadata
         };
 
-        var result = await _policyEngine.EvaluateAsync(checkpoint, context, ct);
+        var runtimeResult = await EvaluateRuntimePoliciesAsync(agentDef, request, context, ct);
+        if (!runtimeResult.IsSuccess)
+            return runtimeResult;
+
+        if (runtimeResult.Value is { Decision: PolicyDecision.Block or PolicyDecision.Escalate } runtimeDecision)
+        {
+            var runtimePolicyResult = runtimeDecision;
+            if (runtimePolicyResult.Decision == PolicyDecision.Escalate)
+            {
+                var violation = runtimePolicyResult.Violations.FirstOrDefault();
+                execution.PauseForReview(violation?.Description ?? "Human review requested by policy.");
+                await _executionRepo.UpdateAsync(execution, ct);
+
+                await _checkpointStore.SaveAsync(new AgentCheckpoint
+                {
+                    ExecutionId = execution.Id,
+                    TenantId = request.TenantId,
+                    AgentKey = agentDef.Id.ToString(),
+                    CheckpointId = Guid.NewGuid().ToString(),
+                    Reason = violation?.Description ?? "Policy Escalation",
+                    ToolName = toolName,
+                    ToolInputJson = toolInput,
+                    LlmRationale = llmResponse ?? runtimePolicyResult.Decision.ToString(),
+                    Context = BuildCheckpointContext(
+                        request,
+                        kind: "human",
+                        originNode: toolName ?? checkpoint.ToString(),
+                        additional: new Dictionary<string, string>
+                        {
+                            ["reviewCategory"] = "policy",
+                            ["policyCheckpoint"] = checkpoint.ToString(),
+                            ["policyDecision"] = runtimePolicyResult.Decision.ToString(),
+                            ["violationCode"] = violation?.Code ?? string.Empty
+                        })
+                }, ct);
+
+                return Result<PolicyResult>.Failure(Error.Unauthorized("Execution paused for human review."));
+            }
+
+            if (runtimePolicyResult.Decision == PolicyDecision.Block)
+            {
+                var violation = runtimePolicyResult.Violations.FirstOrDefault();
+                return Result<PolicyResult>.Failure(Error.Unauthorized(
+                    $"Policy Violation: {violation?.Description ?? "Unknown policy breach"}. Code: {violation?.Code}"));
+            }
+        }
+
+        PolicyResult result = PolicyResult.Allow();
+        if (!string.IsNullOrWhiteSpace(context.PolicySetId))
+            result = await _policyEngine.EvaluateAsync(checkpoint, context, ct);
 
         if (result.Decision == PolicyDecision.Escalate)
         {
@@ -2196,6 +2282,139 @@ if (!preResponsePolicy.IsSuccess) return Result<string?>.Failure(preResponsePoli
         }
 
         return Result<PolicyResult>.Success(result);
+    }
+
+    private async Task<Result<PolicyResult>> EvaluatePreAgentPoliciesAsync(
+        AgentDefinition agentDef,
+        AgentExecutionRequest request,
+        string executionId,
+        CancellationToken ct)
+    {
+        var context = new PolicyEvaluationContext
+        {
+            TenantId = request.TenantId,
+            AgentKey = agentDef.Id.ToString(),
+            AgentVersion = agentDef.Version.ToString(),
+            PolicySetId = string.Empty,
+            ExecutionId = executionId,
+            UserId = request.UserId,
+            Checkpoint = PolicyCheckpoint.PreAgent,
+            UserMessage = request.UserMessage,
+            Metadata = request.Metadata
+        };
+
+        return await EvaluateRuntimePoliciesAsync(agentDef, request, context, ct);
+    }
+
+    private async Task<Result<PolicyResult>> EvaluateRuntimePoliciesAsync(
+        AgentDefinition agentDef,
+        AgentExecutionRequest request,
+        PolicyEvaluationContext context,
+        CancellationToken ct)
+    {
+        if (_tenantRuntimeSettingsReader is null || _policyEvaluators.Count == 0)
+            return Result<PolicyResult>.Success(PolicyResult.Allow());
+
+        var tenantSettings = await _tenantRuntimeSettingsReader.GetAsync(request.TenantId, ct);
+        var policies = BuildRuntimePolicies(agentDef, tenantSettings, context.Checkpoint);
+        if (policies.Count == 0)
+            return Result<PolicyResult>.Success(PolicyResult.Allow());
+
+        foreach (var policy in policies)
+        {
+            if (!_policyEvaluators.TryGetValue(policy.PolicyType, out var evaluator))
+                continue;
+
+            var evaluation = await evaluator.EvaluateAsync(policy, context, ct);
+            if (!evaluation.Violated)
+                continue;
+
+            var violation = new PolicyViolation
+            {
+                Code = policy.PolicyId,
+                Description = $"{policy.Description}{(string.IsNullOrWhiteSpace(evaluation.Evidence) ? string.Empty : $" Evidence: {evaluation.Evidence}")}",
+                Severity = policy.Severity,
+                PolicyId = policy.PolicyId
+            };
+
+            var result = new PolicyResult
+            {
+                Decision = policy.Action switch
+                {
+                    PolicyAction.Escalate => PolicyDecision.Escalate,
+                    PolicyAction.Block => PolicyDecision.Block,
+                    PolicyAction.Warn => PolicyDecision.Warn,
+                    _ => PolicyDecision.Allow
+                },
+                Violations = [violation]
+            };
+
+            return Result<PolicyResult>.Success(result);
+        }
+
+        return Result<PolicyResult>.Success(PolicyResult.Allow());
+    }
+
+    private static IReadOnlyList<PolicyDefinition> BuildRuntimePolicies(
+        AgentDefinition agentDef,
+        TenantRuntimeSettings tenantSettings,
+        PolicyCheckpoint checkpoint)
+    {
+        var policies = new List<PolicyDefinition>();
+
+        if (tenantSettings.PromptInjectionGuard && agentDef.LoopConfig.EnablePromptInjectionGuard)
+        {
+            if (checkpoint is PolicyCheckpoint.PreAgent or PolicyCheckpoint.PostLLM)
+            {
+                policies.Add(new PolicyDefinition
+                {
+                    PolicyId = $"runtime.prompt_injection.{checkpoint.ToString().ToLowerInvariant()}",
+                    Description = "Prompt injection detected by runtime guard.",
+                    AppliesAt = checkpoint,
+                    PolicyType = "prompt-injection",
+                    Action = PolicyAction.Block,
+                    Severity = PolicySeverity.High
+                });
+            }
+        }
+
+        if (agentDef.LoopConfig.EnablePiiProtection)
+        {
+            if (checkpoint == PolicyCheckpoint.PostTool)
+            {
+                policies.Add(new PolicyDefinition
+                {
+                    PolicyId = "runtime.pii.post_tool",
+                    Description = "Sensitive data detected in tool output.",
+                    AppliesAt = checkpoint,
+                    PolicyType = "pii-redaction",
+                    Action = PolicyAction.Escalate,
+                    Severity = PolicySeverity.High
+                });
+            }
+
+            if (checkpoint == PolicyCheckpoint.PreResponse)
+            {
+                policies.Add(new PolicyDefinition
+                {
+                    PolicyId = "runtime.pii.pre_response",
+                    Description = "Sensitive data detected in final response.",
+                    AppliesAt = checkpoint,
+                    PolicyType = "pii-redaction",
+                    Action = PolicyAction.Block,
+                    Severity = PolicySeverity.Critical
+                });
+            }
+        }
+
+        return policies;
+    }
+
+    private static string ResolveExplicitPolicySetId(IReadOnlyDictionary<string, string> metadata)
+    {
+        if (!metadata.TryGetValue("policySetId", out var policySetId) || string.IsNullOrWhiteSpace(policySetId))
+            return string.Empty;
+        return policySetId.Trim();
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -2378,6 +2597,13 @@ Rules:
 - confidence must be between 0 and 1.
 - if uncertain, use confidence below 0.80.
 """;
+            systemPrompt = await (_tenantAgentContextComposer?.ComposeSystemPromptAsync(
+                request.TenantId,
+                systemPrompt,
+                routerAgent.Id,
+                AgentSystemRole.Router.ToString(),
+                request.SessionContext?.ChannelType,
+                ct) ?? Task.FromResult(systemPrompt));
 
             var think = await resolve.Brain.ThinkAsync(new ThinkContext
             {
@@ -2780,6 +3006,24 @@ Rules:
         }
 
         return null;
+    }
+
+    private async Task<string> ComposeSystemPromptAsync(
+        AgentDefinition agentDef,
+        AgentExecutionRequest request,
+        CancellationToken ct)
+    {
+        var basePrompt = agentDef.Brain.SystemPromptTemplate;
+        if (_tenantAgentContextComposer is null)
+            return basePrompt;
+
+        return await _tenantAgentContextComposer.ComposeSystemPromptAsync(
+            request.TenantId,
+            basePrompt,
+            agentDef.Id,
+            agentDef.SystemRole.ToString(),
+            request.SessionContext?.ChannelType,
+            ct);
     }
 
     private static string ApplyFilledSlotRepromptGuardrail(string finalResponse, string? contextJson)

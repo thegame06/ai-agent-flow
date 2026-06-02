@@ -23,6 +23,7 @@ public static class PolicyServiceExtensions
         // Core evaluators (shipped with the platform)
         services.AddSingleton<IPolicyEvaluator, RegexPolicyEvaluator>();
         services.AddSingleton<IPolicyEvaluator, PromptInjectionEvaluator>();
+        services.AddSingleton<IPolicyEvaluator, PiiRedactionEvaluator>();
         services.AddSingleton<IPolicyEvaluator, RateLimitPolicyEvaluator>();
 
         // Policy Store (Mongo for production)
@@ -43,6 +44,7 @@ public static class PolicyServiceExtensions
     {
         services.AddSingleton<IPolicyEvaluator, RegexPolicyEvaluator>();
         services.AddSingleton<IPolicyEvaluator, PromptInjectionEvaluator>();
+        services.AddSingleton<IPolicyEvaluator, PiiRedactionEvaluator>();
         services.AddSingleton<IPolicyEvaluator, RateLimitPolicyEvaluator>();
 
         services.AddSingleton<IPolicyStore, InMemoryPolicyStore>();

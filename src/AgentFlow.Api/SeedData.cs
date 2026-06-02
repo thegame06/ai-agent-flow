@@ -97,7 +97,13 @@ public static class SeedData
             Metadata = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 ["seed"] = "true",
-                ["owner"] = actor
+                ["owner"] = actor,
+                ["voice.provider"] = "11labs",
+                ["voice.voiceId"] = "nmvA11Y688M5reLqDsVm",
+                ["voice.language"] = "es",
+                ["transcriber.provider"] = "deepgram",
+                ["transcriber.language"] = "es",
+                ["callControl.provider"] = "twilio"
             },
             UpdatedBy = actor,
             UpdatedAt = DateTimeOffset.UtcNow
@@ -118,7 +124,13 @@ public static class SeedData
             Metadata = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 ["seed"] = "true",
-                ["owner"] = actor
+                ["owner"] = actor,
+                ["voice.provider"] = "11labs",
+                ["voice.voiceId"] = "nmvA11Y688M5reLqDsVm",
+                ["voice.language"] = "es",
+                ["transcriber.provider"] = "deepgram",
+                ["transcriber.language"] = "es",
+                ["callControl.provider"] = "twilio"
             },
             UpdatedBy = actor,
             UpdatedAt = DateTimeOffset.UtcNow

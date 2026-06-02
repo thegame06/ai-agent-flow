@@ -5,6 +5,7 @@ using System.Threading.Channels;
 using AgentFlow.Abstractions;
 using AgentFlow.Abstractions.Connect;
 using AgentFlow.Abstractions.Workflow;
+using AgentFlow.Api.AuthProfiles;
 using AgentFlow.Api.Connect;
 using AgentFlow.Api.Controllers;
 using AgentFlow.Domain.Repositories;
@@ -556,15 +557,8 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
 
             if (runtimeProfile?.Roles is not null)
             {
-                if (runtimeProfile.Roles.TryGetValue("brain", out var brainModel) && !string.IsNullOrWhiteSpace(brainModel))
-                {
-                    metadata["reasoningModelCandidatesCsv"] = brainModel;
-                    metadata["providerCandidates.reasoning"] = brainModel;
-                }
-                if (runtimeProfile.Roles.TryGetValue("stt", out var sttModel) && !string.IsNullOrWhiteSpace(sttModel))
-                    metadata["sttModelId"] = sttModel;
-                if (runtimeProfile.Roles.TryGetValue("tts", out var ttsModel) && !string.IsNullOrWhiteSpace(ttsModel))
-                    metadata["ttsModelId"] = ttsModel;
+                metadata["runtimeModelProfileId"] = runtimeProfile.Id;
+                runtimeProfile.ApplyExecutionMetadata(metadata);
             }
 
             var request = new AgentExecutionRequest
@@ -684,7 +678,7 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
                 TenantId = tenantId,
                 CustomerId = GetConfig(resolvedConfig, "customerId"),
                 Amount = amount,
-                Currency = GetConfig(resolvedConfig, "currency", "USD") ?? "USD",
+                Currency = GetConfig(resolvedConfig, "currency", "NIO") ?? "NIO",
                 Reference = GetConfig(resolvedConfig, "reference"),
                 Status = "created",
                 CreatedAt = DateTimeOffset.UtcNow,

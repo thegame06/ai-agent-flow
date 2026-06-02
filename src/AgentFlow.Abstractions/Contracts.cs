@@ -171,6 +171,40 @@ public sealed record BrainResolutionResult
     public string ResolutionSource { get; init; } = "default";
 }
 
+public interface ITenantAgentContextComposer
+{
+    Task<string> ComposeSystemPromptAsync(
+        string tenantId,
+        string baseSystemPrompt,
+        string agentId,
+        string systemRole,
+        string? channelType,
+        CancellationToken ct = default);
+}
+
+public interface ITenantRuntimeSettingsReader
+{
+    Task<TenantRuntimeSettings> GetAsync(string tenantId, CancellationToken ct = default);
+}
+
+public sealed record TenantRuntimeSettings
+{
+    public string TenantName { get; init; } = "Tenant";
+    public string DefaultApiVersion { get; init; } = "v1";
+    public bool EnforceRbac { get; init; } = true;
+    public bool PromptInjectionGuard { get; init; } = true;
+    public bool SandboxDangerousTools { get; init; } = true;
+    public bool AuditLogging { get; init; } = true;
+    public int MaxStepsPerExecution { get; init; } = 25;
+    public int TimeoutPerStepSeconds { get; init; } = 30;
+    public int MaxTokensPerExecution { get; init; } = 100000;
+    public int MaxConcurrentExecutions { get; init; } = 10;
+    public bool OtlpExport { get; init; } = true;
+    public string OtlpEndpoint { get; init; } = "http://localhost:4317";
+    public bool ExecutionReplay { get; init; } = true;
+    public bool LlmDecisionLogging { get; init; } = true;
+}
+
 public sealed record ThinkContext
 {
     public required string TenantId { get; init; }
@@ -897,6 +931,7 @@ public sealed record AssistantBuildRequest
     public required string Name { get; init; }
     public required string FirstMessage { get; init; }
     public string Channel { get; init; } = "voice";
+    public string? RuntimeModelProfileId { get; init; }
     public required AssistantReasoningModelConfig Reasoning { get; init; }
     public required AssistantVoiceConfig Voice { get; init; }
     public required AssistantTranscriberConfig Transcriber { get; init; }

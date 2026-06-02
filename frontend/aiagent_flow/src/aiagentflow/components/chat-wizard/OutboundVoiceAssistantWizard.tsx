@@ -277,6 +277,7 @@ function mapAssistantToAgentDesignerPayload(assistant: any, artifact: Record<str
     },
     session: {
       runtimeKind: mapWizardModeToRuntimeKind(assistant?.channel, wizardMode),
+      runtimeModelProfileId: assistant?.runtimeModelProfileId || '',
       enableThreads: true,
       defaultThreadTtlHours: 168,
       maxTurnsPerThread: 100,

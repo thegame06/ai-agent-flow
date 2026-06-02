@@ -26,6 +26,12 @@ const sections = [
     icon: 'mdi:cog-outline',
   },
   {
+    label: 'Contextos MD',
+    description: 'Markdown inyectado por rol y canal.',
+    path: paths.dashboard.settings.agentContexts,
+    icon: 'mdi:file-document-edit-outline',
+  },
+  {
     label: 'Modelos IA',
     description: 'Catalogo, proveedor y costo.',
     path: paths.dashboard.settings.models,

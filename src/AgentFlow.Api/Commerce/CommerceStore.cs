@@ -668,7 +668,7 @@ public sealed class CommerceStore : ICommerceStore
             StoreName = "Ventas y cobros",
             StoreId = $"store-{tenantId[..Math.Min(8, tenantId.Length)]}",
             ApiToken = Guid.NewGuid().ToString("N"),
-            Currency = "USD",
+            Currency = "NIO",
             Language = "es",
             TaxRate = 0m,
             UsePerProductTax = false,
@@ -686,7 +686,7 @@ public sealed class CommerceStore : ICommerceStore
         settings.StoreName = string.IsNullOrWhiteSpace(settings.StoreName) ? "Ventas y cobros" : settings.StoreName.Trim();
         settings.StoreId = string.IsNullOrWhiteSpace(settings.StoreId) ? $"store-{settings.TenantId[..Math.Min(8, settings.TenantId.Length)]}" : settings.StoreId.Trim();
         settings.ApiToken = string.IsNullOrWhiteSpace(settings.ApiToken) ? Guid.NewGuid().ToString("N") : settings.ApiToken.Trim();
-        settings.Currency = string.IsNullOrWhiteSpace(settings.Currency) ? "USD" : settings.Currency.Trim().ToUpperInvariant();
+        settings.Currency = string.IsNullOrWhiteSpace(settings.Currency) ? "NIO" : settings.Currency.Trim().ToUpperInvariant();
         settings.Language = string.IsNullOrWhiteSpace(settings.Language) ? "es" : settings.Language.Trim().ToLowerInvariant();
         settings.UpdatedAt = DateTimeOffset.UtcNow;
 
@@ -980,7 +980,7 @@ public sealed class CommerceSaleDocument
     [BsonId] public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string TenantId { get; set; } = string.Empty;
     public string PartyId { get; set; } = string.Empty;
-    public string Currency { get; set; } = "USD";
+    public string Currency { get; set; } = "NIO";
     public decimal Total { get; set; }
     public decimal Subtotal { get; set; }
     public decimal Discount { get; set; }
@@ -998,7 +998,7 @@ public sealed class CommerceOrderDocument
     [BsonId] public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string TenantId { get; set; } = string.Empty;
     public string PartyId { get; set; } = string.Empty;
-    public string Currency { get; set; } = "USD";
+    public string Currency { get; set; } = "NIO";
     public decimal Total { get; set; }
     public string Status { get; set; } = "draft";
     public string? Notes { get; set; }
@@ -1015,7 +1015,7 @@ public sealed class CommerceInvoiceDocument
     public string PartyId { get; set; } = string.Empty;
     public string? SaleId { get; set; }
     public string? OrderId { get; set; }
-    public string Currency { get; set; } = "USD";
+    public string Currency { get; set; } = "NIO";
     public decimal Total { get; set; }
     public string Status { get; set; } = "issued";
     public string Number { get; set; } = string.Empty;
@@ -1102,7 +1102,7 @@ public sealed class CommerceStoreSettingsDocument
     public string StoreName { get; set; } = "Ventas y cobros";
     public string StoreId { get; set; } = string.Empty;
     public string ApiToken { get; set; } = string.Empty;
-    public string Currency { get; set; } = "USD";
+    public string Currency { get; set; } = "NIO";
     public string Language { get; set; } = "es";
     public decimal TaxRate { get; set; }
     public bool UsePerProductTax { get; set; }

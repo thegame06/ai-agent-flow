@@ -16,6 +16,7 @@ const ICONS = {
   inbox: icon('mdi:forum-outline'),
   unclassified: icon('mdi:inbox-outline'),
   commerce: icon('mdi:store-cog-outline'),
+  campaigns: icon('mdi:bullhorn-variant-outline'),
   activity: icon('mdi:chart-timeline-variant'),
   humanReview: icon('mdi:account-supervisor-outline'),
   // kycPayments: icon('mdi:shield-account-outline'),
@@ -58,6 +59,11 @@ export const navData: NavSectionProps['data'] = [
         title: 'Ventas y cobros',
         path: paths.dashboard.commerce,
         icon: ICONS.commerce,
+      },
+      {
+        title: 'Campanas',
+        path: paths.dashboard.campaigns,
+        icon: ICONS.campaigns,
       },
       // {
       //   title: 'KYC y pagos',

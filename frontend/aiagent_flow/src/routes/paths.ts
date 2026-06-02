@@ -59,6 +59,7 @@ export const paths = {
     intentMap: `${ROOTS.DASHBOARD}/orchestration`,
     threads: `${ROOTS.DASHBOARD}/threads`,
     commerce: `${ROOTS.DASHBOARD}/commerce`,
+    campaigns: `${ROOTS.DASHBOARD}/campaigns`,
     evaluations: `${ROOTS.DASHBOARD}/evaluations`,
     kycPayments: `${ROOTS.DASHBOARD}/kyc-payments`,
     workflows: `${ROOTS.DASHBOARD}/studio/workflows`,
@@ -79,6 +80,7 @@ export const paths = {
     settings: {
       root: `${ROOTS.DASHBOARD}/settings`,
       general: `${ROOTS.DASHBOARD}/settings/general`,
+      agentContexts: `${ROOTS.DASHBOARD}/settings/agent-contexts`,
       models: `${ROOTS.DASHBOARD}/settings/models`,
       authProfiles: `${ROOTS.DASHBOARD}/settings/auth-profiles`,
       featureFlags: `${ROOTS.DASHBOARD}/settings/feature-flags`,

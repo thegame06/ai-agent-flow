@@ -25,6 +25,7 @@ public sealed class ChannelGateway : IChannelGateway
     private readonly IChannelDeliveryPolicy _deliveryPolicy;
     private readonly IChannelCapabilityPolicy _capabilityPolicy;
     private readonly IHumanEscalationNotifier? _humanEscalationNotifier;
+    private readonly ITenantRuntimeSettingsReader? _tenantRuntimeSettingsReader;
     private readonly ILogger<ChannelGateway> _logger;
 
     public ChannelGateway(
@@ -38,6 +39,7 @@ public sealed class ChannelGateway : IChannelGateway
         IAgentDefinitionRepository agentRepo,
         IAuditMemory auditMemory,
         IChannelCapabilityPolicy capabilityPolicy,
+        ITenantRuntimeSettingsReader? tenantRuntimeSettingsReader,
         IEnumerable<IChannelHandler> handlers,
         IHumanEscalationNotifier? humanEscalationNotifier,
         ILogger<ChannelGateway> logger,
@@ -52,6 +54,7 @@ public sealed class ChannelGateway : IChannelGateway
         _executionRequestFactory = executionRequestFactory;
         _auditMemory = auditMemory;
         _capabilityPolicy = capabilityPolicy;
+        _tenantRuntimeSettingsReader = tenantRuntimeSettingsReader;
         _humanEscalationNotifier = humanEscalationNotifier;
         _deliveryPolicy = deliveryPolicy ?? new ChannelDeliveryPolicy(agentRepo, auditMemory);
         _logger = logger;
@@ -387,6 +390,43 @@ public sealed class ChannelGateway : IChannelGateway
             return SendResult.Fail($"No handler for channel type {channel.Type}");
         _capabilityPolicy.EnsureSupportsAny(channel, message.Id, "text.send", "call.control", "call.outbound");
 
+        var outboundGuardError = await EvaluateOutboundGuardAsync(message, ct);
+        if (!string.IsNullOrWhiteSpace(outboundGuardError))
+        {
+            message.MarkFailed(outboundGuardError);
+            message.Metadata["agentflow.delivery"] = "blocked";
+            message.Metadata["agentflow.failure_level"] = "outbound_guard";
+            message.Metadata["agentflow.error"] = outboundGuardError;
+            await _messageRepo.InsertAsync(message, ct);
+
+            var blockedSession = await _sessionRepo.GetByIdAsync(message.SessionId, message.TenantId, ct);
+            if (blockedSession != null)
+            {
+                blockedSession.MarkReplyFailure(outboundGuardError, "outbound_guard", "Blocked");
+                await _sessionRepo.UpdateAsync(blockedSession, ct);
+            }
+
+            await _auditMemory.RecordAsync(new AuditEntry
+            {
+                ExecutionId = message.AgentExecutionId ?? message.Id,
+                AgentId = message.Metadata.GetValueOrDefault("actor_agent_id") ?? "channel-gateway",
+                TenantId = message.TenantId,
+                UserId = message.To ?? message.From,
+                EventType = AuditEventType.RoutingDecision,
+                CorrelationId = message.SessionId,
+                EventJson = System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    action = "outbound_guard_blocked",
+                    reason = outboundGuardError,
+                    channelId,
+                    sessionId = message.SessionId
+                }),
+                OccurredAt = DateTimeOffset.UtcNow
+            }, CancellationToken.None);
+
+            return SendResult.Fail(outboundGuardError);
+        }
+
         await _messageRepo.InsertAsync(message, ct);
         var result = await handler.SendReplyAsync(message, channel, ct);
 
@@ -456,6 +496,46 @@ public sealed class ChannelGateway : IChannelGateway
         return channel.Config.GetValueOrDefault("DefaultAgentId")
             ?? channel.Metadata?.GetValueOrDefault("DefaultAgentId")
             ?? "default-agent";
+    }
+
+    private async Task<string?> EvaluateOutboundGuardAsync(ChannelMessage message, CancellationToken ct)
+    {
+        if (message.Direction != MessageDirection.Outgoing)
+            return null;
+
+        var runtimeSettings = _tenantRuntimeSettingsReader is null
+            ? new TenantRuntimeSettings()
+            : await _tenantRuntimeSettingsReader.GetAsync(message.TenantId, ct);
+
+        var history = await _messageRepo.GetBySessionAsync(message.SessionId, message.TenantId, 25, ct);
+        var now = DateTimeOffset.UtcNow;
+        var recentOutgoing = history.Where(x => x.Direction == MessageDirection.Outgoing).ToList();
+
+        var maxPerMinute = Math.Clamp(runtimeSettings.MaxConcurrentExecutions, 3, 12);
+        var recentCount = recentOutgoing.Count(x => x.CreatedAt >= now.AddMinutes(-1));
+        if (recentCount >= maxPerMinute)
+            return "outbound_rate_limited";
+
+        var normalizedContent = NormalizeOutboundContent(message.Content);
+        if (string.IsNullOrWhiteSpace(normalizedContent))
+            return null;
+
+        var duplicateCount = recentOutgoing.Count(x =>
+            x.CreatedAt >= now.AddMinutes(-10) &&
+            string.Equals(NormalizeOutboundContent(x.Content), normalizedContent, StringComparison.Ordinal));
+
+        return duplicateCount >= 2 ? "outbound_duplicate_blocked" : null;
+    }
+
+    private static string NormalizeOutboundContent(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+
+        return string.Join(' ', value
+            .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            .Trim()
+            .ToLowerInvariant();
     }
 
 }

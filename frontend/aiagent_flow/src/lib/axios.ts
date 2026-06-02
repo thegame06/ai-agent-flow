@@ -150,6 +150,37 @@ export const endpoints = {
       detail: (tenantId: string, conversationId: string) => `/api/v1/tenants/${tenantId}/inbox/${encodeURIComponent(conversationId)}`,
       stats: (tenantId: string) => `/api/v1/tenants/${tenantId}/inbox/stats`,
     },
+    campaigns: {
+      list: (tenantId: string) => `/api/v1/tenants/${tenantId}/campaigns`,
+      create: (tenantId: string) => `/api/v1/tenants/${tenantId}/campaigns`,
+      detail: (tenantId: string, campaignId: string) => `/api/v1/tenants/${tenantId}/campaigns/${encodeURIComponent(campaignId)}`,
+      update: (tenantId: string, campaignId: string) => `/api/v1/tenants/${tenantId}/campaigns/${encodeURIComponent(campaignId)}`,
+      publish: (tenantId: string, campaignId: string) => `/api/v1/tenants/${tenantId}/campaigns/${encodeURIComponent(campaignId)}/publish`,
+      pause: (tenantId: string, campaignId: string) => `/api/v1/tenants/${tenantId}/campaigns/${encodeURIComponent(campaignId)}/pause`,
+      resume: (tenantId: string, campaignId: string) => `/api/v1/tenants/${tenantId}/campaigns/${encodeURIComponent(campaignId)}/resume`,
+      simulate: (tenantId: string, campaignId: string) => `/api/v1/tenants/${tenantId}/campaigns/${encodeURIComponent(campaignId)}/simulate`,
+      runNow: (tenantId: string, campaignId: string) => `/api/v1/tenants/${tenantId}/campaigns/${encodeURIComponent(campaignId)}/run-now`,
+      runs: (tenantId: string, campaignId: string) => `/api/v1/tenants/${tenantId}/campaigns/${encodeURIComponent(campaignId)}/runs`,
+      metrics: (tenantId: string, campaignId: string) => `/api/v1/tenants/${tenantId}/campaigns/${encodeURIComponent(campaignId)}/metrics`,
+      allRuns: (tenantId: string, campaignId?: string | null, limit = 100) =>
+        `/api/v1/tenants/${tenantId}/campaign-runs?campaignId=${encodeURIComponent(campaignId ?? '')}&limit=${limit}`,
+      runDetail: (tenantId: string, runId: string) => `/api/v1/tenants/${tenantId}/campaign-runs/${encodeURIComponent(runId)}`,
+      retryFailures: (tenantId: string, runId: string) => `/api/v1/tenants/${tenantId}/campaign-runs/${encodeURIComponent(runId)}/retry-failures`,
+      contactResults: (tenantId: string, runId: string) => `/api/v1/tenants/${tenantId}/campaign-runs/${encodeURIComponent(runId)}/contacts`,
+    },
+    campaignSegments: {
+      list: (tenantId: string) => `/api/v1/tenants/${tenantId}/campaign-segments`,
+      create: (tenantId: string) => `/api/v1/tenants/${tenantId}/campaign-segments`,
+      detail: (tenantId: string, segmentId: string) => `/api/v1/tenants/${tenantId}/campaign-segments/${encodeURIComponent(segmentId)}`,
+      update: (tenantId: string, segmentId: string) => `/api/v1/tenants/${tenantId}/campaign-segments/${encodeURIComponent(segmentId)}`,
+      preview: (tenantId: string) => `/api/v1/tenants/${tenantId}/campaign-segments/preview`,
+      previewById: (tenantId: string, segmentId: string) => `/api/v1/tenants/${tenantId}/campaign-segments/${encodeURIComponent(segmentId)}/preview`,
+    },
+    campaignBuilder: {
+      draftFromPrompt: (tenantId: string) => `/api/v1/tenants/${tenantId}/campaign-builder/draft-from-prompt`,
+      refine: (tenantId: string) => `/api/v1/tenants/${tenantId}/campaign-builder/refine`,
+      validate: (tenantId: string) => `/api/v1/tenants/${tenantId}/campaign-builder/validate`,
+    },
     // Tools / Extensions
     extensions: {
       tools: '/api/v1/extensions/tools',

@@ -26,6 +26,7 @@ type RuntimeProfile = {
   name: string;
   runtimeKind: 'Text' | 'Voice' | 'MultimodalRealtime' | string;
   roles: Record<string, string>;
+  metadata?: Record<string, string>;
   isDefault?: boolean;
 };
 
@@ -49,6 +50,14 @@ const emptyDraft = (runtimeKind: Props['runtimeKind']) => ({
   brain: '',
   stt: '',
   tts: '',
+  voiceProvider: '',
+  voiceId: '',
+  voiceLanguage: '',
+  voiceCodec: '',
+  transcriberProvider: '',
+  transcriberLanguage: '',
+  transcriberCodec: '',
+  callControlProvider: '',
 });
 
 export function RuntimeModelProfilesPanel({ tenantId, runtimeKind }: Props) {
@@ -114,6 +123,14 @@ export function RuntimeModelProfilesPanel({ tenantId, runtimeKind }: Props) {
       brain: profile.roles?.brain ?? '',
       stt: profile.roles?.stt ?? '',
       tts: profile.roles?.tts ?? '',
+      voiceProvider: profile.metadata?.['voice.provider'] ?? '',
+      voiceId: profile.metadata?.['voice.voiceId'] ?? '',
+      voiceLanguage: profile.metadata?.['voice.language'] ?? '',
+      voiceCodec: profile.metadata?.['voice.codec'] ?? '',
+      transcriberProvider: profile.metadata?.['transcriber.provider'] ?? '',
+      transcriberLanguage: profile.metadata?.['transcriber.language'] ?? '',
+      transcriberCodec: profile.metadata?.['transcriber.codec'] ?? '',
+      callControlProvider: profile.metadata?.['callControl.provider'] ?? '',
     });
     setOpen(true);
   };
@@ -128,6 +145,14 @@ export function RuntimeModelProfilesPanel({ tenantId, runtimeKind }: Props) {
       brain: profile.roles?.brain ?? '',
       stt: profile.roles?.stt ?? '',
       tts: profile.roles?.tts ?? '',
+      voiceProvider: profile.metadata?.['voice.provider'] ?? '',
+      voiceId: profile.metadata?.['voice.voiceId'] ?? '',
+      voiceLanguage: profile.metadata?.['voice.language'] ?? '',
+      voiceCodec: profile.metadata?.['voice.codec'] ?? '',
+      transcriberProvider: profile.metadata?.['transcriber.provider'] ?? '',
+      transcriberLanguage: profile.metadata?.['transcriber.language'] ?? '',
+      transcriberCodec: profile.metadata?.['transcriber.codec'] ?? '',
+      callControlProvider: profile.metadata?.['callControl.provider'] ?? '',
     });
     setOpen(true);
   };
@@ -142,9 +167,18 @@ export function RuntimeModelProfilesPanel({ tenantId, runtimeKind }: Props) {
       setSaving(true);
       setError('');
       const roles: Record<string, string> = { brain: draft.brain.trim() };
+      const metadata: Record<string, string> = { managedFrom: 'runtime-studio-ui' };
       if (draft.runtimeKind !== 'Text') {
         if (draft.stt.trim()) roles.stt = draft.stt.trim();
         if (draft.tts.trim()) roles.tts = draft.tts.trim();
+        if (draft.voiceProvider.trim()) metadata['voice.provider'] = draft.voiceProvider.trim();
+        if (draft.voiceId.trim()) metadata['voice.voiceId'] = draft.voiceId.trim();
+        if (draft.voiceLanguage.trim()) metadata['voice.language'] = draft.voiceLanguage.trim();
+        if (draft.voiceCodec.trim()) metadata['voice.codec'] = draft.voiceCodec.trim();
+        if (draft.transcriberProvider.trim()) metadata['transcriber.provider'] = draft.transcriberProvider.trim();
+        if (draft.transcriberLanguage.trim()) metadata['transcriber.language'] = draft.transcriberLanguage.trim();
+        if (draft.transcriberCodec.trim()) metadata['transcriber.codec'] = draft.transcriberCodec.trim();
+        if (draft.callControlProvider.trim()) metadata['callControl.provider'] = draft.callControlProvider.trim();
       }
 
       await axios.put(`${endpoint}/${encodeURIComponent(draft.id.trim())}`, {
@@ -152,7 +186,7 @@ export function RuntimeModelProfilesPanel({ tenantId, runtimeKind }: Props) {
         runtimeKind: draft.runtimeKind,
         roles,
         isDefault: draft.isDefault,
-        metadata: { managedFrom: 'runtime-studio-ui' },
+        metadata,
       });
 
       setOpen(false);
@@ -243,6 +277,8 @@ export function RuntimeModelProfilesPanel({ tenantId, runtimeKind }: Props) {
                 <Chip size="small" label={`cerebro: ${profile.roles?.brain ?? '-'}`} />
                 {profile.runtimeKind !== 'Text' && <Chip size="small" label={`stt: ${profile.roles?.stt ?? '-'}`} />}
                 {profile.runtimeKind !== 'Text' && <Chip size="small" label={`tts: ${profile.roles?.tts ?? '-'}`} />}
+                {profile.runtimeKind !== 'Text' && profile.metadata?.['voice.provider'] && <Chip size="small" label={`voz: ${profile.metadata['voice.provider']}`} />}
+                {profile.runtimeKind !== 'Text' && profile.metadata?.['transcriber.provider'] && <Chip size="small" label={`transcriber: ${profile.metadata['transcriber.provider']}`} />}
               </Stack>
               <Stack direction="row" spacing={0.5} justifyContent="flex-end">
                 <IconButton size="small" onClick={() => openEdit(profile)}>
@@ -334,6 +370,65 @@ export function RuntimeModelProfilesPanel({ tenantId, runtimeKind }: Props) {
                   </MenuItem>
                 ))}
               </TextField>
+            )}
+            {draft.runtimeKind !== 'Text' && (
+              <TextField
+                label="Proveedor de voz"
+                value={draft.voiceProvider}
+                onChange={(e) => setDraft((prev) => ({ ...prev, voiceProvider: e.target.value }))}
+                helperText="Ej. 11labs, vapi, openai."
+              />
+            )}
+            {draft.runtimeKind !== 'Text' && (
+              <TextField
+                label="Voice ID"
+                value={draft.voiceId}
+                onChange={(e) => setDraft((prev) => ({ ...prev, voiceId: e.target.value }))}
+              />
+            )}
+            {draft.runtimeKind !== 'Text' && (
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+                <TextField
+                  label="Idioma de voz"
+                  value={draft.voiceLanguage}
+                  onChange={(e) => setDraft((prev) => ({ ...prev, voiceLanguage: e.target.value }))}
+                />
+                <TextField
+                  label="Codec de voz"
+                  value={draft.voiceCodec}
+                  onChange={(e) => setDraft((prev) => ({ ...prev, voiceCodec: e.target.value }))}
+                />
+              </Stack>
+            )}
+            {draft.runtimeKind !== 'Text' && (
+              <TextField
+                label="Proveedor de transcripcion"
+                value={draft.transcriberProvider}
+                onChange={(e) => setDraft((prev) => ({ ...prev, transcriberProvider: e.target.value }))}
+                helperText="Ej. deepgram, openai."
+              />
+            )}
+            {draft.runtimeKind !== 'Text' && (
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+                <TextField
+                  label="Idioma de transcripcion"
+                  value={draft.transcriberLanguage}
+                  onChange={(e) => setDraft((prev) => ({ ...prev, transcriberLanguage: e.target.value }))}
+                />
+                <TextField
+                  label="Codec de transcripcion"
+                  value={draft.transcriberCodec}
+                  onChange={(e) => setDraft((prev) => ({ ...prev, transcriberCodec: e.target.value }))}
+                />
+              </Stack>
+            )}
+            {draft.runtimeKind !== 'Text' && (
+              <TextField
+                label="Proveedor de call control"
+                value={draft.callControlProvider}
+                onChange={(e) => setDraft((prev) => ({ ...prev, callControlProvider: e.target.value }))}
+                helperText="Ej. twilio, vapi."
+              />
             )}
             <Button
               variant={draft.isDefault ? 'contained' : 'outlined'}

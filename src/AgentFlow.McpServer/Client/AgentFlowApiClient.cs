@@ -69,6 +69,102 @@ public sealed class AgentFlowApiClient
     public async Task<List<IntegrationSummary>> ListIntegrationsAsync(string tenantId, CancellationToken ct) =>
         await GetAsync<List<IntegrationSummary>>($"/api/v1/tenants/{tenantId}/integrations", ct) ?? [];
 
+    public async Task<JsonElement?> ListCampaignsAsync(string tenantId, CancellationToken ct) =>
+        await GetAsync<JsonElement>($"/api/v1/tenants/{tenantId}/campaigns", ct);
+
+    public async Task<JsonElement?> GetCampaignAsync(string tenantId, string campaignId, CancellationToken ct) =>
+        await GetAsync<JsonElement>($"/api/v1/tenants/{tenantId}/campaigns/{Uri.EscapeDataString(campaignId)}", ct);
+
+    public async Task<JsonElement?> CreateCampaignAsync(string tenantId, object body, CancellationToken ct) =>
+        await PostAsync<JsonElement>($"/api/v1/tenants/{tenantId}/campaigns", body, ct);
+
+    public async Task<JsonElement?> UpdateCampaignAsync(string tenantId, string campaignId, object body, CancellationToken ct) =>
+        await PutAsync<JsonElement>($"/api/v1/tenants/{tenantId}/campaigns/{Uri.EscapeDataString(campaignId)}", body, ct);
+
+    public async Task<JsonElement?> PublishCampaignAsync(string tenantId, string campaignId, CancellationToken ct) =>
+        await PostAsync<JsonElement>($"/api/v1/tenants/{tenantId}/campaigns/{Uri.EscapeDataString(campaignId)}/publish", new { }, ct);
+
+    public async Task<JsonElement?> PauseCampaignAsync(string tenantId, string campaignId, CancellationToken ct) =>
+        await PostAsync<JsonElement>($"/api/v1/tenants/{tenantId}/campaigns/{Uri.EscapeDataString(campaignId)}/pause", new { }, ct);
+
+    public async Task<JsonElement?> ResumeCampaignAsync(string tenantId, string campaignId, CancellationToken ct) =>
+        await PostAsync<JsonElement>($"/api/v1/tenants/{tenantId}/campaigns/{Uri.EscapeDataString(campaignId)}/resume", new { }, ct);
+
+    public async Task<JsonElement?> SimulateCampaignAsync(string tenantId, string campaignId, CancellationToken ct) =>
+        await PostAsync<JsonElement>($"/api/v1/tenants/{tenantId}/campaigns/{Uri.EscapeDataString(campaignId)}/simulate", new { }, ct);
+
+    public async Task<JsonElement?> RunCampaignNowAsync(string tenantId, string campaignId, CancellationToken ct) =>
+        await PostAsync<JsonElement>($"/api/v1/tenants/{tenantId}/campaigns/{Uri.EscapeDataString(campaignId)}/run-now", new { }, ct);
+
+    public async Task<JsonElement?> GetCampaignRunsAsync(string tenantId, string? campaignId, int limit, CancellationToken ct) =>
+        await GetAsync<JsonElement>($"/api/v1/tenants/{tenantId}/campaign-runs?campaignId={Uri.EscapeDataString(campaignId ?? string.Empty)}&limit={Math.Clamp(limit, 1, 500)}", ct);
+
+    public async Task<JsonElement?> GetCampaignRunAsync(string tenantId, string runId, CancellationToken ct) =>
+        await GetAsync<JsonElement>($"/api/v1/tenants/{tenantId}/campaign-runs/{Uri.EscapeDataString(runId)}", ct);
+
+    public async Task<JsonElement?> RetryCampaignFailuresAsync(string tenantId, string runId, CancellationToken ct) =>
+        await PostAsync<JsonElement>($"/api/v1/tenants/{tenantId}/campaign-runs/{Uri.EscapeDataString(runId)}/retry-failures", new { }, ct);
+
+    public async Task<JsonElement?> GetCampaignContactResultsAsync(string tenantId, string runId, CancellationToken ct) =>
+        await GetAsync<JsonElement>($"/api/v1/tenants/{tenantId}/campaign-runs/{Uri.EscapeDataString(runId)}/contacts", ct);
+
+    public async Task<JsonElement?> GetCampaignMetricsAsync(string tenantId, string campaignId, CancellationToken ct) =>
+        await GetAsync<JsonElement>($"/api/v1/tenants/{tenantId}/campaigns/{Uri.EscapeDataString(campaignId)}/metrics", ct);
+
+    public async Task<JsonElement?> ListCampaignSegmentsAsync(string tenantId, CancellationToken ct) =>
+        await GetAsync<JsonElement>($"/api/v1/tenants/{tenantId}/campaign-segments", ct);
+
+    public async Task<JsonElement?> GetCampaignSegmentAsync(string tenantId, string segmentId, CancellationToken ct) =>
+        await GetAsync<JsonElement>($"/api/v1/tenants/{tenantId}/campaign-segments/{Uri.EscapeDataString(segmentId)}", ct);
+
+    public async Task<JsonElement?> CreateCampaignSegmentAsync(string tenantId, object body, CancellationToken ct) =>
+        await PostAsync<JsonElement>($"/api/v1/tenants/{tenantId}/campaign-segments", body, ct);
+
+    public async Task<JsonElement?> UpdateCampaignSegmentAsync(string tenantId, string segmentId, object body, CancellationToken ct) =>
+        await PutAsync<JsonElement>($"/api/v1/tenants/{tenantId}/campaign-segments/{Uri.EscapeDataString(segmentId)}", body, ct);
+
+    public async Task<JsonElement?> PreviewCampaignSegmentAsync(string tenantId, object body, CancellationToken ct) =>
+        await PostAsync<JsonElement>($"/api/v1/tenants/{tenantId}/campaign-segments/preview", body, ct);
+
+    public async Task<JsonElement?> PreviewCampaignSegmentByIdAsync(string tenantId, string segmentId, CancellationToken ct) =>
+        await PostAsync<JsonElement>($"/api/v1/tenants/{tenantId}/campaign-segments/{Uri.EscapeDataString(segmentId)}/preview", new { }, ct);
+
+    public async Task<JsonElement?> ListCampaignCallPlaybooksAsync(string tenantId, CancellationToken ct) =>
+        await GetAsync<JsonElement>($"/api/v1/tenants/{tenantId}/campaign-call-playbooks", ct);
+
+    public async Task<JsonElement?> GetCampaignCallPlaybookAsync(string tenantId, string playbookId, CancellationToken ct) =>
+        await GetAsync<JsonElement>($"/api/v1/tenants/{tenantId}/campaign-call-playbooks/{Uri.EscapeDataString(playbookId)}", ct);
+
+    public async Task<JsonElement?> CreateCampaignCallPlaybookAsync(string tenantId, object body, CancellationToken ct) =>
+        await PostAsync<JsonElement>($"/api/v1/tenants/{tenantId}/campaign-call-playbooks", body, ct);
+
+    public async Task<JsonElement?> UpdateCampaignCallPlaybookAsync(string tenantId, string playbookId, object body, CancellationToken ct) =>
+        await PutAsync<JsonElement>($"/api/v1/tenants/{tenantId}/campaign-call-playbooks/{Uri.EscapeDataString(playbookId)}", body, ct);
+
+    public async Task<JsonElement?> ListCampaignCallOutcomesAsync(string tenantId, string runId, CancellationToken ct) =>
+        await GetAsync<JsonElement>($"/api/v1/tenants/{tenantId}/campaign-runs/{Uri.EscapeDataString(runId)}/call-outcomes", ct);
+
+    public async Task<JsonElement?> GetCampaignCallOutcomeAsync(string tenantId, string outcomeId, CancellationToken ct) =>
+        await GetAsync<JsonElement>($"/api/v1/tenants/{tenantId}/campaign-call-outcomes/{Uri.EscapeDataString(outcomeId)}", ct);
+
+    public async Task<JsonElement?> GetCampaignCallOutcomeByContactAsync(string tenantId, string contactExecutionId, CancellationToken ct) =>
+        await GetAsync<JsonElement>($"/api/v1/tenants/{tenantId}/campaign-contact-executions/{Uri.EscapeDataString(contactExecutionId)}/call-outcome", ct);
+
+    public async Task<JsonElement?> CreateCampaignCallOutcomeAsync(string tenantId, string contactExecutionId, object body, CancellationToken ct) =>
+        await PostAsync<JsonElement>($"/api/v1/tenants/{tenantId}/campaign-contact-executions/{Uri.EscapeDataString(contactExecutionId)}/call-outcome", body, ct);
+
+    public async Task<JsonElement?> UpdateCampaignCallOutcomeAsync(string tenantId, string outcomeId, object body, CancellationToken ct) =>
+        await PutAsync<JsonElement>($"/api/v1/tenants/{tenantId}/campaign-call-outcomes/{Uri.EscapeDataString(outcomeId)}", body, ct);
+
+    public async Task<JsonElement?> DraftCampaignFromPromptAsync(string tenantId, string prompt, CancellationToken ct) =>
+        await PostAsync<JsonElement>($"/api/v1/tenants/{tenantId}/campaign-builder/draft-from-prompt", new { prompt }, ct);
+
+    public async Task<JsonElement?> RefineCampaignDraftAsync(string tenantId, object body, CancellationToken ct) =>
+        await PostAsync<JsonElement>($"/api/v1/tenants/{tenantId}/campaign-builder/refine", body, ct);
+
+    public async Task<JsonElement?> ValidateCampaignDraftAsync(string tenantId, object body, CancellationToken ct) =>
+        await PostAsync<JsonElement>($"/api/v1/tenants/{tenantId}/campaign-builder/validate", body, ct);
+
     // Commerce
     public async Task<CommerceParty?> ResolvePartyAsync(
         string tenantId,

@@ -547,15 +547,7 @@ public sealed class ConversationThreadsController : ControllerBase
 
         metadata["runtimeModelProfileId"] = profile.Id;
         metadata["runtimeModelProfileSource"] = profileSource;
-
-        if (profile.Roles.TryGetValue("reasoning", out var reasoningModel) && !string.IsNullOrWhiteSpace(reasoningModel))
-            metadata["reasoningModelCandidatesCsv"] = reasoningModel;
-
-        if (profile.Roles.TryGetValue("stt", out var sttModel) && !string.IsNullOrWhiteSpace(sttModel))
-            metadata["sttModelId"] = sttModel;
-
-        if (profile.Roles.TryGetValue("tts", out var ttsModel) && !string.IsNullOrWhiteSpace(ttsModel))
-            metadata["ttsModelId"] = ttsModel;
+        profile.ApplyExecutionMetadata(metadata);
     }
 }
 

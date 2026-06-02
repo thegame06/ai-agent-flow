@@ -539,12 +539,13 @@ public sealed class CommerceController : ControllerBase
             request.ApplyTax,
             request.TaxRate ?? 0.15m,
             ct);
+        var storeSettings = await _commerce.GetStoreSettingsAsync(tenantId, ct);
 
         var doc = new CommerceSaleDocument
         {
             TenantId = tenantId,
             PartyId = request.PartyId,
-            Currency = request.Currency ?? "USD",
+            Currency = string.IsNullOrWhiteSpace(request.Currency) ? storeSettings.Currency : request.Currency.Trim().ToUpperInvariant(),
             PaymentMethod = request.PaymentMethod ?? "cash",
             SessionId = request.SessionId,
             ThreadId = request.ThreadId,
@@ -728,12 +729,13 @@ public sealed class CommerceController : ControllerBase
 
         var party = await _commerce.GetPartyByIdAsync(tenantId, request.PartyId, ct);
         if (party is null) return NotFound($"Party '{request.PartyId}' not found.");
+        var storeSettings = await _commerce.GetStoreSettingsAsync(tenantId, ct);
 
         var doc = new CommerceOrderDocument
         {
             TenantId = tenantId,
             PartyId = request.PartyId,
-            Currency = request.Currency ?? "USD",
+            Currency = string.IsNullOrWhiteSpace(request.Currency) ? storeSettings.Currency : request.Currency.Trim().ToUpperInvariant(),
             Status = "draft",
             SessionId = request.SessionId,
             ThreadId = request.ThreadId,
@@ -857,6 +859,7 @@ public sealed class CommerceController : ControllerBase
 
         var party = await _commerce.GetPartyByIdAsync(tenantId, request.PartyId, ct);
         if (party is null) return NotFound($"Party '{request.PartyId}' not found.");
+        var storeSettings = await _commerce.GetStoreSettingsAsync(tenantId, ct);
 
         var doc = new CommerceInvoiceDocument
         {
@@ -864,7 +867,7 @@ public sealed class CommerceController : ControllerBase
             PartyId = request.PartyId,
             SaleId = request.SaleId,
             OrderId = request.OrderId,
-            Currency = request.Currency ?? "USD",
+            Currency = string.IsNullOrWhiteSpace(request.Currency) ? storeSettings.Currency : request.Currency.Trim().ToUpperInvariant(),
             Total = request.Total,
             Status = "issued",
             Number = $"INV-{DateTimeOffset.UtcNow:yyyyMMdd}-{Guid.NewGuid().ToString("N")[..8].ToUpperInvariant()}",

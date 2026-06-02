@@ -36,10 +36,12 @@ const McpPage = lazy(() => import('src/aiagentflow/pages/system/McpPage'));
 const ChannelsPage = lazy(() => import('src/aiagentflow/pages/channels/ChannelsPage'));
 const FeatureFlagsPage = lazy(() => import('src/aiagentflow/pages/system/FeatureFlagsPage'));
 const SettingsPage = lazy(() => import('src/aiagentflow/pages/settings/SettingsPage'));
+const AgentContextSettingsPage = lazy(() => import('src/aiagentflow/pages/settings/AgentContextSettingsPage'));
 const SettingsLayoutPage = lazy(() => import('src/aiagentflow/pages/settings/SettingsLayoutPage'));
 const WorkforcePage = lazy(() => import('src/aiagentflow/pages/system/WorkforcePage'));
 const ThreadsPage = lazy(() => import('src/aiagentflow/pages/threads/ThreadsPage'));
 const CommerceAdminPage = lazy(() => import('src/aiagentflow/pages/commerce/CommerceAdminPage'));
+const CampaignsPage = lazy(() => import('src/aiagentflow/pages/campaigns/CampaignsPage'));
 const EvaluationsPage = lazy(() => import('src/aiagentflow/pages/evaluations/EvaluationsPage'));
 const KycPaymentsPage = lazy(() => import('src/aiagentflow/pages/kyc/KycPaymentsPage'));
 const WorkflowsPage = lazy(() => import('src/aiagentflow/pages/workflows/WorkflowsPage'));
@@ -91,6 +93,7 @@ export const dashboardRoutes: RouteObject[] = [
       { path: 'orchestration', element: <Navigate to="/dashboard/intents" replace /> },
       { path: 'threads', element: <ThreadsPage /> },
       { path: 'commerce', element: <CommerceAdminPage /> },
+      { path: 'campaigns', element: <CampaignsPage /> },
       { path: 'evaluations', element: <EvaluationsPage /> },
       { path: 'kyc-payments', element: <KycPaymentsPage /> },
       { path: 'studio/workflows', element: <WorkflowsPage /> },
@@ -103,6 +106,7 @@ export const dashboardRoutes: RouteObject[] = [
         children: [
           { element: <Navigate to="/dashboard/settings/general" replace />, index: true },
           { path: 'general', element: <SettingsPage /> },
+          { path: 'agent-contexts', element: <AgentContextSettingsPage /> },
           { path: 'models', element: <ModelsPage /> },
           { path: 'auth-profiles', element: <AuthProfilesPage /> },
           { path: 'feature-flags', element: <FeatureFlagsPage /> },

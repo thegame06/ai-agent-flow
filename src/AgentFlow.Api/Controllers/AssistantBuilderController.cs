@@ -1,4 +1,5 @@
 using AgentFlow.Abstractions;
+using AgentFlow.Api.AuthProfiles;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using MongoDB.Driver;
@@ -15,15 +16,17 @@ public sealed class AssistantBuilderController : ControllerBase
     private static readonly ConcurrentQueue<WizardEventDocument> SessionEvents = new();
     private readonly IMongoCollection<WizardSessionDocument>? _sessionsCollection;
     private readonly IMongoCollection<WizardEventDocument>? _eventsCollection;
+    private readonly IRuntimeModelProfileStore? _runtimeProfiles;
 
     public AssistantBuilderController()
     {
     }
 
-    public AssistantBuilderController(IMongoDatabase database)
+    public AssistantBuilderController(IMongoDatabase database, IRuntimeModelProfileStore? runtimeProfiles = null)
     {
         _sessionsCollection = database.GetCollection<WizardSessionDocument>("assistant_wizard_sessions");
         _eventsCollection = database.GetCollection<WizardEventDocument>("assistant_wizard_events");
+        _runtimeProfiles = runtimeProfiles;
     }
 
     [HttpPost]
@@ -176,30 +179,38 @@ public sealed class AssistantBuilderController : ControllerBase
 
         var assistantName = BuildAssistantName(session);
         var firstMessage = BuildFirstMessage(session);
+        var language = MapLanguageToCode(session.Artifact.GetValueOrDefault("Language") ?? "Spanish");
+        var runtimeProfile = _runtimeProfiles?.GetDefault(session.TenantId, "Voice");
+        var reasoningModel = runtimeProfile?.GetRole("brain") ?? "claude-haiku-4-5-20251001";
+        var reasoningProvider = runtimeProfile?.GetMetadata("reasoning.provider", "brain.provider", "reasoningProvider", "brainProvider") ?? "anthropic";
+        var resolvedVoice = runtimeProfile?.ToAssistantVoiceConfig(language) ?? new AssistantVoiceConfig
+        {
+            Provider = "11labs",
+            VoiceId = "nmvA11Y688M5reLqDsVm",
+            Model = "eleven_turbo_v2_5",
+            Language = language
+        };
+        var resolvedTranscriber = runtimeProfile?.ToAssistantTranscriberConfig(language) ?? new AssistantTranscriberConfig
+        {
+            Provider = "deepgram",
+            Model = "nova-3",
+            Language = language
+        };
+
         var request = new AssistantBuildRequest
         {
             Name = assistantName,
             FirstMessage = firstMessage,
             Channel = "voice",
+            RuntimeModelProfileId = runtimeProfile?.Id,
             Reasoning = new AssistantReasoningModelConfig
             {
-                Provider = "anthropic",
-                Model = "claude-haiku-4-5-20251001",
+                Provider = reasoningProvider,
+                Model = reasoningModel,
                 MaxTokens = 250
             },
-            Voice = new AssistantVoiceConfig
-            {
-                Provider = "11labs",
-                VoiceId = "nmvA11Y688M5reLqDsVm",
-                Model = "eleven_turbo_v2_5",
-                Language = MapLanguageToCode(session.Artifact.GetValueOrDefault("Language") ?? "Spanish")
-            },
-            Transcriber = new AssistantTranscriberConfig
-            {
-                Provider = "deepgram",
-                Model = "nova-3",
-                Language = MapLanguageToCode(session.Artifact.GetValueOrDefault("Language") ?? "Spanish")
-            }
+            Voice = resolvedVoice,
+            Transcriber = resolvedTranscriber
         };
 
         var errors = new List<string>();

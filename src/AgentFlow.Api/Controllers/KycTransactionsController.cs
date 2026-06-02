@@ -222,7 +222,7 @@ public sealed record CreatePaymentIntentRequest
 {
     public string? CustomerId { get; init; }
     public decimal Amount { get; init; }
-    public string Currency { get; init; } = "USD";
+    public string Currency { get; init; } = "NIO";
     public string? Reference { get; init; }
 }
 
@@ -252,7 +252,7 @@ public sealed record PaymentIntentDto
     public required string TenantId { get; init; }
     public string? CustomerId { get; init; }
     public decimal Amount { get; init; }
-    public string Currency { get; init; } = "USD";
+    public string Currency { get; init; } = "NIO";
     public string Status { get; set; } = "created";
     public string? Reference { get; init; }
     public string? IdempotencyKey { get; init; }

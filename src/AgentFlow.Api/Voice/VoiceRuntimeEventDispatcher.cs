@@ -84,14 +84,10 @@ public sealed class VoiceRuntimeEventDispatcher : BackgroundService
                 ["eventType"] = evt.EventType,
                 ["eventId"] = evt.EventId
             };
-            if (runtimeProfile?.Roles is not null)
+            if (runtimeProfile is not null)
             {
-                if (runtimeProfile.Roles.TryGetValue("brain", out var brainModel) && !string.IsNullOrWhiteSpace(brainModel))
-                    metadata["reasoningModelCandidatesCsv"] = brainModel;
-                if (runtimeProfile.Roles.TryGetValue("stt", out var sttModel) && !string.IsNullOrWhiteSpace(sttModel))
-                    metadata["sttModelId"] = sttModel;
-                if (runtimeProfile.Roles.TryGetValue("tts", out var ttsModel) && !string.IsNullOrWhiteSpace(ttsModel))
-                    metadata["ttsModelId"] = ttsModel;
+                metadata["runtimeModelProfileId"] = runtimeProfile.Id;
+                runtimeProfile.ApplyExecutionMetadata(metadata);
             }
             var result = await runtime.ExecuteAsync(new AgentRuntimeRequest
             {

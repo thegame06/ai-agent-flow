@@ -35,6 +35,8 @@ public sealed record AgentLoopConfig
     public TimeSpan ToolCallTimeout { get; init; } = TimeSpan.FromSeconds(30);
     public int MaxRetries { get; init; } = 3;
     public TimeSpan RetryBackoffBase { get; init; } = TimeSpan.FromSeconds(2);
+    public bool EnablePromptInjectionGuard { get; init; } = true;
+    public bool EnablePiiProtection { get; init; } = true;
     public bool AllowParallelToolCalls { get; init; } = false;
     public HumanInTheLoopConfig HitlConfig { get; init; } = new();
     public PlannerType PlannerType { get; init; } = PlannerType.ReAct;

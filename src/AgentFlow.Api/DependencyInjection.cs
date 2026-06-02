@@ -2,7 +2,9 @@ using AgentFlow.Abstractions;
 using AgentFlow.Api.AuthProfiles;
 using AgentFlow.Api.Commerce;
 using AgentFlow.Api.Connect;
+using AgentFlow.Api.Campaigns;
 using AgentFlow.Api.Routing;
+using AgentFlow.Api.Settings;
 using AgentFlow.Api.Voice;
 using AgentFlow.Api.Workflow;
 using AgentFlow.Application.Channels;
@@ -70,6 +72,14 @@ public static class DependencyInjection
             .AddSingleton<IRuntimeModelProfileStore, MongoRuntimeModelProfileStore>()
             .AddScoped<IModelCredentialResolver, AuthProfileModelCredentialResolver>()
             .AddScoped<IConnectStore, MongoConnectStore>()
+            .AddScoped<ICampaignStore, MongoCampaignStore>()
+            .AddScoped<ICampaignAudienceService, CampaignAudienceService>()
+            .AddScoped<ICampaignBuilderService, CampaignBuilderService>()
+            .AddScoped<ICampaignExecutionService, CampaignExecutionService>()
+            .AddScoped<ITenantRuntimeSettingsService, TenantRuntimeSettingsService>()
+            .AddScoped<ITenantRuntimeSettingsReader>(sp => sp.GetRequiredService<ITenantRuntimeSettingsService>())
+            .AddScoped<ITenantAgentContextService, TenantAgentContextService>()
+            .AddScoped<ITenantAgentContextComposer>(sp => sp.GetRequiredService<ITenantAgentContextService>())
             .AddScoped<IHumanEscalationNotifier, WorkforceHumanEscalationNotifier>()
             .AddSingleton<ICommerceStore, CommerceStore>()
             .AddScoped<IWorkflowStudioStore, MongoWorkflowStudioStore>()
@@ -89,11 +99,31 @@ public static class DependencyInjection
         services.AddScoped<IWorkflowTriggerService, WorkflowTriggerService>();
         services.AddScoped<IWorkflowAuditService, WorkflowAuditService>();
         services.AddHostedService<WorkflowRuntimeWorker>();
+        services.AddHostedService<CampaignSchedulerService>();
         services.AddHostedService<WorkflowCatalogSeeder>();
         services.AddHostedService<ModelRoutingBootstrapService>();
         services.AddHostedService<VoiceRuntimeEventDispatcher>();
         services.AddHostedService<VoicePlaybackGateway>();
         services.AddScoped<ITwilioWebhookSignatureValidator, TwilioWebhookSignatureValidator>();
+        services.AddSingleton<IToolPlugin, CampaignListTool>();
+        services.AddSingleton<IToolPlugin, CampaignGetTool>();
+        services.AddSingleton<IToolPlugin, CampaignListSegmentsTool>();
+        services.AddSingleton<IToolPlugin, CampaignGetSegmentTool>();
+        services.AddSingleton<IToolPlugin, CampaignPreviewSegmentTool>();
+        services.AddSingleton<IToolPlugin, CampaignGetMetricsTool>();
+        services.AddSingleton<IToolPlugin, CampaignDraftFromPromptTool>();
+        services.AddSingleton<IToolPlugin, CampaignRefineDraftTool>();
+        services.AddSingleton<IToolPlugin, CampaignValidateDraftTool>();
+        services.AddSingleton<IToolPlugin, CampaignCreateTool>();
+        services.AddSingleton<IToolPlugin, CampaignUpdateTool>();
+        services.AddSingleton<IToolPlugin, CampaignPublishTool>();
+        services.AddSingleton<IToolPlugin, CampaignPauseTool>();
+        services.AddSingleton<IToolPlugin, CampaignResumeTool>();
+        services.AddSingleton<IToolPlugin, CampaignRunNowTool>();
+        services.AddSingleton<IToolPlugin, CampaignListRunsTool>();
+        services.AddSingleton<IToolPlugin, CampaignGetRunTool>();
+        services.AddSingleton<IToolPlugin, CampaignRetryFailuresTool>();
+        services.AddSingleton<IToolPlugin, CampaignGetContactResultsTool>();
 
         return services;
     }
