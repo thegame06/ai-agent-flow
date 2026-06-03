@@ -127,6 +127,7 @@ public sealed class MongoWorkflowStudioStore : IWorkflowStudioStore
             TenantId = definition.TenantId,
             Name = definition.Name,
             TriggerEventName = definition.TriggerEventName,
+            RuntimeKind = ResolveRuntimeKind(definition.RuntimeKind, definition.TriggerEventName),
             Version = definition.Version,
             Status = definition.Status,
             DefinitionJson = definition.DefinitionJson,
@@ -285,6 +286,7 @@ public sealed class MongoWorkflowStudioStore : IWorkflowStudioStore
         TenantId = doc.TenantId,
         Name = doc.Name,
         TriggerEventName = doc.TriggerEventName,
+        RuntimeKind = ResolveRuntimeKind(doc.RuntimeKind, doc.TriggerEventName),
         Version = doc.Version,
         Status = doc.Status,
         DefinitionJson = doc.DefinitionJson,
@@ -293,6 +295,17 @@ public sealed class MongoWorkflowStudioStore : IWorkflowStudioStore
         UpdatedAt = doc.UpdatedAt,
         UpdatedBy = doc.UpdatedBy
     };
+
+    private static string ResolveRuntimeKind(string? runtimeKind, string? triggerEventName)
+    {
+        if (!string.IsNullOrWhiteSpace(runtimeKind))
+            return runtimeKind;
+
+        if (RuntimeCompatibilityPolicy.TryParseRuntimeKindFromTrigger(triggerEventName, out var inferred))
+            return inferred.ToString();
+
+        return "Text";
+    }
 
     private static WorkflowExecutionContract ToContract(WorkflowExecutionDocument doc) => new()
     {
@@ -374,6 +387,7 @@ public sealed class MongoWorkflowStudioStore : IWorkflowStudioStore
         public string TenantId { get; set; } = string.Empty;
         public string Name { get; set; } = string.Empty;
         public string TriggerEventName { get; set; } = string.Empty;
+        public string RuntimeKind { get; set; } = "Text";
         public int Version { get; set; }
         public WorkflowDefinitionStatus Status { get; set; }
         public string DefinitionJson { get; set; } = "{}";

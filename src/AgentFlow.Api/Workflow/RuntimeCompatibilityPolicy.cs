@@ -41,6 +41,34 @@ public static class RuntimeCompatibilityPolicy
         return true;
     }
 
+    public static bool TryParseRuntimeKindFromTrigger(string? triggerEventName, out AgentRuntimeKind runtimeKind)
+    {
+        runtimeKind = AgentRuntimeKind.Text;
+        if (string.IsNullOrWhiteSpace(triggerEventName))
+            return false;
+
+        var lower = triggerEventName.Trim().ToLowerInvariant();
+        if (lower.Contains("call.", StringComparison.Ordinal))
+        {
+            runtimeKind = AgentRuntimeKind.Voice;
+            return true;
+        }
+
+        if (lower.Contains("realtime", StringComparison.Ordinal) || lower.Contains("video", StringComparison.Ordinal))
+        {
+            runtimeKind = AgentRuntimeKind.MultimodalRealtime;
+            return true;
+        }
+
+        if (lower.Contains("message.", StringComparison.Ordinal))
+        {
+            runtimeKind = AgentRuntimeKind.Text;
+            return true;
+        }
+
+        return false;
+    }
+
     public static bool IsAgentCompatible(AgentRuntimeKind workflowRuntime, AgentRuntimeKind agentRuntime)
         => workflowRuntime == agentRuntime;
 

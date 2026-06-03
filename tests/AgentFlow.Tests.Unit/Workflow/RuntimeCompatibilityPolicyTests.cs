@@ -29,4 +29,15 @@ public sealed class RuntimeCompatibilityPolicyTests
         Assert.True(RuntimeCompatibilityPolicy.IsTriggerEventCompatible(AgentRuntimeKind.MultimodalRealtime, "video.frame.realtime"));
         Assert.False(RuntimeCompatibilityPolicy.IsTriggerEventCompatible(AgentRuntimeKind.MultimodalRealtime, "message.received"));
     }
+
+    [Theory]
+    [InlineData("connect.call.received", AgentRuntimeKind.Voice)]
+    [InlineData("video.frame.realtime", AgentRuntimeKind.MultimodalRealtime)]
+    [InlineData("connect.message.received", AgentRuntimeKind.Text)]
+    public void TryParseRuntimeKindFromTrigger_InferRuntimeFromEvent(string trigger, AgentRuntimeKind expected)
+    {
+        var ok = RuntimeCompatibilityPolicy.TryParseRuntimeKindFromTrigger(trigger, out var kind);
+        Assert.True(ok);
+        Assert.Equal(expected, kind);
+    }
 }
