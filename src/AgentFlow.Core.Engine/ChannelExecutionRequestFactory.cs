@@ -67,6 +67,7 @@ public sealed class ChannelExecutionRequestFactory : IChannelExecutionRequestFac
             ["channelMessageId"] = incomingMessage.Id,
             ["permissions"] = string.Join(",", executionContext.Permissions),
             ["mcp.policy.allow_actions"] = "tools.execute",
+            ["routing.is_router_agent"] = string.Equals(agentKey, channel.RouterAgentId, StringComparison.OrdinalIgnoreCase) ? "true" : "false",
             ["routing.intent_confidence_threshold"] = channel.Config.GetValueOrDefault("IntentConfidenceThreshold") ?? "0.70",
             ["routing.assistant_confidence_threshold"] = channel.Config.GetValueOrDefault("AssistantConfidenceThreshold") ?? "0.80",
             ["routing.no_match_action"] = channel.Config.GetValueOrDefault("NoMatchAction") ?? "human_review_only",

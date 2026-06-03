@@ -374,6 +374,324 @@ public sealed class AgentExecutionEngineRoutingTests
             It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    [Fact]
+    public async Task ExecuteAsync_ChannelMarkedRouter_UsesRoutingPath_EvenWithoutRouterSystemRole()
+    {
+        var agentRepo = new Mock<IAgentDefinitionRepository>();
+        var executionRepo = new Mock<IAgentExecutionRepository>();
+        var threadRepo = new Mock<IConversationThreadRepository>();
+        var brainResolver = new Mock<IAgentBrainResolver>();
+        var toolExecutor = new Mock<IToolExecutor>();
+        var policyEngine = new Mock<IPolicyEngine>();
+        var eventTransport = new Mock<IAgentEventTransport>();
+        var checkpointStore = new Mock<ICheckpointStore>();
+        var toolRegistry = new Mock<IToolRegistry>();
+        var planner = new Mock<IExecutionPlanner>();
+        var intentScoring = new Mock<IIntentScoringEngine>();
+        var routingOrchestrator = new Mock<IRoutingOrchestrator>();
+        var workflowEngine = new Mock<IWorkflowEngine>();
+        var inboxService = new Mock<IConversationInboxService>();
+
+        var audit = new Mock<IAuditMemory>();
+        var memory = new Mock<IAgentMemoryService>();
+        memory.SetupGet(x => x.Audit).Returns(audit.Object);
+        memory.SetupGet(x => x.Working).Returns(Mock.Of<IWorkingMemory>());
+        memory.SetupGet(x => x.LongTerm).Returns(Mock.Of<ILongTermMemory>());
+        memory.SetupGet(x => x.Vector).Returns(Mock.Of<IVectorMemory>());
+
+        agentRepo.Setup(x => x.GetByIdAsync("router-agent", "tenant-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(BuildStandardAgent());
+
+        intentScoring.Setup(x => x.ClassifyAsync("zzzzzz", "tenant-1", "whatsapp", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new IntentClassificationResult
+            {
+                Message = "zzzzzz",
+                BestMatch = null,
+                AllCandidates = new List<IntentMatch>(),
+                BestScore = 0f,
+                Confidence = ConfidenceLevel.NoMatch,
+                RequiresHumanReview = true,
+                ExplanationJson = "{}"
+            });
+
+        routingOrchestrator.Setup(x => x.RouteMessageAsync(
+                It.IsAny<IntentClassificationResult>(),
+                It.IsAny<RoutingConversationContext>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new RoutingDecision
+            {
+                IntentKey = "unknown",
+                WorkflowDefinitionId = null,
+                TargetAgentId = null,
+                Action = RoutingAction.Fallback,
+                ReasonCode = "no_match",
+                ExplanationJson = "{}",
+                DecidedAt = DateTimeOffset.UtcNow
+            });
+
+        inboxService.Setup(x => x.CreateOrUpdateAsync(It.IsAny<InboxConversation>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((InboxConversation c, CancellationToken _) => c);
+
+        var engine = new AgentExecutionEngine(
+            agentRepo.Object,
+            executionRepo.Object,
+            threadRepo.Object,
+            brainResolver.Object,
+            toolExecutor.Object,
+            memory.Object,
+            policyEngine.Object,
+            eventTransport.Object,
+            checkpointStore.Object,
+            toolRegistry.Object,
+            planner.Object,
+            new TokenBudgetService(TokenBudgetConfig.Default),
+            NullLogger<AgentExecutionEngine>.Instance,
+            governancePolicy: null,
+            intentScoringEngine: intentScoring.Object,
+            routingOrchestrator: routingOrchestrator.Object,
+            workflowEngine: workflowEngine.Object,
+            conversationInboxService: inboxService.Object);
+
+        var result = await engine.ExecuteAsync(new AgentExecutionRequest
+        {
+            TenantId = "tenant-1",
+            AgentKey = "router-agent",
+            UserId = "user-1",
+            UserMessage = "zzzzzz",
+            CorrelationId = "corr-4",
+            SessionContext = new AgentSessionContext
+            {
+                SessionId = "sess-4",
+                UserIdentifier = "145346172870721@lid",
+                ChannelType = "WhatsApp",
+                ChannelId = "ch-1",
+                IsWindowOpen = true,
+                WindowHours = 24
+            },
+            Metadata = new Dictionary<string, string>
+            {
+                ["routing.is_router_agent"] = "true"
+            }
+        }, CancellationToken.None);
+
+        Assert.Equal(ExecutionStatus.Completed, result.Status);
+        Assert.Contains("routing_fallback", result.FinalResponse);
+        inboxService.Verify(x => x.CreateOrUpdateAsync(It.IsAny<InboxConversation>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_RouterLowConfidence_WithClarifyThenRoute_UsesConfiguredFallbackQuestion()
+    {
+        var agentRepo = new Mock<IAgentDefinitionRepository>();
+        var executionRepo = new Mock<IAgentExecutionRepository>();
+        var threadRepo = new Mock<IConversationThreadRepository>();
+        var brainResolver = new Mock<IAgentBrainResolver>();
+        var toolExecutor = new Mock<IToolExecutor>();
+        var policyEngine = new Mock<IPolicyEngine>();
+        var eventTransport = new Mock<IAgentEventTransport>();
+        var checkpointStore = new Mock<ICheckpointStore>();
+        var toolRegistry = new Mock<IToolRegistry>();
+        var planner = new Mock<IExecutionPlanner>();
+        var intentScoring = new Mock<IIntentScoringEngine>();
+        var routingOrchestrator = new Mock<IRoutingOrchestrator>();
+        var workflowEngine = new Mock<IWorkflowEngine>();
+        var inboxService = new Mock<IConversationInboxService>();
+
+        var audit = new Mock<IAuditMemory>();
+        var memory = new Mock<IAgentMemoryService>();
+        memory.SetupGet(x => x.Audit).Returns(audit.Object);
+        memory.SetupGet(x => x.Working).Returns(Mock.Of<IWorkingMemory>());
+        memory.SetupGet(x => x.LongTerm).Returns(Mock.Of<ILongTermMemory>());
+        memory.SetupGet(x => x.Vector).Returns(Mock.Of<IVectorMemory>());
+
+        agentRepo.Setup(x => x.GetByIdAsync("router-agent", "tenant-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(BuildRouterAgent());
+
+        var rule = CreateRule("consulta_general", "wf-support", "support-agent", 10);
+        intentScoring.Setup(x => x.ClassifyAsync("ayuda", "tenant-1", "whatsapp", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new IntentClassificationResult
+            {
+                Message = "ayuda",
+                BestMatch = new IntentMatch { IntentKey = "consulta_general", SimilarityScore = 0.55f, MatchedVia = "semantic", Rule = rule },
+                AllCandidates = new List<IntentMatch>(),
+                BestScore = 0.55f,
+                Confidence = ConfidenceLevel.Low,
+                RequiresHumanReview = true,
+                ExplanationJson = "{}"
+            });
+
+        routingOrchestrator.Setup(x => x.RouteMessageAsync(
+                It.IsAny<IntentClassificationResult>(),
+                It.IsAny<RoutingConversationContext>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new RoutingDecision
+            {
+                IntentKey = "consulta_general",
+                WorkflowDefinitionId = "wf-support",
+                TargetAgentId = "support-agent",
+                Action = RoutingAction.Queue,
+                ReasonCode = "low_confidence",
+                ExplanationJson = "{}",
+                DecidedAt = DateTimeOffset.UtcNow
+            });
+
+        inboxService.Setup(x => x.CreateOrUpdateAsync(It.IsAny<InboxConversation>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((InboxConversation c, CancellationToken _) => c);
+
+        var engine = new AgentExecutionEngine(
+            agentRepo.Object,
+            executionRepo.Object,
+            threadRepo.Object,
+            brainResolver.Object,
+            toolExecutor.Object,
+            memory.Object,
+            policyEngine.Object,
+            eventTransport.Object,
+            checkpointStore.Object,
+            toolRegistry.Object,
+            planner.Object,
+            new TokenBudgetService(TokenBudgetConfig.Default),
+            NullLogger<AgentExecutionEngine>.Instance,
+            governancePolicy: null,
+            intentScoringEngine: intentScoring.Object,
+            routingOrchestrator: routingOrchestrator.Object,
+            workflowEngine: workflowEngine.Object,
+            conversationInboxService: inboxService.Object);
+
+        var result = await engine.ExecuteAsync(new AgentExecutionRequest
+        {
+            TenantId = "tenant-1",
+            AgentKey = "router-agent",
+            UserId = "user-1",
+            UserMessage = "ayuda",
+            CorrelationId = "corr-5",
+            SessionContext = new AgentSessionContext
+            {
+                SessionId = "sess-5",
+                UserIdentifier = "145346172870721@lid",
+                ChannelType = "WhatsApp",
+                ChannelId = "ch-1",
+                IsWindowOpen = true,
+                WindowHours = 24
+            },
+            Metadata = new Dictionary<string, string>
+            {
+                ["routing.no_match_action"] = "clarify_then_route",
+                ["routing.fallback_questions_json"] = """[{"text":"¿Qué trámite necesitas realizar?","field":"intent","required":true,"active":true}]"""
+            }
+        }, CancellationToken.None);
+
+        Assert.Equal(ExecutionStatus.Completed, result.Status);
+        Assert.Contains("¿Qué trámite necesitas realizar?", result.FinalResponse);
+        Assert.Contains("\"state\":\"clarifying\"", result.FinalResponse);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_RouterLowSignalSpam_SkipsClarificationAndEscalates()
+    {
+        var agentRepo = new Mock<IAgentDefinitionRepository>();
+        var executionRepo = new Mock<IAgentExecutionRepository>();
+        var threadRepo = new Mock<IConversationThreadRepository>();
+        var brainResolver = new Mock<IAgentBrainResolver>();
+        var toolExecutor = new Mock<IToolExecutor>();
+        var policyEngine = new Mock<IPolicyEngine>();
+        var eventTransport = new Mock<IAgentEventTransport>();
+        var checkpointStore = new Mock<ICheckpointStore>();
+        var toolRegistry = new Mock<IToolRegistry>();
+        var planner = new Mock<IExecutionPlanner>();
+        var intentScoring = new Mock<IIntentScoringEngine>();
+        var routingOrchestrator = new Mock<IRoutingOrchestrator>();
+        var workflowEngine = new Mock<IWorkflowEngine>();
+        var inboxService = new Mock<IConversationInboxService>();
+
+        var audit = new Mock<IAuditMemory>();
+        var memory = new Mock<IAgentMemoryService>();
+        memory.SetupGet(x => x.Audit).Returns(audit.Object);
+        memory.SetupGet(x => x.Working).Returns(Mock.Of<IWorkingMemory>());
+        memory.SetupGet(x => x.LongTerm).Returns(Mock.Of<ILongTermMemory>());
+        memory.SetupGet(x => x.Vector).Returns(Mock.Of<IVectorMemory>());
+
+        agentRepo.Setup(x => x.GetByIdAsync("router-agent", "tenant-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(BuildRouterAgent());
+
+        intentScoring.Setup(x => x.ClassifyAsync("nanananana", "tenant-1", "whatsapp", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new IntentClassificationResult
+            {
+                Message = "nanananana",
+                BestMatch = null,
+                AllCandidates = new List<IntentMatch>(),
+                BestScore = 0.10f,
+                Confidence = ConfidenceLevel.NoMatch,
+                RequiresHumanReview = true,
+                ExplanationJson = "{}"
+            });
+
+        routingOrchestrator.Setup(x => x.RouteMessageAsync(
+                It.IsAny<IntentClassificationResult>(),
+                It.IsAny<RoutingConversationContext>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new RoutingDecision
+            {
+                IntentKey = "unknown",
+                WorkflowDefinitionId = null,
+                TargetAgentId = null,
+                Action = RoutingAction.Fallback,
+                ReasonCode = "no_match",
+                ExplanationJson = "{}",
+                DecidedAt = DateTimeOffset.UtcNow
+            });
+
+        inboxService.Setup(x => x.CreateOrUpdateAsync(It.IsAny<InboxConversation>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((InboxConversation c, CancellationToken _) => c);
+
+        var engine = new AgentExecutionEngine(
+            agentRepo.Object,
+            executionRepo.Object,
+            threadRepo.Object,
+            brainResolver.Object,
+            toolExecutor.Object,
+            memory.Object,
+            policyEngine.Object,
+            eventTransport.Object,
+            checkpointStore.Object,
+            toolRegistry.Object,
+            planner.Object,
+            new TokenBudgetService(TokenBudgetConfig.Default),
+            NullLogger<AgentExecutionEngine>.Instance,
+            governancePolicy: null,
+            intentScoringEngine: intentScoring.Object,
+            routingOrchestrator: routingOrchestrator.Object,
+            workflowEngine: workflowEngine.Object,
+            conversationInboxService: inboxService.Object);
+
+        var result = await engine.ExecuteAsync(new AgentExecutionRequest
+        {
+            TenantId = "tenant-1",
+            AgentKey = "router-agent",
+            UserId = "user-1",
+            UserMessage = "nanananana",
+            CorrelationId = "corr-6",
+            SessionContext = new AgentSessionContext
+            {
+                SessionId = "sess-6",
+                UserIdentifier = "145346172870721@lid",
+                ChannelType = "WhatsApp",
+                ChannelId = "ch-1",
+                IsWindowOpen = true,
+                WindowHours = 24
+            },
+            Metadata = new Dictionary<string, string>
+            {
+                ["routing.no_match_action"] = "clarify_then_route",
+                ["routing.fallback_questions_json"] = """[{"text":"¿Qué trámite necesitas realizar?","field":"intent","required":true,"active":true}]"""
+            }
+        }, CancellationToken.None);
+
+        Assert.Equal(ExecutionStatus.Completed, result.Status);
+        Assert.Contains("\"state\":\"escalated_human\"", result.FinalResponse);
+        Assert.DoesNotContain("¿Qué trámite necesitas realizar?", result.FinalResponse);
+    }
+
     private static AgentDefinition BuildRouterAgent()
     {
         var create = AgentDefinition.Create(
@@ -420,6 +738,52 @@ public sealed class AgentExecutionEngineRoutingTests
         var agent = create.Value!;
         agent.SetSystemRole(AgentSystemRole.Router);
         return agent;
+    }
+
+    private static AgentDefinition BuildStandardAgent()
+    {
+        var create = AgentDefinition.Create(
+            tenantId: "tenant-1",
+            name: "Standard",
+            description: "Standard assistant",
+            brain: new BrainConfiguration
+            {
+                ModelId = "gpt-4o-mini",
+                Provider = "OpenAI",
+                Temperature = 0.1f,
+                MaxResponseTokens = 300,
+                RequiresToolExecution = false,
+                SystemPromptTemplate = "assistant"
+            },
+            loopConfig: new AgentLoopConfig
+            {
+                MaxIterations = 2,
+                MaxExecutionTime = TimeSpan.FromSeconds(30),
+                ToolCallTimeout = TimeSpan.FromSeconds(10),
+                MaxRetries = 1,
+                AllowParallelToolCalls = false,
+                HitlConfig = new HumanInTheLoopConfig { Enabled = false }
+            },
+            memory: new MemoryConfig
+            {
+                EnableWorkingMemory = true,
+                WorkingMemoryTtlSeconds = 600,
+                EnableLongTermMemory = false,
+                EnableVectorMemory = false
+            },
+            session: new SessionConfig
+            {
+                EnableThreads = true,
+                DefaultThreadTtl = TimeSpan.FromHours(1),
+                MaxTurnsPerThread = 10,
+                ContextWindowSize = 5,
+                AutoCreateThread = true,
+                EnableSummarization = false
+            },
+            workflowSteps: Array.Empty<WorkflowStep>(),
+            ownerUserId: "seed");
+
+        return create.Value!;
     }
 
     private static IntentRoutingRule CreateRule(string intentKey, string workflowId, string targetAgentId, int priority)

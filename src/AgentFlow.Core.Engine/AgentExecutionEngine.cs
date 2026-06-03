@@ -155,7 +155,8 @@ public sealed class AgentExecutionEngine : IAgentExecutor
         // ========== 🔥 NEW: INTENT ROUTING INTEGRATION (Fase 2.2) ==========
         // If this is a Router agent AND Intent Routing is enabled, classify and route BEFORE executing the loop.
         // This provides: 99% accuracy, <500ms latency, full explainability, conflict prevention.
-        if (agentDef.SystemRole == AgentSystemRole.Router 
+        var isRouterExecution = agentDef.SystemRole == AgentSystemRole.Router || IsRouterExecution(request.Metadata);
+        if (isRouterExecution
             && _intentScoringEngine is not null 
             && _routingOrchestrator is not null)
         {
@@ -199,8 +200,10 @@ public sealed class AgentExecutionEngine : IAgentExecutor
                 var assistantThreshold = ReadRoutingThreshold(request.Metadata, "routing.assistant_confidence_threshold", 0.80f);
 
                 // Second level: assistant inference from available intent catalog when rules/scoring had no route.
+                var suspectedLowSignal = IsLikelyLowSignalMessage(request.UserMessage, classification);
                 var shouldTryAssistantFallback =
                     (routingDecision.Action == RoutingAction.Fallback || routingDecision.Action == RoutingAction.Queue) &&
+                    !suspectedLowSignal &&
                     (classification.BestScore < intentThreshold ||
                      string.Equals(routingDecision.ReasonCode, "no_rules_configured", StringComparison.OrdinalIgnoreCase) ||
                      string.Equals(routingDecision.ReasonCode, "no_workflow_configured", StringComparison.OrdinalIgnoreCase));
@@ -388,6 +391,7 @@ public sealed class AgentExecutionEngine : IAgentExecutor
                         var fallbackTurn = int.TryParse(request.Metadata.GetValueOrDefault("routing.fallback.turn"), out var parsedTurn)
                             ? Math.Max(0, parsedTurn)
                             : 0;
+                        var suspectedSpamOrLowSignal = IsLikelyLowSignalMessage(request.UserMessage, classification);
 
                         await _memory.Audit.RecordAsync(new AuditEntry
                         {
@@ -412,7 +416,9 @@ public sealed class AgentExecutionEngine : IAgentExecutor
                             })
                         }, CancellationToken.None);
 
-                        if (routingDecision.Action == RoutingAction.Fallback && string.Equals(noMatchAction, "clarify_then_route", StringComparison.OrdinalIgnoreCase))
+                        if ((routingDecision.Action == RoutingAction.Fallback || routingDecision.Action == RoutingAction.Queue) &&
+                            string.Equals(noMatchAction, "clarify_then_route", StringComparison.OrdinalIgnoreCase) &&
+                            !suspectedSpamOrLowSignal)
                         {
                             var questions = ParseFallbackQuestions(request.Metadata.GetValueOrDefault("routing.fallback_questions_json"));
                             var activeQuestions = questions.Where(q => q.Active).Take(5).ToList();
@@ -518,6 +524,26 @@ public sealed class AgentExecutionEngine : IAgentExecutor
                             }, CancellationToken.None);
                         }
 
+                        if (suspectedSpamOrLowSignal)
+                        {
+                            await _memory.Audit.RecordAsync(new AuditEntry
+                            {
+                                ExecutionId = executionId,
+                                AgentId = string.IsNullOrWhiteSpace(fallbackAgentId) ? request.AgentKey : fallbackAgentId,
+                                TenantId = request.TenantId,
+                                UserId = request.UserId,
+                                EventType = AuditEventType.RoutingDecision,
+                                CorrelationId = request.CorrelationId ?? string.Empty,
+                                EventJson = JsonSerializer.Serialize(new
+                                {
+                                    action = "fallback.suspected_spam",
+                                    reason = routingDecision.ReasonCode,
+                                    fallbackTurn,
+                                    messageLength = request.UserMessage?.Length ?? 0
+                                })
+                            }, CancellationToken.None);
+                        }
+
                         await _memory.Audit.RecordAsync(new AuditEntry
                         {
                             ExecutionId = executionId,
@@ -589,7 +615,9 @@ public sealed class AgentExecutionEngine : IAgentExecutor
                                 reasonCode = routingDecision.ReasonCode,
                                 escalationTarget,
                                 escalationTicketId = escalationNotifyResult?.TicketId,
-                                customerMessage = "No pude clasificar tu solicitud con suficiente certeza. Te conecto con un asesor para continuar."
+                                customerMessage = suspectedSpamOrLowSignal
+                                    ? "No pude identificar una solicitud valida en tus mensajes. El caso quedo en revision para seguimiento."
+                                    : "No pude clasificar tu solicitud con suficiente certeza. Te conecto con un asesor para continuar."
                             }),
                             TotalSteps = 2,
                             TotalTokensUsed = 0,
@@ -2540,6 +2568,36 @@ if (!preResponsePolicy.IsSuccess) return Result<string?>.Failure(preResponsePoli
         return float.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed)
             ? Math.Clamp(parsed, 0f, 1f)
             : fallback;
+    }
+
+    private static bool IsRouterExecution(IReadOnlyDictionary<string, string>? metadata)
+        => metadata is not null
+           && metadata.TryGetValue("routing.is_router_agent", out var raw)
+           && string.Equals(raw, "true", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsLikelyLowSignalMessage(string? message, IntentClassificationResult classification)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+            return true;
+
+        if (classification.Confidence != ConfidenceLevel.NoMatch &&
+            classification.Confidence != ConfidenceLevel.Low)
+            return false;
+
+        var normalized = NormalizeRoutingText(message);
+        if (string.IsNullOrWhiteSpace(normalized))
+            return true;
+
+        var compact = normalized.Replace(" ", string.Empty, StringComparison.Ordinal);
+        if (compact.Length < 6)
+            return false;
+
+        var uniqueChars = compact.Distinct().Count();
+        var uniqueRatio = uniqueChars / (double)compact.Length;
+        var hasSingleToken = !normalized.Contains(' ', StringComparison.Ordinal);
+        var hasRepeatedRun = compact.GroupBy(ch => ch).Any(g => g.Count() >= Math.Max(4, compact.Length - 2));
+
+        return hasSingleToken && (uniqueRatio <= 0.45d || hasRepeatedRun);
     }
 
     private async Task<RoutingDecision?> TryAssistantInferenceRoutingAsync(
