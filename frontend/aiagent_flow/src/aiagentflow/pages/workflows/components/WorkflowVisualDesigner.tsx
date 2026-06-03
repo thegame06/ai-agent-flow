@@ -1125,7 +1125,7 @@ export function WorkflowVisualDesigner({
         anchor="right"
         open={selected !== null || selectedStart}
         onClose={closeInspector}
-        hideBackdrop
+        BackdropProps={{ invisible: true }}
         ModalProps={{ keepMounted: true }}
         PaperProps={{
           sx: {
@@ -2292,7 +2292,7 @@ export function WorkflowVisualDesigner({
         anchor="right"
         open={showValidation}
         onClose={() => setShowValidation(false)}
-        hideBackdrop
+        BackdropProps={{ invisible: true }}
         ModalProps={{ keepMounted: true }}
         PaperProps={{
           sx: {
