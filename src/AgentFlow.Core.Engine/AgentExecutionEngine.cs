@@ -201,7 +201,11 @@ public sealed class AgentExecutionEngine : IAgentExecutor
 
                 // Second level: assistant inference from available intent catalog when rules/scoring had no route.
                 var suspectedLowSignal = IsLikelyLowSignalMessage(request.UserMessage, classification);
+                var assistantInferenceEnabled =
+                    request.Metadata.TryGetValue("routing.assistant_inference_enabled", out var assistantInferenceRaw) &&
+                    string.Equals(assistantInferenceRaw, "true", StringComparison.OrdinalIgnoreCase);
                 var shouldTryAssistantFallback =
+                    assistantInferenceEnabled &&
                     (routingDecision.Action == RoutingAction.Fallback || routingDecision.Action == RoutingAction.Queue) &&
                     !suspectedLowSignal &&
                     (classification.BestScore < intentThreshold ||
@@ -350,40 +354,26 @@ public sealed class AgentExecutionEngine : IAgentExecutor
                             routingDecision.ReasonCode,
                             classification.Confidence);
 
-                        if (_conversationInboxService is not null)
-                        {
-                            var state = routingDecision.Action == RoutingAction.Fallback
-                                ? ConversationState.NoMatch
-                                : ConversationState.PendingHumanReview;
-                            var confidence = routingDecision.Action == RoutingAction.Fallback
-                                ? ConfidenceLevel.NoMatch
-                                : ConfidenceLevel.Low;
-                            await _conversationInboxService.CreateOrUpdateAsync(new InboxConversation
-                            {
-                                Id = request.SessionContext?.SessionId
-                                    ?? request.CorrelationId
-                                    ?? Guid.NewGuid().ToString("N"),
-                                TenantId = request.TenantId,
-                                Channel = normalizedRoutingChannel,
-                                UserIdentifier = request.UserId,
-                                LastMessage = request.UserMessage,
-                                State = state,
-                                Confidence = confidence,
-                                DetectedIntentKey = classification.BestMatch?.IntentKey,
-                                AssignedAgentId = request.Metadata.GetValueOrDefault("routing.fallback_agent_id") ?? routingDecision.TargetAgentId,
-                                WorkflowExecutionId = null,
-                                CreatedAt = DateTimeOffset.UtcNow,
-                                UpdatedAt = DateTimeOffset.UtcNow,
-                                RequiresHumanReview = true,
-                                ReviewNotes = $"{routingDecision.ReasonCode}|{request.Metadata.GetValueOrDefault("routing.no_match_action") ?? "human_review_only"}"
-                            }, CancellationToken.None);
-                        }
-                        
                         var noMatchAction = request.Metadata.TryGetValue("routing.no_match_action", out var noMatchRaw)
                             ? noMatchRaw?.Trim().ToLowerInvariant()
                             : "human_review_only";
                         var fallbackAgentId = request.Metadata.GetValueOrDefault("routing.fallback_agent_id") ?? string.Empty;
                         var escalationTarget = request.Metadata.GetValueOrDefault("routing.fallback_escalation_target") ?? string.Empty;
+                        var accumulationActive = request.Metadata.TryGetValue("routing.accumulation_active", out var accumulationActiveRaw) &&
+                            string.Equals(accumulationActiveRaw, "true", StringComparison.OrdinalIgnoreCase);
+                        var suppressRepliesWhileAccumulating = request.Metadata.TryGetValue("routing.suppress_replies_while_accumulating", out var suppressAccumulationRaw)
+                            ? string.Equals(suppressAccumulationRaw, "true", StringComparison.OrdinalIgnoreCase)
+                            : true;
+                        var inboundMessageCount = int.TryParse(
+                            request.Metadata.GetValueOrDefault("routing.inbound_message_count"),
+                            out var parsedInboundCount)
+                            ? Math.Max(0, parsedInboundCount)
+                            : 0;
+                        var maxUnclassifiedMessagesBeforeEscalation = int.TryParse(
+                            request.Metadata.GetValueOrDefault("routing.max_unclassified_messages_before_escalation"),
+                            out var parsedMaxUnclassified)
+                            ? Math.Max(1, parsedMaxUnclassified)
+                            : 4;
                         var maxClarificationTurns = int.TryParse(
                             request.Metadata.GetValueOrDefault("routing.fallback_max_clarification_turns"), out var parsedTurns)
                             ? Math.Clamp(parsedTurns, 1, 5)
@@ -415,6 +405,103 @@ public sealed class AgentExecutionEngine : IAgentExecutor
                                 escalationTarget
                             })
                         }, CancellationToken.None);
+
+                        if (accumulationActive &&
+                            suppressRepliesWhileAccumulating &&
+                            inboundMessageCount < maxUnclassifiedMessagesBeforeEscalation &&
+                            !suspectedSpamOrLowSignal)
+                        {
+                            if (_conversationInboxService is not null)
+                            {
+                                await _conversationInboxService.CreateOrUpdateAsync(new InboxConversation
+                                {
+                                    Id = request.SessionContext?.SessionId
+                                        ?? request.CorrelationId
+                                        ?? Guid.NewGuid().ToString("N"),
+                                    TenantId = request.TenantId,
+                                    Channel = normalizedRoutingChannel,
+                                    UserIdentifier = request.UserId,
+                                    LastMessage = request.Metadata.GetValueOrDefault("channel.latest_user_message") ?? request.UserMessage,
+                                    State = ConversationState.AwaitingClassification,
+                                    Confidence = ConfidenceLevel.Low,
+                                    DetectedIntentKey = classification.BestMatch?.IntentKey,
+                                    AssignedAgentId = fallbackAgentId,
+                                    WorkflowExecutionId = null,
+                                    CreatedAt = DateTimeOffset.UtcNow,
+                                    UpdatedAt = DateTimeOffset.UtcNow,
+                                    RequiresHumanReview = false,
+                                    ReviewNotes = $"{routingDecision.ReasonCode}|context_accumulation|{inboundMessageCount}/{maxUnclassifiedMessagesBeforeEscalation}"
+                                }, CancellationToken.None);
+                            }
+
+                            await _memory.Audit.RecordAsync(new AuditEntry
+                            {
+                                ExecutionId = executionId,
+                                AgentId = string.IsNullOrWhiteSpace(fallbackAgentId) ? request.AgentKey : fallbackAgentId,
+                                TenantId = request.TenantId,
+                                UserId = request.UserId,
+                                EventType = AuditEventType.RoutingDecision,
+                                CorrelationId = request.CorrelationId ?? string.Empty,
+                                EventJson = JsonSerializer.Serialize(new
+                                {
+                                    action = "fallback.accumulating_context",
+                                    reason = routingDecision.ReasonCode,
+                                    inboundMessageCount,
+                                    maxUnclassifiedMessagesBeforeEscalation
+                                })
+                            }, CancellationToken.None);
+
+                            return new AgentExecutionResult
+                            {
+                                ExecutionId = executionId,
+                                AgentKey = request.AgentKey,
+                                AgentVersion = agentDef.Version.ToString(),
+                                Status = ExecutionStatus.Completed,
+                                FinalResponse = JsonSerializer.Serialize(new
+                                {
+                                    type = "routing_fallback",
+                                    state = "accumulating",
+                                    nextTurn = fallbackTurn,
+                                    requiresHumanReview = false,
+                                    suppressCustomerReply = true,
+                                    reasonCode = routingDecision.ReasonCode,
+                                    escalationTarget,
+                                    customerMessage = string.Empty
+                                }),
+                                TotalSteps = 2,
+                                TotalTokensUsed = 0,
+                                DurationMs = routingStopwatch.ElapsedMilliseconds
+                            };
+                        }
+
+                        if (_conversationInboxService is not null)
+                        {
+                            var state = routingDecision.Action == RoutingAction.Fallback
+                                ? ConversationState.NoMatch
+                                : ConversationState.PendingHumanReview;
+                            var confidence = routingDecision.Action == RoutingAction.Fallback
+                                ? ConfidenceLevel.NoMatch
+                                : ConfidenceLevel.Low;
+                            await _conversationInboxService.CreateOrUpdateAsync(new InboxConversation
+                            {
+                                Id = request.SessionContext?.SessionId
+                                    ?? request.CorrelationId
+                                    ?? Guid.NewGuid().ToString("N"),
+                                TenantId = request.TenantId,
+                                Channel = normalizedRoutingChannel,
+                                UserIdentifier = request.UserId,
+                                LastMessage = request.Metadata.GetValueOrDefault("channel.latest_user_message") ?? request.UserMessage,
+                                State = state,
+                                Confidence = confidence,
+                                DetectedIntentKey = classification.BestMatch?.IntentKey,
+                                AssignedAgentId = request.Metadata.GetValueOrDefault("routing.fallback_agent_id") ?? routingDecision.TargetAgentId,
+                                WorkflowExecutionId = null,
+                                CreatedAt = DateTimeOffset.UtcNow,
+                                UpdatedAt = DateTimeOffset.UtcNow,
+                                RequiresHumanReview = true,
+                                ReviewNotes = $"{routingDecision.ReasonCode}|{request.Metadata.GetValueOrDefault("routing.no_match_action") ?? "human_review_only"}"
+                            }, CancellationToken.None);
+                        }
 
                         if ((routingDecision.Action == RoutingAction.Fallback || routingDecision.Action == RoutingAction.Queue) &&
                             string.Equals(noMatchAction, "clarify_then_route", StringComparison.OrdinalIgnoreCase) &&
@@ -564,40 +651,68 @@ public sealed class AgentExecutionEngine : IAgentExecutor
                         HumanEscalationNotificationResult? escalationNotifyResult = null;
                         if (!string.IsNullOrWhiteSpace(escalationTarget) && _humanEscalationNotifier is not null)
                         {
-                            escalationNotifyResult = await _humanEscalationNotifier.NotifyAsync(
-                                new HumanEscalationNotificationRequest
-                                {
-                                    TenantId = request.TenantId,
-                                    QueueId = escalationTarget,
-                                    ConversationId = request.SessionContext?.SessionId ?? request.CorrelationId ?? executionId,
-                                    UserId = request.UserId,
-                                    Channel = normalizedRoutingChannel,
-                                    LastMessage = request.UserMessage,
-                                    ReasonCode = routingDecision.ReasonCode,
-                                    ExecutionId = executionId,
-                                    CorrelationId = request.CorrelationId ?? string.Empty
-                                },
-                                CancellationToken.None);
-
-                            await _memory.Audit.RecordAsync(new AuditEntry
+                            try
                             {
-                                ExecutionId = executionId,
-                                AgentId = string.IsNullOrWhiteSpace(fallbackAgentId) ? request.AgentKey : fallbackAgentId,
-                                TenantId = request.TenantId,
-                                UserId = request.UserId,
-                                EventType = AuditEventType.RoutingDecision,
-                                CorrelationId = request.CorrelationId ?? string.Empty,
-                                EventJson = JsonSerializer.Serialize(new
+                                escalationNotifyResult = await _humanEscalationNotifier.NotifyAsync(
+                                    new HumanEscalationNotificationRequest
+                                    {
+                                        TenantId = request.TenantId,
+                                        QueueId = escalationTarget,
+                                        ConversationId = request.SessionContext?.SessionId ?? request.CorrelationId ?? executionId,
+                                        UserId = request.UserId,
+                                        Channel = normalizedRoutingChannel,
+                                        LastMessage = request.UserMessage ?? string.Empty,
+                                        ReasonCode = routingDecision.ReasonCode ?? "routing_fallback",
+                                        ExecutionId = executionId,
+                                        CorrelationId = request.CorrelationId ?? string.Empty
+                                    },
+                                    CancellationToken.None);
+
+                                await _memory.Audit.RecordAsync(new AuditEntry
                                 {
-                                    action = "fallback.escalation_notification",
-                                    delivered = escalationNotifyResult.Delivered,
-                                    queueId = escalationNotifyResult.QueueId,
-                                    queueName = escalationNotifyResult.QueueName,
-                                    activeMembers = escalationNotifyResult.ActiveMembers,
-                                    ticketId = escalationNotifyResult.TicketId,
-                                    reason = escalationNotifyResult.Reason
-                                })
-                            }, CancellationToken.None);
+                                    ExecutionId = executionId,
+                                    AgentId = string.IsNullOrWhiteSpace(fallbackAgentId) ? request.AgentKey : fallbackAgentId,
+                                    TenantId = request.TenantId,
+                                    UserId = request.UserId,
+                                    EventType = AuditEventType.RoutingDecision,
+                                    CorrelationId = request.CorrelationId ?? string.Empty,
+                                    EventJson = JsonSerializer.Serialize(new
+                                    {
+                                        action = "fallback.escalation_notification",
+                                        delivered = escalationNotifyResult.Delivered,
+                                        queueId = escalationNotifyResult.QueueId,
+                                        queueName = escalationNotifyResult.QueueName,
+                                        activeMembers = escalationNotifyResult.ActiveMembers,
+                                        ticketId = escalationNotifyResult.TicketId,
+                                        reason = escalationNotifyResult.Reason
+                                    })
+                                }, CancellationToken.None);
+                            }
+                            catch (Exception notifyEx)
+                            {
+                                _logger.LogWarning(
+                                    notifyEx,
+                                    "Human escalation notification failed for router fallback. Tenant={TenantId} Session={SessionId} Queue={QueueId}",
+                                    request.TenantId,
+                                    request.SessionContext?.SessionId ?? request.CorrelationId ?? executionId,
+                                    escalationTarget);
+
+                                await _memory.Audit.RecordAsync(new AuditEntry
+                                {
+                                    ExecutionId = executionId,
+                                    AgentId = string.IsNullOrWhiteSpace(fallbackAgentId) ? request.AgentKey : fallbackAgentId,
+                                    TenantId = request.TenantId,
+                                    UserId = request.UserId,
+                                    EventType = AuditEventType.RoutingDecision,
+                                    CorrelationId = request.CorrelationId ?? string.Empty,
+                                    EventJson = JsonSerializer.Serialize(new
+                                    {
+                                        action = "fallback.escalation_notification_failed",
+                                        queueId = escalationTarget,
+                                        error = notifyEx.Message
+                                    })
+                                }, CancellationToken.None);
+                            }
                         }
 
                         return new AgentExecutionResult
@@ -665,8 +780,47 @@ public sealed class AgentExecutionEngine : IAgentExecutor
             catch (Exception ex)
             {
                 _logger.LogError(ex, 
-                    "Intent Routing failed for Router agent - falling back to standard LLM execution");
-                // Continue with normal flow (LLM-based routing) if Intent Routing fails
+                    "Intent Routing failed for Router agent - failing closed without standard LLM execution");
+
+                var executionId = Guid.NewGuid().ToString("N");
+                var escalationTarget = request.Metadata.GetValueOrDefault("routing.fallback_escalation_target") ?? string.Empty;
+                await _memory.Audit.RecordAsync(new AuditEntry
+                {
+                    ExecutionId = executionId,
+                    AgentId = agentDef.Id.ToString(),
+                    TenantId = request.TenantId,
+                    UserId = request.UserId,
+                    EventType = AuditEventType.RoutingDecision,
+                    CorrelationId = request.CorrelationId ?? string.Empty,
+                    EventJson = JsonSerializer.Serialize(new
+                    {
+                        action = "routing.fail_closed",
+                        reason = "intent_routing_exception",
+                        error = ex.Message,
+                        escalationTarget
+                    })
+                }, CancellationToken.None);
+
+                return new AgentExecutionResult
+                {
+                    ExecutionId = executionId,
+                    AgentKey = request.AgentKey,
+                    AgentVersion = agentDef.Version.ToString(),
+                    Status = ExecutionStatus.Completed,
+                    FinalResponse = JsonSerializer.Serialize(new
+                    {
+                        type = "routing_fallback",
+                        state = "escalated_human",
+                        nextTurn = 0,
+                        requiresHumanReview = true,
+                        reasonCode = "intent_routing_exception",
+                        escalationTarget,
+                        customerMessage = "No pude clasificar tu solicitud de forma segura. Te conecto con un asesor para continuar."
+                    }),
+                    TotalSteps = 1,
+                    TotalTokensUsed = 0,
+                    DurationMs = 0
+                };
             }
         }
         // ========== END INTENT ROUTING INTEGRATION ==========
@@ -2589,13 +2743,19 @@ if (!preResponsePolicy.IsSuccess) return Result<string?>.Failure(preResponsePoli
             return true;
 
         var compact = normalized.Replace(" ", string.Empty, StringComparison.Ordinal);
-        if (compact.Length < 6)
-            return false;
-
         var uniqueChars = compact.Distinct().Count();
         var uniqueRatio = uniqueChars / (double)compact.Length;
         var hasSingleToken = !normalized.Contains(' ', StringComparison.Ordinal);
         var hasRepeatedRun = compact.GroupBy(ch => ch).Any(g => g.Count() >= Math.Max(4, compact.Length - 2));
+
+        if (compact.Length <= 1)
+            return true;
+
+        if (compact.Length <= 3)
+            return hasSingleToken && uniqueChars == 1;
+
+        if (compact.Length < 6)
+            return hasSingleToken && (uniqueChars == 1 || uniqueRatio <= 0.34d || hasRepeatedRun);
 
         return hasSingleToken && (uniqueRatio <= 0.45d || hasRepeatedRun);
     }

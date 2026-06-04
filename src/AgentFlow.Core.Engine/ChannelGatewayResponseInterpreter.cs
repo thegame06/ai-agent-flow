@@ -10,7 +10,8 @@ internal static class ChannelGatewayResponseInterpreter
         int NextTurn,
         bool RequiresHumanReview,
         string? ReasonCode,
-        string? EscalationTarget);
+        string? EscalationTarget,
+        bool SuppressCustomerReply);
 
     public static HandoffDirective? TryParseHandoffDirective(string? response)
     {
@@ -80,7 +81,10 @@ internal static class ChannelGatewayResponseInterpreter
             if (!root.TryGetProperty("type", out var typeEl) ||
                 !string.Equals(typeEl.GetString(), "routing_fallback", StringComparison.OrdinalIgnoreCase))
                 return null;
-            if (!root.TryGetProperty("customerMessage", out var msgEl) || string.IsNullOrWhiteSpace(msgEl.GetString()))
+            var suppressCustomerReply = root.TryGetProperty("suppressCustomerReply", out var suppressEl)
+                && suppressEl.ValueKind == System.Text.Json.JsonValueKind.True;
+            if (!root.TryGetProperty("customerMessage", out var msgEl) &&
+                !suppressCustomerReply)
                 return null;
 
             var state = root.TryGetProperty("state", out var stateEl) ? (stateEl.GetString() ?? "inactive") : "inactive";
@@ -89,7 +93,10 @@ internal static class ChannelGatewayResponseInterpreter
                 && rrEl.ValueKind == System.Text.Json.JsonValueKind.True;
             var reasonCode = root.TryGetProperty("reasonCode", out var reasonEl) ? reasonEl.GetString() : null;
             var escalationTarget = root.TryGetProperty("escalationTarget", out var etEl) ? etEl.GetString() : null;
-            return new FallbackDirective(msgEl.GetString()!, state, nextTurn, requiresHumanReview, reasonCode, escalationTarget);
+            var customerMessage = msgEl.ValueKind == System.Text.Json.JsonValueKind.String
+                ? (msgEl.GetString() ?? string.Empty)
+                : string.Empty;
+            return new FallbackDirective(customerMessage, state, nextTurn, requiresHumanReview, reasonCode, escalationTarget, suppressCustomerReply);
         }
         catch
         {

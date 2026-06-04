@@ -24,6 +24,7 @@ public sealed class ChannelGateway : IChannelGateway
     private readonly IAuditMemory _auditMemory;
     private readonly IChannelDeliveryPolicy _deliveryPolicy;
     private readonly IChannelCapabilityPolicy _capabilityPolicy;
+    private readonly IChannelSpamReputationRepository _spamReputationRepo;
     private readonly IHumanEscalationNotifier? _humanEscalationNotifier;
     private readonly ITenantRuntimeSettingsReader? _tenantRuntimeSettingsReader;
     private readonly ILogger<ChannelGateway> _logger;
@@ -39,6 +40,7 @@ public sealed class ChannelGateway : IChannelGateway
         IAgentDefinitionRepository agentRepo,
         IAuditMemory auditMemory,
         IChannelCapabilityPolicy capabilityPolicy,
+        IChannelSpamReputationRepository spamReputationRepo,
         ITenantRuntimeSettingsReader? tenantRuntimeSettingsReader,
         IEnumerable<IChannelHandler> handlers,
         IHumanEscalationNotifier? humanEscalationNotifier,
@@ -54,6 +56,7 @@ public sealed class ChannelGateway : IChannelGateway
         _executionRequestFactory = executionRequestFactory;
         _auditMemory = auditMemory;
         _capabilityPolicy = capabilityPolicy;
+        _spamReputationRepo = spamReputationRepo;
         _tenantRuntimeSettingsReader = tenantRuntimeSettingsReader;
         _humanEscalationNotifier = humanEscalationNotifier;
         _deliveryPolicy = deliveryPolicy ?? new ChannelDeliveryPolicy(agentRepo, auditMemory);
@@ -139,6 +142,110 @@ public sealed class ChannelGateway : IChannelGateway
                 await _sessionRepo.UpdateAsync(session, ct);
             }
 
+            var inboundGuard = await EvaluateInboundGuardAsync(incomingMessage, channel, session, agentKey, ct);
+            if (inboundGuard is not null)
+            {
+                incomingMessage.LinkExecution(inboundGuard.ExecutionId);
+                incomingMessage.Metadata["agentflow.delivery"] = "guarded";
+                incomingMessage.Metadata["agentflow.inbound_guard_reason"] = inboundGuard.ReasonCode;
+                incomingMessage.Metadata["agentflow.execution_status"] = "Guarded";
+                await _messageRepo.UpdateAsync(incomingMessage, ct);
+
+                if (inboundGuard.NotifyHumanReview &&
+                    !string.IsNullOrWhiteSpace(inboundGuard.EscalationTarget) &&
+                    _humanEscalationNotifier is not null)
+                {
+                    try
+                    {
+                        var notifyResult = await _humanEscalationNotifier.NotifyAsync(
+                            new HumanEscalationNotificationRequest
+                            {
+                                TenantId = incomingMessage.TenantId,
+                                QueueId = inboundGuard.EscalationTarget,
+                                ConversationId = incomingMessage.SessionId,
+                                UserId = incomingMessage.From,
+                                Channel = channel.Type.ToString().ToLowerInvariant(),
+                                LastMessage = incomingMessage.Content,
+                                ReasonCode = inboundGuard.ReasonCode,
+                                ExecutionId = inboundGuard.ExecutionId,
+                                CorrelationId = incomingMessage.SessionId
+                            },
+                            ct);
+
+                        if (session is not null)
+                        {
+                            session.Metadata["routing.fallback.escalation_status"] = notifyResult.Delivered ? "delivered" : "failed";
+                            if (!string.IsNullOrWhiteSpace(notifyResult.TicketId))
+                                session.Metadata["routing.fallback.ticket_id"] = notifyResult.TicketId;
+                            if (!string.IsNullOrWhiteSpace(notifyResult.QueueId))
+                                session.Metadata["routing.fallback.queue_id"] = notifyResult.QueueId;
+                            await _sessionRepo.UpdateAsync(session, ct);
+                        }
+                    }
+                    catch (Exception notifyEx)
+                    {
+                        _logger.LogWarning(
+                            notifyEx,
+                            "Inbound guard escalation failed. Tenant={TenantId} Session={SessionId} Queue={QueueId}",
+                            incomingMessage.TenantId,
+                            incomingMessage.SessionId,
+                            inboundGuard.EscalationTarget);
+
+                        if (session is not null)
+                        {
+                            session.Metadata["routing.fallback.escalation_status"] = "failed";
+                            await _sessionRepo.UpdateAsync(session, ct);
+                        }
+                    }
+                }
+
+                await _auditMemory.RecordAsync(new AuditEntry
+                {
+                    ExecutionId = inboundGuard.ExecutionId,
+                    AgentId = agentKey,
+                    TenantId = incomingMessage.TenantId,
+                    UserId = incomingMessage.From,
+                    EventType = AuditEventType.RoutingDecision,
+                    CorrelationId = incomingMessage.SessionId,
+                    EventJson = System.Text.Json.JsonSerializer.Serialize(new
+                    {
+                        action = "inbound_guard_blocked",
+                        reason = inboundGuard.ReasonCode,
+                        channelId = incomingMessage.ChannelId,
+                        sessionId = incomingMessage.SessionId,
+                        escalationTarget = inboundGuard.EscalationTarget
+                    })
+                }, ct);
+
+                if (!inboundGuard.ShouldSendCustomerReply)
+                {
+                    incomingMessage.Metadata["agentflow.delivery"] = "suppressed";
+                    incomingMessage.Metadata["agentflow.visibility"] = "inbox_only";
+                    await _messageRepo.UpdateAsync(incomingMessage, ct);
+                    return incomingMessage;
+                }
+
+                var guardedReply = ChannelMessage.CreateOutgoing(
+                    incomingMessage.TenantId,
+                    incomingMessage.ChannelId,
+                    incomingMessage.SessionId,
+                    incomingMessage.From,
+                    inboundGuard.CustomerMessage);
+                guardedReply.Metadata["actor"] = "system";
+                guardedReply.Metadata["actor_label"] = "Sistema";
+                guardedReply.Metadata["actor_agent_id"] = agentKey;
+                guardedReply.Metadata["agentflow.delivery"] = "sent";
+                guardedReply.Metadata["agentflow.safe_fallback"] = "true";
+                guardedReply.Metadata["agentflow.inbound_guard"] = "true";
+                guardedReply.LinkExecution(inboundGuard.ExecutionId);
+
+                var guardedSend = await SendMessageAsync(incomingMessage.ChannelId, guardedReply, ct);
+                if (!guardedSend.Success)
+                    _logger.LogWarning("Inbound guard reply blocked or failed: {Error}", guardedSend.Error);
+
+                return guardedReply;
+            }
+
             var executionRequest = await _executionRequestFactory.CreateAsync(
                 incomingMessage,
                 channel,
@@ -194,9 +301,31 @@ public sealed class ChannelGateway : IChannelGateway
                 return incomingMessage;
             }
 
+            if (continuation.SuppressCustomerReply)
+            {
+                incomingMessage.Metadata["agentflow.delivery"] = "suppressed";
+                incomingMessage.Metadata["agentflow.visibility"] = "inbox_only";
+                incomingMessage.Metadata["agentflow.execution_status"] = executionResult.Status.ToString();
+                await _messageRepo.UpdateAsync(incomingMessage, ct);
+                if (session is not null)
+                {
+                    UpdateSessionGuardStage(session, "accumulating");
+                    await _sessionRepo.UpdateAsync(session, ct);
+                }
+                return incomingMessage;
+            }
+
             var finalResponse = continuation.FinalResponse;
             var executionIdForOutgoing = continuation.ExecutionIdForOutgoing;
             var respondingAgentKey = continuation.RespondingAgentKey;
+
+            if (session is not null &&
+                string.IsNullOrWhiteSpace(session.Metadata.GetValueOrDefault("routing.fallback.state")))
+            {
+                UpdateSessionGuardStage(session, "classified");
+                session.Metadata["routing.guard.last_classified_at"] = DateTimeOffset.UtcNow.ToString("O");
+                await _sessionRepo.UpdateAsync(session, ct);
+            }
 
             // Create outgoing message
             var customerResponse = finalResponse!;
@@ -498,6 +627,164 @@ public sealed class ChannelGateway : IChannelGateway
             ?? "default-agent";
     }
 
+    private async Task<InboundGuardDecision?> EvaluateInboundGuardAsync(
+        ChannelMessage incomingMessage,
+        ChannelDefinition channel,
+        ChannelSession? session,
+        string agentKey,
+        CancellationToken ct)
+    {
+        if (incomingMessage.Direction != MessageDirection.Incoming || session is null)
+            return null;
+
+        var routingConfig = ReadInboundRoutingConfig(channel);
+        var identifier = string.IsNullOrWhiteSpace(session.Identifier) ? incomingMessage.From : session.Identifier;
+        var existingReputation = await _spamReputationRepo.GetAsync(incomingMessage.TenantId, channel.Id, identifier, ct);
+        var currentState = session.Metadata.GetValueOrDefault("routing.fallback.state") ?? string.Empty;
+        var guardStage = session.Metadata.GetValueOrDefault("routing.guard.stage") ?? "accumulating";
+        var escalationTarget = routingConfig.EscalationTarget
+            ?? session.Metadata.GetValueOrDefault("routing.fallback.escalation_target")
+            ?? string.Empty;
+        var spamEscalationTarget = routingConfig.SpamEscalationTarget
+            ?? escalationTarget;
+
+        if (existingReputation is not null &&
+            existingReputation.Status is SpamReputationStatus.Suspected or SpamReputationStatus.ConfirmedSpam)
+        {
+            UpdateSessionGuardStage(session, "spam_review");
+            session.Metadata["routing.fallback.state"] = "spam_review";
+            session.Metadata["routing.fallback.turn"] = "0";
+            session.Metadata["routing.fallback.reason"] = "spam_reputation_match";
+            session.Metadata["requires_human_review"] = "true";
+            session.Metadata["reply_pending"] = "true";
+            session.Metadata["routing.spam.status"] = existingReputation.Status.ToString();
+            if (!string.IsNullOrWhiteSpace(spamEscalationTarget))
+                session.Metadata["routing.fallback.escalation_target"] = spamEscalationTarget;
+            await _sessionRepo.UpdateAsync(session, ct);
+
+            return new InboundGuardDecision(
+                Guid.NewGuid().ToString("N"),
+                "spam_reputation_match",
+                string.Empty,
+                spamEscalationTarget,
+                !string.IsNullOrWhiteSpace(spamEscalationTarget) &&
+                !string.Equals(session.Metadata.GetValueOrDefault("routing.fallback.escalation_status"), "delivered", StringComparison.OrdinalIgnoreCase),
+                false);
+        }
+
+        if (string.Equals(currentState, "escalated_human", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(currentState, "spam_review", StringComparison.OrdinalIgnoreCase))
+        {
+            return new InboundGuardDecision(
+                Guid.NewGuid().ToString("N"),
+                string.Equals(currentState, "spam_review", StringComparison.OrdinalIgnoreCase)
+                    ? "session_in_spam_review"
+                    : "session_already_escalated",
+                string.Empty,
+                string.Equals(currentState, "spam_review", StringComparison.OrdinalIgnoreCase)
+                    ? spamEscalationTarget
+                    : escalationTarget,
+                false,
+                false);
+        }
+
+        var historyLimit = Math.Max(25, routingConfig.MaxUnclassifiedMessagesBeforeEscalation + routingConfig.HistoryWindowMessagesForClassification + 4);
+        var history = await _messageRepo.GetBySessionAsync(incomingMessage.SessionId, incomingMessage.TenantId, historyLimit, ct);
+        var inboundHistory = history
+            .Where(x => x.Direction == MessageDirection.Incoming)
+            .OrderBy(x => x.CreatedAt)
+            .ToList();
+        var inboundCount = inboundHistory.Count;
+        var recentWindow = inboundHistory.TakeLast(routingConfig.HistoryWindowMessagesForClassification).ToList();
+        var spamSignalCount = CountLowSignalMessages(recentWindow);
+
+        session.Metadata["routing.guard.inbound_count"] = inboundCount.ToString();
+        session.Metadata["routing.guard.spam_signal_count"] = spamSignalCount.ToString();
+        session.Metadata["routing.guard.history_window"] = routingConfig.HistoryWindowMessagesForClassification.ToString();
+
+        if (spamSignalCount >= routingConfig.MaxSpamSignalsBeforeSpamReview)
+        {
+            var reputation = existingReputation ?? ChannelSpamReputation.Create(incomingMessage.TenantId, channel.Id, identifier);
+            if (reputation.Status == SpamReputationStatus.Suspected)
+                reputation.MarkConfirmed("inbound_spam_guard");
+            else
+                reputation.MarkSuspected("inbound_spam_guard");
+            await _spamReputationRepo.UpsertAsync(reputation, ct);
+
+            UpdateSessionGuardStage(session, "spam_review");
+            session.Metadata["routing.fallback.state"] = "spam_review";
+            session.Metadata["routing.fallback.turn"] = "0";
+            session.Metadata["routing.fallback.reason"] = "inbound_spam_guard";
+            session.Metadata["requires_human_review"] = "true";
+            session.Metadata["reply_pending"] = "true";
+            session.Metadata["routing.spam.status"] = reputation.Status.ToString();
+            if (!string.IsNullOrWhiteSpace(spamEscalationTarget))
+                session.Metadata["routing.fallback.escalation_target"] = spamEscalationTarget;
+            await _sessionRepo.UpdateAsync(session, ct);
+
+            return new InboundGuardDecision(
+                Guid.NewGuid().ToString("N"),
+                "inbound_spam_guard",
+                string.Empty,
+                spamEscalationTarget,
+                !string.IsNullOrWhiteSpace(spamEscalationTarget) &&
+                !string.Equals(session.Metadata.GetValueOrDefault("routing.fallback.escalation_status"), "delivered", StringComparison.OrdinalIgnoreCase),
+                false);
+        }
+
+        var accumulationActive = !string.Equals(guardStage, "classified", StringComparison.OrdinalIgnoreCase);
+        if (!accumulationActive)
+            return null;
+
+        UpdateSessionGuardStage(session, "accumulating");
+        session.Metadata["requires_human_review"] = "false";
+        session.Metadata["reply_pending"] = "true";
+
+        if (inboundCount < routingConfig.MinMessagesBeforeClassification)
+        {
+            session.Metadata["routing.guard.awaiting_context"] = "true";
+            await _sessionRepo.UpdateAsync(session, ct);
+
+            if (!routingConfig.SuppressRepliesWhileAccumulating)
+                return null;
+
+            return new InboundGuardDecision(
+                Guid.NewGuid().ToString("N"),
+                "awaiting_more_context",
+                string.Empty,
+                string.Empty,
+                false,
+                false);
+        }
+
+        if (inboundCount >= routingConfig.MaxUnclassifiedMessagesBeforeEscalation &&
+            !string.IsNullOrWhiteSpace(currentState) &&
+            !string.Equals(currentState, "clarifying", StringComparison.OrdinalIgnoreCase))
+        {
+            session.Metadata["routing.fallback.state"] = "escalated_human";
+            session.Metadata["routing.fallback.turn"] = "0";
+            session.Metadata["routing.fallback.reason"] = "unclassified_threshold_reached";
+            session.Metadata["requires_human_review"] = "true";
+            session.Metadata["reply_pending"] = "true";
+            if (!string.IsNullOrWhiteSpace(escalationTarget))
+                session.Metadata["routing.fallback.escalation_target"] = escalationTarget;
+            UpdateSessionGuardStage(session, "escalated_human");
+            await _sessionRepo.UpdateAsync(session, ct);
+
+            return new InboundGuardDecision(
+                Guid.NewGuid().ToString("N"),
+                "unclassified_threshold_reached",
+                string.Empty,
+                escalationTarget,
+                !string.IsNullOrWhiteSpace(escalationTarget) &&
+                !string.Equals(session.Metadata.GetValueOrDefault("routing.fallback.escalation_status"), "delivered", StringComparison.OrdinalIgnoreCase),
+                false);
+        }
+
+        await _sessionRepo.UpdateAsync(session, ct);
+        return null;
+    }
+
     private async Task<string?> EvaluateOutboundGuardAsync(ChannelMessage message, CancellationToken ct)
     {
         if (message.Direction != MessageDirection.Outgoing)
@@ -537,6 +824,99 @@ public sealed class ChannelGateway : IChannelGateway
             .Trim()
             .ToLowerInvariant();
     }
+
+    private static int CountLowSignalMessages(IReadOnlyList<ChannelMessage> history)
+    {
+        return history.Count(x => IsLowSignalInboundMessage(x.Content));
+    }
+
+    private static bool IsLowSignalInboundMessage(string? value)
+    {
+        var normalized = NormalizeOutboundContent(value);
+        if (string.IsNullOrWhiteSpace(normalized))
+            return true;
+
+        var compact = normalized.Replace(" ", string.Empty, StringComparison.Ordinal);
+        if (compact.Length <= 1)
+            return true;
+
+        var uniqueChars = compact.Distinct().Count();
+        var hasRepeatedRun = compact.GroupBy(ch => ch).Any(g => g.Count() >= Math.Max(3, compact.Length - 1));
+        if (compact.Length <= 4 && uniqueChars == 1)
+            return true;
+
+        if (hasRepeatedRun && compact.Length <= 6)
+            return true;
+
+        return compact.Length <= 2;
+    }
+
+    private static void UpdateSessionGuardStage(ChannelSession session, string stage)
+    {
+        session.Metadata["routing.guard.stage"] = stage;
+        session.Metadata["routing.guard.updated_at"] = DateTimeOffset.UtcNow.ToString("O");
+        if (string.Equals(stage, "classified", StringComparison.OrdinalIgnoreCase))
+        {
+            session.Metadata.Remove("routing.fallback.state");
+            session.Metadata.Remove("routing.fallback.turn");
+            session.Metadata.Remove("routing.fallback.reason");
+            session.Metadata.Remove("routing.guard.awaiting_context");
+        }
+    }
+
+    private static InboundRoutingConfig ReadInboundRoutingConfig(ChannelDefinition channel)
+    {
+        var config = channel.Config;
+        var minMessages = ReadConfiguredInt(config, "MinMessagesBeforeClassification", 3, 1, 10);
+        return new InboundRoutingConfig(
+            minMessages,
+            ReadConfiguredInt(config, "MaxUnclassifiedMessagesBeforeEscalation", 4, minMessages, 12),
+            ReadConfiguredInt(config, "HistoryWindowMessagesForClassification", 3, 1, 10),
+            ReadConfiguredInt(config, "MaxSpamSignalsBeforeSpamReview", 2, 1, 10),
+            ReadConfiguredBool(config, "SuppressRepliesWhileAccumulating", true),
+            config.GetValueOrDefault("EscalationTarget"),
+            config.GetValueOrDefault("SpamEscalationTarget"));
+    }
+
+    private static int ReadConfiguredInt(
+        IReadOnlyDictionary<string, string> config,
+        string key,
+        int fallback,
+        int min,
+        int max)
+    {
+        return int.TryParse(config.GetValueOrDefault(key), out var parsed)
+            ? Math.Clamp(parsed, min, max)
+            : fallback;
+    }
+
+    private static bool ReadConfiguredBool(
+        IReadOnlyDictionary<string, string> config,
+        string key,
+        bool fallback)
+    {
+        if (!config.TryGetValue(key, out var raw) || string.IsNullOrWhiteSpace(raw))
+            return fallback;
+
+        return string.Equals(raw, "true", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private sealed record InboundGuardDecision(
+        string ExecutionId,
+        string ReasonCode,
+        string CustomerMessage,
+        string? EscalationTarget,
+        bool NotifyHumanReview,
+        bool ShouldSendCustomerReply);
+
+    private sealed record InboundRoutingConfig(
+        int MinMessagesBeforeClassification,
+        int MaxUnclassifiedMessagesBeforeEscalation,
+        int HistoryWindowMessagesForClassification,
+        int MaxSpamSignalsBeforeSpamReview,
+        bool SuppressRepliesWhileAccumulating,
+        string? EscalationTarget,
+        string? SpamEscalationTarget);
 
 }
 

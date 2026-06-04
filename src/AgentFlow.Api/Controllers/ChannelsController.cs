@@ -322,6 +322,12 @@ public sealed class ChannelsController : ControllerBase
             RouterFallbackAgentId = channel.Config.GetValueOrDefault("RouterFallbackAgentId"),
             MaxClarificationTurns = int.TryParse(channel.Config.GetValueOrDefault("MaxClarificationTurns"), out var turns) ? turns : 2,
             EscalationTarget = channel.Config.GetValueOrDefault("EscalationTarget"),
+            MinMessagesBeforeClassification = ReadRoutingInt(channel.Config, "MinMessagesBeforeClassification", 3, 1, 10),
+            MaxUnclassifiedMessagesBeforeEscalation = ReadRoutingInt(channel.Config, "MaxUnclassifiedMessagesBeforeEscalation", 4, 1, 12),
+            HistoryWindowMessagesForClassification = ReadRoutingInt(channel.Config, "HistoryWindowMessagesForClassification", 3, 1, 10),
+            MaxSpamSignalsBeforeSpamReview = ReadRoutingInt(channel.Config, "MaxSpamSignalsBeforeSpamReview", 2, 1, 10),
+            SuppressRepliesWhileAccumulating = ReadRoutingBool(channel.Config, "SuppressRepliesWhileAccumulating", true),
+            SpamEscalationTarget = channel.Config.GetValueOrDefault("SpamEscalationTarget"),
             ClarificationQuestions = ParseFallbackQuestions(channel.Config.GetValueOrDefault("FallbackQuestionsJson"))
         });
     }
@@ -364,6 +370,13 @@ public sealed class ChannelsController : ControllerBase
         updated["MaxClarificationTurns"] = Math.Clamp(request.MaxClarificationTurns ?? 2, 1, 5).ToString();
         if (!string.IsNullOrWhiteSpace(request.EscalationTarget))
             updated["EscalationTarget"] = request.EscalationTarget.Trim();
+        updated["MinMessagesBeforeClassification"] = Math.Clamp(request.MinMessagesBeforeClassification ?? 3, 1, 10).ToString();
+        updated["MaxUnclassifiedMessagesBeforeEscalation"] = Math.Clamp(request.MaxUnclassifiedMessagesBeforeEscalation ?? 4, 1, 12).ToString();
+        updated["HistoryWindowMessagesForClassification"] = Math.Clamp(request.HistoryWindowMessagesForClassification ?? 3, 1, 10).ToString();
+        updated["MaxSpamSignalsBeforeSpamReview"] = Math.Clamp(request.MaxSpamSignalsBeforeSpamReview ?? 2, 1, 10).ToString();
+        updated["SuppressRepliesWhileAccumulating"] = (request.SuppressRepliesWhileAccumulating ?? true) ? "true" : "false";
+        if (!string.IsNullOrWhiteSpace(request.SpamEscalationTarget))
+            updated["SpamEscalationTarget"] = request.SpamEscalationTarget.Trim();
         if (request.ClarificationQuestions is not null)
             updated["FallbackQuestionsJson"] = JsonSerializer.Serialize(request.ClarificationQuestions.Take(5));
         channel.UpdateConfig(updated);
@@ -382,6 +395,12 @@ public sealed class ChannelsController : ControllerBase
             RouterFallbackAgentId = updated.GetValueOrDefault("RouterFallbackAgentId"),
             MaxClarificationTurns = int.TryParse(updated.GetValueOrDefault("MaxClarificationTurns"), out var maxTurns) ? maxTurns : 2,
             EscalationTarget = updated.GetValueOrDefault("EscalationTarget"),
+            MinMessagesBeforeClassification = ReadRoutingInt(updated, "MinMessagesBeforeClassification", 3, 1, 10),
+            MaxUnclassifiedMessagesBeforeEscalation = ReadRoutingInt(updated, "MaxUnclassifiedMessagesBeforeEscalation", 4, 1, 12),
+            HistoryWindowMessagesForClassification = ReadRoutingInt(updated, "HistoryWindowMessagesForClassification", 3, 1, 10),
+            MaxSpamSignalsBeforeSpamReview = ReadRoutingInt(updated, "MaxSpamSignalsBeforeSpamReview", 2, 1, 10),
+            SuppressRepliesWhileAccumulating = ReadRoutingBool(updated, "SuppressRepliesWhileAccumulating", true),
+            SpamEscalationTarget = updated.GetValueOrDefault("SpamEscalationTarget"),
             ClarificationQuestions = ParseFallbackQuestions(updated.GetValueOrDefault("FallbackQuestionsJson"))
         });
     }
@@ -763,6 +782,29 @@ public sealed class ChannelsController : ControllerBase
             return new List<FallbackQuestionDto>();
         }
     }
+
+    private static int ReadRoutingInt(
+        IReadOnlyDictionary<string, string> config,
+        string key,
+        int fallback,
+        int min,
+        int max)
+    {
+        return int.TryParse(config.GetValueOrDefault(key), out var parsed)
+            ? Math.Clamp(parsed, min, max)
+            : fallback;
+    }
+
+    private static bool ReadRoutingBool(
+        IReadOnlyDictionary<string, string> config,
+        string key,
+        bool fallback)
+    {
+        if (!config.TryGetValue(key, out var raw) || string.IsNullOrWhiteSpace(raw))
+            return fallback;
+
+        return string.Equals(raw, "true", StringComparison.OrdinalIgnoreCase);
+    }
 }
 
 public sealed record CreateChannelRequest
@@ -805,6 +847,12 @@ public sealed record UpdateChannelRoutingRequest
     public string? RouterFallbackAgentId { get; init; }
     public int? MaxClarificationTurns { get; init; }
     public string? EscalationTarget { get; init; }
+    public int? MinMessagesBeforeClassification { get; init; }
+    public int? MaxUnclassifiedMessagesBeforeEscalation { get; init; }
+    public int? HistoryWindowMessagesForClassification { get; init; }
+    public int? MaxSpamSignalsBeforeSpamReview { get; init; }
+    public bool? SuppressRepliesWhileAccumulating { get; init; }
+    public string? SpamEscalationTarget { get; init; }
     public List<FallbackQuestionDto>? ClarificationQuestions { get; init; }
 }
 
@@ -819,6 +867,12 @@ public sealed record ChannelRoutingDto
     public string? RouterFallbackAgentId { get; init; }
     public int MaxClarificationTurns { get; init; } = 2;
     public string? EscalationTarget { get; init; }
+    public int MinMessagesBeforeClassification { get; init; } = 3;
+    public int MaxUnclassifiedMessagesBeforeEscalation { get; init; } = 4;
+    public int HistoryWindowMessagesForClassification { get; init; } = 3;
+    public int MaxSpamSignalsBeforeSpamReview { get; init; } = 2;
+    public bool SuppressRepliesWhileAccumulating { get; init; } = true;
+    public string? SpamEscalationTarget { get; init; }
     public List<FallbackQuestionDto> ClarificationQuestions { get; init; } = new();
 }
 

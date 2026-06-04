@@ -25,6 +25,7 @@ public interface IChannelSessionRepository
         string tenantId,
         string? channelId = null,
         string? status = null,
+        string? operationalState = null,
         string? query = null,
         int page = 0,
         int pageSize = 25,
@@ -51,4 +52,10 @@ public interface IChannelMessageRepository
     Task<Result> InsertAsync(ChannelMessage message, CancellationToken ct = default);
     Task<Result> UpdateAsync(ChannelMessage message, CancellationToken ct = default);
     Task<Result> DeleteAsync(string messageId, string tenantId, CancellationToken ct = default);
+}
+
+public interface IChannelSpamReputationRepository
+{
+    Task<ChannelSpamReputation?> GetAsync(string tenantId, string channelId, string identifier, CancellationToken ct = default);
+    Task<Result> UpsertAsync(ChannelSpamReputation reputation, CancellationToken ct = default);
 }

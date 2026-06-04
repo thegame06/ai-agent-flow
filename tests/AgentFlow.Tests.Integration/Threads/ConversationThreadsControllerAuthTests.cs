@@ -227,7 +227,7 @@ public class ConversationThreadsControllerAuthTests
         public Task<IReadOnlyList<ChannelSession>> GetByAgentAsync(string agentId, string tenantId, CancellationToken ct = default)
             => Task.FromResult<IReadOnlyList<ChannelSession>>(Array.Empty<ChannelSession>());
 
-        public Task<(IReadOnlyList<ChannelSession> Items, long Total)> SearchAsync(string tenantId, string? channelId = null, string? status = null, string? query = null, int page = 0, int pageSize = 25, CancellationToken ct = default)
+        public Task<(IReadOnlyList<ChannelSession> Items, long Total)> SearchAsync(string tenantId, string? channelId = null, string? status = null, string? operationalState = null, string? query = null, int page = 0, int pageSize = 25, CancellationToken ct = default)
             => Task.FromResult(((IReadOnlyList<ChannelSession>)Array.Empty<ChannelSession>(), 0L));
 
         public Task<Result> InsertAsync(ChannelSession session, CancellationToken ct = default)

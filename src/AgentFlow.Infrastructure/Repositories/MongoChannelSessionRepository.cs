@@ -81,6 +81,7 @@ public sealed class MongoChannelSessionRepository : IChannelSessionRepository
         string tenantId,
         string? channelId = null,
         string? status = null,
+        string? operationalState = null,
         string? query = null,
         int page = 0,
         int pageSize = 25,
@@ -95,6 +96,8 @@ public sealed class MongoChannelSessionRepository : IChannelSessionRepository
         if (!string.IsNullOrWhiteSpace(status) &&
             Enum.TryParse<SessionStatus>(status, true, out var parsedStatus))
             filter &= Builders<ChannelSession>.Filter.Eq(x => x.Status, parsedStatus);
+        if (!string.IsNullOrWhiteSpace(operationalState))
+            filter &= BuildOperationalStateFilter(operationalState);
         if (!string.IsNullOrWhiteSpace(query))
         {
             var safeQuery = System.Text.RegularExpressions.Regex.Escape(query.Trim());
@@ -111,6 +114,33 @@ public sealed class MongoChannelSessionRepository : IChannelSessionRepository
             .ToListAsync(ct);
 
         return (items, total);
+    }
+
+    private static FilterDefinition<ChannelSession> BuildOperationalStateFilter(string operationalState)
+    {
+        var filter = Builders<ChannelSession>.Filter;
+        var normalized = operationalState.Trim().ToLowerInvariant();
+
+        return normalized switch
+        {
+            "awaiting_classification" => filter.And(
+                filter.Eq("Metadata.routing.guard.stage", "accumulating"),
+                filter.Ne("Metadata.routing.fallback.state", "spam_review"),
+                filter.Ne("Metadata.routing.fallback.state", "escalated_human"),
+                filter.Ne("Metadata.requires_human_review", "true")),
+            "spam_review" => filter.Eq("Metadata.routing.fallback.state", "spam_review"),
+            "escalated_human" => filter.Eq("Metadata.routing.fallback.state", "escalated_human"),
+            "pending_human_review" => filter.And(
+                filter.Eq("Metadata.requires_human_review", "true"),
+                filter.Ne("Metadata.routing.fallback.state", "spam_review"),
+                filter.Ne("Metadata.routing.fallback.state", "escalated_human")),
+            "classified" => filter.And(
+                filter.Ne("Metadata.routing.guard.stage", "accumulating"),
+                filter.Ne("Metadata.routing.fallback.state", "spam_review"),
+                filter.Ne("Metadata.routing.fallback.state", "escalated_human"),
+                filter.Ne("Metadata.requires_human_review", "true")),
+            _ => FilterDefinition<ChannelSession>.Empty
+        };
     }
 
     public async Task<Result> InsertAsync(ChannelSession session, CancellationToken ct = default)

@@ -13,6 +13,7 @@ public sealed record ChannelPostExecutionResult
     public required string FinalResponse { get; init; }
     public required string ExecutionIdForOutgoing { get; init; }
     public required string RespondingAgentKey { get; init; }
+    public bool SuppressCustomerReply { get; init; }
 }
 
 public static class ChannelPostExecutionCoordinator
@@ -35,6 +36,7 @@ public static class ChannelPostExecutionCoordinator
         var finalResponse = executionResult.FinalResponse ?? string.Empty;
         var executionIdForOutgoing = executionResult.ExecutionId;
         var respondingAgentKey = executionResult.AgentKey;
+        var suppressCustomerReply = false;
 
         if (session is not null)
         {
@@ -82,6 +84,7 @@ public static class ChannelPostExecutionCoordinator
 
                 await sessionRepo.UpdateAsync(session, ct);
                 finalResponse = fallbackDirective.CustomerMessage;
+                suppressCustomerReply = fallbackDirective.SuppressCustomerReply;
             }
             else if (session.Metadata.ContainsKey("routing.fallback.state"))
             {
@@ -123,11 +126,12 @@ public static class ChannelPostExecutionCoordinator
             {
                 return new ChannelPostExecutionResult
                 {
-                    FinalResponse = string.Empty,
-                    ExecutionIdForOutgoing = brainResult.ExecutionId,
-                    RespondingAgentKey = brainResult.AgentKey
-                };
-            }
+                        FinalResponse = string.Empty,
+                        ExecutionIdForOutgoing = brainResult.ExecutionId,
+                        RespondingAgentKey = brainResult.AgentKey,
+                        SuppressCustomerReply = false
+                    };
+                }
 
             finalResponse = brainResult.FinalResponse!;
             executionIdForOutgoing = brainResult.ExecutionId;
@@ -158,7 +162,8 @@ public static class ChannelPostExecutionCoordinator
                     {
                         FinalResponse = string.Empty,
                         ExecutionIdForOutgoing = executionIdForOutgoing,
-                        RespondingAgentKey = respondingAgentKey
+                        RespondingAgentKey = respondingAgentKey,
+                        SuppressCustomerReply = false
                     };
                 }
 
@@ -185,7 +190,8 @@ public static class ChannelPostExecutionCoordinator
                     {
                         FinalResponse = string.Empty,
                         ExecutionIdForOutgoing = executionIdForOutgoing,
-                        RespondingAgentKey = respondingAgentKey
+                        RespondingAgentKey = respondingAgentKey,
+                        SuppressCustomerReply = false
                     };
                 }
 
@@ -204,7 +210,8 @@ public static class ChannelPostExecutionCoordinator
         {
             FinalResponse = finalResponse,
             ExecutionIdForOutgoing = executionIdForOutgoing,
-            RespondingAgentKey = respondingAgentKey
+            RespondingAgentKey = respondingAgentKey,
+            SuppressCustomerReply = suppressCustomerReply
         };
     }
 }

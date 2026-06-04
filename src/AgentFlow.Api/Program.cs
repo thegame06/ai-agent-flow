@@ -1,8 +1,10 @@
 using AgentFlow.Api;
 using AgentFlow.Api.TestStudio;
 using AgentFlow.Api.Middleware;
+using AgentFlow.Api.Contracts.OpenApi;
 using AgentFlow.Security;
 using Microsoft.AspNetCore.Mvc;
+using System.Reflection;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -20,6 +22,11 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(opt =>
 {
     opt.SwaggerDoc("v1", new() { Title = "Annonai Agent Flow API", Version = "v1" });
+    var xmlPath = Path.Combine(AppContext.BaseDirectory, $"{Assembly.GetExecutingAssembly().GetName().Name}.xml");
+    if (File.Exists(xmlPath))
+        opt.IncludeXmlComments(xmlPath, includeControllerXmlComments: true);
+    opt.SchemaFilter<ChannelSessionsSchemaFilter>();
+    opt.OperationFilter<ChannelSessionsOperationFilter>();
     opt.AddSecurityDefinition("Bearer", new()
     {
         Type = Microsoft.OpenApi.Models.SecuritySchemeType.Http,

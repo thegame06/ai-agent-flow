@@ -232,6 +232,7 @@ public static class DependencyInjection
         services.AddSingleton<IChannelDefinitionRepository, MongoChannelDefinitionRepository>();
         services.AddSingleton<IChannelSessionRepository, MongoChannelSessionRepository>();
         services.AddSingleton<IChannelMessageRepository, MongoChannelMessageRepository>();
+        services.AddSingleton<IChannelSpamReputationRepository, MongoChannelSpamReputationRepository>();
 
         return services;
     }
