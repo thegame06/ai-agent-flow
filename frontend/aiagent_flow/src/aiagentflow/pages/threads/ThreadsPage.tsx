@@ -64,6 +64,13 @@ type SessionRow = {
   lastError?: string;
   lastFailureLevel?: string;
   routingWorkflowId?: string;
+  routingStage?: string;
+  routingFallbackState?: string;
+  requiresHumanReview?: boolean;
+  operationalState?: string;
+  spamReputationStatus?: string;
+  spamSignalCount?: number;
+  spamLastReasonCode?: string;
 };
 
 type SessionMessage = {
@@ -182,6 +189,62 @@ const commercialStateColor = (state?: string) => {
   if (state === 'sale_created') return 'warning';
   if (state === 'closed') return 'default';
   return 'info';
+};
+
+const operationalStateLabel = (state?: string) => {
+  switch (state) {
+    case 'awaiting_classification':
+      return 'Esperando contexto';
+    case 'pending_human_review':
+      return 'Revision humana';
+    case 'escalated_human':
+      return 'Escalado';
+    case 'spam_review':
+      return 'Spam review';
+    default:
+      return 'Atendido';
+  }
+};
+
+const operationalStateColor = (state?: string) => {
+  switch (state) {
+    case 'awaiting_classification':
+      return 'info';
+    case 'pending_human_review':
+      return 'warning';
+    case 'escalated_human':
+      return 'secondary';
+    case 'spam_review':
+      return 'error';
+    default:
+      return 'success';
+  }
+};
+
+const spamReputationLabel = (status?: string) => {
+  switch (status) {
+    case 'suspected':
+      return 'Spam sospechoso';
+    case 'confirmed_spam':
+      return 'Spam confirmado';
+    case 'cleared':
+      return 'Spam limpiado';
+    default:
+      return null;
+  }
+};
+
+const spamReputationColor = (status?: string) => {
+  switch (status) {
+    case 'suspected':
+      return 'warning';
+    case 'confirmed_spam':
+      return 'error';
+    case 'cleared':
+      return 'success';
+    default:
+      return 'default';
+  }
 };
 
 export default function ThreadsPage() {
@@ -767,9 +830,8 @@ export default function ThreadsPage() {
                       const hasUnread = (row.unreadCount ?? 0) > 0;
                       const lastEvent = row.lastError
                         ? 'Error de entrega'
-                        : row.replyPending || hasUnread
-                          ? 'Pendiente de respuesta'
-                          : 'Atendido';
+                        : operationalStateLabel(row.operationalState);
+                      const spamLabel = spamReputationLabel(row.spamReputationStatus);
                       return (
                         <ListItem key={row.id} disablePadding sx={{ mb: 0.5 }}>
                           <ListItemButton
@@ -800,10 +862,21 @@ export default function ThreadsPage() {
                                   <Typography variant="caption" color="text.secondary" noWrap>
                                     {row.lastCustomerMessage || row.lastAgentMessage || row.identifier}
                                   </Typography>
-                                  <Stack direction="row" spacing={0.75}>
+                                  <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap" sx={{ minWidth: 0, maxWidth: '100%' }}>
                                     <Chip size="small" variant="outlined" label={row.channelType} />
                                     <Chip size="small" label={row.status} color={row.status === 'Active' ? 'success' : 'default'} />
-                                    <Chip size="small" variant="outlined" label={lastEvent} />
+                                    <Chip size="small" color={operationalStateColor(row.operationalState) as any} variant="outlined" label={lastEvent} />
+                                    {spamLabel && (
+                                      <Chip
+                                        size="small"
+                                        color={spamReputationColor(row.spamReputationStatus) as any}
+                                        label={
+                                          row.spamSignalCount && row.spamSignalCount > 0
+                                            ? `${spamLabel} (${row.spamSignalCount})`
+                                            : spamLabel
+                                        }
+                                      />
+                                    )}
                                     {(row.replyPending || hasUnread) && <Chip size="small" color="warning" label="Por responder" />}
                                     {hasUnread && <Chip size="small" color="primary" label={String(row.unreadCount)} />}
                                   </Stack>
@@ -865,6 +938,25 @@ export default function ThreadsPage() {
                       <Chip size="small" label={context?.status || '...'} variant="outlined" />
                       {selectedRow?.routingWorkflowId && (
                         <Chip size="small" color="secondary" variant="outlined" label={`Workflow ${selectedRow.routingWorkflowId}`} />
+                      )}
+                      {selectedRow?.operationalState && (
+                        <Chip
+                          size="small"
+                          color={operationalStateColor(selectedRow.operationalState) as any}
+                          variant="outlined"
+                          label={operationalStateLabel(selectedRow.operationalState)}
+                        />
+                      )}
+                      {spamReputationLabel(selectedRow?.spamReputationStatus) && (
+                        <Chip
+                          size="small"
+                          color={spamReputationColor(selectedRow?.spamReputationStatus) as any}
+                          label={
+                            selectedRow?.spamSignalCount && selectedRow.spamSignalCount > 0
+                              ? `${spamReputationLabel(selectedRow.spamReputationStatus)} (${selectedRow.spamSignalCount})`
+                              : spamReputationLabel(selectedRow?.spamReputationStatus)
+                          }
+                        />
                       )}
                       <Chip
                         size="small"
