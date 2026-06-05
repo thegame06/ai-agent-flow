@@ -481,6 +481,138 @@ public sealed class ChannelGatewayTests
             It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    [Fact]
+    public async Task ProcessMessageAsync_UnclassifiedThresholdWithoutEscalationTarget_MarksPendingHumanReview()
+    {
+        var channelRepo = new Mock<IChannelDefinitionRepository>();
+        var sessionRepo = new Mock<IChannelSessionRepository>();
+        var messageRepo = new Mock<IChannelMessageRepository>();
+        var executor = new Mock<IAgentExecutor>();
+        var handoffExecutor = new Mock<IAgentHandoffExecutor>();
+        var handoffPolicy = new Mock<IManagerHandoffPolicy>();
+        var requestFactory = new Mock<IChannelExecutionRequestFactory>();
+        var auditMemory = new Mock<IAuditMemory>();
+        var spamReputationRepo = new Mock<IChannelSpamReputationRepository>();
+
+        var channel = ChannelDefinition.Create("tenant-1", "api", ChannelType.Api);
+        channel.UpdateConfig(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["MinMessagesBeforeClassification"] = "3",
+            ["MaxUnclassifiedMessagesBeforeEscalation"] = "4"
+        });
+
+        var session = ChannelSession.Create("tenant-1", channel.Id, ChannelType.Api, "user-1");
+        session.LinkAgent("router-agent");
+        session.Metadata["routing.fallback.state"] = "no_match";
+        session.Metadata["routing.guard.stage"] = "accumulating";
+
+        var history = new[]
+        {
+            ChannelMessage.CreateIncoming("tenant-1", channel.Id, session.Id, "user-1", "hola"),
+            ChannelMessage.CreateIncoming("tenant-1", channel.Id, session.Id, "user-1", "me ayudan"),
+            ChannelMessage.CreateIncoming("tenant-1", channel.Id, session.Id, "user-1", "quiero informacion"),
+            ChannelMessage.CreateIncoming("tenant-1", channel.Id, session.Id, "user-1", "si")
+        };
+
+        channelRepo.Setup(x => x.GetByIdAsync(channel.Id, "tenant-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(channel);
+        sessionRepo.Setup(x => x.GetByIdAsync(session.Id, "tenant-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(session);
+        sessionRepo.Setup(x => x.UpdateAsync(session, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Success());
+        messageRepo.Setup(x => x.InsertAsync(It.IsAny<ChannelMessage>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Success());
+        messageRepo.Setup(x => x.UpdateAsync(It.IsAny<ChannelMessage>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Success());
+        messageRepo.Setup(x => x.GetBySessionAsync(session.Id, "tenant-1", It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(history);
+
+        var gateway = new ChannelGateway(
+            channelRepo.Object,
+            sessionRepo.Object,
+            messageRepo.Object,
+            executor.Object,
+            handoffExecutor.Object,
+            handoffPolicy.Object,
+            requestFactory.Object,
+            Mock.Of<IAgentDefinitionRepository>(),
+            auditMemory.Object,
+            Mock.Of<IChannelCapabilityPolicy>(),
+            spamReputationRepo.Object,
+            null,
+            new[] { new TestChannelHandler(ChannelType.Api) },
+            null,
+            NullLogger<ChannelGateway>.Instance);
+
+        var incoming = ChannelMessage.CreateIncoming("tenant-1", channel.Id, session.Id, "user-1", "ok");
+        var result = await gateway.ProcessMessageAsync(incoming, CancellationToken.None);
+
+        Assert.Equal("suppressed", result.Metadata["agentflow.delivery"]);
+        Assert.Equal("pending_human_review", session.Metadata["routing.fallback.state"]);
+        Assert.Equal("pending_human_review", session.Metadata["routing.guard.stage"]);
+        executor.Verify(x => x.ExecuteAsync(It.IsAny<AgentExecutionRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ProcessMessageAsync_WhenSessionPendingHumanReview_RecordsInboundWithoutReply()
+    {
+        var channelRepo = new Mock<IChannelDefinitionRepository>();
+        var sessionRepo = new Mock<IChannelSessionRepository>();
+        var messageRepo = new Mock<IChannelMessageRepository>();
+        var executor = new Mock<IAgentExecutor>();
+        var handoffExecutor = new Mock<IAgentHandoffExecutor>();
+        var handoffPolicy = new Mock<IManagerHandoffPolicy>();
+        var requestFactory = new Mock<IChannelExecutionRequestFactory>();
+        var auditMemory = new Mock<IAuditMemory>();
+        var spamReputationRepo = new Mock<IChannelSpamReputationRepository>();
+
+        var channel = ChannelDefinition.Create("tenant-1", "api", ChannelType.Api);
+        var session = ChannelSession.Create("tenant-1", channel.Id, ChannelType.Api, "user-1");
+        session.LinkAgent("router-agent");
+        session.Metadata["routing.fallback.state"] = "pending_human_review";
+        session.Metadata["routing.guard.stage"] = "pending_human_review";
+
+        channelRepo.Setup(x => x.GetByIdAsync(channel.Id, "tenant-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(channel);
+        sessionRepo.Setup(x => x.GetByIdAsync(session.Id, "tenant-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(session);
+        sessionRepo.Setup(x => x.UpdateAsync(session, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Success());
+        messageRepo.Setup(x => x.InsertAsync(It.IsAny<ChannelMessage>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Success());
+        messageRepo.Setup(x => x.UpdateAsync(It.IsAny<ChannelMessage>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Success());
+        messageRepo.Setup(x => x.GetBySessionAsync(session.Id, "tenant-1", It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<ChannelMessage>());
+
+        var gateway = new ChannelGateway(
+            channelRepo.Object,
+            sessionRepo.Object,
+            messageRepo.Object,
+            executor.Object,
+            handoffExecutor.Object,
+            handoffPolicy.Object,
+            requestFactory.Object,
+            Mock.Of<IAgentDefinitionRepository>(),
+            auditMemory.Object,
+            Mock.Of<IChannelCapabilityPolicy>(),
+            spamReputationRepo.Object,
+            null,
+            new[] { new TestChannelHandler(ChannelType.Api) },
+            null,
+            NullLogger<ChannelGateway>.Instance);
+
+        var incoming = ChannelMessage.CreateIncoming("tenant-1", channel.Id, session.Id, "user-1", "sigo escribiendo");
+        var result = await gateway.ProcessMessageAsync(incoming, CancellationToken.None);
+
+        Assert.Equal("suppressed", result.Metadata["agentflow.delivery"]);
+        Assert.Equal("inbox_only", result.Metadata["agentflow.visibility"]);
+        executor.Verify(x => x.ExecuteAsync(It.IsAny<AgentExecutionRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+        auditMemory.Verify(x => x.RecordAsync(
+            It.Is<AuditEntry>(a => a.EventJson.Contains("session_pending_human_review")),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
     private sealed class TestChannelHandler(ChannelType type) : IChannelHandler
     {
         public ChannelType SupportedChannelType => type;

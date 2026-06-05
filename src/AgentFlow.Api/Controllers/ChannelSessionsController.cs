@@ -299,6 +299,9 @@ public sealed class ChannelSessionsController : ControllerBase
         if (string.Equals(fallbackState, "escalated_human", StringComparison.OrdinalIgnoreCase))
             return "escalated_human";
 
+        if (string.Equals(fallbackState, "pending_human_review", StringComparison.OrdinalIgnoreCase))
+            return "pending_human_review";
+
         if (requiresHumanReview)
             return "pending_human_review";
 

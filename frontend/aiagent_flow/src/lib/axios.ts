@@ -270,6 +270,7 @@ export const endpoints = {
       list: (tenantId: string) => `/api/v1/tenants/${tenantId}/channel-sessions`,
       detail: (tenantId: string, sessionId: string) => `/api/v1/tenants/${tenantId}/channel-sessions/${sessionId}`,
       messages: (tenantId: string, sessionId: string) => `/api/v1/tenants/${tenantId}/channel-sessions/${sessionId}/messages`,
+      spamReputation: (tenantId: string, sessionId: string) => `/api/v1/tenants/${tenantId}/channel-sessions/${sessionId}/spam-reputation`,
     },
     commerce: {
       resolveParty: (tenantId: string) => `/api/v1/tenants/${tenantId}/commerce/crm/resolve-party`,

@@ -297,6 +297,7 @@ export default function ThreadsPage() {
   const [invoicePreviewOpen, setInvoicePreviewOpen] = useState(false);
   const [actionError, setActionError] = useState('');
   const [actionOk, setActionOk] = useState('');
+  const [spamActionLoading, setSpamActionLoading] = useState(false);
   const [enabledModules, setEnabledModules] = useState<Record<string, boolean>>({});
   const [agents, setAgents] = useState<AgentOption[]>([]);
 
@@ -630,6 +631,35 @@ export default function ThreadsPage() {
       await loadContextAndMessages(context.id);
     } catch (e: any) {
       setActionError(e?.message ?? 'No se pudo cerrar la conversacion.');
+    }
+  };
+
+  const updateSpamReputation = async (status: 'suspected' | 'confirmed_spam' | 'cleared') => {
+    if (!selectedRow) return;
+    try {
+      setSpamActionLoading(true);
+      setActionError('');
+      await axios.put(endpoints.agentflow.channelSessions.spamReputation(tenantId, selectedRow.id), {
+        status,
+        reasonCode:
+          status === 'suspected'
+            ? 'manual_spam_review'
+            : status === 'confirmed_spam'
+              ? 'manual_confirmed_spam'
+              : 'manual_review_cleared',
+      });
+      setActionOk(
+        status === 'cleared'
+          ? 'Conversacion desbloqueada.'
+          : status === 'confirmed_spam'
+            ? 'Conversacion marcada como spam confirmado.'
+            : 'Conversacion marcada para revision de spam.'
+      );
+      await loadSessions();
+    } catch (e: any) {
+      setActionError(e?.message ?? 'No se pudo actualizar la reputacion spam.');
+    } finally {
+      setSpamActionLoading(false);
     }
   };
 
@@ -979,6 +1009,35 @@ export default function ThreadsPage() {
                         <Iconify icon="mdi:close-circle-outline" />
                       </IconButton>
                     </Stack>
+                  </Stack>
+                  <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" sx={{ px: 0.5 }}>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      color="warning"
+                      onClick={() => updateSpamReputation('suspected')}
+                      disabled={spamActionLoading}
+                    >
+                      Marcar sospechoso
+                    </Button>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      color="error"
+                      onClick={() => updateSpamReputation('confirmed_spam')}
+                      disabled={spamActionLoading}
+                    >
+                      Confirmar spam
+                    </Button>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      color="success"
+                      onClick={() => updateSpamReputation('cleared')}
+                      disabled={spamActionLoading}
+                    >
+                      Limpiar / desbloquear
+                    </Button>
                   </Stack>
                   {conversationEvents.length > 0 && (
                     <Stack direction="row" spacing={1} alignItems="center" sx={{ px: 0.5, flexWrap: 'wrap' }} useFlexGap>

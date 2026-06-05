@@ -100,6 +100,7 @@ public sealed class ChannelExecutionRequestFactory : IChannelExecutionRequestFac
         var inboundMessageCount = inboundHistory.Count;
         var accumulationActive = isRouterAgent &&
             !string.Equals(routingStage, "classified", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(routingStage, "pending_human_review", StringComparison.OrdinalIgnoreCase) &&
             !string.Equals(routingStage, "escalated_human", StringComparison.OrdinalIgnoreCase) &&
             !string.Equals(routingStage, "spam_review", StringComparison.OrdinalIgnoreCase);
 

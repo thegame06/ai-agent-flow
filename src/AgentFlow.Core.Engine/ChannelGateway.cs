@@ -673,12 +673,15 @@ public sealed class ChannelGateway : IChannelGateway
         }
 
         if (string.Equals(currentState, "escalated_human", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(currentState, "pending_human_review", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(currentState, "spam_review", StringComparison.OrdinalIgnoreCase))
         {
             return new InboundGuardDecision(
                 Guid.NewGuid().ToString("N"),
                 string.Equals(currentState, "spam_review", StringComparison.OrdinalIgnoreCase)
                     ? "session_in_spam_review"
+                    : string.Equals(currentState, "pending_human_review", StringComparison.OrdinalIgnoreCase)
+                        ? "session_pending_human_review"
                     : "session_already_escalated",
                 string.Empty,
                 string.Equals(currentState, "spam_review", StringComparison.OrdinalIgnoreCase)
@@ -761,14 +764,17 @@ public sealed class ChannelGateway : IChannelGateway
             !string.IsNullOrWhiteSpace(currentState) &&
             !string.Equals(currentState, "clarifying", StringComparison.OrdinalIgnoreCase))
         {
-            session.Metadata["routing.fallback.state"] = "escalated_human";
+            var fallbackState = string.IsNullOrWhiteSpace(escalationTarget)
+                ? "pending_human_review"
+                : "escalated_human";
+            session.Metadata["routing.fallback.state"] = fallbackState;
             session.Metadata["routing.fallback.turn"] = "0";
             session.Metadata["routing.fallback.reason"] = "unclassified_threshold_reached";
             session.Metadata["requires_human_review"] = "true";
             session.Metadata["reply_pending"] = "true";
             if (!string.IsNullOrWhiteSpace(escalationTarget))
                 session.Metadata["routing.fallback.escalation_target"] = escalationTarget;
-            UpdateSessionGuardStage(session, "escalated_human");
+            UpdateSessionGuardStage(session, fallbackState);
             await _sessionRepo.UpdateAsync(session, ct);
 
             return new InboundGuardDecision(
