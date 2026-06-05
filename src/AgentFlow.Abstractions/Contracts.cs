@@ -930,7 +930,7 @@ public sealed record AssistantBuildRequest
 {
     public required string Name { get; init; }
     public required string FirstMessage { get; init; }
-    public string Channel { get; init; } = "voice";
+    public string Channel { get; init; } = "text";
     public string? RuntimeModelProfileId { get; init; }
     public required AssistantReasoningModelConfig Reasoning { get; init; }
     public required AssistantVoiceConfig Voice { get; init; }

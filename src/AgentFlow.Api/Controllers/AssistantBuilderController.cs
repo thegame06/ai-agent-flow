@@ -40,10 +40,13 @@ public sealed class AssistantBuilderController : ControllerBase
 
         var channel = NormalizeChannel(request.Channel);
         if (channel is null)
-            errors.Add($"channel '{request.Channel}' is not supported. Use text|voice|video_voice.");
+            errors.Add($"channel '{request.Channel}' is not supported. Use text|voice|multimodal.");
 
-        ValidateVoice("voice", request.Voice, errors);
-        ValidateTranscriber("transcriber", request.Transcriber, errors);
+        if (channel is "voice" or "video_voice")
+        {
+            ValidateVoice("voice", request.Voice, errors);
+            ValidateTranscriber("transcriber", request.Transcriber, errors);
+        }
         ValidateCrossComponentCompatibility(request, channel, errors);
 
         if (errors.Count > 0)
@@ -68,19 +71,22 @@ public sealed class AssistantBuilderController : ControllerBase
     [HttpPost("wizard/sessions")]
     public async Task<IActionResult> CreateWizardSession([FromBody] WizardSessionCreateRequest? request, CancellationToken ct = default)
     {
+        var channel = NormalizeChannel(request?.Mode) ?? "text";
         var session = new WizardSessionState
         {
             Id = Guid.NewGuid().ToString("N"),
             TenantId = string.IsNullOrWhiteSpace(request?.TenantId) ? "platform" : request!.TenantId.Trim(),
             Stage = "language"
         };
+        UpsertArtifact(session, "Channel", channel);
 
         await SaveSessionAsync(session, ct);
-        await RecordWizardEventAsync(session, "session.created", new { session.Stage }, ct);
+        await RecordWizardEventAsync(session, "session.created", new { session.Stage, channel }, ct);
 
         return Ok(new
         {
             sessionId = session.Id,
+            channel,
             stage = session.Stage,
             completed = false,
             question = BuildQuestion("language"),
@@ -100,6 +106,7 @@ public sealed class AssistantBuilderController : ControllerBase
         {
             sessionId = session.Id,
             tenantId = session.TenantId,
+            channel = session.Artifact.GetValueOrDefault("Channel") ?? "text",
             stage = session.Stage,
             completed,
             artifact = session.Artifact,
@@ -180,7 +187,9 @@ public sealed class AssistantBuilderController : ControllerBase
         var assistantName = BuildAssistantName(session);
         var firstMessage = BuildFirstMessage(session);
         var language = MapLanguageToCode(session.Artifact.GetValueOrDefault("Language") ?? "Spanish");
-        var runtimeProfile = _runtimeProfiles?.GetDefault(session.TenantId, "Voice");
+        var channel = NormalizeChannel(session.Artifact.GetValueOrDefault("Channel")) ?? "text";
+        var runtimeKind = ResolveRuntimeKind(channel);
+        var runtimeProfile = _runtimeProfiles?.GetDefault(session.TenantId, runtimeKind);
         var reasoningModel = runtimeProfile?.GetRole("brain") ?? "claude-haiku-4-5-20251001";
         var reasoningProvider = runtimeProfile?.GetMetadata("reasoning.provider", "brain.provider", "reasoningProvider", "brainProvider") ?? "anthropic";
         var resolvedVoice = runtimeProfile?.ToAssistantVoiceConfig(language) ?? new AssistantVoiceConfig
@@ -188,20 +197,22 @@ public sealed class AssistantBuilderController : ControllerBase
             Provider = "11labs",
             VoiceId = "nmvA11Y688M5reLqDsVm",
             Model = "eleven_turbo_v2_5",
-            Language = language
+            Language = language,
+            Codec = channel == "video_voice" ? "opus" : null
         };
         var resolvedTranscriber = runtimeProfile?.ToAssistantTranscriberConfig(language) ?? new AssistantTranscriberConfig
         {
             Provider = "deepgram",
             Model = "nova-3",
-            Language = language
+            Language = language,
+            Codec = channel == "video_voice" ? "opus" : null
         };
 
         var request = new AssistantBuildRequest
         {
             Name = assistantName,
             FirstMessage = firstMessage,
-            Channel = "voice",
+            Channel = channel,
             RuntimeModelProfileId = runtimeProfile?.Id,
             Reasoning = new AssistantReasoningModelConfig
             {
@@ -222,7 +233,7 @@ public sealed class AssistantBuilderController : ControllerBase
         if (errors.Count > 0)
             return BadRequest(new { error = "wizard_materialization_invalid", errors });
 
-        await RecordWizardEventAsync(session, "session.materialized", new { assistantName = request.Name }, ct);
+        await RecordWizardEventAsync(session, "session.materialized", new { assistantName = request.Name, channel, runtimeKind }, ct);
 
         return Ok(new
         {
@@ -300,17 +311,28 @@ public sealed class AssistantBuilderController : ControllerBase
     private static string? NormalizeChannel(string? channel)
     {
         if (string.IsNullOrWhiteSpace(channel))
-            return "voice";
+            return "text";
         var normalized = channel.Trim().ToLowerInvariant();
         return normalized switch
         {
             "text" => "text",
             "voice" => "voice",
+            "multimodal" => "video_voice",
+            "multimodalrealtime" => "video_voice",
+            "multimodal_realtime" => "video_voice",
             "video_voice" => "video_voice",
             "video-voice" => "video_voice",
             _ => null
         };
     }
+
+    private static string ResolveRuntimeKind(string channel)
+        => channel switch
+        {
+            "voice" => "Voice",
+            "video_voice" => "MultimodalRealtime",
+            _ => "Text"
+        };
 
     private static void ValidateVoice(string key, AssistantVoiceConfig config, List<string> errors)
     {
@@ -341,6 +363,9 @@ public sealed class AssistantBuilderController : ControllerBase
     private static void ValidateCrossComponentCompatibility(AssistantBuildRequest request, string? channel, List<string> errors)
     {
         if (channel is null)
+            return;
+
+        if (channel == "text")
             return;
 
         if (!request.Voice.Language.Equals(request.Transcriber.Language, StringComparison.OrdinalIgnoreCase))

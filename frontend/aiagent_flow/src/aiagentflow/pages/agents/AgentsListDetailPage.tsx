@@ -1,8 +1,10 @@
 import { Helmet } from 'react-helmet-async';
 import { useMemo, useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
+import Chip from '@mui/material/Chip';
 import Stack from '@mui/material/Stack';
 import Button from '@mui/material/Button';
 import TextField from '@mui/material/TextField';
@@ -25,9 +27,22 @@ import AgentDesignerPage from './Designer/AgentDesignerPage';
 
 export default function AgentsListDetailPage() {
   const tenantId = useTenantId();
-  const runtimeStorageKey = `af:agent:runtimeKind:${tenantId}`;
-  const runtimeKind = typeof window !== 'undefined' ? localStorage.getItem(runtimeStorageKey) : null;
-  const { agents, loading } = useAgents(tenantId, runtimeKind);
+  const [searchParams] = useSearchParams();
+  const resolveRuntime = (value?: string | null): 'Text' | 'Voice' | 'MultimodalRealtime' | null => {
+    if (!value) return null;
+    const normalized = value.toLowerCase();
+    if (normalized === 'text') return 'Text';
+    if (normalized === 'voice') return 'Voice';
+    if (
+      normalized === 'multimodal' ||
+      normalized === 'multimodalrealtime' ||
+      normalized === 'multimodal_realtime' ||
+      normalized === 'video_voice'
+    ) return 'MultimodalRealtime';
+    return null;
+  };
+  const runtimeKind = resolveRuntime(searchParams.get('runtimeKind'));
+  const { agents, stats, loading } = useAgents(tenantId, runtimeKind);
   const [query, setQuery] = useState('');
   const [selectedAgentId, setSelectedAgentId] = useState('');
 
@@ -54,7 +69,13 @@ export default function AgentsListDetailPage() {
 
       <DashboardContent maxWidth={false}>
         <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}>
-          <Typography variant="h4">Asistentes</Typography>
+          <Stack spacing={1}>
+            <Typography variant="h4">Asistentes</Typography>
+            <Stack direction="row" spacing={1}>
+              {runtimeKind ? <Chip size="small" color="info" label={`Modalidad ${runtimeKind}`} /> : <Chip size="small" label="Todas las modalidades" />}
+              <Chip size="small" variant="outlined" label={`${stats?.total ?? agents.length} asistentes`} />
+            </Stack>
+          </Stack>
           <Stack direction="row" spacing={1}>
             <Button
               component={RouterLink}

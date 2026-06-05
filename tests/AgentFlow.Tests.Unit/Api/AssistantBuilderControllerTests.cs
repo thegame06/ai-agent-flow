@@ -41,6 +41,40 @@ public sealed class AssistantBuilderControllerTests
     }
 
     [Fact]
+    public void ValidateAssistantConfig_TextChannel_DoesNotRequireVoiceValidation()
+    {
+        var controller = new AssistantBuilderController();
+        var request = new AssistantBuildRequest
+        {
+            Name = "Asistente Texto",
+            FirstMessage = "Hola",
+            Channel = "text",
+            Reasoning = new AssistantReasoningModelConfig
+            {
+                Provider = "anthropic",
+                Model = "claude-haiku",
+                MaxTokens = 250
+            },
+            Voice = new AssistantVoiceConfig
+            {
+                Provider = string.Empty,
+                VoiceId = string.Empty,
+                Model = string.Empty,
+                Language = string.Empty
+            },
+            Transcriber = new AssistantTranscriberConfig
+            {
+                Provider = string.Empty,
+                Model = string.Empty,
+                Language = string.Empty
+            }
+        };
+
+        var result = controller.ValidateAssistantConfig(request);
+        Assert.IsType<OkObjectResult>(result);
+    }
+
+    [Fact]
     public void ValidateAssistantConfig_WithInvalidLanguage_ReturnsBadRequest()
     {
         var controller = new AssistantBuilderController();
@@ -48,6 +82,7 @@ public sealed class AssistantBuilderControllerTests
         {
             Name = "Seguimiento Leads",
             FirstMessage = "Hola",
+            Channel = "voice",
             Reasoning = new AssistantReasoningModelConfig
             {
                 Provider = "anthropic",
@@ -142,6 +177,44 @@ public sealed class AssistantBuilderControllerTests
     }
 
     [Fact]
+    public void ValidateAssistantConfig_MultimodalAlias_NormalizesAndReturnsOk()
+    {
+        var controller = new AssistantBuilderController();
+        var request = new AssistantBuildRequest
+        {
+            Name = "Seguimiento Multimodal",
+            FirstMessage = "Hola",
+            Channel = "multimodal",
+            Reasoning = new AssistantReasoningModelConfig
+            {
+                Provider = "anthropic",
+                Model = "claude-haiku",
+                MaxTokens = 250
+            },
+            Voice = new AssistantVoiceConfig
+            {
+                Provider = "11labs",
+                VoiceId = "voice-1",
+                Model = "eleven_turbo_v2_5",
+                Language = "es",
+                Codec = "opus"
+            },
+            Transcriber = new AssistantTranscriberConfig
+            {
+                Provider = "deepgram",
+                Model = "nova-3",
+                Language = "es",
+                Codec = "opus"
+            }
+        };
+
+        var result = controller.ValidateAssistantConfig(request);
+        var ok = Assert.IsType<OkObjectResult>(result);
+        using var json = JsonDocument.Parse(JsonSerializer.Serialize(ok.Value));
+        Assert.Equal("video_voice", json.RootElement.GetProperty("normalized").GetProperty("channel").GetString());
+    }
+
+    [Fact]
     public async Task WizardSession_AdvancesOneQuestionAtATime_AndCompletes()
     {
         var controller = new AssistantBuilderController();
@@ -150,6 +223,7 @@ public sealed class AssistantBuilderControllerTests
         using var createdJson = JsonDocument.Parse(JsonSerializer.Serialize(created!.Value));
         var sessionId = createdJson.RootElement.GetProperty("sessionId").GetString();
         Assert.False(string.IsNullOrWhiteSpace(sessionId));
+        Assert.Equal("text", createdJson.RootElement.GetProperty("channel").GetString());
 
         var step1 = await controller.AnswerWizardQuestion(sessionId!, new AssistantBuilderController.WizardSessionAnswerRequest { Answer = "Spanish" }) as OkObjectResult;
         using var step1Json = JsonDocument.Parse(JsonSerializer.Serialize(step1!.Value));
@@ -190,7 +264,7 @@ public sealed class AssistantBuilderControllerTests
     public async Task WizardSession_GetStatus_ReturnsNextQuestion()
     {
         var controller = new AssistantBuilderController();
-        var created = await controller.CreateWizardSession(null) as OkObjectResult;
+        var created = await controller.CreateWizardSession(new AssistantBuilderController.WizardSessionCreateRequest { Mode = "multimodal" }) as OkObjectResult;
         using var createdJson = JsonDocument.Parse(JsonSerializer.Serialize(created!.Value));
         var sessionId = createdJson.RootElement.GetProperty("sessionId").GetString()!;
 
@@ -199,6 +273,7 @@ public sealed class AssistantBuilderControllerTests
 
         Assert.NotNull(status);
         using var statusJson = JsonDocument.Parse(JsonSerializer.Serialize(status!.Value));
+        Assert.Equal("video_voice", statusJson.RootElement.GetProperty("channel").GetString());
         Assert.Equal("task", statusJson.RootElement.GetProperty("stage").GetString());
         Assert.True(statusJson.RootElement.TryGetProperty("question", out var questionEl));
         Assert.False(string.IsNullOrWhiteSpace(questionEl.GetProperty("question").GetString()));
@@ -208,7 +283,7 @@ public sealed class AssistantBuilderControllerTests
     public async Task WizardSession_Materialize_ReturnsAssistantRequest()
     {
         var controller = new AssistantBuilderController();
-        var created = await controller.CreateWizardSession(new AssistantBuilderController.WizardSessionCreateRequest { TenantId = "tenant-1" }) as OkObjectResult;
+        var created = await controller.CreateWizardSession(new AssistantBuilderController.WizardSessionCreateRequest { TenantId = "tenant-1", Mode = "text" }) as OkObjectResult;
         using var createdJson = JsonDocument.Parse(JsonSerializer.Serialize(created!.Value));
         var sessionId = createdJson.RootElement.GetProperty("sessionId").GetString()!;
 
@@ -222,6 +297,26 @@ public sealed class AssistantBuilderControllerTests
         using var materializedJson = JsonDocument.Parse(JsonSerializer.Serialize(materialized!.Value));
         Assert.Equal("completed", materializedJson.RootElement.GetProperty("stage").GetString());
         Assert.True(materializedJson.RootElement.TryGetProperty("assistant", out _));
+        Assert.Equal("text", materializedJson.RootElement.GetProperty("assistant").GetProperty("Channel").GetString());
+    }
+
+    [Fact]
+    public async Task WizardSession_Materialize_MultimodalMode_UsesVideoVoiceChannel()
+    {
+        var controller = new AssistantBuilderController();
+        var created = await controller.CreateWizardSession(new AssistantBuilderController.WizardSessionCreateRequest { TenantId = "tenant-mm", Mode = "multimodal" }) as OkObjectResult;
+        using var createdJson = JsonDocument.Parse(JsonSerializer.Serialize(created!.Value));
+        var sessionId = createdJson.RootElement.GetProperty("sessionId").GetString()!;
+
+        await controller.AnswerWizardQuestion(sessionId, new AssistantBuilderController.WizardSessionAnswerRequest { Answer = "Spanish" });
+        await controller.AnswerWizardQuestion(sessionId, new AssistantBuilderController.WizardSessionAnswerRequest { Answer = "Seguimiento de leads" });
+        await controller.AnswerWizardQuestion(sessionId, new AssistantBuilderController.WizardSessionAnswerRequest { Answer = "Prospectos en negociación" });
+        await controller.AnswerWizardQuestion(sessionId, new AssistantBuilderController.WizardSessionAnswerRequest { Answer = "Amigable" });
+
+        var materializedResult = await controller.MaterializeWizardSession(sessionId);
+        var materialized = Assert.IsType<OkObjectResult>(materializedResult);
+        using var materializedJson = JsonDocument.Parse(JsonSerializer.Serialize(materialized!.Value));
+        Assert.Equal("video_voice", materializedJson.RootElement.GetProperty("assistant").GetProperty("Channel").GetString());
     }
 
     [Fact]

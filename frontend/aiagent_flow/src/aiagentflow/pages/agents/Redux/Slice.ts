@@ -13,6 +13,14 @@ export const fetchAgents = createAsyncThunk(
   }
 );
 
+export const fetchAgentStats = createAsyncThunk(
+  'agents/fetchStats',
+  async ({ tenantId }: { tenantId: string }) => {
+    const response = await axios.get(`/api/v1/tenants/${tenantId}/agents/stats`);
+    return response.data;
+  }
+);
+
 export const fetchAgentById = createAsyncThunk(
   'agents/fetchById',
   async ({ tenantId, agentId }: { tenantId: string; agentId: string }) => {
@@ -75,8 +83,10 @@ const agentsSlice = createSlice({
   name: 'agents',
   initialState: {
     items: [] as any[],
+    stats: null as any,
     selectedAgent: null as any,
     loading: false,
+    statsLoading: false,
     error: null as string | null | undefined,
   },
   reducers: {
@@ -96,6 +106,19 @@ const agentsSlice = createSlice({
       })
       .addCase(fetchAgents.rejected, (state, action) => {
         state.loading = false;
+        state.error = action.error.message;
+      });
+
+    builder
+      .addCase(fetchAgentStats.pending, (state) => {
+        state.statsLoading = true;
+      })
+      .addCase(fetchAgentStats.fulfilled, (state, action) => {
+        state.statsLoading = false;
+        state.stats = action.payload;
+      })
+      .addCase(fetchAgentStats.rejected, (state, action) => {
+        state.statsLoading = false;
         state.error = action.error.message;
       });
 

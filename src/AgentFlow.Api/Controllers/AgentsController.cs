@@ -7,6 +7,7 @@ using AgentFlow.Domain.Repositories;
 using AgentFlow.Domain.ValueObjects;
 using AgentFlow.Security;
 using AgentFlow.Abstractions;
+using AgentFlow.Api.Workflow;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Text.Json;
@@ -68,12 +69,19 @@ public sealed class AgentsController : ControllerBase
         if (ctx != null && ctx.TenantId != tenantId && !ctx.IsPlatformAdmin) 
             return Forbid();
 
+        AgentRuntimeKind? requestedRuntime = null;
+        if (!string.IsNullOrWhiteSpace(runtimeKind))
+        {
+            if (!RuntimeCompatibilityPolicy.TryParseRuntimeKind(runtimeKind, out var parsedRuntime, out _))
+                return BadRequest(new { message = $"runtimeKind '{runtimeKind}' no es valido. Usa Text, Voice o MultimodalRealtime." });
+            requestedRuntime = parsedRuntime;
+        }
+
         var agents = await _agentRepository.GetAllAsync(tenantId, skip, limit, ct);
-        if (!string.IsNullOrWhiteSpace(runtimeKind)
-            && Enum.TryParse<AgentRuntimeKind>(runtimeKind, true, out var parsedRuntime))
+        if (requestedRuntime.HasValue)
         {
             agents = agents
-                .Where(a => a.Session.RuntimeKind == parsedRuntime)
+                .Where(a => a.Session.RuntimeKind == requestedRuntime.Value)
                 .ToList();
         }
 
@@ -97,6 +105,42 @@ public sealed class AgentsController : ControllerBase
         });
 
         return Ok(result);
+    }
+
+    [HttpGet("stats")]
+    public async Task<IActionResult> GetStats(
+        [FromRoute] string tenantId,
+        CancellationToken ct = default)
+    {
+        var ctx = _tenantContext.Current;
+        if (ctx != null && ctx.TenantId != tenantId && !ctx.IsPlatformAdmin)
+            return Forbid();
+
+        var agents = await _agentRepository.GetAllAsync(tenantId, 0, 5000, ct);
+        var runtimeKinds = new[]
+        {
+            AgentRuntimeKind.Text,
+            AgentRuntimeKind.Voice,
+            AgentRuntimeKind.MultimodalRealtime
+        };
+
+        var dto = new AgentCatalogStatsDto
+        {
+            Total = agents.Count,
+            Published = agents.Count(a => a.Status == AgentStatus.Published),
+            System = agents.Count(a => a.IsSystemAgent),
+            WithTools = agents.Count(a => a.AuthorizedTools.Count > 0),
+            RuntimeKinds = runtimeKinds
+                .Select(kind => new AgentRuntimeBucketDto
+                {
+                    Key = kind.ToString(),
+                    Label = kind.ToString(),
+                    Count = agents.Count(a => a.Session.RuntimeKind == kind)
+                })
+                .ToList()
+        };
+
+        return Ok(dto);
     }
 
     // ─────────────────────────────────────────────
@@ -748,7 +792,7 @@ public sealed class AgentsController : ControllerBase
         if (string.IsNullOrWhiteSpace(runtimeModelProfileId))
             return true;
 
-        if (!Enum.TryParse<AgentRuntimeKind>(runtimeKindRaw, true, out var runtimeKind))
+        if (!RuntimeCompatibilityPolicy.TryParseRuntimeKind(runtimeKindRaw, out var runtimeKind, out _))
         {
             error = $"runtimeKind '{runtimeKindRaw}' no es valido.";
             return false;

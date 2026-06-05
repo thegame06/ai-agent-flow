@@ -155,6 +155,27 @@ public sealed record AgentListItemDto
 }
 
 /// <summary>
+/// Summary metrics for the reusable assistants catalog.
+/// Useful for building filter chips/tabs in the client.
+/// </summary>
+public sealed record AgentCatalogStatsDto
+{
+    public int Total { get; init; }
+    public int Published { get; init; }
+    public int System { get; init; }
+    public int WithTools { get; init; }
+    public IReadOnlyList<AgentRuntimeBucketDto> RuntimeKinds { get; init; } = [];
+}
+
+public sealed record AgentRuntimeBucketDto
+{
+    /// <summary>Normalized runtime key: Text | Voice | MultimodalRealtime.</summary>
+    public string Key { get; init; } = "Text";
+    public string Label { get; init; } = "Text";
+    public int Count { get; init; }
+}
+
+/// <summary>
 /// Full DTO for loading an agent in the Designer (includes all config).
 /// </summary>
 public sealed record AgentDetailDto

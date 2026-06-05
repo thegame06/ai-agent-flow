@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { useSearchParams } from 'react-router';
 import { usePopover } from 'minimal-shared/hooks';
@@ -13,6 +13,8 @@ import Avatar from '@mui/material/Avatar';
 import Button from '@mui/material/Button';
 import Divider from '@mui/material/Divider';
 import MenuItem from '@mui/material/MenuItem';
+import ToggleButton from '@mui/material/ToggleButton';
+import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 import Typography from '@mui/material/Typography';
 import IconButton from '@mui/material/IconButton';
 import CardContent from '@mui/material/CardContent';
@@ -84,18 +86,29 @@ export default function AgentsPage() {
     const normalized = value.toLowerCase();
     if (normalized === 'text') return 'Text';
     if (normalized === 'voice') return 'Voice';
-    if (normalized === 'multimodal' || normalized === 'multimodalrealtime') return 'MultimodalRealtime';
+    if (
+      normalized === 'multimodal' ||
+      normalized === 'multimodalrealtime' ||
+      normalized === 'multimodal_realtime' ||
+      normalized === 'video_voice'
+    ) return 'MultimodalRealtime';
     return null;
   };
   const runtimeFromQuery = resolveRuntime(searchParams.get('runtimeKind'));
-  const runtimeFromStorage =
-    typeof window !== 'undefined' ? resolveRuntime(localStorage.getItem(runtimeStorageKey)) : null;
-  const runtimeKind = (runtimeFromQuery ?? runtimeFromStorage ?? null) as string | null;
-  const { agents, loading, clone, remove } = useAgents(tenantId, runtimeKind);
+  const [runtimeKind, setRuntimeKind] = useState<'Text' | 'Voice' | 'MultimodalRealtime' | null>(
+    runtimeFromQuery
+  );
+  const { agents, stats, loading, statsLoading, clone, remove } = useAgents(tenantId, runtimeKind);
+
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (runtimeKind) localStorage.setItem(runtimeStorageKey, runtimeKind);
+    else localStorage.removeItem(runtimeStorageKey);
   }, [runtimeKind, runtimeStorageKey]);
+
+  useEffect(() => {
+    setRuntimeKind(runtimeFromQuery);
+  }, [runtimeFromQuery]);
   const [executeDialog, setExecuteDialog] = useState<{
     open: boolean;
     agent: { id: string; name: string; description?: string } | null;
@@ -182,9 +195,26 @@ export default function AgentsPage() {
     }
   };
 
-  const publishedAgents = agents.filter((agent) => agent.status === 'Published').length;
-  const toolReadyAgents = agents.filter((agent) => (agent.availableTools?.length ?? agent.tools?.length ?? 0) > 0).length;
-  const systemAgents = agents.filter((agent) => agent.isSystemAgent).length;
+  const runtimeOptions = useMemo(
+    () => [
+      { key: null, label: 'Todas', count: stats?.total ?? agents.length },
+      ...(stats?.runtimeKinds ?? []).map((bucket: any) => ({
+        key: bucket.key as 'Text' | 'Voice' | 'MultimodalRealtime',
+        label:
+          bucket.key === 'Text'
+            ? 'Texto'
+            : bucket.key === 'Voice'
+              ? 'Voice'
+              : 'Multimodal',
+        count: bucket.count ?? 0,
+      })),
+    ],
+    [agents.length, stats]
+  );
+  const publishedAgents = stats?.published ?? agents.filter((agent) => agent.status === 'Published').length;
+  const toolReadyAgents =
+    stats?.withTools ?? agents.filter((agent) => (agent.availableTools?.length ?? agent.tools?.length ?? 0) > 0).length;
+  const systemAgents = stats?.system ?? agents.filter((agent) => agent.isSystemAgent).length;
 
   return (
     <>
@@ -199,8 +229,28 @@ export default function AgentsPage() {
           description="Define quien conversa. Los asistentes son reutilizables por modalidad y luego se vinculan desde canales, automatizaciones o campanas."
           icon="mdi:robot-happy-outline"
           meta={
-            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-              {runtimeKind ? <Chip size="small" color="info" label={`Modalidad ${runtimeKind}`} variant="outlined" /> : null}
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap alignItems="center">
+              <ToggleButtonGroup
+                size="small"
+                exclusive
+                value={runtimeKind}
+                onChange={(_, value) => setRuntimeKind(value)}
+                color="primary"
+              >
+                {runtimeOptions.map((option) => (
+                  <ToggleButton key={option.key ?? 'all'} value={option.key}>
+                    <Stack direction="row" spacing={0.75} alignItems="center">
+                      <span>{option.label}</span>
+                      <Chip
+                        size="small"
+                        label={statsLoading ? '...' : option.count}
+                        variant={runtimeKind === option.key ? 'filled' : 'soft'}
+                        color={runtimeKind === option.key ? 'primary' : 'default'}
+                      />
+                    </Stack>
+                  </ToggleButton>
+                ))}
+              </ToggleButtonGroup>
               <Chip size="small" variant="outlined" label="Entidad reusable de primer nivel" />
             </Stack>
           }

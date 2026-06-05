@@ -13,7 +13,16 @@ public static class RuntimeCompatibilityPolicy
             return true;
         }
 
-        if (Enum.TryParse<AgentRuntimeKind>(raw, true, out kind))
+        var alias = raw.Trim().ToLowerInvariant() switch
+        {
+            "text" or "chat" or "message" or "messaging" => nameof(AgentRuntimeKind.Text),
+            "voice" or "call" or "audio" => nameof(AgentRuntimeKind.Voice),
+            "multimodal" or "multimodalrealtime" or "multimodal_realtime" or "video_voice" or "realtime" or "video" =>
+                nameof(AgentRuntimeKind.MultimodalRealtime),
+            _ => raw
+        };
+
+        if (Enum.TryParse<AgentRuntimeKind>(alias, true, out kind))
         {
             normalized = kind.ToString();
             return true;

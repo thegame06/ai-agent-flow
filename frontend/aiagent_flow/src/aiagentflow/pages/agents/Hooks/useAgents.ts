@@ -6,6 +6,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import {
   cloneAgent,
   fetchAgents,
+  fetchAgentStats,
   createAgent,
   updateAgent,
   deleteAgent,
@@ -16,11 +17,12 @@ import {
 
 export function useAgents(tenantId: string, runtimeKind?: string | null) {
   const dispatch = useDispatch();
-  const { items, selectedAgent, loading, error } = useSelector((state: RootState) => state.agents);
+  const { items, stats, selectedAgent, loading, statsLoading, error } = useSelector((state: RootState) => state.agents);
 
   useEffect(() => {
     if (tenantId) {
       dispatch(fetchAgents({ tenantId, runtimeKind }) as any);
+      dispatch(fetchAgentStats({ tenantId }) as any);
     }
   }, [dispatch, tenantId, runtimeKind]);
 
@@ -65,8 +67,10 @@ export function useAgents(tenantId: string, runtimeKind?: string | null) {
 
   return {
     agents: items,
+    stats,
     selectedAgent,
     loading,
+    statsLoading,
     error,
     // Operations
     getAgentById,

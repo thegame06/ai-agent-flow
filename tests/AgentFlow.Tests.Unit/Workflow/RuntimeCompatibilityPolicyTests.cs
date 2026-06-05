@@ -9,6 +9,8 @@ public sealed class RuntimeCompatibilityPolicyTests
     [InlineData("Text", AgentRuntimeKind.Text)]
     [InlineData("voice", AgentRuntimeKind.Voice)]
     [InlineData("MultimodalRealtime", AgentRuntimeKind.MultimodalRealtime)]
+    [InlineData("multimodal", AgentRuntimeKind.MultimodalRealtime)]
+    [InlineData("video_voice", AgentRuntimeKind.MultimodalRealtime)]
     public void TryParseRuntimeKind_ParsesKnownValues(string raw, AgentRuntimeKind expected)
     {
         var ok = RuntimeCompatibilityPolicy.TryParseRuntimeKind(raw, out var kind, out var normalized);
