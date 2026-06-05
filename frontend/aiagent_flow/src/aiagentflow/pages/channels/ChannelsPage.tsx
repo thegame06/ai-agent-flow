@@ -8,8 +8,6 @@ import Grid from '@mui/material/Grid';
 import Alert from '@mui/material/Alert';
 import Stack from '@mui/material/Stack';
 import Table from '@mui/material/Table';
-import Paper from '@mui/material/Paper';
-import Avatar from '@mui/material/Avatar';
 import Button from '@mui/material/Button';
 import Dialog from '@mui/material/Dialog';
 import Select from '@mui/material/Select';
@@ -26,7 +24,6 @@ import IconButton from '@mui/material/IconButton';
 import InputLabel from '@mui/material/InputLabel';
 import DialogTitle from '@mui/material/DialogTitle';
 import FormControl from '@mui/material/FormControl';
-import { alpha, useTheme } from '@mui/material/styles';
 import DialogActions from '@mui/material/DialogActions';
 import DialogContent from '@mui/material/DialogContent';
 import OutlinedInput from '@mui/material/OutlinedInput';
@@ -118,7 +115,6 @@ const getErrorMessage = (err: any, fallback: string) =>
   err?.response?.data?.message || err?.response?.data?.error || err?.message || fallback;
 
 export default function ChannelsPage() {
-  const theme = useTheme();
   const TENANT_ID = useTenantId();
   const [channels, setChannels] = useState<Channel[]>([]);
   const [sessions, setSessions] = useState<ChannelSession[]>([]);
@@ -148,6 +144,12 @@ export default function ChannelsPage() {
     routerFallbackAgentId: '',
     maxClarificationTurns: 2,
     escalationTarget: '',
+    minMessagesBeforeClassification: 3,
+    maxUnclassifiedMessagesBeforeEscalation: 4,
+    historyWindowMessagesForClassification: 3,
+    maxSpamSignalsBeforeSpamReview: 2,
+    suppressRepliesWhileAccumulating: true,
+    spamEscalationTarget: '',
     clarificationQuestions: [
       { text: 'Que necesitas resolver hoy?', active: true, field: 'motivo', required: true, retries: 1, noResponseAction: 'continue' },
       { text: 'Que resultado esperas obtener?', active: true, field: 'objetivo', required: false, retries: 1, noResponseAction: 'continue' },
@@ -277,6 +279,12 @@ export default function ChannelsPage() {
         routerFallbackAgentId: res.data?.routerFallbackAgentId || '',
         maxClarificationTurns: Number(res.data?.maxClarificationTurns || 2),
         escalationTarget: res.data?.escalationTarget || '',
+        minMessagesBeforeClassification: Number(res.data?.minMessagesBeforeClassification || 3),
+        maxUnclassifiedMessagesBeforeEscalation: Number(res.data?.maxUnclassifiedMessagesBeforeEscalation || 4),
+        historyWindowMessagesForClassification: Number(res.data?.historyWindowMessagesForClassification || 3),
+        maxSpamSignalsBeforeSpamReview: Number(res.data?.maxSpamSignalsBeforeSpamReview || 2),
+        suppressRepliesWhileAccumulating: Boolean(res.data?.suppressRepliesWhileAccumulating ?? true),
+        spamEscalationTarget: res.data?.spamEscalationTarget || '',
         clarificationQuestions: (res.data?.clarificationQuestions && Array.isArray(res.data.clarificationQuestions) && res.data.clarificationQuestions.length > 0)
           ? res.data.clarificationQuestions
           : [
@@ -304,6 +312,12 @@ export default function ChannelsPage() {
         routerFallbackAgentId: routingForm.routerFallbackAgentId || null,
         maxClarificationTurns: routingForm.maxClarificationTurns,
         escalationTarget: routingForm.escalationTarget || null,
+        minMessagesBeforeClassification: routingForm.minMessagesBeforeClassification,
+        maxUnclassifiedMessagesBeforeEscalation: routingForm.maxUnclassifiedMessagesBeforeEscalation,
+        historyWindowMessagesForClassification: routingForm.historyWindowMessagesForClassification,
+        maxSpamSignalsBeforeSpamReview: routingForm.maxSpamSignalsBeforeSpamReview,
+        suppressRepliesWhileAccumulating: routingForm.suppressRepliesWhileAccumulating,
+        spamEscalationTarget: routingForm.spamEscalationTarget || null,
         clarificationQuestions: routingForm.clarificationQuestions,
       });
       setOpenRouting(false);
@@ -1096,6 +1110,94 @@ export default function ChannelsPage() {
             </FormControl>
 
             <Divider />
+
+            <Alert severity="info" sx={{ mb: 0 }}>
+              El router intenta clasificar desde el primer mensaje si ya hay suficiente señal. Estos umbrales solo controlan cuántos mensajes ambiguos acumula antes de escalar o marcar spam.
+            </Alert>
+
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+              <TextField
+                label="Minimo de mensajes para contexto"
+                type="number"
+                value={routingForm.minMessagesBeforeClassification}
+                onChange={(e) => setRoutingForm((prev) => ({
+                  ...prev,
+                  minMessagesBeforeClassification: Number(e.target.value || 3),
+                }))}
+                inputProps={{ min: 1, max: 10 }}
+                fullWidth
+                helperText="Si el mensaje ya es claro, el router clasifica antes. Este valor define cuántos mensajes ambiguos puede acumular."
+              />
+              <TextField
+                label="Maximo no clasificado antes de revision"
+                type="number"
+                value={routingForm.maxUnclassifiedMessagesBeforeEscalation}
+                onChange={(e) => setRoutingForm((prev) => ({
+                  ...prev,
+                  maxUnclassifiedMessagesBeforeEscalation: Number(e.target.value || 4),
+                }))}
+                inputProps={{ min: 1, max: 12 }}
+                fullWidth
+                helperText="Cuando sigue sin intención clara al llegar a este umbral, deja de rutear y pasa a revisión."
+              />
+            </Stack>
+
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+              <TextField
+                label="Mensajes del historial para clasificar"
+                type="number"
+                value={routingForm.historyWindowMessagesForClassification}
+                onChange={(e) => setRoutingForm((prev) => ({
+                  ...prev,
+                  historyWindowMessagesForClassification: Number(e.target.value || 3),
+                }))}
+                inputProps={{ min: 1, max: 10 }}
+                fullWidth
+                helperText="Cantidad de mensajes inbound recientes que se consolidan como contexto del router."
+              />
+              <TextField
+                label="Senales spam antes de revision"
+                type="number"
+                value={routingForm.maxSpamSignalsBeforeSpamReview}
+                onChange={(e) => setRoutingForm((prev) => ({
+                  ...prev,
+                  maxSpamSignalsBeforeSpamReview: Number(e.target.value || 2),
+                }))}
+                inputProps={{ min: 1, max: 10 }}
+                fullWidth
+                helperText="Cantidad de mensajes low-signal o repetitivos en la ventana reciente para entrar a spam review."
+              />
+            </Stack>
+
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+              <TextField
+                select
+                label="Suprimir respuesta mientras acumula"
+                value={routingForm.suppressRepliesWhileAccumulating ? 'si' : 'no'}
+                onChange={(e) => setRoutingForm((prev) => ({
+                  ...prev,
+                  suppressRepliesWhileAccumulating: e.target.value === 'si',
+                }))}
+                fullWidth
+                helperText="Cuando la conversación sigue ambigua, guarda en bandeja sin responder automáticamente."
+              >
+                <MenuItem value="si">Si</MenuItem>
+                <MenuItem value="no">No</MenuItem>
+              </TextField>
+              <TextField
+                select
+                label="Destino de spam review"
+                value={routingForm.spamEscalationTarget}
+                onChange={(e) => setRoutingForm((prev) => ({ ...prev, spamEscalationTarget: e.target.value }))}
+                fullWidth
+                helperText="Cola humana para clientes sospechosos o confirmados como spam. Si queda vacio, usa el destino general."
+              >
+                <MenuItem value=""><em>Usar destino general</em></MenuItem>
+                {queueOptions.filter((q) => q.active).map((q) => (
+                  <MenuItem key={q.id} value={q.id}>{q.name}</MenuItem>
+                ))}
+              </TextField>
+            </Stack>
 
             <FormControl fullWidth>
               <InputLabel>Estrategia sin match</InputLabel>

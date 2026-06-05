@@ -358,7 +358,7 @@ public sealed class ChannelGatewayTests
     }
 
     [Fact]
-    public async Task ProcessMessageAsync_AccumulatesContextBeforeFirstClassification()
+    public async Task ProcessMessageAsync_DoesNotBlockOnContextThresholdBeforeRouter()
     {
         var channelRepo = new Mock<IChannelDefinitionRepository>();
         var sessionRepo = new Mock<IChannelSessionRepository>();
@@ -377,7 +377,7 @@ public sealed class ChannelGatewayTests
         });
 
         var session = ChannelSession.Create("tenant-1", channel.Id, ChannelType.Api, "user-1");
-        var earlier = ChannelMessage.CreateIncoming("tenant-1", channel.Id, session.Id, "user-1", "Hola");
+        session.LinkAgent("router-agent");
 
         channelRepo.Setup(x => x.GetByIdAsync(channel.Id, "tenant-1", It.IsAny<CancellationToken>()))
             .ReturnsAsync(channel);
@@ -387,10 +387,22 @@ public sealed class ChannelGatewayTests
             .ReturnsAsync(Result.Success());
         messageRepo.Setup(x => x.InsertAsync(It.IsAny<ChannelMessage>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result.Success());
-        messageRepo.Setup(x => x.UpdateAsync(It.IsAny<ChannelMessage>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Result.Success());
         messageRepo.Setup(x => x.GetBySessionAsync(session.Id, "tenant-1", It.IsAny<int>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new[] { ChannelMessage.CreateIncoming("tenant-1", channel.Id, session.Id, "user-1", "Me pueden dar informacion?"), earlier });
+            .ReturnsAsync(new[] { ChannelMessage.CreateIncoming("tenant-1", channel.Id, session.Id, "user-1", "Me pueden dar informacion?") });
+
+        requestFactory.Setup(x => x.CreateAsync(It.IsAny<ChannelMessage>(), It.IsAny<ChannelDefinition>(), It.IsAny<ChannelSession?>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ChannelMessage incoming, ChannelDefinition _, ChannelSession? s, string a, CancellationToken _) =>
+                BuildExecutionRequest(incoming, s, a));
+
+        executor.Setup(x => x.ExecuteAsync(It.IsAny<AgentExecutionRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AgentExecutionResult
+            {
+                ExecutionId = "exec-threshold-pass",
+                AgentKey = "router-agent",
+                AgentVersion = "v1",
+                Status = ExecutionStatus.Completed,
+                FinalResponse = "ok"
+            });
 
         var gateway = new ChannelGateway(
             channelRepo.Object,
@@ -411,11 +423,82 @@ public sealed class ChannelGatewayTests
 
         var incoming = ChannelMessage.CreateIncoming("tenant-1", channel.Id, session.Id, "user-1", "Me pueden dar informacion?");
 
-        var result = await gateway.ProcessMessageAsync(incoming, CancellationToken.None);
+        await gateway.ProcessMessageAsync(incoming, CancellationToken.None);
 
-        Assert.Equal(MessageDirection.Incoming, result.Direction);
-        Assert.Equal("suppressed", result.Metadata["agentflow.delivery"]);
-        executor.Verify(x => x.ExecuteAsync(It.IsAny<AgentExecutionRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+        executor.Verify(x => x.ExecuteAsync(It.IsAny<AgentExecutionRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ProcessMessageAsync_ClearFirstMessage_InvokesRouterBeforeContextThreshold()
+    {
+        var channelRepo = new Mock<IChannelDefinitionRepository>();
+        var sessionRepo = new Mock<IChannelSessionRepository>();
+        var messageRepo = new Mock<IChannelMessageRepository>();
+        var executor = new Mock<IAgentExecutor>();
+        var handoffExecutor = new Mock<IAgentHandoffExecutor>();
+        var handoffPolicy = new Mock<IManagerHandoffPolicy>();
+        var requestFactory = new Mock<IChannelExecutionRequestFactory>();
+        var spamReputationRepo = new Mock<IChannelSpamReputationRepository>();
+
+        var channel = ChannelDefinition.Create("tenant-1", "api", ChannelType.Api);
+        channel.UpdateConfig(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["MinMessagesBeforeClassification"] = "3",
+            ["HistoryWindowMessagesForClassification"] = "3"
+        });
+
+        var session = ChannelSession.Create("tenant-1", channel.Id, ChannelType.Api, "user-1");
+        session.LinkAgent("router-agent");
+
+        channelRepo.Setup(x => x.GetByIdAsync(channel.Id, "tenant-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(channel);
+        sessionRepo.Setup(x => x.GetByIdAsync(session.Id, "tenant-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(session);
+        sessionRepo.Setup(x => x.UpdateAsync(session, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Success());
+        messageRepo.Setup(x => x.InsertAsync(It.IsAny<ChannelMessage>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Success());
+        messageRepo.Setup(x => x.GetBySessionAsync(session.Id, "tenant-1", It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<ChannelMessage>());
+
+        requestFactory.Setup(x => x.CreateAsync(It.IsAny<ChannelMessage>(), It.IsAny<ChannelDefinition>(), It.IsAny<ChannelSession?>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ChannelMessage incoming, ChannelDefinition _, ChannelSession? s, string a, CancellationToken _) =>
+                BuildExecutionRequest(incoming, s, a));
+
+        executor.Setup(x => x.ExecuteAsync(It.IsAny<AgentExecutionRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AgentExecutionResult
+            {
+                ExecutionId = "exec-clear-first",
+                AgentKey = "router-agent",
+                AgentVersion = "v1",
+                Status = ExecutionStatus.Completed,
+                FinalResponse = "ok"
+            });
+
+        var gateway = new ChannelGateway(
+            channelRepo.Object,
+            sessionRepo.Object,
+            messageRepo.Object,
+            executor.Object,
+            handoffExecutor.Object,
+            handoffPolicy.Object,
+            requestFactory.Object,
+            Mock.Of<IAgentDefinitionRepository>(),
+            Mock.Of<IAuditMemory>(),
+            Mock.Of<IChannelCapabilityPolicy>(),
+            spamReputationRepo.Object,
+            null,
+            new[] { new TestChannelHandler(ChannelType.Api) },
+            null,
+            NullLogger<ChannelGateway>.Instance);
+
+        var incoming = ChannelMessage.CreateIncoming("tenant-1", channel.Id, session.Id, "user-1", "quiero comprar un celular");
+
+        await gateway.ProcessMessageAsync(incoming, CancellationToken.None);
+
+        executor.Verify(x => x.ExecuteAsync(
+            It.Is<AgentExecutionRequest>(r => r.UserMessage == "quiero comprar un celular"),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -509,9 +592,9 @@ public sealed class ChannelGatewayTests
         var history = new[]
         {
             ChannelMessage.CreateIncoming("tenant-1", channel.Id, session.Id, "user-1", "hola"),
-            ChannelMessage.CreateIncoming("tenant-1", channel.Id, session.Id, "user-1", "me ayudan"),
-            ChannelMessage.CreateIncoming("tenant-1", channel.Id, session.Id, "user-1", "quiero informacion"),
-            ChannelMessage.CreateIncoming("tenant-1", channel.Id, session.Id, "user-1", "si")
+            ChannelMessage.CreateIncoming("tenant-1", channel.Id, session.Id, "user-1", "me ayudan con una consulta"),
+            ChannelMessage.CreateIncoming("tenant-1", channel.Id, session.Id, "user-1", "quiero informacion de sus planes"),
+            ChannelMessage.CreateIncoming("tenant-1", channel.Id, session.Id, "user-1", "todavia no veo cual aplica")
         };
 
         channelRepo.Setup(x => x.GetByIdAsync(channel.Id, "tenant-1", It.IsAny<CancellationToken>()))
@@ -544,7 +627,7 @@ public sealed class ChannelGatewayTests
             null,
             NullLogger<ChannelGateway>.Instance);
 
-        var incoming = ChannelMessage.CreateIncoming("tenant-1", channel.Id, session.Id, "user-1", "ok");
+        var incoming = ChannelMessage.CreateIncoming("tenant-1", channel.Id, session.Id, "user-1", "sigo evaluando opciones");
         var result = await gateway.ProcessMessageAsync(incoming, CancellationToken.None);
 
         Assert.Equal("suppressed", result.Metadata["agentflow.delivery"]);

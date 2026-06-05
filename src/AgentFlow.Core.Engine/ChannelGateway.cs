@@ -697,6 +697,11 @@ public sealed class ChannelGateway : IChannelGateway
             .Where(x => x.Direction == MessageDirection.Incoming)
             .OrderBy(x => x.CreatedAt)
             .ToList();
+        if (!inboundHistory.Any(x => string.Equals(x.Id, incomingMessage.Id, StringComparison.Ordinal)))
+            inboundHistory.Add(incomingMessage);
+        inboundHistory = inboundHistory
+            .OrderBy(x => x.CreatedAt)
+            .ToList();
         var inboundCount = inboundHistory.Count;
         var recentWindow = inboundHistory.TakeLast(routingConfig.HistoryWindowMessagesForClassification).ToList();
         var spamSignalCount = CountLowSignalMessages(recentWindow);
@@ -704,6 +709,22 @@ public sealed class ChannelGateway : IChannelGateway
         session.Metadata["routing.guard.inbound_count"] = inboundCount.ToString();
         session.Metadata["routing.guard.spam_signal_count"] = spamSignalCount.ToString();
         session.Metadata["routing.guard.history_window"] = routingConfig.HistoryWindowMessagesForClassification.ToString();
+
+        if (IsLowSignalInboundMessage(incomingMessage.Content))
+        {
+            session.Metadata["routing.guard.low_signal"] = "true";
+            session.Metadata["requires_human_review"] = "false";
+            session.Metadata["reply_pending"] = "true";
+            await _sessionRepo.UpdateAsync(session, ct);
+
+            return new InboundGuardDecision(
+                Guid.NewGuid().ToString("N"),
+                "inbound_low_signal",
+                string.Empty,
+                string.Empty,
+                false,
+                false);
+        }
 
         if (spamSignalCount >= routingConfig.MaxSpamSignalsBeforeSpamReview)
         {
@@ -742,23 +763,6 @@ public sealed class ChannelGateway : IChannelGateway
         UpdateSessionGuardStage(session, "accumulating");
         session.Metadata["requires_human_review"] = "false";
         session.Metadata["reply_pending"] = "true";
-
-        if (inboundCount < routingConfig.MinMessagesBeforeClassification)
-        {
-            session.Metadata["routing.guard.awaiting_context"] = "true";
-            await _sessionRepo.UpdateAsync(session, ct);
-
-            if (!routingConfig.SuppressRepliesWhileAccumulating)
-                return null;
-
-            return new InboundGuardDecision(
-                Guid.NewGuid().ToString("N"),
-                "awaiting_more_context",
-                string.Empty,
-                string.Empty,
-                false,
-                false);
-        }
 
         if (inboundCount >= routingConfig.MaxUnclassifiedMessagesBeforeEscalation &&
             !string.IsNullOrWhiteSpace(currentState) &&

@@ -369,6 +369,11 @@ public sealed class AgentExecutionEngine : IAgentExecutor
                             out var parsedInboundCount)
                             ? Math.Max(0, parsedInboundCount)
                             : 0;
+                        var minMessagesBeforeClassification = int.TryParse(
+                            request.Metadata.GetValueOrDefault("routing.min_messages_before_classification"),
+                            out var parsedMinMessages)
+                            ? Math.Max(1, parsedMinMessages)
+                            : 3;
                         var maxUnclassifiedMessagesBeforeEscalation = int.TryParse(
                             request.Metadata.GetValueOrDefault("routing.max_unclassified_messages_before_escalation"),
                             out var parsedMaxUnclassified)
@@ -406,11 +411,20 @@ public sealed class AgentExecutionEngine : IAgentExecutor
                             })
                         }, CancellationToken.None);
 
+                        var routerNeedsMoreContext =
+                            classification.Confidence is ConfidenceLevel.NoMatch or ConfidenceLevel.Low ||
+                            routingDecision.Action is RoutingAction.Fallback or RoutingAction.Queue;
+
                         if (accumulationActive &&
                             suppressRepliesWhileAccumulating &&
                             inboundMessageCount < maxUnclassifiedMessagesBeforeEscalation &&
+                            routerNeedsMoreContext &&
                             !suspectedSpamOrLowSignal)
                         {
+                            var accumulationReason = inboundMessageCount < minMessagesBeforeClassification
+                                ? "awaiting_minimum_context"
+                                : "router_requested_more_context";
+
                             if (_conversationInboxService is not null)
                             {
                                 await _conversationInboxService.CreateOrUpdateAsync(new InboxConversation
@@ -430,7 +444,7 @@ public sealed class AgentExecutionEngine : IAgentExecutor
                                     CreatedAt = DateTimeOffset.UtcNow,
                                     UpdatedAt = DateTimeOffset.UtcNow,
                                     RequiresHumanReview = false,
-                                    ReviewNotes = $"{routingDecision.ReasonCode}|context_accumulation|{inboundMessageCount}/{maxUnclassifiedMessagesBeforeEscalation}"
+                                    ReviewNotes = $"{routingDecision.ReasonCode}|{accumulationReason}|{inboundMessageCount}/{maxUnclassifiedMessagesBeforeEscalation}"
                                 }, CancellationToken.None);
                             }
 
@@ -446,7 +460,9 @@ public sealed class AgentExecutionEngine : IAgentExecutor
                                 {
                                     action = "fallback.accumulating_context",
                                     reason = routingDecision.ReasonCode,
+                                    accumulationReason,
                                     inboundMessageCount,
+                                    minMessagesBeforeClassification,
                                     maxUnclassifiedMessagesBeforeEscalation
                                 })
                             }, CancellationToken.None);
@@ -464,7 +480,7 @@ public sealed class AgentExecutionEngine : IAgentExecutor
                                     nextTurn = fallbackTurn,
                                     requiresHumanReview = false,
                                     suppressCustomerReply = true,
-                                    reasonCode = routingDecision.ReasonCode,
+                                    reasonCode = accumulationReason,
                                     escalationTarget,
                                     customerMessage = string.Empty
                                 }),

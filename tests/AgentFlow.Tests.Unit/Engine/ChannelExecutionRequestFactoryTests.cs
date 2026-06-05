@@ -86,4 +86,45 @@ public sealed class ChannelExecutionRequestFactoryTests
         Assert.Equal("true", request.Metadata["routing.accumulation_active"]);
         Assert.Equal("Quiero comprar un celular", request.Metadata["channel.latest_user_message"]);
     }
+
+    [Fact]
+    public async Task CreateAsync_AggregatesAvailableContext_BeforeConfiguredThreshold()
+    {
+        var store = new Mock<IIntentRoutingStore>();
+        var messageRepo = new Mock<IChannelMessageRepository>();
+        var tenantContext = new Mock<ITenantContextAccessor>();
+        tenantContext.SetupGet(x => x.Current).Returns((TenantContext?)null);
+
+        store.Setup(x => x.GetRulesByChannelAsync("tenant-1", "api", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<IntentRoutingRule>());
+
+        var channel = ChannelDefinition.Create("tenant-1", "api", ChannelType.Api);
+        channel.UpdateConfig(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["IntentAgents"] = "router-pool-1",
+            ["HistoryWindowMessagesForClassification"] = "3",
+            ["MinMessagesBeforeClassification"] = "3"
+        });
+
+        var session = ChannelSession.Create("tenant-1", channel.Id, ChannelType.Api, "user-1");
+
+        var m1 = ChannelMessage.CreateIncoming("tenant-1", channel.Id, session.Id, "user-1", "Hola");
+        var m2 = ChannelMessage.CreateIncoming("tenant-1", channel.Id, session.Id, "user-1", "Quiero comprar un celular");
+
+        messageRepo.Setup(x => x.GetBySessionAsync(session.Id, "tenant-1", It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { m2, m1 });
+
+        var factory = new ChannelExecutionRequestFactory(store.Object, tenantContext.Object, messageRepo.Object);
+
+        var request = await factory.CreateAsync(
+            m2,
+            channel,
+            session,
+            "router-pool-1",
+            CancellationToken.None);
+
+        Assert.Equal("Hola\nQuiero comprar un celular", request.UserMessage);
+        Assert.Equal("2", request.Metadata["routing.inbound_message_count"]);
+        Assert.Equal("true", request.Metadata["routing.accumulation_active"]);
+    }
 }

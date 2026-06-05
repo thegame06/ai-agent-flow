@@ -247,7 +247,7 @@ public sealed class ChannelExecutionRequestFactory : IChannelExecutionRequestFac
         if (!accumulationActive)
             return latestMessage;
 
-        if (inboundWindowMessages.Count < minMessagesBeforeClassification)
+        if (inboundWindowMessages.Count <= 1)
             return latestMessage;
 
         var parts = inboundWindowMessages
@@ -255,7 +255,13 @@ public sealed class ChannelExecutionRequestFactory : IChannelExecutionRequestFac
             .Where(x => !string.IsNullOrWhiteSpace(x))
             .ToList();
 
-        return parts.Count == 0 ? latestMessage : string.Join("\n", parts);
+        if (parts.Count == 0)
+            return latestMessage;
+
+        if (parts.Count < minMessagesBeforeClassification)
+            return string.Join("\n", parts);
+
+        return string.Join("\n", parts);
     }
 
     private static int ReadConfiguredInt(
