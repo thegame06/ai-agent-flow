@@ -1,5 +1,6 @@
 import '@xyflow/react/dist/style.css';
 
+import type { Theme } from '@mui/material/styles';
 import type { SelectChangeEvent } from '@mui/material/Select';
 import type { Edge, Node, NodeProps, Connection } from '@xyflow/react';
 
@@ -134,6 +135,52 @@ const nodeColorByType = (type: string) => {
   return '#64748b';
 };
 
+const nodeSurfaceSx = (
+  theme: Theme,
+  color: string,
+  selected: boolean,
+  tone: 'default' | 'start' | 'ai' | 'connect' | 'human' = 'default'
+) => {
+  const isDark = theme.palette.mode === 'dark';
+  const lightTone: Record<typeof tone, string> = {
+    default: '#ffffff',
+    start: '#f0fdff',
+    ai: '#eff6ff',
+    connect: '#f0fdfa',
+    human: '#fff7ed',
+  };
+
+  return {
+    border: `1px solid ${selected ? color : isDark ? alpha(theme.palette.common.white, 0.18) : alpha(color, 0.35)}`,
+    borderRadius: 2,
+    background: isDark
+      ? `linear-gradient(180deg, ${alpha(color, 0.18)} 0%, ${alpha(theme.palette.background.paper, 0.96)} 58%)`
+      : `linear-gradient(180deg, ${lightTone[tone]} 0%, ${theme.palette.background.paper} 56%)`,
+    color: theme.palette.text.primary,
+    boxShadow: selected
+      ? `0 0 0 2px ${alpha(color, isDark ? 0.34 : 0.28)}, 0 14px 32px ${alpha(theme.palette.common.black, isDark ? 0.34 : 0.1)}`
+      : `0 8px 22px ${alpha(theme.palette.common.black, isDark ? 0.28 : 0.08)}`,
+    p: 1,
+  };
+};
+
+const nodeHandleStyle = (color: string) => ({
+  background: color,
+  border: '2px solid #ffffff',
+  width: 10,
+  height: 10,
+});
+
+const softPanelSx = (theme: Theme, color?: string) => ({
+  bgcolor: theme.palette.mode === 'dark'
+    ? alpha(color ?? theme.palette.primary.main, color ? 0.12 : 0.08)
+    : alpha(color ?? theme.palette.primary.main, color ? 0.08 : 0.04),
+  border: '1px solid',
+  borderColor: theme.palette.mode === 'dark'
+    ? alpha(color ?? theme.palette.common.white, color ? 0.28 : 0.14)
+    : alpha(color ?? theme.palette.text.primary, color ? 0.24 : 0.12),
+});
+
 const dockItems = [
   {
     label: 'Hablar',
@@ -215,6 +262,7 @@ const dockItems = [
 ];
 
 function WorkflowNodeCard({ data, selected }: NodeProps<Node<WorkflowNodeData>>) {
+  const theme = useTheme();
   const activityType = String(data.activityType ?? '');
   const label = String(data.label ?? activityType);
   const description = String(data.description ?? activityDescription(activityType));
@@ -224,15 +272,11 @@ function WorkflowNodeCard({ data, selected }: NodeProps<Node<WorkflowNodeData>>)
   return (
     <Box
       sx={{
-        border: `1px solid ${selected ? color : '#d0d5dd'}`,
-        borderRadius: 2,
-        background: '#ffffff',
-        boxShadow: selected ? `0 0 0 2px ${color}33` : '0 1px 2px rgba(16,24,40,0.08)',
-        p: 1,
+        ...nodeSurfaceSx(theme, color, Boolean(selected), 'default'),
         minWidth: 220,
       }}
     >
-      <Handle type="target" position={Position.Left} id="in" />
+      <Handle type="target" position={Position.Left} id="in" style={nodeHandleStyle(color)} />
       <Stack spacing={0.4}>
         <Stack direction="row" justifyContent="space-between" alignItems="center">
           <Typography variant="caption" sx={{ color, fontWeight: 700 }}>
@@ -255,31 +299,29 @@ function WorkflowNodeCard({ data, selected }: NodeProps<Node<WorkflowNodeData>>)
         </Typography>
         {data.badge && <Chip size="small" label={String(data.badge)} sx={{ alignSelf: 'flex-start' }} />}
       </Stack>
-      <Handle type="source" position={Position.Right} id="next" style={{ top: '35%' }} />
-      <Handle type="source" position={Position.Right} id="success" style={{ top: '55%', background: '#16a34a' }} />
-      <Handle type="source" position={Position.Right} id="failure" style={{ top: '75%', background: '#dc2626' }} />
+      <Handle type="source" position={Position.Right} id="next" style={{ ...nodeHandleStyle(color), top: '35%' }} />
+      <Handle type="source" position={Position.Right} id="success" style={{ ...nodeHandleStyle('#16a34a'), top: '55%' }} />
+      <Handle type="source" position={Position.Right} id="failure" style={{ ...nodeHandleStyle('#dc2626'), top: '75%' }} />
     </Box>
   );
 }
 
 function StartWorkflowNode({ data, selected }: NodeProps<Node<WorkflowStartNodeData>>) {
+  const theme = useTheme();
   const sources = Array.from(new Set(data.intents.map((intent) => intent.triggerSource ?? 'message')));
+  const color = '#00acc1';
   return (
     <Box
       sx={{
-        border: `1px solid ${selected ? '#00acc1' : '#00b8d9'}`,
-        borderRadius: 2,
-        background: '#f0fdff',
-        boxShadow: selected ? '0 0 0 2px #67e8f966' : '0 1px 2px rgba(16,24,40,0.08)',
-        p: 1,
+        ...nodeSurfaceSx(theme, color, Boolean(selected), 'start'),
         minWidth: 250,
       }}
     >
       <Stack spacing={0.7}>
         <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={0.7}>
           <Stack direction="row" alignItems="center" spacing={0.7}>
-            <Iconify icon="mdi:flag-outline" width={17} color="#00a6bd" />
-            <Typography variant="body2" sx={{ fontWeight: 800, color: '#03768a' }}>
+            <Iconify icon="mdi:flag-outline" width={17} color={color} />
+            <Typography variant="body2" sx={{ fontWeight: 800, color }}>
               Inicio
             </Typography>
           </Stack>
@@ -295,7 +337,15 @@ function StartWorkflowNode({ data, selected }: NodeProps<Node<WorkflowStartNodeD
         </Stack>
         <Stack spacing={0.5}>
           {data.intents.slice(0, 3).map((intent) => (
-            <Box key={intent.id} sx={{ px: 0.8, py: 0.5, borderRadius: 1, bgcolor: '#fff' }}>
+            <Box
+              key={intent.id}
+              sx={{
+                px: 0.8,
+                py: 0.5,
+                borderRadius: 1,
+                ...softPanelSx(theme, color),
+              }}
+            >
               <Typography variant="caption" sx={{ fontWeight: 700 }}>
                 {intent.label}
               </Typography>
@@ -311,29 +361,27 @@ function StartWorkflowNode({ data, selected }: NodeProps<Node<WorkflowStartNodeD
           Click para configurar intenciones y canal.
         </Typography>
       </Stack>
-      <Handle type="source" position={Position.Right} id="next" style={{ background: '#00acc1' }} />
+      <Handle type="source" position={Position.Right} id="next" style={nodeHandleStyle(color)} />
     </Box>
   );
 }
 
 function AiWorkflowNode({ data, selected }: NodeProps<Node<WorkflowNodeData>>) {
+  const theme = useTheme();
   const label = String(data.label ?? 'AI Agent');
   const agent = String(data.badge ?? 'sin agente');
+  const color = '#1d4ed8';
   return (
     <Box
       sx={{
-        border: `1px solid ${selected ? '#1d4ed8' : '#bfdbfe'}`,
-        borderRadius: 2,
-        background: 'linear-gradient(180deg, #eff6ff 0%, #ffffff 50%)',
-        boxShadow: selected ? '0 0 0 2px #93c5fd66' : '0 1px 2px rgba(16,24,40,0.08)',
-        p: 1,
+        ...nodeSurfaceSx(theme, color, Boolean(selected), 'ai'),
         minWidth: 230,
       }}
     >
-      <Handle type="target" position={Position.Left} id="in" />
+      <Handle type="target" position={Position.Left} id="in" style={nodeHandleStyle(color)} />
       <Stack spacing={0.4}>
         <Stack direction="row" justifyContent="space-between" alignItems="center">
-          <Typography variant="caption" sx={{ color: '#1d4ed8', fontWeight: 700 }}>
+          <Typography variant="caption" sx={{ color, fontWeight: 700 }}>
             AI
           </Typography>
           <Stack direction="row" spacing={0.4}>
@@ -359,31 +407,29 @@ function AiWorkflowNode({ data, selected }: NodeProps<Node<WorkflowNodeData>>) {
           sx={{ alignSelf: 'flex-start' }}
         />
       </Stack>
-      <Handle type="source" position={Position.Right} id="next" style={{ top: '35%' }} />
-      <Handle type="source" position={Position.Right} id="success" style={{ top: '55%', background: '#16a34a' }} />
-      <Handle type="source" position={Position.Right} id="failure" style={{ top: '75%', background: '#dc2626' }} />
+      <Handle type="source" position={Position.Right} id="next" style={{ ...nodeHandleStyle(color), top: '35%' }} />
+      <Handle type="source" position={Position.Right} id="success" style={{ ...nodeHandleStyle('#16a34a'), top: '55%' }} />
+      <Handle type="source" position={Position.Right} id="failure" style={{ ...nodeHandleStyle('#dc2626'), top: '75%' }} />
     </Box>
   );
 }
 
 function ConnectWorkflowNode({ data, selected }: NodeProps<Node<WorkflowNodeData>>) {
+  const theme = useTheme();
   const label = String(data.label ?? 'Connect');
   const badge = data.badge ? String(data.badge) : 'canal';
+  const color = '#0f766e';
   return (
     <Box
       sx={{
-        border: `1px solid ${selected ? '#0f766e' : '#99f6e4'}`,
-        borderRadius: 2,
-        background: 'linear-gradient(180deg, #f0fdfa 0%, #ffffff 50%)',
-        boxShadow: selected ? '0 0 0 2px #2dd4bf55' : '0 1px 2px rgba(16,24,40,0.08)',
-        p: 1,
+        ...nodeSurfaceSx(theme, color, Boolean(selected), 'connect'),
         minWidth: 230,
       }}
     >
-      <Handle type="target" position={Position.Left} id="in" />
+      <Handle type="target" position={Position.Left} id="in" style={nodeHandleStyle(color)} />
       <Stack spacing={0.4}>
         <Stack direction="row" justifyContent="space-between" alignItems="center">
-          <Typography variant="caption" sx={{ color: '#0f766e', fontWeight: 700 }}>
+          <Typography variant="caption" sx={{ color, fontWeight: 700 }}>
             CONNECT
           </Typography>
           <Stack direction="row" spacing={0.4}>
@@ -403,30 +449,28 @@ function ConnectWorkflowNode({ data, selected }: NodeProps<Node<WorkflowNodeData
         </Typography>
         <Chip size="small" label={badge} sx={{ alignSelf: 'flex-start' }} />
       </Stack>
-      <Handle type="source" position={Position.Right} id="next" style={{ top: '35%' }} />
-      <Handle type="source" position={Position.Right} id="success" style={{ top: '55%', background: '#16a34a' }} />
-      <Handle type="source" position={Position.Right} id="failure" style={{ top: '75%', background: '#dc2626' }} />
+      <Handle type="source" position={Position.Right} id="next" style={{ ...nodeHandleStyle(color), top: '35%' }} />
+      <Handle type="source" position={Position.Right} id="success" style={{ ...nodeHandleStyle('#16a34a'), top: '55%' }} />
+      <Handle type="source" position={Position.Right} id="failure" style={{ ...nodeHandleStyle('#dc2626'), top: '75%' }} />
     </Box>
   );
 }
 
 function HumanWorkflowNode({ data, selected }: NodeProps<Node<WorkflowNodeData>>) {
+  const theme = useTheme();
   const label = String(data.label ?? 'Human');
+  const color = '#c2410c';
   return (
     <Box
       sx={{
-        border: `1px solid ${selected ? '#7c2d12' : '#fdba74'}`,
-        borderRadius: 2,
-        background: 'linear-gradient(180deg, #fff7ed 0%, #ffffff 50%)',
-        boxShadow: selected ? '0 0 0 2px #fb923c55' : '0 1px 2px rgba(16,24,40,0.08)',
-        p: 1,
+        ...nodeSurfaceSx(theme, color, Boolean(selected), 'human'),
         minWidth: 230,
       }}
     >
-      <Handle type="target" position={Position.Left} id="in" />
+      <Handle type="target" position={Position.Left} id="in" style={nodeHandleStyle(color)} />
       <Stack spacing={0.4}>
         <Stack direction="row" justifyContent="space-between" alignItems="center">
-          <Typography variant="caption" sx={{ color: '#7c2d12', fontWeight: 700 }}>
+          <Typography variant="caption" sx={{ color, fontWeight: 700 }}>
             HUMAN
           </Typography>
           <Stack direction="row" spacing={0.4}>
@@ -445,9 +489,9 @@ function HumanWorkflowNode({ data, selected }: NodeProps<Node<WorkflowNodeData>>
           escalacion y asignacion
         </Typography>
       </Stack>
-      <Handle type="source" position={Position.Right} id="next" style={{ top: '35%' }} />
-      <Handle type="source" position={Position.Right} id="success" style={{ top: '55%', background: '#16a34a' }} />
-      <Handle type="source" position={Position.Right} id="failure" style={{ top: '75%', background: '#dc2626' }} />
+      <Handle type="source" position={Position.Right} id="next" style={{ ...nodeHandleStyle(color), top: '35%' }} />
+      <Handle type="source" position={Position.Right} id="success" style={{ ...nodeHandleStyle('#16a34a'), top: '55%' }} />
+      <Handle type="source" position={Position.Right} id="failure" style={{ ...nodeHandleStyle('#dc2626'), top: '75%' }} />
     </Box>
   );
 }
@@ -492,7 +536,7 @@ const toNodes = (
   })),
 ];
 
-const toEdges = (activities: WorkflowActivityNode[]): Edge[] => {
+const toEdges = (activities: WorkflowActivityNode[], edgeColor = '#94a3b8', edgeLabelBg = '#ffffff'): Edge[] => {
   const byId = new Map(activities.map((a) => [a.id, a]));
   const edges: Edge[] = [];
 
@@ -512,6 +556,9 @@ const toEdges = (activities: WorkflowActivityNode[]): Edge[] => {
         label: target.label,
         sourceHandle: target.label === 'ok' ? 'success' : target.label === 'fail' ? 'failure' : 'next',
         markerEnd: { type: 'arrowclosed' },
+        style: { stroke: edgeColor, strokeWidth: 2 },
+        labelStyle: { fill: edgeColor, fontWeight: 700 },
+        labelBgStyle: { fill: edgeLabelBg, fillOpacity: 0.92 },
       });
     });
   });
@@ -525,7 +572,9 @@ const toEdges = (activities: WorkflowActivityNode[]): Edge[] => {
       label: 'inicio',
       sourceHandle: 'next',
       markerEnd: { type: 'arrowclosed' },
-      style: { stroke: '#cbd5e1', strokeWidth: 2 },
+      style: { stroke: edgeColor, strokeWidth: 2 },
+      labelStyle: { fill: edgeColor, fontWeight: 700 },
+      labelBgStyle: { fill: edgeLabelBg, fillOpacity: 0.92 },
     });
   }
 
@@ -621,6 +670,10 @@ export function WorkflowVisualDesigner({
   onRemoveActivityConfig,
 }: Props) {
   const theme = useTheme();
+  const isDark = theme.palette.mode === 'dark';
+  const canvasBg = isDark ? alpha(theme.palette.background.default, 0.72) : theme.palette.background.paper;
+  const edgeColor = isDark ? alpha(theme.palette.common.white, 0.58) : '#94a3b8';
+  const edgeLabelBg = isDark ? theme.palette.background.paper : '#ffffff';
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [aiTab, setAiTab] = useState(0);
   const [showValidation, setShowValidation] = useState(false);
@@ -661,8 +714,8 @@ export function WorkflowVisualDesigner({
 
   useEffect(() => {
     setNodes(toNodes(activities, triggerEventName, startIntents, duplicateNodeAt, deleteNodeAt));
-    setEdges(toEdges(activities));
-  }, [activities, deleteNodeAt, duplicateNodeAt, setEdges, setNodes, startIntents, triggerEventName]);
+    setEdges(toEdges(activities, edgeColor, edgeLabelBg));
+  }, [activities, deleteNodeAt, duplicateNodeAt, edgeColor, edgeLabelBg, setEdges, setNodes, startIntents, triggerEventName]);
 
   const selected = useMemo(
     () => (selectedIndex !== null && selectedIndex >= 0 ? activities[selectedIndex] : null),
@@ -875,7 +928,18 @@ export function WorkflowVisualDesigner({
     if (params.sourceHandle === 'success') onUpdateActivity(sourceIndex, { onSuccess: params.target });
     else if (params.sourceHandle === 'failure') onUpdateActivity(sourceIndex, { onFailure: params.target });
     else onUpdateActivity(sourceIndex, { next: params.target });
-    setEdges((prev) => addEdge({ ...params, markerEnd: { type: 'arrowclosed' } }, prev));
+    setEdges((prev) =>
+      addEdge(
+        {
+          ...params,
+          markerEnd: { type: 'arrowclosed' },
+          style: { stroke: edgeColor, strokeWidth: 2 },
+          labelStyle: { fill: edgeColor, fontWeight: 700 },
+          labelBgStyle: { fill: edgeLabelBg, fillOpacity: 0.92 },
+        },
+        prev
+      )
+    );
   };
 
   const applyAutoLayoutGrid = () => {
@@ -945,7 +1009,28 @@ export function WorkflowVisualDesigner({
           borderColor: 'divider',
           borderRadius: 1.5,
           overflow: 'hidden',
-          bgcolor: 'background.paper',
+          bgcolor: canvasBg,
+          '& .react-flow__pane': {
+            backgroundColor: canvasBg,
+          },
+          '& .react-flow__controls': {
+            boxShadow: `0 10px 30px ${alpha(theme.palette.common.black, isDark ? 0.32 : 0.14)}`,
+          },
+          '& .react-flow__controls-button': {
+            color: 'text.primary',
+            backgroundColor: isDark ? alpha(theme.palette.background.paper, 0.94) : theme.palette.background.paper,
+            borderBottom: '1px solid',
+            borderColor: 'divider',
+            '&:hover': {
+              backgroundColor: isDark ? alpha(theme.palette.common.white, 0.08) : theme.palette.action.hover,
+            },
+          },
+          '& .react-flow__minimap': {
+            backgroundColor: isDark ? alpha(theme.palette.background.paper, 0.94) : theme.palette.background.paper,
+            border: '1px solid',
+            borderColor: 'divider',
+            borderRadius: 1,
+          },
         }}
       >
         <ReactFlow
@@ -980,7 +1065,20 @@ export function WorkflowVisualDesigner({
           onPaneClick={closeInspector}
           fitView
         >
-          <MiniMap />
+          <MiniMap
+            nodeColor={(node) =>
+              node.type === 'startNode'
+                ? '#00acc1'
+                : node.type === 'aiNode'
+                  ? '#1d4ed8'
+                  : node.type === 'connectNode'
+                    ? '#0f766e'
+                    : node.type === 'humanNode'
+                      ? '#c2410c'
+                      : nodeColorByType(String((node.data as WorkflowNodeData).activityType ?? ''))
+            }
+            maskColor={isDark ? alpha(theme.palette.common.black, 0.42) : alpha(theme.palette.common.white, 0.68)}
+          />
           <Controls />
           <Background
             gap={18}
@@ -1045,7 +1143,16 @@ export function WorkflowVisualDesigner({
             icon={<Iconify icon="mdi:alert-outline" />}
             label={`${validationErrors.length} validacion(es) pendientes`}
             onClick={() => setShowValidation(true)}
-            sx={{ position: 'absolute', right: 18, top: 18, zIndex: 4, bgcolor: 'warning.lighter' }}
+            sx={{
+              position: 'absolute',
+              right: 18,
+              top: 18,
+              zIndex: 4,
+              bgcolor: isDark ? alpha(theme.palette.warning.main, 0.18) : 'warning.lighter',
+              color: isDark ? 'warning.light' : undefined,
+              border: '1px solid',
+              borderColor: isDark ? alpha(theme.palette.warning.main, 0.32) : 'transparent',
+            }}
           />
         )}
 
@@ -1372,8 +1479,12 @@ export function WorkflowVisualDesigner({
                 variant="outlined"
                 sx={{
                   p: 1.2,
-                  borderColor: selectedIntegration.connected ? 'success.light' : 'warning.light',
-                  bgcolor: selectedIntegration.connected ? 'success.lighter' : 'warning.lighter',
+                  borderColor: selectedIntegration.connected
+                    ? alpha(theme.palette.success.main, isDark ? 0.34 : 0.42)
+                    : alpha(theme.palette.warning.main, isDark ? 0.34 : 0.42),
+                  bgcolor: selectedIntegration.connected
+                    ? alpha(theme.palette.success.main, isDark ? 0.12 : 0.08)
+                    : alpha(theme.palette.warning.main, isDark ? 0.12 : 0.08),
                 }}
               >
                 <Stack spacing={1}>
@@ -1409,7 +1520,7 @@ export function WorkflowVisualDesigner({
               </Card>
             )}
             {selected.type === 'ai.agent' && (
-              <Card variant="outlined" sx={{ p: 1.2, bgcolor: '#fbfdff' }}>
+              <Card variant="outlined" sx={{ p: 1.2, bgcolor: 'background.neutral' }}>
                 <Stack spacing={1}>
                   <TextField
                     label="Agente publicado"
@@ -1453,7 +1564,7 @@ export function WorkflowVisualDesigner({
                     </Stack>
                   )}
                   {selectedAgent && (
-                    <Box sx={{ p: 1, borderRadius: 1, border: '1px solid #bae6fd', bgcolor: '#f0f9ff' }}>
+                    <Box sx={{ p: 1, borderRadius: 1, ...softPanelSx(theme, theme.palette.info.main) }}>
                       <Stack direction="row" spacing={0.6} alignItems="center" flexWrap="wrap">
                         <Typography variant="caption" fontWeight={700}>
                           {selectedAgent.name}
@@ -1525,7 +1636,14 @@ export function WorkflowVisualDesigner({
               </Card>
             )}
             {selected.type === 'channel.send' && (
-              <Card variant="outlined" sx={{ p: 1.2, bgcolor: '#f0fdf4' }}>
+              <Card
+                variant="outlined"
+                sx={{
+                  p: 1.2,
+                  bgcolor: alpha(theme.palette.success.main, isDark ? 0.1 : 0.06),
+                  borderColor: alpha(theme.palette.success.main, isDark ? 0.28 : 0.22),
+                }}
+              >
                 <Stack spacing={1}>
                   <Typography variant="caption" color="text.secondary">
                     Envia un mensaje directamente por el canal sin pasar por un agente. Util para notificaciones, templates o respuestas fijas.
@@ -1595,7 +1713,7 @@ export function WorkflowVisualDesigner({
             </Accordion>
             )}
             {selected.type !== 'ai.agent' && selected.type !== 'channel.send' && (
-              <Card variant="outlined" sx={{ p: 1.2, bgcolor: '#fbfdff' }}>
+              <Card variant="outlined" sx={{ p: 1.2, bgcolor: 'background.neutral' }}>
                 <Stack spacing={1.1}>
                   <Box>
                     <Typography variant="subtitle2">Que hara este nodo</Typography>
@@ -1877,13 +1995,13 @@ export function WorkflowVisualDesigner({
                   <Typography variant="subtitle2">Integraciones</Typography>
                 </AccordionSummary>
                 <AccordionDetails>
-                  <Card variant="outlined" sx={{ p: 1, backgroundColor: '#f8fafc' }}>
+                  <Card variant="outlined" sx={{ p: 1, bgcolor: 'background.neutral' }}>
                     <Typography variant="caption" color="text.secondary">
                       Configuracion contextual
                     </Typography>
                     {selected.type.startsWith('connect.') && (
                       <Stack spacing={1} sx={{ mt: 0.8 }}>
-                        <Box sx={{ p: 1, borderRadius: 1, border: '1px solid #bae6fd', bgcolor: '#f0f9ff' }}>
+                        <Box sx={{ p: 1, borderRadius: 1, ...softPanelSx(theme, theme.palette.info.main) }}>
                           <Typography variant="caption" fontWeight={700}>
                             Integracion de canal
                           </Typography>
@@ -1946,7 +2064,7 @@ export function WorkflowVisualDesigner({
                               ))}
                             </TextField>
                             {selectedTemplate && (
-                              <Box sx={{ p: 1, borderRadius: 1, bgcolor: '#f8fafc', border: '1px solid #e2e8f0' }}>
+                              <Box sx={{ p: 1, borderRadius: 1, ...softPanelSx(theme) }}>
                                 <Typography variant="caption" fontWeight={700}>
                                   Vista previa
                                 </Typography>
@@ -2051,7 +2169,15 @@ export function WorkflowVisualDesigner({
                       Si no ves estos campos en auditoria de ejecucion, la configuracion no esta conectada correctamente.
                     </Alert>
                     {selectedAgent && (
-                      <Box sx={{ p: 1, borderRadius: 1, border: '1px dashed #93c5fd', bgcolor: '#f8fbff' }}>
+                      <Box
+                        sx={{
+                          p: 1,
+                          borderRadius: 1,
+                          border: '1px dashed',
+                          borderColor: alpha(theme.palette.primary.main, isDark ? 0.46 : 0.38),
+                          bgcolor: alpha(theme.palette.primary.main, isDark ? 0.1 : 0.04),
+                        }}
+                      >
                         <Typography variant="caption" fontWeight={800}>
                           Preview del subflujo
                         </Typography>
@@ -2074,7 +2200,7 @@ export function WorkflowVisualDesigner({
                     <Alert severity="info">
                       Las herramientas autorizadas se administran en Agent Studio para evitar duplicar seguridad y permisos.
                     </Alert>
-                    <Box sx={{ p: 1, borderRadius: 1, border: '1px solid #e2e8f0', bgcolor: '#f8fafc' }}>
+                    <Box sx={{ p: 1, borderRadius: 1, ...softPanelSx(theme) }}>
                       <Typography variant="caption" fontWeight={700}>
                         Inventario disponible
                       </Typography>
