@@ -418,8 +418,7 @@ public sealed class AgentExecutionEngine : IAgentExecutor
                         if (accumulationActive &&
                             suppressRepliesWhileAccumulating &&
                             inboundMessageCount < maxUnclassifiedMessagesBeforeEscalation &&
-                            routerNeedsMoreContext &&
-                            !suspectedSpamOrLowSignal)
+                            routerNeedsMoreContext)
                         {
                             var accumulationReason = inboundMessageCount < minMessagesBeforeClassification
                                 ? "awaiting_minimum_context"

@@ -287,20 +287,6 @@ public sealed class ChannelGateway : IChannelGateway
                 _logger,
                 ct);
 
-            if (string.IsNullOrWhiteSpace(continuation.FinalResponse))
-            {
-                await MarkInboundFailureWithoutCustomerReplyAsync(
-                    incomingMessage,
-                    CreateGatewayFailureResult(
-                        continuation.ExecutionIdForOutgoing,
-                        executionResult.AgentKey,
-                        "post_execution_failed",
-                        "Post-execution orchestration produced no customer-safe reply."),
-                    "post_execution_failed",
-                    ct);
-                return incomingMessage;
-            }
-
             if (continuation.SuppressCustomerReply)
             {
                 incomingMessage.Metadata["agentflow.delivery"] = "suppressed";
@@ -312,6 +298,20 @@ public sealed class ChannelGateway : IChannelGateway
                     UpdateSessionGuardStage(session, "accumulating");
                     await _sessionRepo.UpdateAsync(session, ct);
                 }
+                return incomingMessage;
+            }
+
+            if (string.IsNullOrWhiteSpace(continuation.FinalResponse))
+            {
+                await MarkInboundFailureWithoutCustomerReplyAsync(
+                    incomingMessage,
+                    CreateGatewayFailureResult(
+                        continuation.ExecutionIdForOutgoing,
+                        executionResult.AgentKey,
+                        "post_execution_failed",
+                        "Post-execution orchestration produced no customer-safe reply."),
+                    "post_execution_failed",
+                    ct);
                 return incomingMessage;
             }
 
