@@ -5,6 +5,7 @@ using AgentFlow.Intents.Catalog;
 using AgentFlow.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Globalization;
 using System.Text.Json;
 
 namespace AgentFlow.Api.Controllers;
@@ -326,6 +327,9 @@ public sealed class ChannelsController : ControllerBase
             MaxUnclassifiedMessagesBeforeEscalation = ReadRoutingInt(channel.Config, "MaxUnclassifiedMessagesBeforeEscalation", 4, 1, 12),
             HistoryWindowMessagesForClassification = ReadRoutingInt(channel.Config, "HistoryWindowMessagesForClassification", 3, 1, 10),
             MaxSpamSignalsBeforeSpamReview = ReadRoutingInt(channel.Config, "MaxSpamSignalsBeforeSpamReview", 2, 1, 10),
+            IntentConfidenceThreshold = ReadRoutingFloat(channel.Config, "IntentConfidenceThreshold", 0.70f, 0.10f, 1.00f),
+            AssistantConfidenceThreshold = ReadRoutingFloat(channel.Config, "AssistantConfidenceThreshold", 0.80f, 0.10f, 1.00f),
+            AssistantIntentInferenceEnabled = ReadRoutingBool(channel.Config, "AssistantIntentInferenceEnabled", false),
             SuppressRepliesWhileAccumulating = ReadRoutingBool(channel.Config, "SuppressRepliesWhileAccumulating", true),
             SpamEscalationTarget = channel.Config.GetValueOrDefault("SpamEscalationTarget"),
             ClarificationQuestions = ParseFallbackQuestions(channel.Config.GetValueOrDefault("FallbackQuestionsJson"))
@@ -343,7 +347,9 @@ public sealed class ChannelsController : ControllerBase
 
         var updated = new Dictionary<string, string>(channel.Config, StringComparer.OrdinalIgnoreCase);
 
-        if (!string.IsNullOrWhiteSpace(request.DefaultAgentId))
+        if (string.IsNullOrWhiteSpace(request.DefaultAgentId))
+            updated.Remove("DefaultAgentId");
+        else
             updated["DefaultAgentId"] = request.DefaultAgentId.Trim();
 
         var routing = (request.IntentAgents ?? request.RoutingAgents)?
@@ -365,17 +371,26 @@ public sealed class ChannelsController : ControllerBase
         updated["NoMatchAction"] = string.IsNullOrWhiteSpace(request.NoMatchAction)
             ? (updated.GetValueOrDefault("NoMatchAction") ?? "human_review_only")
             : request.NoMatchAction.Trim().ToLowerInvariant();
-        if (!string.IsNullOrWhiteSpace(request.RouterFallbackAgentId))
+        if (string.IsNullOrWhiteSpace(request.RouterFallbackAgentId))
+            updated.Remove("RouterFallbackAgentId");
+        else
             updated["RouterFallbackAgentId"] = request.RouterFallbackAgentId.Trim();
         updated["MaxClarificationTurns"] = Math.Clamp(request.MaxClarificationTurns ?? 2, 1, 5).ToString();
-        if (!string.IsNullOrWhiteSpace(request.EscalationTarget))
+        if (string.IsNullOrWhiteSpace(request.EscalationTarget))
+            updated.Remove("EscalationTarget");
+        else
             updated["EscalationTarget"] = request.EscalationTarget.Trim();
         updated["MinMessagesBeforeClassification"] = Math.Clamp(request.MinMessagesBeforeClassification ?? 3, 1, 10).ToString();
         updated["MaxUnclassifiedMessagesBeforeEscalation"] = Math.Clamp(request.MaxUnclassifiedMessagesBeforeEscalation ?? 4, 1, 12).ToString();
         updated["HistoryWindowMessagesForClassification"] = Math.Clamp(request.HistoryWindowMessagesForClassification ?? 3, 1, 10).ToString();
         updated["MaxSpamSignalsBeforeSpamReview"] = Math.Clamp(request.MaxSpamSignalsBeforeSpamReview ?? 2, 1, 10).ToString();
+        updated["IntentConfidenceThreshold"] = Math.Clamp(request.IntentConfidenceThreshold ?? 0.70f, 0.10f, 1.00f).ToString("0.00", CultureInfo.InvariantCulture);
+        updated["AssistantConfidenceThreshold"] = Math.Clamp(request.AssistantConfidenceThreshold ?? 0.80f, 0.10f, 1.00f).ToString("0.00", CultureInfo.InvariantCulture);
+        updated["AssistantIntentInferenceEnabled"] = (request.AssistantIntentInferenceEnabled ?? false) ? "true" : "false";
         updated["SuppressRepliesWhileAccumulating"] = (request.SuppressRepliesWhileAccumulating ?? true) ? "true" : "false";
-        if (!string.IsNullOrWhiteSpace(request.SpamEscalationTarget))
+        if (string.IsNullOrWhiteSpace(request.SpamEscalationTarget))
+            updated.Remove("SpamEscalationTarget");
+        else
             updated["SpamEscalationTarget"] = request.SpamEscalationTarget.Trim();
         if (request.ClarificationQuestions is not null)
             updated["FallbackQuestionsJson"] = JsonSerializer.Serialize(request.ClarificationQuestions.Take(5));
@@ -399,6 +414,9 @@ public sealed class ChannelsController : ControllerBase
             MaxUnclassifiedMessagesBeforeEscalation = ReadRoutingInt(updated, "MaxUnclassifiedMessagesBeforeEscalation", 4, 1, 12),
             HistoryWindowMessagesForClassification = ReadRoutingInt(updated, "HistoryWindowMessagesForClassification", 3, 1, 10),
             MaxSpamSignalsBeforeSpamReview = ReadRoutingInt(updated, "MaxSpamSignalsBeforeSpamReview", 2, 1, 10),
+            IntentConfidenceThreshold = ReadRoutingFloat(updated, "IntentConfidenceThreshold", 0.70f, 0.10f, 1.00f),
+            AssistantConfidenceThreshold = ReadRoutingFloat(updated, "AssistantConfidenceThreshold", 0.80f, 0.10f, 1.00f),
+            AssistantIntentInferenceEnabled = ReadRoutingBool(updated, "AssistantIntentInferenceEnabled", false),
             SuppressRepliesWhileAccumulating = ReadRoutingBool(updated, "SuppressRepliesWhileAccumulating", true),
             SpamEscalationTarget = updated.GetValueOrDefault("SpamEscalationTarget"),
             ClarificationQuestions = ParseFallbackQuestions(updated.GetValueOrDefault("FallbackQuestionsJson"))
@@ -795,6 +813,18 @@ public sealed class ChannelsController : ControllerBase
             : fallback;
     }
 
+    private static float ReadRoutingFloat(
+        IReadOnlyDictionary<string, string> config,
+        string key,
+        float fallback,
+        float min,
+        float max)
+    {
+        return float.TryParse(config.GetValueOrDefault(key), NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed)
+            ? Math.Clamp(parsed, min, max)
+            : fallback;
+    }
+
     private static bool ReadRoutingBool(
         IReadOnlyDictionary<string, string> config,
         string key,
@@ -851,6 +881,9 @@ public sealed record UpdateChannelRoutingRequest
     public int? MaxUnclassifiedMessagesBeforeEscalation { get; init; }
     public int? HistoryWindowMessagesForClassification { get; init; }
     public int? MaxSpamSignalsBeforeSpamReview { get; init; }
+    public float? IntentConfidenceThreshold { get; init; }
+    public float? AssistantConfidenceThreshold { get; init; }
+    public bool? AssistantIntentInferenceEnabled { get; init; }
     public bool? SuppressRepliesWhileAccumulating { get; init; }
     public string? SpamEscalationTarget { get; init; }
     public List<FallbackQuestionDto>? ClarificationQuestions { get; init; }
@@ -871,6 +904,9 @@ public sealed record ChannelRoutingDto
     public int MaxUnclassifiedMessagesBeforeEscalation { get; init; } = 4;
     public int HistoryWindowMessagesForClassification { get; init; } = 3;
     public int MaxSpamSignalsBeforeSpamReview { get; init; } = 2;
+    public float IntentConfidenceThreshold { get; init; } = 0.70f;
+    public float AssistantConfidenceThreshold { get; init; } = 0.80f;
+    public bool AssistantIntentInferenceEnabled { get; init; }
     public bool SuppressRepliesWhileAccumulating { get; init; } = true;
     public string? SpamEscalationTarget { get; init; }
     public List<FallbackQuestionDto> ClarificationQuestions { get; init; } = new();

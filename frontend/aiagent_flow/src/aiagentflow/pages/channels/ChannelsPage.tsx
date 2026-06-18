@@ -24,10 +24,12 @@ import IconButton from '@mui/material/IconButton';
 import InputLabel from '@mui/material/InputLabel';
 import DialogTitle from '@mui/material/DialogTitle';
 import FormControl from '@mui/material/FormControl';
+import FormControlLabel from '@mui/material/FormControlLabel';
 import DialogActions from '@mui/material/DialogActions';
 import DialogContent from '@mui/material/DialogContent';
 import OutlinedInput from '@mui/material/OutlinedInput';
 import FormHelperText from '@mui/material/FormHelperText';
+import Switch from '@mui/material/Switch';
 import TablePagination from '@mui/material/TablePagination';
 import CircularProgress from '@mui/material/CircularProgress';
 
@@ -148,6 +150,9 @@ export default function ChannelsPage() {
     maxUnclassifiedMessagesBeforeEscalation: 4,
     historyWindowMessagesForClassification: 3,
     maxSpamSignalsBeforeSpamReview: 2,
+    intentConfidenceThreshold: 0.7,
+    assistantConfidenceThreshold: 0.8,
+    assistantIntentInferenceEnabled: false,
     suppressRepliesWhileAccumulating: true,
     spamEscalationTarget: '',
     clarificationQuestions: [
@@ -283,6 +288,9 @@ export default function ChannelsPage() {
         maxUnclassifiedMessagesBeforeEscalation: Number(res.data?.maxUnclassifiedMessagesBeforeEscalation || 4),
         historyWindowMessagesForClassification: Number(res.data?.historyWindowMessagesForClassification || 3),
         maxSpamSignalsBeforeSpamReview: Number(res.data?.maxSpamSignalsBeforeSpamReview || 2),
+        intentConfidenceThreshold: Number(res.data?.intentConfidenceThreshold || 0.7),
+        assistantConfidenceThreshold: Number(res.data?.assistantConfidenceThreshold || 0.8),
+        assistantIntentInferenceEnabled: Boolean(res.data?.assistantIntentInferenceEnabled ?? false),
         suppressRepliesWhileAccumulating: Boolean(res.data?.suppressRepliesWhileAccumulating ?? true),
         spamEscalationTarget: res.data?.spamEscalationTarget || '',
         clarificationQuestions: (res.data?.clarificationQuestions && Array.isArray(res.data.clarificationQuestions) && res.data.clarificationQuestions.length > 0)
@@ -316,6 +324,9 @@ export default function ChannelsPage() {
         maxUnclassifiedMessagesBeforeEscalation: routingForm.maxUnclassifiedMessagesBeforeEscalation,
         historyWindowMessagesForClassification: routingForm.historyWindowMessagesForClassification,
         maxSpamSignalsBeforeSpamReview: routingForm.maxSpamSignalsBeforeSpamReview,
+        intentConfidenceThreshold: routingForm.intentConfidenceThreshold,
+        assistantConfidenceThreshold: routingForm.assistantConfidenceThreshold,
+        assistantIntentInferenceEnabled: routingForm.assistantIntentInferenceEnabled,
         suppressRepliesWhileAccumulating: routingForm.suppressRepliesWhileAccumulating,
         spamEscalationTarget: routingForm.spamEscalationTarget || null,
         clarificationQuestions: routingForm.clarificationQuestions,
@@ -1059,239 +1070,336 @@ export default function ChannelsPage() {
         </DialogActions>
       </Dialog>
 
-      <Dialog open={openRouting} onClose={() => setOpenRouting(false)} fullWidth maxWidth="sm">
+      <Dialog open={openRouting} onClose={() => setOpenRouting(false)} fullWidth maxWidth="md">
         <DialogTitle sx={{ pb: 1 }}>
-          <Typography variant="h6">Enrutamiento por intencion</Typography>
+          <Typography variant="h6">Como se reparten las conversaciones</Typography>
           <Typography variant="body2" color="text.secondary">
-            {routingChannel?.name ? `Canal: ${routingChannel.name}` : 'Configura como se reparte la conversacion.'}
+            {routingChannel?.name ? `Canal: ${routingChannel.name}` : 'Define quien recibe cada caso y que hacer cuando el mensaje no esta claro.'}
           </Typography>
         </DialogTitle>
         <DialogContent>
           <Stack spacing={2.5} sx={{ pt: 1 }}>
             <Alert severity="info" sx={{ mb: 0 }}>
-              El <strong>agente enrutador</strong> clasifica el mensaje. Los <strong>agentes por intencion</strong> reciben nuevas conversaciones segun su carga.
+              El agente enrutador lee el mensaje y decide a quien mandarlo. Si activas la ayuda inteligente, tambien puede apoyarse en los nombres y descripciones de tus workflows.
             </Alert>
 
-            <TextField
-              select
-              label="Agente de respaldo"
-              value={routingForm.defaultAgentId}
-              onChange={(e) => setRoutingForm((prev) => ({ ...prev, defaultAgentId: e.target.value }))}
-              fullWidth
-              helperText="Se usa cuando no hay una intencion clara o no hay agente de intencion disponible."
-            >
-              <MenuItem value=""><em>Sin agente de respaldo</em></MenuItem>
-              {candidateAgents.map((agent) => (
-                <MenuItem key={agent.id} value={agent.id}>{agent.name}</MenuItem>
-              ))}
-            </TextField>
+            <Card variant="outlined" sx={{ p: 2 }}>
+              <Stack spacing={2}>
+                <Box>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                    Quien atiende cada caso
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Elige los agentes que pueden recibir conversaciones nuevas y a quien mandar un caso cuando no haya una coincidencia clara.
+                  </Typography>
+                </Box>
 
-            <FormControl fullWidth>
-              <InputLabel>Agentes de intencion</InputLabel>
-              <Select
-                multiple
-                value={routingForm.routingAgentIds}
-                onChange={(e) => setRoutingForm((prev) => ({ ...prev, routingAgentIds: e.target.value as string[] }))}
-                input={<OutlinedInput label="Agentes de intencion" />}
-                renderValue={(selected) => (
-                  <Stack direction="row" spacing={0.5} flexWrap="wrap">
-                    {(selected as string[]).map((id) => {
-                      const agent = candidateAgents.find((a) => a.id === id);
-                      return <Chip key={id} label={agent?.name || id} size="small" />;
-                    })}
-                  </Stack>
+                <FormControl fullWidth>
+                  <InputLabel>Agentes que pueden recibir conversaciones</InputLabel>
+                  <Select
+                    multiple
+                    value={routingForm.routingAgentIds}
+                    onChange={(e) => setRoutingForm((prev) => ({ ...prev, routingAgentIds: e.target.value as string[] }))}
+                    input={<OutlinedInput label="Agentes que pueden recibir conversaciones" />}
+                    renderValue={(selected) => (
+                      <Stack direction="row" spacing={0.5} flexWrap="wrap">
+                        {(selected as string[]).map((id) => {
+                          const agent = candidateAgents.find((a) => a.id === id);
+                          return <Chip key={id} label={agent?.name || id} size="small" />;
+                        })}
+                      </Stack>
+                    )}
+                  >
+                    {candidateAgents.map((agent) => (
+                      <MenuItem key={agent.id} value={agent.id}>{agent.name}</MenuItem>
+                    ))}
+                  </Select>
+                  <FormHelperText>Si eliges varios, el sistema reparte nuevas conversaciones hacia el que tenga menos carga.</FormHelperText>
+                </FormControl>
+
+                {routingForm.routingAgentIds.length === 0 && (
+                  <Alert severity="warning">
+                    Todavia no has elegido agentes para recibir conversaciones. Si lo dejas asi, el canal dependera del respaldo o de una revision manual.
+                  </Alert>
                 )}
-              >
-                {candidateAgents.map((agent) => (
-                  <MenuItem key={agent.id} value={agent.id}>{agent.name}</MenuItem>
-                ))}
-              </Select>
-              <FormHelperText>El router enviara la conversacion al agente de intencion con menor carga activa.</FormHelperText>
-            </FormControl>
+
+                <TextField
+                  select
+                  label="Agente de respaldo"
+                  value={routingForm.defaultAgentId}
+                  onChange={(e) => setRoutingForm((prev) => ({ ...prev, defaultAgentId: e.target.value }))}
+                  fullWidth
+                  helperText="Se usa cuando no hay una coincidencia clara o no hay nadie disponible en la lista principal."
+                >
+                  <MenuItem value=""><em>Sin agente de respaldo</em></MenuItem>
+                  {candidateAgents.map((agent) => (
+                    <MenuItem key={agent.id} value={agent.id}>{agent.name}</MenuItem>
+                  ))}
+                </TextField>
+              </Stack>
+            </Card>
 
             <Divider />
 
-            <Alert severity="info" sx={{ mb: 0 }}>
-              El router intenta clasificar desde el primer mensaje si ya hay suficiente señal. Estos umbrales solo controlan cuántos mensajes ambiguos acumula antes de escalar o marcar spam.
-            </Alert>
+            <Card variant="outlined" sx={{ p: 2 }}>
+              <Stack spacing={2}>
+                <Box>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                    Ayuda inteligente del router
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Activa esta opcion para que el router intente entender mejor la necesidad del cliente usando el catalogo de intents y la informacion de tus workflows publicados.
+                  </Typography>
+                </Box>
 
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-              <TextField
-                label="Minimo de mensajes para contexto"
-                type="number"
-                value={routingForm.minMessagesBeforeClassification}
-                onChange={(e) => setRoutingForm((prev) => ({
-                  ...prev,
-                  minMessagesBeforeClassification: Number(e.target.value || 3),
-                }))}
-                inputProps={{ min: 1, max: 10 }}
-                fullWidth
-                helperText="Si el mensaje ya es claro, el router clasifica antes. Este valor define cuántos mensajes ambiguos puede acumular."
-              />
-              <TextField
-                label="Maximo no clasificado antes de revision"
-                type="number"
-                value={routingForm.maxUnclassifiedMessagesBeforeEscalation}
-                onChange={(e) => setRoutingForm((prev) => ({
-                  ...prev,
-                  maxUnclassifiedMessagesBeforeEscalation: Number(e.target.value || 4),
-                }))}
-                inputProps={{ min: 1, max: 12 }}
-                fullWidth
-                helperText="Cuando sigue sin intención clara al llegar a este umbral, deja de rutear y pasa a revisión."
-              />
-            </Stack>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={routingForm.assistantIntentInferenceEnabled}
+                      onChange={(_, checked) => setRoutingForm((prev) => ({ ...prev, assistantIntentInferenceEnabled: checked }))}
+                    />
+                  }
+                  label={routingForm.assistantIntentInferenceEnabled ? 'Ayuda inteligente activada' : 'Ayuda inteligente desactivada'}
+                />
 
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-              <TextField
-                label="Mensajes del historial para clasificar"
-                type="number"
-                value={routingForm.historyWindowMessagesForClassification}
-                onChange={(e) => setRoutingForm((prev) => ({
-                  ...prev,
-                  historyWindowMessagesForClassification: Number(e.target.value || 3),
-                }))}
-                inputProps={{ min: 1, max: 10 }}
-                fullWidth
-                helperText="Cantidad de mensajes inbound recientes que se consolidan como contexto del router."
-              />
-              <TextField
-                label="Senales spam antes de revision"
-                type="number"
-                value={routingForm.maxSpamSignalsBeforeSpamReview}
-                onChange={(e) => setRoutingForm((prev) => ({
-                  ...prev,
-                  maxSpamSignalsBeforeSpamReview: Number(e.target.value || 2),
-                }))}
-                inputProps={{ min: 1, max: 10 }}
-                fullWidth
-                helperText="Cantidad de mensajes low-signal o repetitivos en la ventana reciente para entrar a spam review."
-              />
-            </Stack>
-
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-              <TextField
-                select
-                label="Suprimir respuesta mientras acumula"
-                value={routingForm.suppressRepliesWhileAccumulating ? 'si' : 'no'}
-                onChange={(e) => setRoutingForm((prev) => ({
-                  ...prev,
-                  suppressRepliesWhileAccumulating: e.target.value === 'si',
-                }))}
-                fullWidth
-                helperText="Cuando la conversación sigue ambigua, guarda en bandeja sin responder automáticamente."
-              >
-                <MenuItem value="si">Si</MenuItem>
-                <MenuItem value="no">No</MenuItem>
-              </TextField>
-              <TextField
-                select
-                label="Destino de spam review"
-                value={routingForm.spamEscalationTarget}
-                onChange={(e) => setRoutingForm((prev) => ({ ...prev, spamEscalationTarget: e.target.value }))}
-                fullWidth
-                helperText="Cola humana para clientes sospechosos o confirmados como spam. Si queda vacio, usa el destino general."
-              >
-                <MenuItem value=""><em>Usar destino general</em></MenuItem>
-                {queueOptions.filter((q) => q.active).map((q) => (
-                  <MenuItem key={q.id} value={q.id}>{q.name}</MenuItem>
-                ))}
-              </TextField>
-            </Stack>
-
-            <FormControl fullWidth>
-              <InputLabel>Estrategia sin match</InputLabel>
-              <Select
-                value={routingForm.noMatchAction}
-                onChange={(e) => setRoutingForm((prev) => ({ ...prev, noMatchAction: e.target.value }))}
-                input={<OutlinedInput label="Estrategia sin match" />}
-              >
-                <MenuItem value="human_review_only">Solo revision humana</MenuItem>
-                <MenuItem value="clarify_then_route">Preguntar y reintentar</MenuItem>
-              </Select>
-            </FormControl>
-
-            <TextField
-              select
-              label="Agente de respaldo"
-              value={routingForm.routerFallbackAgentId}
-              onChange={(e) => setRoutingForm((prev) => ({ ...prev, routerFallbackAgentId: e.target.value }))}
-              fullWidth
-              helperText="Agente responsable del proceso de respaldo y trazabilidad de auditoria."
-            >
-              <MenuItem value=""><em>Sin agente de respaldo</em></MenuItem>
-              {candidateAgents.map((agent) => (
-                <MenuItem key={agent.id} value={agent.id}>{agent.name}</MenuItem>
-              ))}
-            </TextField>
-
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-              <TextField
-                label="Maximo de preguntas"
-                type="number"
-                value={routingForm.maxClarificationTurns}
-                onChange={(e) => setRoutingForm((prev) => ({ ...prev, maxClarificationTurns: Number(e.target.value || 2) }))}
-                inputProps={{ min: 1, max: 5 }}
-                fullWidth
-                disabled={routingForm.noMatchAction !== 'clarify_then_route'}
-              />
-              <TextField
-                select
-                label="Destino de escalacion"
-                value={routingForm.escalationTarget}
-                onChange={(e) => setRoutingForm((prev) => ({ ...prev, escalationTarget: e.target.value }))}
-                fullWidth
-                helperText="Cola humana que recibira casos escalados sin clasificacion."
-              >
-                <MenuItem value=""><em>Sin cola de escalacion</em></MenuItem>
-                {queueOptions.filter((q) => q.active).map((q) => (
-                  <MenuItem key={q.id} value={q.id}>{q.name}</MenuItem>
-                ))}
-              </TextField>
-            </Stack>
-
-            <Stack spacing={1.25}>
-              <Typography variant="subtitle2">Preguntas de clarificacion</Typography>
-              {routingForm.clarificationQuestions.map((q, idx) => (
-                <Stack key={`q-${idx}`} direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
                   <TextField
-                    label={`Pregunta ${idx + 1}`}
-                    value={q.text}
+                    label="Confianza minima para aceptar un intent"
+                    type="number"
+                    value={routingForm.intentConfidenceThreshold}
                     onChange={(e) => setRoutingForm((prev) => ({
                       ...prev,
-                      clarificationQuestions: prev.clarificationQuestions.map((item, i) => i === idx ? { ...item, text: e.target.value } : item),
+                      intentConfidenceThreshold: Number(e.target.value || 0.7),
                     }))}
+                    inputProps={{ min: 0.1, max: 1, step: 0.05 }}
+                    fullWidth
+                    helperText="Si la coincidencia queda por debajo de este valor, el router busca ayuda adicional."
+                  />
+                  <TextField
+                    label="Confianza minima para aceptar la ayuda inteligente"
+                    type="number"
+                    value={routingForm.assistantConfidenceThreshold}
+                    onChange={(e) => setRoutingForm((prev) => ({
+                      ...prev,
+                      assistantConfidenceThreshold: Number(e.target.value || 0.8),
+                    }))}
+                    inputProps={{ min: 0.1, max: 1, step: 0.05 }}
+                    fullWidth
+                    disabled={!routingForm.assistantIntentInferenceEnabled}
+                    helperText="Entre mas alto, mas exigente sera el router antes de mandar el caso a un workflow o agente."
+                  />
+                </Stack>
+              </Stack>
+            </Card>
+
+            <Card variant="outlined" sx={{ p: 2 }}>
+              <Stack spacing={2}>
+                <Box>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                    Que hacer cuando el mensaje no esta claro
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Decide si el sistema debe hacer preguntas cortas para entender mejor al cliente o si debe mandar el caso a revision humana.
+                  </Typography>
+                </Box>
+
+                <FormControl fullWidth>
+                  <InputLabel>Cuando no entiende bien el mensaje</InputLabel>
+                  <Select
+                    value={routingForm.noMatchAction}
+                    onChange={(e) => setRoutingForm((prev) => ({ ...prev, noMatchAction: e.target.value }))}
+                    input={<OutlinedInput label="Cuando no entiende bien el mensaje" />}
+                  >
+                    <MenuItem value="human_review_only">Mandar a revision humana</MenuItem>
+                    <MenuItem value="clarify_then_route">Hacer preguntas y volver a intentar</MenuItem>
+                  </Select>
+                </FormControl>
+
+                <TextField
+                  select
+                  label="Agente de apoyo para trazabilidad"
+                  value={routingForm.routerFallbackAgentId}
+                  onChange={(e) => setRoutingForm((prev) => ({ ...prev, routerFallbackAgentId: e.target.value }))}
+                  fullWidth
+                  helperText="Opcional. Sirve para dejar claro quien da seguimiento interno cuando un caso queda en respaldo."
+                >
+                  <MenuItem value=""><em>Sin agente de apoyo</em></MenuItem>
+                  {candidateAgents.map((agent) => (
+                    <MenuItem key={agent.id} value={agent.id}>{agent.name}</MenuItem>
+                  ))}
+                </TextField>
+
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+                  <TextField
+                    label="Cuantas preguntas puede hacer"
+                    type="number"
+                    value={routingForm.maxClarificationTurns}
+                    onChange={(e) => setRoutingForm((prev) => ({ ...prev, maxClarificationTurns: Number(e.target.value || 2) }))}
+                    inputProps={{ min: 1, max: 5 }}
                     fullWidth
                     disabled={routingForm.noMatchAction !== 'clarify_then_route'}
+                    helperText="Recomendado: 1 o 2 para no alargar demasiado la conversacion."
                   />
                   <TextField
-                    label="Campo"
-                    value={q.field}
+                    select
+                    label="A donde mandar los casos sin clasificar"
+                    value={routingForm.escalationTarget}
+                    onChange={(e) => setRoutingForm((prev) => ({ ...prev, escalationTarget: e.target.value }))}
+                    fullWidth
+                    helperText="Cola humana que recibira los casos que el router no logro ubicar."
+                  >
+                    <MenuItem value=""><em>Sin cola de escalacion</em></MenuItem>
+                    {queueOptions.filter((q) => q.active).map((q) => (
+                      <MenuItem key={q.id} value={q.id}>{q.name}</MenuItem>
+                    ))}
+                  </TextField>
+                </Stack>
+
+                <Stack spacing={1.25}>
+                  <Typography variant="subtitle2">Preguntas de apoyo</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Usa preguntas breves y faciles de responder. Esto ayuda a que el cliente llegue mas rapido al flujo correcto.
+                  </Typography>
+                  {routingForm.clarificationQuestions.map((q, idx) => (
+                    <Stack key={`q-${idx}`} direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                      <TextField
+                        label={`Pregunta ${idx + 1}`}
+                        value={q.text}
+                        onChange={(e) => setRoutingForm((prev) => ({
+                          ...prev,
+                          clarificationQuestions: prev.clarificationQuestions.map((item, i) => i === idx ? { ...item, text: e.target.value } : item),
+                        }))}
+                        fullWidth
+                        disabled={routingForm.noMatchAction !== 'clarify_then_route'}
+                      />
+                      <TextField
+                        label="Campo interno"
+                        value={q.field}
+                        onChange={(e) => setRoutingForm((prev) => ({
+                          ...prev,
+                          clarificationQuestions: prev.clarificationQuestions.map((item, i) => i === idx ? { ...item, field: e.target.value } : item),
+                        }))}
+                        sx={{ minWidth: 160 }}
+                        disabled={routingForm.noMatchAction !== 'clarify_then_route'}
+                        helperText="Nombre corto para guardar la respuesta"
+                      />
+                      <FormControl sx={{ minWidth: 92 }}>
+                        <InputLabel>Activa</InputLabel>
+                        <Select
+                          value={q.active ? 'si' : 'no'}
+                          label="Activa"
+                          onChange={(e) => setRoutingForm((prev) => ({
+                            ...prev,
+                            clarificationQuestions: prev.clarificationQuestions.map((item, i) => i === idx ? { ...item, active: e.target.value === 'si' } : item),
+                          }))}
+                          disabled={routingForm.noMatchAction !== 'clarify_then_route'}
+                        >
+                          <MenuItem value="si">Si</MenuItem>
+                          <MenuItem value="no">No</MenuItem>
+                        </Select>
+                      </FormControl>
+                    </Stack>
+                  ))}
+                </Stack>
+              </Stack>
+            </Card>
+
+            <Card variant="outlined" sx={{ p: 2 }}>
+              <Stack spacing={2}>
+                <Box>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                    Limites antes de revisar un caso
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Estos valores no obligan al router a esperar. Solo marcan cuando debe dejar de acumular contexto y pasar el caso a revision o spam.
+                  </Typography>
+                </Box>
+
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+                  <TextField
+                    label="Mensajes minimos para tener mas contexto"
+                    type="number"
+                    value={routingForm.minMessagesBeforeClassification}
                     onChange={(e) => setRoutingForm((prev) => ({
                       ...prev,
-                      clarificationQuestions: prev.clarificationQuestions.map((item, i) => i === idx ? { ...item, field: e.target.value } : item),
+                      minMessagesBeforeClassification: Number(e.target.value || 3),
                     }))}
-                    sx={{ minWidth: 140 }}
-                    disabled={routingForm.noMatchAction !== 'clarify_then_route'}
+                    inputProps={{ min: 1, max: 10 }}
+                    fullWidth
+                    helperText="Si el mensaje ya es claro, el router puede decidir antes."
                   />
-                  <FormControl sx={{ minWidth: 92 }}>
-                    <InputLabel>Activa</InputLabel>
-                    <Select
-                      value={q.active ? 'si' : 'no'}
-                      label="Activa"
-                      onChange={(e) => setRoutingForm((prev) => ({
-                        ...prev,
-                        clarificationQuestions: prev.clarificationQuestions.map((item, i) => i === idx ? { ...item, active: e.target.value === 'si' } : item),
-                      }))}
-                      disabled={routingForm.noMatchAction !== 'clarify_then_route'}
-                    >
-                      <MenuItem value="si">Si</MenuItem>
-                      <MenuItem value="no">No</MenuItem>
-                    </Select>
-                  </FormControl>
+                  <TextField
+                    label="Maximo de mensajes sin clasificar"
+                    type="number"
+                    value={routingForm.maxUnclassifiedMessagesBeforeEscalation}
+                    onChange={(e) => setRoutingForm((prev) => ({
+                      ...prev,
+                      maxUnclassifiedMessagesBeforeEscalation: Number(e.target.value || 4),
+                    }))}
+                    inputProps={{ min: 1, max: 12 }}
+                    fullWidth
+                    helperText="Al llegar a este numero, el caso deja de esperar y pasa a revision."
+                  />
                 </Stack>
-              ))}
-            </Stack>
+
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+                  <TextField
+                    label="Mensajes recientes que toma como contexto"
+                    type="number"
+                    value={routingForm.historyWindowMessagesForClassification}
+                    onChange={(e) => setRoutingForm((prev) => ({
+                      ...prev,
+                      historyWindowMessagesForClassification: Number(e.target.value || 3),
+                    }))}
+                    inputProps={{ min: 1, max: 10 }}
+                    fullWidth
+                    helperText="Cuantos mensajes recientes usa para entender mejor la necesidad del cliente."
+                  />
+                  <TextField
+                    label="Senales repetitivas antes de revisar por spam"
+                    type="number"
+                    value={routingForm.maxSpamSignalsBeforeSpamReview}
+                    onChange={(e) => setRoutingForm((prev) => ({
+                      ...prev,
+                      maxSpamSignalsBeforeSpamReview: Number(e.target.value || 2),
+                    }))}
+                    inputProps={{ min: 1, max: 10 }}
+                    fullWidth
+                    helperText="Sirve para detectar mensajes vacios, raros o repetidos varias veces seguidas."
+                  />
+                </Stack>
+
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+                  <TextField
+                    select
+                    label="Mientras espera mas contexto"
+                    value={routingForm.suppressRepliesWhileAccumulating ? 'si' : 'no'}
+                    onChange={(e) => setRoutingForm((prev) => ({
+                      ...prev,
+                      suppressRepliesWhileAccumulating: e.target.value === 'si',
+                    }))}
+                    fullWidth
+                    helperText="Puedes dejar el caso en silencio mientras junta contexto o permitir respuesta automatica."
+                  >
+                    <MenuItem value="si">Guardar sin responder</MenuItem>
+                    <MenuItem value="no">Seguir respondiendo</MenuItem>
+                  </TextField>
+                  <TextField
+                    select
+                    label="A donde mandar posibles casos de spam"
+                    value={routingForm.spamEscalationTarget}
+                    onChange={(e) => setRoutingForm((prev) => ({ ...prev, spamEscalationTarget: e.target.value }))}
+                    fullWidth
+                    helperText="Si lo dejas vacio, usa el mismo destino general de revision."
+                  >
+                    <MenuItem value=""><em>Usar destino general</em></MenuItem>
+                    {queueOptions.filter((q) => q.active).map((q) => (
+                      <MenuItem key={q.id} value={q.id}>{q.name}</MenuItem>
+                    ))}
+                  </TextField>
+                </Stack>
+              </Stack>
+            </Card>
 
             {routingPreview && (
               <Alert severity="success">
