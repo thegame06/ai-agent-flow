@@ -12,6 +12,7 @@ vi.mock('../../services/workflowStudioApi', () => ({
     getDefinitions: vi.fn(),
     getExecutions: vi.fn(),
     getMetrics: vi.fn(),
+    getWizardMetrics: vi.fn(),
     getAuditEvents: vi.fn(),
     getCatalogActivities: vi.fn(),
     getModels: vi.fn(),
@@ -20,6 +21,7 @@ vi.mock('../../services/workflowStudioApi', () => ({
     getChannels: vi.fn(),
     getIntegrationStatus: vi.fn(),
     getConnectTemplates: vi.fn(),
+    getRuntimeProfiles: vi.fn(),
     upsertDefinition: vi.fn(),
   },
 }));
@@ -41,6 +43,8 @@ describe('workflowThunks', () => {
     vi.mocked(workflowStudioApi.getChannels).mockResolvedValue({ data: [{ id: 'ch-1', name: 'WhatsApp', type: 'WhatsApp', status: 'Active', config: {} }] } as any);
     vi.mocked(workflowStudioApi.getIntegrationStatus).mockResolvedValue({ data: [] } as any);
     vi.mocked(workflowStudioApi.getConnectTemplates).mockResolvedValue({ data: [] } as any);
+    vi.mocked(workflowStudioApi.getWizardMetrics).mockResolvedValue({ data: {} } as any);
+    vi.mocked(workflowStudioApi.getRuntimeProfiles).mockResolvedValue({ data: [] } as any);
 
     const dispatch = vi.fn();
     const getState = vi.fn();

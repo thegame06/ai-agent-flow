@@ -50,3 +50,7 @@ tools/whatsapp-qr-bridge/.wwebjs_cache/
 tools/whatsapp-qr-bridge/.wwebjs_auth
 
 .agent/run/
+
+# Code analysis tooling (local indexes, regenerated per machine)
+.codegraph/
+graphify-out/

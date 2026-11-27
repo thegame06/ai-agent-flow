@@ -185,7 +185,7 @@ public sealed class TestStudioController : ControllerBase
     public async Task<IActionResult> UploadAttachment(
         [FromRoute] string tenantId,
         [FromRoute] string sessionId,
-        [FromForm] IFormFile file,
+        IFormFile file, // [ApiController] infers form binding; explicit [FromForm] on IFormFile breaks Swashbuckle 7 (swagger.json 500)
         CancellationToken ct)
     {
         if (!TryValidateTenant(tenantId, out var forbidden)) return forbidden!;

@@ -1,0 +1,8 @@
+frontend/aiagent_flow/public/
+frontend/aiagent_flow/jelou/
+node_modules/
+**/node_modules/
+bin/
+obj/
+.tmp/
+.codegraph/

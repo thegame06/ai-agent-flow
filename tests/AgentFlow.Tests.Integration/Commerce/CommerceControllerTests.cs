@@ -480,13 +480,13 @@ public sealed class CommerceControllerTests
                     UnitPrice = unitPrice,
                     OnHand = resolvedTracks ? onHand : 0,
                     Active = active,
-                    CategoryIds = categoryIds?.ToList(),
-                    BranchIds = branchIds?.ToList(),
-                    ImageUrls = imageUrls?.ToList(),
-                    Attributes = attributes?.ToList(),
+                    CategoryIds = categoryIds?.ToList() ?? [],
+                    BranchIds = branchIds?.ToList() ?? [],
+                    ImageUrls = imageUrls?.ToList() ?? [],
+                    Attributes = attributes?.ToList() ?? [],
                     Discount = discount,
-                    Variations = variations?.ToList(),
-                    BranchStocks = branchStocks?.ToList()
+                    Variations = variations?.ToList() ?? [],
+                    BranchStocks = branchStocks?.ToList() ?? []
                 };
                 _inventory.Add(current);
             }
@@ -500,13 +500,13 @@ public sealed class CommerceControllerTests
                 current.UnitPrice = unitPrice;
                 current.OnHand = resolvedTracks ? onHand : 0;
                 current.Active = active;
-                current.CategoryIds = categoryIds?.ToList();
-                current.BranchIds = branchIds?.ToList();
-                current.ImageUrls = imageUrls?.ToList();
-                current.Attributes = attributes?.ToList();
+                current.CategoryIds = categoryIds?.ToList() ?? [];
+                current.BranchIds = branchIds?.ToList() ?? [];
+                current.ImageUrls = imageUrls?.ToList() ?? [];
+                current.Attributes = attributes?.ToList() ?? [];
                 current.Discount = discount;
-                current.Variations = variations?.ToList();
-                current.BranchStocks = branchStocks?.ToList();
+                current.Variations = variations?.ToList() ?? [];
+                current.BranchStocks = branchStocks?.ToList() ?? [];
             }
             return Task.FromResult(current);
         }
