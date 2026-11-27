@@ -13,4 +13,7 @@ public interface IWhatsAppTransport
     /// Required by WhatsApp Business policy when the 24-hour window has expired.
     /// </summary>
     Task<string> SendTemplateMessageAsync(string to, string templateName, CancellationToken ct = default);
+
+    /// <summary>A template with its parameters. <paramref name="renderedText"/> is what the customer reads (QR mode sends it as text).</summary>
+    Task<string> SendTemplateMessageAsync(string to, string templateName, string language, string? componentsJson, string renderedText, CancellationToken ct = default);
 }

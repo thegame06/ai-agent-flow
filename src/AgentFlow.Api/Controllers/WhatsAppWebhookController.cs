@@ -78,11 +78,39 @@ public sealed class WhatsAppWebhookController : ControllerBase
     /// </summary>
     [HttpPost]
     [RequireMetaSignature]
-    public async Task<IActionResult> ReceiveWebhook(string tenantId, [FromBody] WhatsAppWebhookPayload payload, CancellationToken ct)
+    public async Task<IActionResult> ReceiveWebhook(
+        string tenantId,
+        [FromBody] WhatsAppWebhookPayload payload,
+        [FromServices] AgentFlow.Api.Messaging.IWhatsAppTemplateService templates,
+        CancellationToken ct)
     {
         try
         {
             _logger.LogDebug("Received WhatsApp webhook: {Object}", System.Text.Json.JsonSerializer.Serialize(payload));
+
+            // Template review results and quality/category changes come through the same webhook.
+            var templateChanges = payload.Entry?
+                .SelectMany(e => e.Changes ?? new List<WhatsAppWebhookChange>())
+                .Where(c => c.Field is "message_template_status_update" or "message_template_quality_update" or "template_category_update" && c.Value is not null)
+                .ToList() ?? [];
+            foreach (var change in templateChanges)
+            {
+                var id = change.Value!.MessageTemplateId is { } raw
+                    ? raw.ValueKind == System.Text.Json.JsonValueKind.Number ? raw.GetRawText() : raw.GetString()
+                    : null;
+                if (string.IsNullOrWhiteSpace(id)) continue;
+                var applied = await templates.ApplyWebhookAsync(
+                    tenantId, id!,
+                    change.Field == "message_template_status_update" ? change.Value.Event : null,
+                    change.Value.Reason,
+                    change.Value.NewQualityScore,
+                    change.Value.NewCategory,
+                    ct);
+                _logger.LogInformation("Template webhook {Field} for {TemplateId} ({Name}): {Event} applied={Applied}",
+                    change.Field, id, change.Value.MessageTemplateName, change.Value.Event, applied);
+            }
+            if (templateChanges.Count > 0 && templateChanges.Count == payload.Entry!.Sum(e => e.Changes?.Count ?? 0))
+                return Ok(new { status = "template_updates", count = templateChanges.Count });
 
             // Extract messages from payload
             var messages = payload.Entry?
@@ -334,16 +362,31 @@ public sealed record WhatsAppWebhookChange
 
 public sealed record WhatsAppWebhookValue
 {
+    [System.Text.Json.Serialization.JsonPropertyName("messaging_product")]
     public string? MessagingProduct { get; init; }
-    public string? Metadata { get; init; }
+    /// <summary>{display_phone_number, phone_number_id}: an object, not a string.</summary>
+    public System.Text.Json.JsonElement? Metadata { get; init; }
     public List<WhatsAppIncomingMessage>? Messages { get; init; }
     public List<WhatsAppWebhookStatus>? Statuses { get; init; }
+
+    // message_template_status_update / message_template_quality_update / template_category_update
+    public string? Event { get; init; }
+    [System.Text.Json.Serialization.JsonPropertyName("message_template_id")]
+    public System.Text.Json.JsonElement? MessageTemplateId { get; init; }
+    [System.Text.Json.Serialization.JsonPropertyName("message_template_name")]
+    public string? MessageTemplateName { get; init; }
+    public string? Reason { get; init; }
+    [System.Text.Json.Serialization.JsonPropertyName("new_quality_score")]
+    public string? NewQualityScore { get; init; }
+    [System.Text.Json.Serialization.JsonPropertyName("new_category")]
+    public string? NewCategory { get; init; }
 }
 
 public sealed record WhatsAppWebhookStatus
 {
     public string? Id { get; init; }
     public string? Status { get; init; }
+    [System.Text.Json.Serialization.JsonPropertyName("recipient_id")]
     public string? RecipientId { get; init; }
 }
 

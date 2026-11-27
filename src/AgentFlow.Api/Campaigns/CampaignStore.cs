@@ -135,6 +135,7 @@ public sealed class MongoCampaignStore : ICampaignStore
             AssistantId = campaign.AssistantId,
             RuntimeModelProfileId = campaign.RuntimeModelProfileId,
             TemplateId = campaign.TemplateId,
+            WhatsAppTemplateId = campaign.WhatsAppTemplateId,
             MessageDraft = campaign.MessageDraft,
             CallScriptDraft = campaign.CallScriptDraft,
             PromptOrigin = campaign.PromptOrigin,
@@ -446,6 +447,7 @@ public sealed class MongoCampaignStore : ICampaignStore
         AssistantId = doc.AssistantId,
         RuntimeModelProfileId = doc.RuntimeModelProfileId,
         TemplateId = doc.TemplateId,
+        WhatsAppTemplateId = doc.WhatsAppTemplateId,
         MessageDraft = doc.MessageDraft,
         CallScriptDraft = doc.CallScriptDraft,
         PromptOrigin = doc.PromptOrigin,
@@ -638,6 +640,7 @@ public sealed class MongoCampaignStore : ICampaignStore
         public string? AssistantId { get; set; }
         public string? RuntimeModelProfileId { get; set; }
         public string? TemplateId { get; set; }
+        public string? WhatsAppTemplateId { get; set; }
         public string? MessageDraft { get; set; }
         public string? CallScriptDraft { get; set; }
         public string? PromptOrigin { get; set; }

@@ -19,6 +19,7 @@ const ICONS = {
   campaigns: icon('mdi:bullhorn-variant-outline'),
   collections: icon('mdi:cash-clock'),
   recovery: icon('mdi:chart-timeline-variant-shimmer'),
+  waTemplates: icon('mdi:message-text-outline'),
   activity: icon('mdi:chart-timeline-variant'),
   humanReview: icon('mdi:account-supervisor-outline'),
   // kycPayments: icon('mdi:shield-account-outline'),
@@ -76,6 +77,11 @@ export const navData: NavSectionProps['data'] = [
         title: 'Campanas',
         path: paths.dashboard.campaigns,
         icon: ICONS.campaigns,
+      },
+      {
+        title: 'Plantillas WhatsApp',
+        path: paths.dashboard.whatsappTemplates,
+        icon: ICONS.waTemplates,
       },
       // {
       //   title: 'KYC y pagos',

@@ -142,7 +142,22 @@ public sealed class WhatsAppChannelHandler : IChannelHandler, IChannelQrProvider
                 (!string.IsNullOrWhiteSpace(definition.Config.GetValueOrDefault("ConnectionId")) ||
                  !string.IsNullOrWhiteSpace(definition.Config.GetValueOrDefault("Provider")));
 
-            if (shouldUseProviderResolver)
+            // Campaigns attach an approved template (business-initiated messages need one).
+            var template = WhatsAppTemplatePayload.From(message.Metadata);
+            if (template is not null)
+            {
+                if (shouldUseProviderResolver)
+                {
+                    waMessageId = await SendTemplateViaProviderAsync(definition, to, message.Content, template, ct);
+                }
+                else
+                {
+                    if (string.Equals(authMode, "qr", StringComparison.OrdinalIgnoreCase))
+                        _whatsappClient.UseQrChannel(definition.Id);
+                    waMessageId = await _whatsappClient.SendTemplateMessageAsync(to, template.Name, template.Language, template.ComponentsJson, message.Content, ct);
+                }
+            }
+            else if (shouldUseProviderResolver)
             {
                 waMessageId = await SendViaProviderAsync(definition, to, message.Content, sessionExpired, ct);
             }
@@ -342,6 +357,41 @@ public sealed class WhatsAppChannelHandler : IChannelHandler, IChannelQrProvider
         return isHealthy
             ? HealthStatus.Ok("WhatsApp connection active")
             : HealthStatus.Unhealthy("WhatsApp disconnected");
+    }
+
+    private async Task<string> SendTemplateViaProviderAsync(
+        ChannelDefinition definition,
+        string to,
+        string renderedText,
+        WhatsAppTemplatePayload template,
+        CancellationToken ct)
+    {
+        var resolved = await _providerResolver.ResolveRequiredAsync<IMessageSendProviderAdapter>(
+            new ProviderResolutionContext
+            {
+                TenantId = definition.TenantId,
+                Capability = CommunicationCapabilities.TemplateSend,
+                Channel = "whatsapp",
+                PreferredProviderId = definition.Config.GetValueOrDefault("Provider"),
+                ConnectionId = definition.Config.GetValueOrDefault("ConnectionId"),
+                Metadata = new Dictionary<string, string> { ["channelId"] = definition.Id }
+            },
+            ct);
+
+        var result = await resolved.Adapter.SendMessageAsync(
+            resolved.Connection,
+            new ProviderMessageSendRequest
+            {
+                Recipient = to,
+                Content = renderedText,
+                TemplateName = template.Name,
+                TemplateLanguage = template.Language,
+                TemplateComponentsJson = template.ComponentsJson,
+                StatusCallbackUrl = definition.Config.GetValueOrDefault("StatusCallbackUrl"),
+                Metadata = new Dictionary<string, string> { ["channelId"] = definition.Id }
+            },
+            ct);
+        return result.ProviderMessageId;
     }
 
     private async Task<string> SendViaProviderAsync(

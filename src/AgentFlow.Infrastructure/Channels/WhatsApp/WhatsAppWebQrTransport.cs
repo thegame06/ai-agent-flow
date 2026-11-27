@@ -175,4 +175,8 @@ public sealed class WhatsAppWebQrTransport : IWhatsAppTransport
         var fallbackContent = $"[Template: {templateName}] — Por favor contáctanos para continuar.";
         return await SendTextMessageAsync(to, fallbackContent, ct);
     }
+
+    /// <summary>WhatsApp Web has no templates: the customer gets the template already filled in, as text.</summary>
+    public Task<string> SendTemplateMessageAsync(string to, string templateName, string language, string? componentsJson, string renderedText, CancellationToken ct = default)
+        => SendTextMessageAsync(to, renderedText, ct);
 }

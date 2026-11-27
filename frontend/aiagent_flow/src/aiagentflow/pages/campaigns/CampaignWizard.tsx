@@ -32,6 +32,8 @@ import axios, { endpoints } from 'src/lib/axios';
 import { Iconify } from 'src/components/iconify';
 
 import { FollowUpEditor } from './FollowUpEditor';
+import { missingFor } from '../templates/templateModel';
+import { TemplateBubble } from '../templates/TemplateBubble';
 import {
   money,
   WEEKDAYS,
@@ -52,6 +54,7 @@ import {
   DEFAULT_COLLECTIONS_MESSAGE,
 } from './campaignModel';
 
+import type { WaTemplate } from '../templates/templateModel';
 import type { Campaign, FollowUpForm, AudienceFilter, AudiencePreview } from './campaignModel';
 
 // ----------------------------------------------------------------------
@@ -78,6 +81,8 @@ type Form = {
   delivery: DeliveryMode;
   workflowDefinitionId: string;
   messageDraft: string;
+  /** Approved WhatsApp (Meta) template for the first message; empty = free text. */
+  whatsAppTemplateId: string;
   schedule: ScheduleMode;
   startAt: string;
   time: string;
@@ -121,6 +126,7 @@ function initialForm(campaign: Campaign | null, preset: WizardPreset | null | un
       delivery: campaign.channelAction === CHANNEL_ACTION.WorkflowStart || campaign.workflowDefinitionId ? 'workflow' : 'message',
       workflowDefinitionId: campaign.workflowDefinitionId ?? '',
       messageDraft: campaign.messageDraft ?? '',
+      whatsAppTemplateId: campaign.whatsAppTemplateId ?? '',
       schedule,
       startAt: localDateTime(new Date(campaign.startAt)),
       time: schedule === 'weekly' ? timeParts.join(':') || '09:00' : campaign.scheduleExpression || '09:00',
@@ -143,6 +149,7 @@ function initialForm(campaign: Campaign | null, preset: WizardPreset | null | un
     delivery: 'message',
     workflowDefinitionId: '',
     messageDraft: collections ? DEFAULT_COLLECTIONS_MESSAGE : 'Hola {{primer_nombre}}, ',
+    whatsAppTemplateId: '',
     schedule: 'manual',
     startAt: localDateTime(),
     time: '09:00',
@@ -159,6 +166,7 @@ export function CampaignWizard({ open, tenantId, campaign, preset, collectionsEn
   const [previewing, setPreviewing] = useState(false);
   const [workflows, setWorkflows] = useState<{ id: string; name: string }[]>([]);
   const [segments, setSegments] = useState<{ id: string; name: string; filterJson: string }[]>([]);
+  const [waTemplates, setWaTemplates] = useState<WaTemplate[]>([]);
   const [prompt, setPrompt] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -178,6 +186,10 @@ export function CampaignWizard({ open, tenantId, campaign, preset, collectionsEn
       .get(endpoints.agentflow.campaignSegments.list(tenantId))
       .then((res) => setSegments(((res.data ?? []) as any[]).map((s) => ({ id: s.id, name: s.name, filterJson: s.filterJson }))))
       .catch(() => setSegments([]));
+    axios
+      .get<{ items: WaTemplate[] }>(`/api/v1/tenants/${tenantId}/whatsapp/templates`)
+      .then((res) => setWaTemplates(res.data.items ?? []))
+      .catch(() => setWaTemplates([]));
   }, [open, campaign, preset, collectionsEnabled, tenantId]);
 
   const filterJson = useMemo(() => serializeFilter(form.filter), [form.filter]);
@@ -204,11 +216,16 @@ export function CampaignWizard({ open, tenantId, campaign, preset, collectionsEn
   const variables = isCollections ? COLLECTIONS_VARIABLES : COMMERCE_VARIABLES;
   const sample = preview?.contacts?.[0];
   const rendered = renderMessage(form.messageDraft, sample?.variables);
+  // Only approved templates can be sent; the one already chosen stays listed even if it changed state.
+  const templateOptions = waTemplates.filter((t) => t.status === 'APPROVED' || t.id === form.whatsAppTemplateId);
+  const chosenTemplate = waTemplates.find((t) => t.id === form.whatsAppTemplateId) ?? null;
+  const templateMissing = chosenTemplate && sample ? missingFor(chosenTemplate, sample.variables) : [];
   const missing = Array.from(rendered.matchAll(/\{\{\s*([\w.]+)\s*\}\}/g)).map((m) => m[1]);
 
   const stepError = (() => {
     if (step === 0 && !form.name.trim()) return 'Ponle un nombre a la campaña.';
-    if (step === 2 && form.delivery === 'message' && !form.messageDraft.trim()) return 'Escribe el mensaje.';
+    if (step === 2 && form.delivery === 'message' && !form.whatsAppTemplateId && !form.messageDraft.trim()) return 'Escribe el mensaje.';
+    if (step === 2 && chosenTemplate && chosenTemplate.status !== 'APPROVED') return `La plantilla ${chosenTemplate.name} no está aprobada por Meta.`;
     if (step === 2 && form.delivery === 'workflow' && !form.workflowDefinitionId) return 'Elige la automatización.';
     return null;
   })();
@@ -252,6 +269,8 @@ export function CampaignWizard({ open, tenantId, campaign, preset, collectionsEn
       executionMode: form.delivery === 'workflow' ? EXECUTION_MODE.Workflow : EXECUTION_MODE.Direct,
       workflowDefinitionId: form.delivery === 'workflow' ? form.workflowDefinitionId : '',
       messageDraft: form.messageDraft,
+      // "" clears it on the server.
+      whatsAppTemplateId: form.delivery === 'message' && form.channel === 'whatsapp' ? form.whatsAppTemplateId : '',
       scheduleType,
       scheduleExpression: form.schedule === 'weekly' ? `${form.weekday}:${form.time}` : form.schedule === 'daily' ? form.time : '',
       startAt: form.schedule === 'once' ? new Date(form.startAt).toISOString() : new Date().toISOString(),
@@ -490,6 +509,44 @@ export function CampaignWizard({ open, tenantId, campaign, preset, collectionsEn
               </TextField>
             )}
 
+            {form.delivery === 'message' && form.channel === 'whatsapp' && (
+              <TextField
+                select
+                label="Plantilla de WhatsApp (Meta)"
+                value={form.whatsAppTemplateId}
+                onChange={(e) => set('whatsAppTemplateId', e.target.value)}
+                helperText={
+                  waTemplates.length === 0
+                    ? 'No hay plantillas. Con la API oficial de WhatsApp, Meta solo permite iniciar la conversación con una plantilla aprobada (créalas o sincronízalas en Plantillas WhatsApp).'
+                    : 'Con la API oficial de WhatsApp, el primer mensaje al cliente debe ser una plantilla aprobada.'
+                }
+              >
+                <MenuItem value="">Sin plantilla: mensaje de texto (WhatsApp por QR, o dentro de 24 h)</MenuItem>
+                {templateOptions.map((t) => (
+                  <MenuItem key={t.id} value={t.id}>
+                    {t.name} · {t.language}
+                    {t.status !== 'APPROVED' ? ` (${t.status})` : ''}
+                  </MenuItem>
+                ))}
+              </TextField>
+            )}
+
+            {chosenTemplate ? (
+              <Card variant="outlined" sx={{ p: 2 }}>
+                <Typography variant="caption" color="text.secondary">
+                  Vista previa {sample ? `para ${sample.displayName}` : 'con datos de ejemplo'}
+                </Typography>
+                <Box sx={{ mt: 1 }}>
+                  <TemplateBubble template={chosenTemplate} variables={sample?.variables ?? null} />
+                </Box>
+                {templateMissing.length > 0 && (
+                  <Alert severity="warning" sx={{ mt: 1 }}>
+                    Sin dato para: {templateMissing.join(', ')}. A los contactos sin ese dato no se les enviará.
+                  </Alert>
+                )}
+              </Card>
+            ) : (
+            <>
             <TextField
               label={form.delivery === 'workflow' ? 'Mensaje (disponible para la automatización como {{message}})' : 'Mensaje'}
               value={form.messageDraft}
@@ -520,6 +577,8 @@ export function CampaignWizard({ open, tenantId, campaign, preset, collectionsEn
                 </Alert>
               )}
             </Card>
+            </>
+            )}
           </Stack>
         )}
 
