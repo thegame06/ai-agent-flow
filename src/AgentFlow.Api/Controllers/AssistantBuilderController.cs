@@ -2,6 +2,7 @@ using AgentFlow.Abstractions;
 using AgentFlow.Api.AuthProfiles;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
 using System.Collections.Concurrent;
 
@@ -18,10 +19,14 @@ public sealed class AssistantBuilderController : ControllerBase
     private readonly IMongoCollection<WizardEventDocument>? _eventsCollection;
     private readonly IRuntimeModelProfileStore? _runtimeProfiles;
 
+    /// <summary>In-memory mode (no persistence). Used by unit tests.</summary>
     public AssistantBuilderController()
     {
     }
 
+    // Two public constructors make DI ambiguous ("Multiple constructors accepting all given argument types");
+    // this attribute tells ActivatorUtilities to use the Mongo-backed one at runtime.
+    [ActivatorUtilitiesConstructor]
     public AssistantBuilderController(IMongoDatabase database, IRuntimeModelProfileStore? runtimeProfiles = null)
     {
         _sessionsCollection = database.GetCollection<WizardSessionDocument>("assistant_wizard_sessions");

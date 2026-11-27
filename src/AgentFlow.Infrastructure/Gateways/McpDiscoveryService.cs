@@ -101,7 +101,7 @@ public sealed class McpDiscoveryService : BackgroundService
             return new();
 
         using var http = new HttpClient();
-        var discoveryUrl = server.Url.TrimEnd('/') + "/tools";
+        var discoveryUrl = BuildToolsUrl(server.Url);
 
         var response = await http.GetAsync(discoveryUrl, ct);
         if (!response.IsSuccessStatusCode)
@@ -123,6 +123,20 @@ public sealed class McpDiscoveryService : BackgroundService
                 string.IsNullOrWhiteSpace(t.Description) ? t.Name! : t.Description!,
                 string.IsNullOrWhiteSpace(t.InputSchemaJson) ? "{}" : t.InputSchemaJson!))
             .ToList();
+    }
+
+    /// <summary>
+    /// Server.Url is the invoke endpoint (e.g. http://host:3501/invoke, used by McpToolGateway),
+    /// so the catalog lives at the sibling /tools path. Same convention as McpController/AgentsController.
+    /// </summary>
+    public static string BuildToolsUrl(string invokeUrl)
+    {
+        var trimmed = invokeUrl.TrimEnd('/');
+        if (Uri.TryCreate(trimmed, UriKind.Absolute, out var uri) && uri.AbsolutePath.Trim('/').Length == 0)
+            return trimmed + "/tools";
+
+        var idx = trimmed.LastIndexOf('/');
+        return idx <= 0 ? trimmed + "/tools" : trimmed[..idx] + "/tools";
     }
 
     private sealed class McpDiscoveredTool

@@ -1,12 +1,33 @@
 using AgentFlow.Abstractions;
 using AgentFlow.Api.Controllers;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
 using System.Text.Json;
 
 namespace AgentFlow.Tests.Unit.Api;
 
 public sealed class AssistantBuilderControllerTests
 {
+    [Fact]
+    public void Controller_CanBeActivatedByDependencyInjection()
+    {
+        // Mirrors MVC's DefaultControllerActivator (ActivatorUtilities, no explicit args).
+        // Regression: two public constructors made every /api/v1/assistant/* request return 500.
+        var database = new Moq.Mock<MongoDB.Driver.IMongoDatabase>(Moq.MockBehavior.Loose);
+        using var provider = new ServiceCollection()
+            .AddSingleton(database.Object)
+            .BuildServiceProvider();
+
+        var factory = ActivatorUtilities.CreateFactory(
+            typeof(AssistantBuilderController), Type.EmptyTypes);
+        var controller = factory(provider, null);
+
+        Assert.IsType<AssistantBuilderController>(controller);
+        // The Mongo-backed constructor (not the in-memory one) must be the one DI picks.
+        database.Verify(d => d.GetCollection<Moq.It.IsAnyType>(
+            Moq.It.IsAny<string>(), Moq.It.IsAny<MongoDB.Driver.MongoCollectionSettings>()), Moq.Times.Exactly(2));
+    }
+
     [Fact]
     public void ValidateAssistantConfig_WithValidRequest_ReturnsOk()
     {
