@@ -1,4 +1,5 @@
 using AgentFlow.Abstractions.Connect;
+using AgentFlow.Extensions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -25,11 +26,20 @@ public sealed class CampaignSchedulerService : BackgroundService
                 using var scope = _scopeFactory.CreateScope();
                 var store = scope.ServiceProvider.GetRequiredService<ICampaignStore>();
                 var executor = scope.ServiceProvider.GetRequiredService<ICampaignExecutionService>();
+                var entitlements = scope.ServiceProvider.GetRequiredService<IAppEntitlementService>();
                 var dueCampaigns = await store.GetDueCampaignsAsync(DateTimeOffset.UtcNow, stoppingToken);
                 foreach (var campaign in dueCampaigns)
                 {
                     try
                     {
+                        // A tenant without the Campaigns app must not get scheduled sends.
+                        // The campaign stays due and runs on the next tick after the app is enabled.
+                        if (!await entitlements.IsEnabledAsync(campaign.TenantId, AppModules.Campaigns, stoppingToken))
+                        {
+                            _logger.LogDebug("Skipping scheduled campaign: Campaigns app disabled. Tenant={TenantId} CampaignId={CampaignId}", campaign.TenantId, campaign.Id);
+                            continue;
+                        }
+
                         await executor.RunNowAsync(campaign.TenantId, campaign.Id, "campaign-scheduler", CampaignRunTrigger.Schedule, stoppingToken);
                     }
                     catch (Exception ex)

@@ -1,3 +1,5 @@
+using AgentFlow.Api.Entitlements;
+using AgentFlow.Extensions;
 using AgentFlow.Abstractions.Connect;
 using AgentFlow.Api.Campaigns;
 using AgentFlow.Security;
@@ -7,6 +9,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace AgentFlow.Api.Controllers;
 
 [ApiController]
+[RequiresAppModule(AppModules.Campaigns)]
 [Authorize]
 [Route("api/v1/tenants/{tenantId}")]
 public sealed class CampaignCallOutcomesController : ControllerBase

@@ -93,7 +93,7 @@ public sealed class ExtensionRegistry : IExtensionRegistry
         _logger = logger;
         foreach (var tool in tools) RegisterTool(tool);
         foreach (var policy in policies) RegisterPolicy(policy);
-        SeedCommerceModules();
+        SeedAppModules();
     }
 
     public void RegisterTool(IToolPlugin tool)
@@ -290,24 +290,17 @@ public sealed class ExtensionRegistry : IExtensionRegistry
         return string.Equals(digest, request.Signature, StringComparison.OrdinalIgnoreCase);
     }
 
-    private void SeedCommerceModules()
+    private void SeedAppModules()
     {
-        var modules = new[]
+        // Every gated app module is a catalog entry so tenants can install/enable it.
+        foreach (var module in AppModules.All)
         {
-            ("communication-inbox", "Communication Inbox", "Inbox comercial integrado en chat"),
-            ("inventory", "Inventory", "Inventario y catalogo de productos"),
-            ("sales-pos", "Sales POS", "Punto de venta y ordenes comerciales"),
-            ("billing", "Billing", "Facturacion y estados de cobro")
-        };
-
-        foreach (var (id, name, description) in modules)
-        {
-            _catalog.TryAdd(id, new ExtensionCatalogEntry
+            _catalog.TryAdd(module.Id, new ExtensionCatalogEntry
             {
-                ExtensionId = id,
-                Name = name,
+                ExtensionId = module.Id,
+                Name = module.Name,
                 Version = "1.0.0",
-                Description = description,
+                Description = module.Description,
                 Source = "builtin-module",
                 Metadata = new ExtensionCatalogMetadata
                 {

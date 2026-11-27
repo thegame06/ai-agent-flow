@@ -1,3 +1,5 @@
+using AgentFlow.Api.Entitlements;
+using AgentFlow.Extensions;
 using System.Text.Json;
 using AgentFlow.Abstractions.Connect;
 using AgentFlow.Api.Campaigns;
@@ -8,6 +10,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace AgentFlow.Api.Controllers;
 
 [ApiController]
+[RequiresAppModule(AppModules.Campaigns)]
 [Authorize]
 [Route("api/v1/tenants/{tenantId}/campaign-segments")]
 public sealed class CampaignSegmentsController : ControllerBase

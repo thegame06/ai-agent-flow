@@ -14,16 +14,27 @@ public sealed class ExtensionsController : ControllerBase
     private readonly IExtensionRegistry _registry;
     private readonly IToolInvoker _invoker;
     private readonly ITenantContextAccessor _tenantContext;
+    private readonly IAppEntitlementService _entitlements;
 
     public ExtensionsController(
         IExtensionRegistry registry,
         IToolInvoker invoker,
-        ITenantContextAccessor tenantContext)
+        ITenantContextAccessor tenantContext,
+        IAppEntitlementService entitlements)
     {
         _registry = registry;
         _invoker = invoker;
         _tenantContext = tenantContext;
+        _entitlements = entitlements;
     }
+
+    /// <summary>
+    /// Effective app modules for the tenant (quarantine, then explicit state, then module default).
+    /// The dashboard uses it to show only the apps the tenant has.
+    /// </summary>
+    [HttpGet("tenants/{tenantId}/apps")]
+    public async Task<IActionResult> GetTenantApps([FromRoute] string tenantId, CancellationToken ct)
+        => Ok(await _entitlements.GetEffectiveAsync(tenantId, ct));
 
     [HttpGet("tools")]
     public IActionResult GetTools()

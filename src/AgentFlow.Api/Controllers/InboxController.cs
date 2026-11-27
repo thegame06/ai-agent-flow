@@ -1,3 +1,5 @@
+using AgentFlow.Api.Entitlements;
+using AgentFlow.Extensions;
 using AgentFlow.Intents.Classification.Models;
 using AgentFlow.Intents.Inbox;
 using AgentFlow.Intents.Inbox.Models;
@@ -23,6 +25,7 @@ namespace AgentFlow.Api.Controllers;
 /// </list>
 /// </remarks>
 [ApiController]
+[RequiresAppModule(AppModules.Conversations)]
 [Route("api/v1/tenants/{tenantId}/inbox")]
 [Authorize]
 public sealed class InboxController : ControllerBase

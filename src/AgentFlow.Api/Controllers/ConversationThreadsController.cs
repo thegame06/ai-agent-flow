@@ -1,3 +1,5 @@
+using AgentFlow.Api.Entitlements;
+using AgentFlow.Extensions;
 using AgentFlow.Abstractions;
 using AgentFlow.Api.AuthProfiles;
 using AgentFlow.Domain.Aggregates;
@@ -13,6 +15,7 @@ namespace AgentFlow.Api.Controllers;
 /// Similar to OpenAI Assistants API: Threads + Messages.
 /// </summary>
 [ApiController]
+[RequiresAppModule(AppModules.Conversations)]
 [Route("api/v1/tenants/{tenantId}/threads")]
 public sealed class ConversationThreadsController : ControllerBase
 {

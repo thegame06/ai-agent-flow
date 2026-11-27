@@ -1,3 +1,4 @@
+using AgentFlow.Api.Entitlements;
 using AgentFlow.Abstractions.Workflow;
 using AgentFlow.Abstractions;
 using AgentFlow.Api.Connect;
@@ -14,6 +15,7 @@ using System.Text.Json;
 namespace AgentFlow.Api.Controllers;
 
 [ApiController]
+[RequiresAppModule(AppModules.Workflows)]
 [Route("api/v1/tenants/{tenantId}/studio/workflows")]
 [Authorize]
 public sealed class WorkflowStudioController : ControllerBase
