@@ -80,6 +80,7 @@ public static class DependencyInjection
             .AddScoped<ICollectionsImportService, CollectionsImportService>()
             .AddScoped<ICollectionPromiseService, CollectionPromiseService>()
             .AddScoped<ICollectionPaymentService, CollectionPaymentService>()
+            .AddScoped<ICollectionsAssistantService, CollectionsAssistantService>()
             .AddScoped<ICampaignOutcomeService, CampaignOutcomeService>()
             .AddScoped<ICampaignFollowUpService, CampaignFollowUpService>()
             .AddScoped<ICampaignStore, MongoCampaignStore>()
@@ -139,6 +140,10 @@ public static class DependencyInjection
         services.AddSingleton<IToolPlugin, CampaignGetRunTool>();
         services.AddSingleton<IToolPlugin, CampaignRetryFailuresTool>();
         services.AddSingleton<IToolPlugin, CampaignGetContactResultsTool>();
+        services.AddSingleton<IToolPlugin, CollectionsGetCustomerContextTool>();
+        services.AddSingleton<IToolPlugin, CollectionsRegisterPromiseTool>();
+        services.AddSingleton<IToolPlugin, CollectionsRecordOutcomeTool>();
+        services.AddSingleton<IToolPlugin, CollectionsHandoffTool>();
 
         return services;
     }

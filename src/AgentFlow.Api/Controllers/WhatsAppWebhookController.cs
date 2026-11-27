@@ -143,7 +143,7 @@ public sealed class WhatsAppWebhookController : ControllerBase
                             UpdatedBy = "meta-webhook"
                         }, ct);
 
-                        await AttributeCampaignReplyAsync(tenantId, waMessage.From, waMessage.Text?.Body ?? waMessage.Caption, ct);
+                        await AttributeCampaignReplyAsync(tenantId, waMessage.From, waMessage.Text?.Body ?? waMessage.Caption, HasAssistant(activeChannel), ct);
 
                         var response = await _gateway.ProcessMessageAsync(channelMessage, ct);
                         results.Add(new
@@ -238,7 +238,7 @@ public sealed class WhatsAppWebhookController : ControllerBase
                 UpdatedBy = "qr-webhook"
             }, ct);
 
-            await AttributeCampaignReplyAsync(tenantId, message.From, message.Content, ct);
+            await AttributeCampaignReplyAsync(tenantId, message.From, message.Content, HasAssistant(activeChannel), ct);
 
             // --- Route through channel gateway as primary path ---
             // Router + intent rules decide whether to trigger a workflow.
@@ -266,12 +266,15 @@ public sealed class WhatsAppWebhookController : ControllerBase
     /// Links a reply to the campaign contact that messaged this number and classifies it
     /// (promesa de pago, ya pague, no me interesa...). Never blocks the conversation flow.
     /// </summary>
-    private async Task AttributeCampaignReplyAsync(string tenantId, string? from, string? text, CancellationToken ct)
+    private static bool HasAssistant(ChannelDefinition channel) =>
+        !string.IsNullOrWhiteSpace(channel.RouterAgentId) || !string.IsNullOrWhiteSpace(channel.Config.GetValueOrDefault("DefaultAgentId"));
+
+    private async Task AttributeCampaignReplyAsync(string tenantId, string? from, string? text, bool answeredByAssistant, CancellationToken ct)
     {
         if (_campaignOutcomes is null || string.IsNullOrWhiteSpace(from) || string.IsNullOrWhiteSpace(text)) return;
         try
         {
-            var contact = await _campaignOutcomes.AttributeReplyAsync(tenantId, from, text, DateTimeOffset.UtcNow, ct);
+            var contact = await _campaignOutcomes.AttributeReplyAsync(tenantId, from, text, DateTimeOffset.UtcNow, ct, answeredByAssistant);
             if (contact is not null)
                 _logger.LogInformation("Reply attributed to campaign {CampaignId} contact {ContactId}: {Outcome}", contact.CampaignId, contact.Id, contact.Outcome);
         }

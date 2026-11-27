@@ -86,6 +86,13 @@ public static partial class CampaignReplyClassifier
         return Spaces().Replace(sb.ToString(), " ").Trim(' ', '.', ',');
     }
 
+    /// <summary>Resolves what a customer said about a date ("el lunes", "manana", "el 15 de diciembre") from <paramref name="now"/> (local time).</summary>
+    public static DateTimeOffset? ResolveDate(string? text, DateTimeOffset now)
+    {
+        var normalized = Normalize(text);
+        return normalized.Length == 0 ? null : ExtractDate(normalized, now);
+    }
+
     internal static DateTimeOffset? ExtractDate(string text, DateTimeOffset now)
     {
         var today = new DateTimeOffset(now.Year, now.Month, now.Day, 0, 0, 0, now.Offset);

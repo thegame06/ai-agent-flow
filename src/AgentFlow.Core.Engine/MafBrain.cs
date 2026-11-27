@@ -125,8 +125,10 @@ public sealed class MafBrain : IAgentBrain
                 ? tool.Description
                 : $"{tool.Description}. Input must be a JSON string matching this schema: {tool.InputSchemaJson}";
 
-            Func<string, CancellationToken, Task<string>> invoke = (inputJson, cancellationToken)
-                => ExecuteMafToolAsync(context, tool, inputJson, cancellationToken);
+            // Models send inputJson either as a JSON string or, once they see the schema, as the
+            // object itself; accept both instead of failing the whole turn.
+            Func<JsonElement, CancellationToken, Task<string>> invoke = (inputJson, cancellationToken)
+                => ExecuteMafToolAsync(context, tool, ToolInputText(inputJson), cancellationToken);
 
             tools.Add(AIFunctionFactory.Create(invoke, new AIFunctionFactoryOptions
             {
@@ -202,6 +204,13 @@ public sealed class MafBrain : IAgentBrain
             """;
     }
 
+    private static string ToolInputText(JsonElement input) => input.ValueKind switch
+    {
+        JsonValueKind.String => input.GetString() ?? "{}",
+        JsonValueKind.Undefined or JsonValueKind.Null => "{}",
+        _ => input.GetRawText()
+    };
+
     private static string NormalizeToolInput(string inputJson)
     {
         if (string.IsNullOrWhiteSpace(inputJson))
@@ -273,6 +282,21 @@ public sealed class MafBrain : IAgentBrain
         }
         catch (JsonException ex)
         {
+            // With native function calling the model runs its tools and then simply writes the
+            // reply as text. Plain text (not an attempt at JSON) is the final answer for the
+            // customer; only broken JSON still goes to a technical checkpoint.
+            var text = json?.Trim() ?? string.Empty;
+            if (text.Length > 0 && !text.StartsWith('{') && !text.StartsWith('[') && !text.StartsWith("```"))
+            {
+                return new ThinkResult
+                {
+                    Decision = ThinkDecision.ProvideFinalAnswer,
+                    Rationale = "MAF returned plain text; used as the final answer.",
+                    FinalAnswer = text,
+                    TokensUsed = 0
+                };
+            }
+
             if (!string.IsNullOrWhiteSpace(json))
             {
                 return new ThinkResult

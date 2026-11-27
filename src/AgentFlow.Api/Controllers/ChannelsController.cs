@@ -201,7 +201,8 @@ public sealed class ChannelsController : ControllerBase
         var campaignOutcomes = HttpContext.RequestServices.GetService<AgentFlow.Api.Campaigns.ICampaignOutcomeService>();
         if (campaignOutcomes is not null && !string.IsNullOrWhiteSpace(request.Content))
         {
-            try { await campaignOutcomes.AttributeReplyAsync(tenantId, from, request.Content, DateTimeOffset.UtcNow, ct); }
+            var answeredByAssistant = !string.IsNullOrWhiteSpace(channel.RouterAgentId) || !string.IsNullOrWhiteSpace(channel.Config.GetValueOrDefault("DefaultAgentId"));
+            try { await campaignOutcomes.AttributeReplyAsync(tenantId, from, request.Content, DateTimeOffset.UtcNow, ct, answeredByAssistant); }
             catch (Exception ex)
             {
                 HttpContext.RequestServices.GetRequiredService<Microsoft.Extensions.Logging.ILogger<ChannelsController>>()

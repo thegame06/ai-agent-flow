@@ -47,7 +47,8 @@ public interface ICampaignOutcomeService
     /// the attribution window), stores the reply and classifies it. Returns null when the sender
     /// was not contacted by a campaign recently.
     /// </summary>
-    Task<CampaignContactExecutionContract?> AttributeReplyAsync(string tenantId, string from, string text, DateTimeOffset receivedAt, CancellationToken ct = default);
+    /// <param name="answeredByAssistant">The channel has an assistant that will answer: an unreadable reply is not flagged for a person.</param>
+    Task<CampaignContactExecutionContract?> AttributeReplyAsync(string tenantId, string from, string text, DateTimeOffset receivedAt, CancellationToken ct = default, bool answeredByAssistant = false);
 
     Task<CampaignResultsContract> GetResultsAsync(string tenantId, string campaignId, CancellationToken ct = default);
 
@@ -88,7 +89,7 @@ public sealed class CampaignOutcomeService : ICampaignOutcomeService
         return await ApplyAsync(contact, definition.Code, request, ct);
     }
 
-    public async Task<CampaignContactExecutionContract?> AttributeReplyAsync(string tenantId, string from, string text, DateTimeOffset receivedAt, CancellationToken ct = default)
+    public async Task<CampaignContactExecutionContract?> AttributeReplyAsync(string tenantId, string from, string text, DateTimeOffset receivedAt, CancellationToken ct = default, bool answeredByAssistant = false)
     {
         var key = RecipientKeys.From(from);
         if (key is null) return null;
@@ -112,7 +113,7 @@ public sealed class CampaignOutcomeService : ICampaignOutcomeService
 
         // A reply the rules cannot read (a question, a doubt, "hola") is waiting for an answer:
         // never let it sit unseen.
-        if (outcome is null)
+        if (outcome is null && !answeredByAssistant)
         {
             contact = contact with
             {

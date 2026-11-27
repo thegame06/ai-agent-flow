@@ -553,6 +553,8 @@ Always be precise and thorough in your responses.",
                 Console.WriteLine($"✅ [Seed] System agents present. {needsFix.Count} role fix(es), {needsSubflowWiring.Count} sub-flow fix(es).");
             else
                 Console.WriteLine("✅ [Seed] System agents already seeded correctly. Skipping.");
+            // Agents added after the first seed still have to appear in existing environments.
+            await SeedCollectionsAssistantAsync(scope.ServiceProvider, tenantId, systemUser);
             return;
         }
 
@@ -842,6 +844,7 @@ Always be concrete: tell the user EXACTLY what to click or configure."
 
         await SeedTenantMcpDefaultsAsync(scope.ServiceProvider, tenantId, systemUser);
         await SeedSalesHappyPathAsync(scope.ServiceProvider, tenantId, systemUser);
+        await SeedCollectionsAssistantAsync(scope.ServiceProvider, tenantId, systemUser);
         await SeedBusinessStarterPackAsync(scope.ServiceProvider, tenantId, systemUser);
 
         Console.WriteLine("✅ [Seed] System agents seed complete.");
@@ -885,6 +888,92 @@ Always be concrete: tell the user EXACTLY what to click or configure."
             UpdatedAt = DateTimeOffset.UtcNow,
             UpdatedBy = updatedBy
         });
+    }
+
+    /// <summary>The collections assistant: answers customers who reply to collections campaigns.</summary>
+    private static async Task SeedCollectionsAssistantAsync(IServiceProvider services, string tenantId, string ownerUser)
+    {
+        var agentRepo = services.GetRequiredService<IAgentDefinitionRepository>();
+        var existing = (await agentRepo.GetAllAsync(tenantId, 0, 500))
+            .FirstOrDefault(a => string.Equals(a.Name, AgentFlow.Api.Collections.CollectionsAssistantAgent.Name, StringComparison.OrdinalIgnoreCase));
+        if (existing is not null)
+        {
+            // Keep the instructions of an existing assistant in sync with the shipped prompt.
+            var prompt = AgentFlow.Api.Collections.CollectionsAssistantAgent.SystemPrompt;
+            if (string.Equals(existing.Brain.SystemPromptTemplate?.Trim(), prompt.Trim(), StringComparison.Ordinal))
+                return;
+            var update = existing.Update(
+                name: existing.Name,
+                description: existing.Description,
+                brain: existing.Brain with { SystemPromptTemplate = prompt },
+                loopConfig: existing.LoopConfig,
+                memory: existing.Memory,
+                session: existing.Session,
+                workflowSteps: existing.WorkflowSteps,
+                tools: existing.AuthorizedTools,
+                tags: existing.Tags,
+                updatedBy: ownerUser,
+                shadowAgentId: existing.ShadowAgentId,
+                canaryAgentId: existing.CanaryAgentId,
+                canaryWeight: existing.CanaryWeight);
+            if (update.IsSuccess)
+                await agentRepo.UpdateAsync(existing);
+            return;
+        }
+
+        var create = AgentDefinition.Create(
+            tenantId,
+            AgentFlow.Api.Collections.CollectionsAssistantAgent.Name,
+            "Contesta a los clientes que responden a campanas de cobranza: explica el saldo, obtiene promesas de pago y pasa a un asesor cuando hace falta.",
+            new BrainConfiguration
+            {
+                ModelId = "gpt-4o-mini",
+                Provider = "OpenAI",
+                Temperature = 0.2f,
+                MaxResponseTokens = 600,
+                RequiresToolExecution = true,
+                SystemPromptTemplate = AgentFlow.Api.Collections.CollectionsAssistantAgent.SystemPrompt
+            },
+            new AgentLoopConfig
+            {
+                MaxIterations = 8,
+                MaxExecutionTime = TimeSpan.FromMinutes(2),
+                ToolCallTimeout = TimeSpan.FromSeconds(20),
+                MaxRetries = 1,
+                AllowParallelToolCalls = false,
+                HitlConfig = new HumanInTheLoopConfig { Enabled = false }
+            },
+            new MemoryConfig { EnableWorkingMemory = true, WorkingMemoryTtlSeconds = 3600, EnableLongTermMemory = false, EnableVectorMemory = false },
+            new SessionConfig
+            {
+                EnableThreads = true,
+                DefaultThreadTtl = TimeSpan.FromDays(7),
+                MaxTurnsPerThread = 60,
+                ContextWindowSize = 12,
+                AutoCreateThread = true,
+                EnableSummarization = true
+            },
+            null,
+            ownerUser);
+        if (!create.IsSuccess) return;
+
+        var agent = create.Value!;
+        agent.SetTags(new[] { "collections", "seed" }.ToList().AsReadOnly());
+        foreach (var toolName in AgentFlow.Api.Collections.CollectionsAssistantAgent.Tools)
+        {
+            agent.AddTool(new ToolBinding
+            {
+                ToolId = toolName,
+                ToolName = toolName,
+                ToolVersion = "1.0.0",
+                IsEnabled = true,
+                MaxCallsPerExecution = 4,
+                GrantedPermissions = new[] { "tool:execute:low" }.ToList().AsReadOnly()
+            });
+        }
+
+        if (agent.Publish(ownerUser).IsSuccess)
+            await agentRepo.InsertAsync(agent);
     }
 
     private static async Task SeedSalesHappyPathAsync(IServiceProvider services, string tenantId, string ownerUser)
