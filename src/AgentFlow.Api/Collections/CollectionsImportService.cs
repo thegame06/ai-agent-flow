@@ -26,11 +26,13 @@ public sealed class CollectionsImportService : ICollectionsImportService
     private const int MaxStoredErrors = 200;
     private readonly ICollectionsStore _store;
     private readonly ICommerceStore _parties;
+    private readonly ICollectionPromiseService? _promises;
 
-    public CollectionsImportService(ICollectionsStore store, ICommerceStore parties)
+    public CollectionsImportService(ICollectionsStore store, ICommerceStore parties, ICollectionPromiseService? promises = null)
     {
         _store = store;
         _parties = parties;
+        _promises = promises;
     }
 
     public async Task<CollectionImportResult> ImportAsync(
@@ -143,6 +145,10 @@ public sealed class CollectionsImportService : ICollectionsImportService
             CreatedBy = requestedBy,
             CreatedAt = DateTimeOffset.UtcNow
         }, ct);
+
+        // A new cut-off is what tells whether customers kept their promises to pay.
+        if (_promises is not null)
+            await _promises.ResolveAsync(tenantId, snapshot, null, ct);
 
         return new CollectionImportResult
         {

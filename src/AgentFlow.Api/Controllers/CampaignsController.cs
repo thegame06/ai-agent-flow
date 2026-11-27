@@ -17,12 +17,67 @@ public sealed class CampaignsController : ControllerBase
     private readonly ICampaignStore _store;
     private readonly ICampaignExecutionService _executionService;
     private readonly ITenantContextAccessor _tenantContext;
+    private readonly ICampaignOutcomeService _outcomes;
 
-    public CampaignsController(ICampaignStore store, ICampaignExecutionService executionService, ITenantContextAccessor tenantContext)
+    public CampaignsController(ICampaignStore store, ICampaignExecutionService executionService, ITenantContextAccessor tenantContext, ICampaignOutcomeService outcomes)
     {
         _store = store;
         _executionService = executionService;
         _tenantContext = tenantContext;
+        _outcomes = outcomes;
+    }
+
+    /// <summary>Outcome catalog, optionally narrowed to the outcomes a campaign type offers.</summary>
+    [HttpGet("campaign-outcomes")]
+    public IActionResult GetOutcomeCatalog([FromRoute] string tenantId, [FromQuery] CampaignType? campaignType)
+    {
+        if (!CanAccess(tenantId, AgentFlowPermissions.ConnectRead)) return Forbid();
+        return Ok(campaignType.HasValue ? CampaignOutcomes.For(campaignType.Value) : CampaignOutcomes.All);
+    }
+
+    /// <summary>Funnel, outcome breakdown, promises and per-contact results of a campaign.</summary>
+    [HttpGet("campaigns/{campaignId}/results")]
+    public async Task<IActionResult> GetResults([FromRoute] string tenantId, [FromRoute] string campaignId, CancellationToken ct)
+    {
+        if (!CanAccess(tenantId, AgentFlowPermissions.ConnectRead)) return Forbid();
+        var campaign = await _store.GetCampaignAsync(tenantId, campaignId, ct);
+        if (campaign is null) return NotFound(new { message = "Campaign not found." });
+        return Ok(await _outcomes.GetResultsAsync(tenantId, campaignId, ct));
+    }
+
+    /// <summary>An operator sets (or corrects) the result of one contact.</summary>
+    [HttpPost("campaign-contacts/{contactId}/outcome")]
+    public async Task<IActionResult> RecordOutcome([FromRoute] string tenantId, [FromRoute] string contactId, [FromBody] RecordCampaignOutcomeRequest request, CancellationToken ct)
+    {
+        if (!CanAccess(tenantId, AgentFlowPermissions.ConnectOperate)) return Forbid();
+        if (CampaignOutcomes.Find(request.Outcome) is null)
+            return BadRequest(new { message = $"Resultado desconocido: {request.Outcome}" });
+        try
+        {
+            return Ok(await _outcomes.RecordAsync(tenantId, contactId, new CampaignOutcomeRequest(
+                request.Outcome,
+                CampaignOutcomes.Sources.Human,
+                _tenantContext.Current!.UserId,
+                request.Notes,
+                request.PromiseAmount,
+                request.PromiseDate), ct));
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound(new { message = "Campaign contact not found." });
+        }
+    }
+
+    /// <summary>Sends the campaign message to one number (filled with the first audience contact's data).</summary>
+    [HttpPost("campaigns/{campaignId}/test-send")]
+    public async Task<IActionResult> TestSend([FromRoute] string tenantId, [FromRoute] string campaignId, [FromBody] CampaignTestSendRequest request, CancellationToken ct)
+    {
+        if (!CanAccess(tenantId, AgentFlowPermissions.ConnectOperate)) return Forbid();
+        if (string.IsNullOrWhiteSpace(request.Recipient)) return BadRequest(new { message = "Indica el numero de prueba." });
+        var campaign = await _store.GetCampaignAsync(tenantId, campaignId, ct);
+        if (campaign is null) return NotFound(new { message = "Campaign not found." });
+        var result = await _executionService.SendTestAsync(tenantId, campaignId, request.Recipient.Trim(), _tenantContext.Current!.UserId, ct);
+        return result.Sent ? Ok(result) : UnprocessableEntity(result);
     }
 
     [HttpGet("campaigns")]
@@ -249,4 +304,17 @@ public sealed record UpsertCampaignRequest
     public string? FollowupPolicyJson { get; init; }
     public string? ResultMappingJson { get; init; }
     public bool? Enabled { get; init; }
+}
+
+public sealed record RecordCampaignOutcomeRequest
+{
+    public string Outcome { get; init; } = string.Empty;
+    public string? Notes { get; init; }
+    public decimal? PromiseAmount { get; init; }
+    public DateTimeOffset? PromiseDate { get; init; }
+}
+
+public sealed record CampaignTestSendRequest
+{
+    public string Recipient { get; init; } = string.Empty;
 }

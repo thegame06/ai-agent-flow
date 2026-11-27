@@ -20,6 +20,7 @@ export const ALLOWED_ACTIVITY_TYPES = [
   'mcp.tool_call',
   'voice.call',
   'callcenter.outbound_call',
+  'campaign.record_outcome',
 ] as const;
 
 export const WORKFLOW_DESIGN_TYPES = ['workflow', 'tool'] as const;
@@ -37,6 +38,7 @@ export const TOOL_ACTIVITY_TYPES = [
 export const ACTIVITY_TYPE_LABELS_ES: Record<string, string> = {
   'ai.agent': 'Hablar con asistente',
   'channel.send': 'Enviar mensaje',
+  'campaign.record_outcome': 'Registrar resultado de campana',
   'connect.send_whatsapp_template': 'Enviar plantilla de WhatsApp',
   'connect.update_inbox_status': 'Actualizar estado de conversacion',
   'connect.enqueue_campaign_message': 'Programar mensaje outbound',

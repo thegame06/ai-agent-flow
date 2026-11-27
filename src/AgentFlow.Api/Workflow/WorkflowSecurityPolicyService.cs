@@ -34,7 +34,9 @@ public sealed class WorkflowSecurityPolicyService : IWorkflowSecurityPolicyServi
         "callcenter.outbound_call",
         // Direct send through a configured channel (WhatsApp API, API webhook, ...). The channel
         // gateway still applies its outbound guard and capability checks.
-        "channel.send"
+        "channel.send",
+        // Sets the result of a campaign contact (generic: sales, collections, reminders).
+        "campaign.record_outcome"
     };
 
     private const int MaxActivities = 100;

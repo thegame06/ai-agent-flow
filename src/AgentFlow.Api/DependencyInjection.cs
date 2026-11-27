@@ -78,6 +78,8 @@ public static class DependencyInjection
             .AddScoped<IOutboundMessageSender, OutboundMessageSender>()
             .AddSingleton<ICollectionsStore, MongoCollectionsStore>()
             .AddScoped<ICollectionsImportService, CollectionsImportService>()
+            .AddScoped<ICollectionPromiseService, CollectionPromiseService>()
+            .AddScoped<ICampaignOutcomeService, CampaignOutcomeService>()
             .AddScoped<ICampaignStore, MongoCampaignStore>()
             .AddScoped<ICampaignAudienceService, CampaignAudienceService>()
             .AddScoped<ICampaignBuilderService, CampaignBuilderService>()

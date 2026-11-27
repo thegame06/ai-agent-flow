@@ -738,6 +738,37 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
             return await ExecuteProviderVoiceActivityAsync(tenantId, providerResolver, activity, execution, resolvedConfig, ct);
         }
 
+        // Records the business result of a campaign contact (promesa de pago, dijo que no, ...).
+        // Config keys:
+        //   outcome            (required) — code from CampaignOutcomes (e.g. promise_to_pay)
+        //   contactExecutionId (optional) — defaults to the execution's correlation id, which is the
+        //                                   campaign contact when the workflow was started by a campaign
+        //   notes, promiseAmount, promiseDate (yyyy-MM-dd) — optional
+        if (string.Equals(activity.Type, "campaign.record_outcome", StringComparison.OrdinalIgnoreCase))
+        {
+            var outcomeCode = GetConfig(resolvedConfig, "outcome");
+            if (string.IsNullOrWhiteSpace(outcomeCode) || AgentFlow.Abstractions.Connect.CampaignOutcomes.Find(outcomeCode) is null)
+                throw new InvalidOperationException($"Activity campaign.record_outcome requires a known config.outcome (got '{outcomeCode}').");
+
+            var contactId = GetConfig(resolvedConfig, "contactExecutionId");
+            if (string.IsNullOrWhiteSpace(contactId)) contactId = execution.CorrelationId;
+            if (string.IsNullOrWhiteSpace(contactId))
+                throw new InvalidOperationException("Activity campaign.record_outcome needs config.contactExecutionId (or a campaign-started workflow).");
+
+            decimal? amount = decimal.TryParse(GetConfig(resolvedConfig, "promiseAmount"), System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var parsedAmount) ? parsedAmount : null;
+            DateTimeOffset? promiseDate = DateTimeOffset.TryParse(GetConfig(resolvedConfig, "promiseDate"), System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AssumeUniversal, out var parsedDate) ? parsedDate : null;
+
+            var outcomes = serviceProvider.GetRequiredService<AgentFlow.Api.Campaigns.ICampaignOutcomeService>();
+            var recorded = await outcomes.RecordAsync(tenantId, contactId!, new AgentFlow.Api.Campaigns.CampaignOutcomeRequest(
+                outcomeCode!,
+                AgentFlow.Abstractions.Connect.CampaignOutcomes.Sources.Workflow,
+                $"workflow:{execution.WorkflowDefinitionId}",
+                GetConfig(resolvedConfig, "notes"),
+                amount,
+                promiseDate), ct);
+            return $"campaign_outcome:{recorded.Id}:{recorded.Outcome}";
+        }
+
         // ── channel.send ──────────────────────────────────────────────────────
         // Send a message directly through a channel without involving an agent.
         // The channel's own transport handles delivery (WhatsApp API, webhook, etc.).

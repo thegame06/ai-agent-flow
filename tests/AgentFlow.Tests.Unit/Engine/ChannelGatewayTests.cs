@@ -94,7 +94,8 @@ public sealed class ChannelGatewayTests
         var requestFactory = new Mock<IChannelExecutionRequestFactory>();
         var spamReputationRepo = new Mock<IChannelSpamReputationRepository>();
 
-        var channel = ChannelDefinition.Create("tenant-1", "api", ChannelType.Api);
+        var channel = ChannelDefinition.Create("tenant-1", "api", ChannelType.Api,
+            new Dictionary<string, string> { ["DefaultAgentId"] = "default-agent" });
 
         channelRepo.Setup(x => x.GetByIdAsync(channel.Id, "tenant-1", It.IsAny<CancellationToken>()))
             .ReturnsAsync(channel);
@@ -144,6 +145,44 @@ public sealed class ChannelGatewayTests
             It.Is<AgentExecutionRequest>(r => r.AgentKey == "default-agent"),
             It.IsAny<CancellationToken>()),
             Times.Once);
+    }
+
+    [Fact]
+    public async Task ProcessMessageAsync_ChannelWithoutAssistant_LeavesMessageForAPerson()
+    {
+        var channelRepo = new Mock<IChannelDefinitionRepository>();
+        var messageRepo = new Mock<IChannelMessageRepository>();
+        var executor = new Mock<IAgentExecutor>();
+        var channel = ChannelDefinition.Create("tenant-1", "whatsapp-qr", ChannelType.Api);
+
+        channelRepo.Setup(x => x.GetByIdAsync(channel.Id, "tenant-1", It.IsAny<CancellationToken>())).ReturnsAsync(channel);
+        messageRepo.Setup(x => x.InsertAsync(It.IsAny<ChannelMessage>(), It.IsAny<CancellationToken>())).ReturnsAsync(Result.Success());
+        messageRepo.Setup(x => x.UpdateAsync(It.IsAny<ChannelMessage>(), It.IsAny<CancellationToken>())).ReturnsAsync(Result.Success());
+
+        var gateway = new ChannelGateway(
+            channelRepo.Object,
+            Mock.Of<IChannelSessionRepository>(),
+            messageRepo.Object,
+            executor.Object,
+            Mock.Of<IAgentHandoffExecutor>(),
+            Mock.Of<IManagerHandoffPolicy>(),
+            Mock.Of<IChannelExecutionRequestFactory>(),
+            Mock.Of<IAgentDefinitionRepository>(),
+            Mock.Of<IAuditMemory>(),
+            Mock.Of<IChannelCapabilityPolicy>(),
+            Mock.Of<IChannelSpamReputationRepository>(),
+            null,
+            new[] { new TestChannelHandler(ChannelType.Api) },
+            null,
+            NullLogger<ChannelGateway>.Instance);
+
+        var incoming = ChannelMessage.CreateIncoming("tenant-1", channel.Id, "session-1", "user-1", "te pago el viernes");
+
+        var result = await gateway.ProcessMessageAsync(incoming, CancellationToken.None);
+
+        Assert.Same(incoming, result);
+        Assert.Equal("NoAgent", result.Metadata["agentflow.execution_status"]);
+        executor.Verify(x => x.ExecuteAsync(It.IsAny<AgentExecutionRequest>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]

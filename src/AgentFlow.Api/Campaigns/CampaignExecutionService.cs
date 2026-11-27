@@ -13,6 +13,8 @@ public interface ICampaignExecutionService
     Task<CampaignRunContract> RunNowAsync(string tenantId, string campaignId, string requestedBy, CampaignRunTrigger trigger, CancellationToken ct = default);
     Task<CampaignRunContract> RetryFailuresAsync(string tenantId, string runId, string requestedBy, CancellationToken ct = default);
     Task<CampaignMetricsContract> GetMetricsAsync(string tenantId, string campaignId, CancellationToken ct = default);
+    /// <summary>Sends the campaign message to one number, filled with the first audience contact's data.</summary>
+    Task<OutboundSendResult> SendTestAsync(string tenantId, string campaignId, string recipient, string requestedBy, CancellationToken ct = default);
     DateTimeOffset? ComputeNextRunAt(CampaignContract campaign, DateTimeOffset now);
 }
 
@@ -52,7 +54,9 @@ public sealed class CampaignExecutionService : ICampaignExecutionService
         var campaign = await _campaignStore.GetCampaignAsync(tenantId, campaignId, ct)
             ?? throw new InvalidOperationException("Campaign not found.");
 
-        var preview = await SimulateAsync(tenantId, campaign, ct);
+        // The whole audience (a preview is capped at 50 contacts for display).
+        var preview = await _audienceService.ResolveAsync(tenantId, campaign.AudienceFilterJson, campaign.Id, ct);
+        var optedOut = await _campaignStore.GetOptedOutRecipientKeysAsync(tenantId, ct);
         var run = await _campaignStore.CreateRunAsync(new CampaignRunContract
         {
             Id = Guid.NewGuid().ToString("N"),
@@ -61,7 +65,7 @@ public sealed class CampaignExecutionService : ICampaignExecutionService
             Status = CampaignRunStatus.Running,
             TriggeredBy = trigger,
             StartedAt = DateTimeOffset.UtcNow,
-            AudienceSnapshotJson = JsonSerializer.Serialize(preview.Contacts),
+            AudienceSnapshotJson = JsonSerializer.Serialize(preview.Contacts.Take(500)),
             CountersJson = "{}",
             RequestedBy = requestedBy
         }, ct);
@@ -79,10 +83,25 @@ public sealed class CampaignExecutionService : ICampaignExecutionService
                 PartyId = contact.PartyId,
                 Channel = campaign.Channel,
                 Recipient = contact.Recipient,
+                RecipientKey = RecipientKeys.From(contact.Recipient),
+                DisplayName = contact.DisplayName,
+                Variables = contact.Variables,
                 Status = CampaignContactExecutionStatus.Queued,
                 CreatedAt = DateTimeOffset.UtcNow,
                 UpdatedAt = DateTimeOffset.UtcNow
             }, ct);
+
+            if (execution.RecipientKey is not null && optedOut.Contains(execution.RecipientKey))
+            {
+                execution = (await _campaignStore.UpdateContactExecutionAsync(execution with
+                {
+                    Status = CampaignContactExecutionStatus.Skipped,
+                    SkipReason = "opt_out",
+                    UpdatedAt = DateTimeOffset.UtcNow
+                }, ct))!;
+                counters.Observe(execution.Status);
+                continue;
+            }
 
             try
             {
@@ -212,6 +231,25 @@ public sealed class CampaignExecutionService : ICampaignExecutionService
         };
     }
 
+    public async Task<OutboundSendResult> SendTestAsync(string tenantId, string campaignId, string recipient, string requestedBy, CancellationToken ct = default)
+    {
+        var campaign = await _campaignStore.GetCampaignAsync(tenantId, campaignId, ct)
+            ?? throw new InvalidOperationException("Campaign not found.");
+        var preview = await _audienceService.PreviewAsync(tenantId, campaign.AudienceFilterJson, null, ct);
+        var sample = preview.Contacts.FirstOrDefault();
+        var (text, _) = CampaignMessageRenderer.Render(campaign.MessageDraft ?? string.Empty, sample?.Variables);
+        return await _outbound.SendAsync(
+            tenantId,
+            campaign.Channel,
+            recipient,
+            "[Prueba] " + text,
+            requestedBy,
+            campaign.Id,
+            campaign.TemplateId,
+            new Dictionary<string, string> { ["campaign_test_send"] = "true" },
+            ct);
+    }
+
     public DateTimeOffset? ComputeNextRunAt(CampaignContract campaign, DateTimeOffset now)
     {
         if (!campaign.Enabled) return null;
@@ -280,6 +318,9 @@ public sealed class CampaignExecutionService : ICampaignExecutionService
                 ["contact"] = execution,
                 ["segment"] = campaign.SegmentId,
                 ["party"] = execution.PartyId,
+                ["recipient"] = execution.Recipient,
+                ["variables"] = execution.Variables ?? new Dictionary<string, string>(),
+                ["message"] = CampaignMessageRenderer.Render(campaign.MessageDraft ?? string.Empty, execution.Variables).Text,
                 ["salesSummary"] = new { },
                 ["invoiceSummary"] = new { },
                 ["conversationSummary"] = new { recipient = execution.Recipient },
@@ -333,12 +374,24 @@ public sealed class CampaignExecutionService : ICampaignExecutionService
 
         if (campaign.ChannelAction == CampaignChannelAction.Message)
         {
+            var (message, missing) = CampaignMessageRenderer.Render(campaign.MessageDraft ?? "Mensaje de campana", execution.Variables);
+            if (missing.Count > 0)
+            {
+                // Never send a message with "{{total_vencido}}" left in it.
+                return (await _campaignStore.UpdateContactExecutionAsync(execution with
+                {
+                    Status = CampaignContactExecutionStatus.Failed,
+                    SkipReason = "Faltan datos para el mensaje: " + string.Join(", ", missing),
+                    UpdatedAt = DateTimeOffset.UtcNow
+                }, ct))!;
+            }
+
             // Real send through the campaign's channel; "Sent" only when the transport accepted it.
             var sent = await _outbound.SendAsync(
                 campaign.TenantId,
                 campaign.Channel,
                 execution.Recipient,
-                campaign.MessageDraft ?? "Mensaje de campana",
+                message,
                 run.RequestedBy,
                 campaign.Id,
                 campaign.TemplateId,
@@ -352,6 +405,7 @@ public sealed class CampaignExecutionService : ICampaignExecutionService
             return (await _campaignStore.UpdateContactExecutionAsync(execution with
             {
                 Status = sent.Sent ? CampaignContactExecutionStatus.Sent : CampaignContactExecutionStatus.Failed,
+                RenderedMessage = message,
                 ChannelMessageId = sent.ChannelMessageId ?? sent.InboxMessageId,
                 SkipReason = sent.Sent ? execution.SkipReason : sent.Error,
                 UpdatedAt = DateTimeOffset.UtcNow

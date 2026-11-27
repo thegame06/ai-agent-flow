@@ -196,6 +196,19 @@ public sealed class ChannelsController : ControllerBase
                 incoming.Metadata.TryAdd(kv.Key, kv.Value);
         }
 
+        // A reply to a campaign message gets its business result (promesa, no interesa, ...)
+        // whatever channel it arrives on. Never blocks the conversation.
+        var campaignOutcomes = HttpContext.RequestServices.GetService<AgentFlow.Api.Campaigns.ICampaignOutcomeService>();
+        if (campaignOutcomes is not null && !string.IsNullOrWhiteSpace(request.Content))
+        {
+            try { await campaignOutcomes.AttributeReplyAsync(tenantId, from, request.Content, DateTimeOffset.UtcNow, ct); }
+            catch (Exception ex)
+            {
+                HttpContext.RequestServices.GetRequiredService<Microsoft.Extensions.Logging.ILogger<ChannelsController>>()
+                    .LogWarning(ex, "Could not attribute inbound message to a campaign contact");
+            }
+        }
+
         // ASYNC mode: accept immediately, process in background
         if (!string.IsNullOrWhiteSpace(request.CallbackUrl))
         {

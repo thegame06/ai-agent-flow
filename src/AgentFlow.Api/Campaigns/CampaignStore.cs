@@ -28,6 +28,13 @@ public interface ICampaignStore
     Task<IReadOnlyList<CampaignContactExecutionContract>> GetContactExecutionsAsync(string tenantId, string runId, CancellationToken ct = default);
     Task<CampaignContactExecutionContract> CreateContactExecutionAsync(CampaignContactExecutionContract contact, CancellationToken ct = default);
     Task<CampaignContactExecutionContract?> UpdateContactExecutionAsync(CampaignContactExecutionContract contact, CancellationToken ct = default);
+    Task<CampaignContactExecutionContract?> GetContactExecutionAsync(string tenantId, string contactExecutionId, CancellationToken ct = default);
+    Task<IReadOnlyList<CampaignContactExecutionContract>> GetContactExecutionsByCampaignAsync(string tenantId, string campaignId, int limit = 5000, CancellationToken ct = default);
+    Task<IReadOnlyList<CampaignContactExecutionContract>> GetContactExecutionsByPartyAsync(string tenantId, string partyId, int limit = 100, CancellationToken ct = default);
+    /// <summary>Most recent contact for a recipient key created after <paramref name="since"/>.</summary>
+    /// <summary>Recipient keys of everyone who asked not to be contacted again (any campaign).</summary>
+    Task<IReadOnlySet<string>> GetOptedOutRecipientKeysAsync(string tenantId, CancellationToken ct = default);
+    Task<CampaignContactExecutionContract?> FindLatestContactByRecipientKeyAsync(string tenantId, string recipientKey, DateTimeOffset since, CancellationToken ct = default);
 
     Task<IReadOnlyList<CampaignCallOutcomeContract>> GetCallOutcomesByRunAsync(string tenantId, string runId, CancellationToken ct = default);
     Task<CampaignCallOutcomeContract?> GetCallOutcomeByContactAsync(string tenantId, string contactExecutionId, CancellationToken ct = default);
@@ -66,6 +73,12 @@ public sealed class MongoCampaignStore : ICampaignStore
             Builders<CampaignRunDocument>.IndexKeys.Ascending(x => x.TenantId).Ascending(x => x.CampaignId).Descending(x => x.StartedAt)));
         _contacts.Indexes.CreateOne(new CreateIndexModel<CampaignContactExecutionDocument>(
             Builders<CampaignContactExecutionDocument>.IndexKeys.Ascending(x => x.TenantId).Ascending(x => x.RunId).Descending(x => x.CreatedAt)));
+        _contacts.Indexes.CreateOne(new CreateIndexModel<CampaignContactExecutionDocument>(
+            Builders<CampaignContactExecutionDocument>.IndexKeys.Ascending(x => x.TenantId).Ascending(x => x.CampaignId).Descending(x => x.CreatedAt)));
+        _contacts.Indexes.CreateOne(new CreateIndexModel<CampaignContactExecutionDocument>(
+            Builders<CampaignContactExecutionDocument>.IndexKeys.Ascending(x => x.TenantId).Ascending(x => x.RecipientKey).Descending(x => x.CreatedAt)));
+        _contacts.Indexes.CreateOne(new CreateIndexModel<CampaignContactExecutionDocument>(
+            Builders<CampaignContactExecutionDocument>.IndexKeys.Ascending(x => x.TenantId).Ascending(x => x.PartyId).Descending(x => x.CreatedAt)));
         _outcomes.Indexes.CreateOne(new CreateIndexModel<CampaignCallOutcomeDocument>(
             Builders<CampaignCallOutcomeDocument>.IndexKeys.Ascending(x => x.TenantId).Ascending(x => x.RunId).Descending(x => x.CreatedAt)));
         _outcomes.Indexes.CreateOne(new CreateIndexModel<CampaignCallOutcomeDocument>(
@@ -265,52 +278,49 @@ public sealed class MongoCampaignStore : ICampaignStore
 
     public async Task<CampaignContactExecutionContract> CreateContactExecutionAsync(CampaignContactExecutionContract contact, CancellationToken ct = default)
     {
-        var doc = new CampaignContactExecutionDocument
-        {
-            Id = contact.Id,
-            TenantId = contact.TenantId,
-            CampaignId = contact.CampaignId,
-            RunId = contact.RunId,
-            PartyId = contact.PartyId,
-            Channel = contact.Channel,
-            Recipient = contact.Recipient,
-            Status = contact.Status,
-            SkipReason = contact.SkipReason,
-            WorkflowExecutionId = contact.WorkflowExecutionId,
-            ChannelMessageId = contact.ChannelMessageId,
-            CallId = contact.CallId,
-            CallOutcomeId = contact.CallOutcomeId,
-            AssistantExecutionId = contact.AssistantExecutionId,
-            CreatedAt = contact.CreatedAt,
-            UpdatedAt = contact.UpdatedAt
-        };
+        var doc = ToDocument(contact);
         await _contacts.InsertOneAsync(doc, cancellationToken: ct);
         return ToContract(doc);
     }
 
     public async Task<CampaignContactExecutionContract?> UpdateContactExecutionAsync(CampaignContactExecutionContract contact, CancellationToken ct = default)
     {
-        var doc = new CampaignContactExecutionDocument
-        {
-            Id = contact.Id,
-            TenantId = contact.TenantId,
-            CampaignId = contact.CampaignId,
-            RunId = contact.RunId,
-            PartyId = contact.PartyId,
-            Channel = contact.Channel,
-            Recipient = contact.Recipient,
-            Status = contact.Status,
-            SkipReason = contact.SkipReason,
-            WorkflowExecutionId = contact.WorkflowExecutionId,
-            ChannelMessageId = contact.ChannelMessageId,
-            CallId = contact.CallId,
-            CallOutcomeId = contact.CallOutcomeId,
-            AssistantExecutionId = contact.AssistantExecutionId,
-            CreatedAt = contact.CreatedAt,
-            UpdatedAt = contact.UpdatedAt
-        };
+        var doc = ToDocument(contact);
         var result = await _contacts.ReplaceOneAsync(x => x.TenantId == doc.TenantId && x.Id == doc.Id, doc, cancellationToken: ct);
         return result.MatchedCount == 0 ? null : ToContract(doc);
+    }
+
+    public async Task<CampaignContactExecutionContract?> GetContactExecutionAsync(string tenantId, string contactExecutionId, CancellationToken ct = default)
+    {
+        var doc = await _contacts.Find(x => x.TenantId == tenantId && x.Id == contactExecutionId).FirstOrDefaultAsync(ct);
+        return doc is null ? null : ToContract(doc);
+    }
+
+    public async Task<IReadOnlyList<CampaignContactExecutionContract>> GetContactExecutionsByCampaignAsync(string tenantId, string campaignId, int limit = 5000, CancellationToken ct = default)
+        => (await _contacts.Find(x => x.TenantId == tenantId && x.CampaignId == campaignId)
+                .SortByDescending(x => x.CreatedAt).Limit(Math.Clamp(limit, 1, 20000)).ToListAsync(ct))
+            .Select(ToContract).ToList();
+
+    public async Task<IReadOnlyList<CampaignContactExecutionContract>> GetContactExecutionsByPartyAsync(string tenantId, string partyId, int limit = 100, CancellationToken ct = default)
+        => (await _contacts.Find(x => x.TenantId == tenantId && x.PartyId == partyId)
+                .SortByDescending(x => x.CreatedAt).Limit(Math.Clamp(limit, 1, 500)).ToListAsync(ct))
+            .Select(ToContract).ToList();
+
+    public async Task<IReadOnlySet<string>> GetOptedOutRecipientKeysAsync(string tenantId, CancellationToken ct = default)
+    {
+        var keys = await _contacts.Distinct(
+                x => x.RecipientKey,
+                Builders<CampaignContactExecutionDocument>.Filter.Where(x => x.TenantId == tenantId && x.Outcome == CampaignOutcomes.OptOut),
+                cancellationToken: ct)
+            .ToListAsync(ct);
+        return keys.Where(k => !string.IsNullOrWhiteSpace(k)).Select(k => k!).ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+
+    public async Task<CampaignContactExecutionContract?> FindLatestContactByRecipientKeyAsync(string tenantId, string recipientKey, DateTimeOffset since, CancellationToken ct = default)
+    {
+        var doc = await _contacts.Find(x => x.TenantId == tenantId && x.RecipientKey == recipientKey && x.CreatedAt >= since)
+            .SortByDescending(x => x.CreatedAt).FirstOrDefaultAsync(ct);
+        return doc is null ? null : ToContract(doc);
     }
 
     public async Task<IReadOnlyList<CampaignCallOutcomeContract>> GetCallOutcomesByRunAsync(string tenantId, string runId, CancellationToken ct = default)
@@ -495,8 +505,56 @@ public sealed class MongoCampaignStore : ICampaignStore
         CallId = doc.CallId,
         CallOutcomeId = doc.CallOutcomeId,
         AssistantExecutionId = doc.AssistantExecutionId,
+        DisplayName = doc.DisplayName,
+        RenderedMessage = doc.RenderedMessage,
+        RepliedAt = doc.RepliedAt,
+        LastReply = doc.LastReply,
+        ReplyCount = doc.ReplyCount,
+        Outcome = doc.Outcome,
+        OutcomeSource = doc.OutcomeSource,
+        OutcomeAt = doc.OutcomeAt,
+        OutcomeBy = doc.OutcomeBy,
+        OutcomeNotes = doc.OutcomeNotes,
+        PromiseAmount = doc.PromiseAmount,
+        PromiseDate = doc.PromiseDate,
         CreatedAt = doc.CreatedAt,
-        UpdatedAt = doc.UpdatedAt
+        UpdatedAt = doc.UpdatedAt,
+        Variables = doc.Variables,
+        RecipientKey = doc.RecipientKey
+    };
+
+    private static CampaignContactExecutionDocument ToDocument(CampaignContactExecutionContract contact) => new()
+    {
+        Id = contact.Id,
+        TenantId = contact.TenantId,
+        CampaignId = contact.CampaignId,
+        RunId = contact.RunId,
+        PartyId = contact.PartyId,
+        Channel = contact.Channel,
+        Recipient = contact.Recipient,
+        Status = contact.Status,
+        SkipReason = contact.SkipReason,
+        WorkflowExecutionId = contact.WorkflowExecutionId,
+        ChannelMessageId = contact.ChannelMessageId,
+        CallId = contact.CallId,
+        CallOutcomeId = contact.CallOutcomeId,
+        AssistantExecutionId = contact.AssistantExecutionId,
+        DisplayName = contact.DisplayName,
+        RenderedMessage = contact.RenderedMessage,
+        RepliedAt = contact.RepliedAt,
+        LastReply = contact.LastReply,
+        ReplyCount = contact.ReplyCount,
+        Outcome = contact.Outcome,
+        OutcomeSource = contact.OutcomeSource,
+        OutcomeAt = contact.OutcomeAt,
+        OutcomeBy = contact.OutcomeBy,
+        OutcomeNotes = contact.OutcomeNotes,
+        PromiseAmount = contact.PromiseAmount,
+        PromiseDate = contact.PromiseDate,
+        CreatedAt = contact.CreatedAt,
+        UpdatedAt = contact.UpdatedAt,
+        Variables = contact.Variables is null ? null : new Dictionary<string, string>(contact.Variables),
+        RecipientKey = contact.RecipientKey ?? RecipientKeys.From(contact.Recipient)
     };
 
     private static CampaignCallOutcomeContract ToContract(CampaignCallOutcomeDocument doc) => new()
@@ -635,6 +693,21 @@ public sealed class MongoCampaignStore : ICampaignStore
         public string? CallId { get; set; }
         public string? CallOutcomeId { get; set; }
         public string? AssistantExecutionId { get; set; }
+        public string? DisplayName { get; set; }
+        public Dictionary<string, string>? Variables { get; set; }
+        public string? RenderedMessage { get; set; }
+        public string? RecipientKey { get; set; }
+        public DateTimeOffset? RepliedAt { get; set; }
+        public string? LastReply { get; set; }
+        public int ReplyCount { get; set; }
+        public string? Outcome { get; set; }
+        public string? OutcomeSource { get; set; }
+        public DateTimeOffset? OutcomeAt { get; set; }
+        public string? OutcomeBy { get; set; }
+        public string? OutcomeNotes { get; set; }
+        [BsonRepresentation(BsonType.Decimal128)]
+        public decimal? PromiseAmount { get; set; }
+        public DateTimeOffset? PromiseDate { get; set; }
         public DateTimeOffset CreatedAt { get; set; }
         public DateTimeOffset UpdatedAt { get; set; }
     }

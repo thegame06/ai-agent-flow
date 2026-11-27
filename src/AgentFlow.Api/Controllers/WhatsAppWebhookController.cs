@@ -1,5 +1,6 @@
 using AgentFlow.Abstractions.Connect;
 using AgentFlow.Abstractions.Workflow;
+using AgentFlow.Api.Campaigns;
 using AgentFlow.Api.Connect;
 using AgentFlow.Api.Workflow;
 using AgentFlow.Application.Channels;
@@ -28,6 +29,7 @@ public sealed class WhatsAppWebhookController : ControllerBase
     private readonly IWorkflowAuditService _audit;
     private readonly ILogger<WhatsAppWebhookController> _logger;
     private readonly WhatsAppOptions _waOptions;
+    private readonly ICampaignOutcomeService? _campaignOutcomes;
 
     public WhatsAppWebhookController(
         IChannelGateway gateway,
@@ -38,8 +40,10 @@ public sealed class WhatsAppWebhookController : ControllerBase
         IWorkflowTriggerService triggerService,
         IWorkflowAuditService audit,
         IOptions<WhatsAppOptions> options,
-        ILogger<WhatsAppWebhookController> logger)
+        ILogger<WhatsAppWebhookController> logger,
+        ICampaignOutcomeService? campaignOutcomes = null)
     {
+        _campaignOutcomes = campaignOutcomes;
         _gateway = gateway;
         _channelRepo = channelRepo;
         _messageRepo = messageRepo;
@@ -139,6 +143,8 @@ public sealed class WhatsAppWebhookController : ControllerBase
                             UpdatedBy = "meta-webhook"
                         }, ct);
 
+                        await AttributeCampaignReplyAsync(tenantId, waMessage.From, waMessage.Text?.Body ?? waMessage.Caption, ct);
+
                         var response = await _gateway.ProcessMessageAsync(channelMessage, ct);
                         results.Add(new
                         {
@@ -232,6 +238,8 @@ public sealed class WhatsAppWebhookController : ControllerBase
                 UpdatedBy = "qr-webhook"
             }, ct);
 
+            await AttributeCampaignReplyAsync(tenantId, message.From, message.Content, ct);
+
             // --- Route through channel gateway as primary path ---
             // Router + intent rules decide whether to trigger a workflow.
             var response = await _gateway.ProcessMessageAsync(channelMessage, ct);
@@ -251,6 +259,25 @@ public sealed class WhatsAppWebhookController : ControllerBase
         {
             _logger.LogError(ex, "Error processing QR WhatsApp message");
             return StatusCode(500, new { error = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Links a reply to the campaign contact that messaged this number and classifies it
+    /// (promesa de pago, ya pague, no me interesa...). Never blocks the conversation flow.
+    /// </summary>
+    private async Task AttributeCampaignReplyAsync(string tenantId, string? from, string? text, CancellationToken ct)
+    {
+        if (_campaignOutcomes is null || string.IsNullOrWhiteSpace(from) || string.IsNullOrWhiteSpace(text)) return;
+        try
+        {
+            var contact = await _campaignOutcomes.AttributeReplyAsync(tenantId, from, text, DateTimeOffset.UtcNow, ct);
+            if (contact is not null)
+                _logger.LogInformation("Reply attributed to campaign {CampaignId} contact {ContactId}: {Outcome}", contact.CampaignId, contact.Id, contact.Outcome);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not attribute WhatsApp reply to a campaign contact");
         }
     }
 

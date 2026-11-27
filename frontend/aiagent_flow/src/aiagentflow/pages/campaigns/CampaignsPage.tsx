@@ -1,1092 +1,293 @@
-import type { Theme } from '@mui/material/styles';
-
 import { Helmet } from 'react-helmet-async';
+import { useSearchParams } from 'react-router';
 import { useMemo, useState, useEffect, useCallback } from 'react';
 
 import Box from '@mui/material/Box';
-import List from '@mui/material/List';
-import Grid from '@mui/material/Grid';
-import Chip from '@mui/material/Chip';
 import Card from '@mui/material/Card';
-import Stack from '@mui/material/Stack';
-import Paper from '@mui/material/Paper';
+import Chip from '@mui/material/Chip';
 import Alert from '@mui/material/Alert';
+import Stack from '@mui/material/Stack';
+import Table from '@mui/material/Table';
 import Button from '@mui/material/Button';
-import Divider from '@mui/material/Divider';
-import { alpha } from '@mui/material/styles';
 import MenuItem from '@mui/material/MenuItem';
+import TableRow from '@mui/material/TableRow';
+import TableBody from '@mui/material/TableBody';
+import TableCell from '@mui/material/TableCell';
+import TableHead from '@mui/material/TableHead';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
-import ListItemText from '@mui/material/ListItemText';
-import ListItemButton from '@mui/material/ListItemButton';
-import LinearProgress from '@mui/material/LinearProgress';
+import CardContent from '@mui/material/CardContent';
+import TableContainer from '@mui/material/TableContainer';
 import CircularProgress from '@mui/material/CircularProgress';
 
-import { paths } from 'src/routes/paths';
-
-import { CONFIG } from 'src/global-config';
 import axios, { endpoints } from 'src/lib/axios';
 import { DashboardContent } from 'src/layouts/dashboard';
 import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
-import { BrandPageHeader } from 'src/aiagentflow/components/BrandPageHeader';
+import { useTenantApps } from 'src/aiagentflow/hooks/useTenantApps';
 
 import { Iconify } from 'src/components/iconify';
 
-type CampaignStatus =
-  | 'Draft'
-  | 'Published'
-  | 'Active'
-  | 'Paused'
-  | 'Completed'
-  | 'Failed'
-  | 'Archived';
+import { CampaignWizard } from './CampaignWizard';
+import { CampaignDetail } from './CampaignDetail';
+import { dateTime, parseFilter, CAMPAIGN_TYPE, SCHEDULE_LABEL, CAMPAIGN_STATUS } from './campaignModel';
 
-type CampaignItem = {
-  id: string;
-  name: string;
-  description?: string;
-  status: CampaignStatus;
-  campaignType: string;
-  executionMode: string;
-  channelAction: string;
-  channel: string;
-  runtimeModelProfileId?: string | null;
-  workflowDefinitionId?: string | null;
-  startAt: string;
-  nextRunAt?: string | null;
-  updatedAt: string;
-};
+import type { Campaign } from './campaignModel';
+import type { WizardPreset } from './CampaignWizard';
 
-type SegmentItem = {
-  id: string;
-  name: string;
-  description?: string;
-  estimatedCount?: number | null;
-  updatedAt: string;
-};
-
-type ChannelOption = {
-  id: string;
-  name: string;
-  type?: string;
-};
-
-type WorkflowOption = {
-  id: string;
-  name: string;
-};
-
-type RuntimeProfileOption = {
-  id: string;
-  name: string;
-  runtimeKind?: string;
-  isDefault?: boolean;
-};
-
-type RunItem = {
-  id: string;
-  campaignId: string;
-  status: string;
-  triggeredBy: string;
-  startedAt: string;
-  completedAt?: string | null;
-  requestedBy?: string;
-};
-
-type BuilderDraft = {
-  campaignDraft: Partial<CampaignItem> & {
-    id?: string;
-    audienceFilterJson?: string;
-    workflowDefinitionId?: string | null;
-    runtimeModelProfileId?: string | null;
-    messageDraft?: string | null;
-    callScriptDraft?: string | null;
-    scheduleExpression?: string;
-    scheduleType?: string;
-  };
-  segmentDraft: {
-    id?: string;
-    name?: string;
-    description?: string;
-    filterJson?: string;
-  };
-  recommendedWorkflowLink?: string | null;
-  messageDraft?: string | null;
-  callScriptDraft?: string | null;
-  assumptions?: string[];
-  warnings?: string[];
-};
-
-type OverviewMetrics = {
-  campaigns: number;
-  activeCampaigns: number;
-  segments: number;
-  runs: number;
-};
-
-type ManualCampaignForm = {
-  name: string;
-  description: string;
-  campaignType: string;
-  executionMode: string;
-  channelAction: string;
-  channel: string;
-  scheduleType: string;
-  scheduleExpression: string;
-  startAt: string;
-  segmentId: string;
-  audiencePreset: string;
-  audienceFilterJson: string;
-  workflowDefinitionId: string;
-  runtimeModelProfileId: string;
-  messageDraft: string;
-  callScriptDraft: string;
-  assistantId: string;
-};
-
-type ManualSegmentForm = {
-  name: string;
-  description: string;
-  preset: string;
-  filterJson: string;
-};
-
-type SegmentPreview = {
-  estimatedCount?: number;
-  contacts?: Array<Record<string, unknown>>;
-};
-
-type SectionKey = 'summary' | 'campaigns' | 'segments' | 'calendar' | 'results';
-
-const sections: Array<{ key: SectionKey; label: string; description: string }> = [
-  { key: 'summary', label: 'Resumen', description: 'Vista operacional, manual y asistida.' },
-  { key: 'campaigns', label: 'Campañas', description: 'Crea campañas nativas del producto.' },
-  { key: 'segments', label: 'Segmentos', description: 'Define audiencias y valida su alcance.' },
-  { key: 'calendar', label: 'Calendario', description: 'Próximas salidas programadas.' },
-  { key: 'results', label: 'Resultados', description: 'Corridas, estado y trazabilidad.' },
-];
-
-const campaignTypeOptions = ['Sales', 'Collections', 'Reminder', 'Reactivation', 'Custom'];
-const executionModeOptions = ['Workflow', 'Direct', 'Hybrid'];
-const channelActionOptions = ['Message', 'Call', 'WorkflowStart'];
-const scheduleTypeOptions = ['Once', 'Hourly', 'Daily', 'Weekly', 'Cron'];
-const audiencePresetOptions = [
-  { value: 'all', label: 'Toda la audiencia disponible', filterJson: '{}' },
-  { value: 'recent_leads', label: 'Leads recientes', filterJson: '{"kind":"lead"}' },
-  { value: 'collections', label: 'Cobranza con saldo pendiente', filterJson: '{"invoiceStatus":"pending","minOutstandingAmount":1}' },
-  { value: 'buyers', label: 'Clientes con compras previas', filterJson: '{"kind":"customer","minPurchaseCount":1}' },
-  { value: 'fallback', label: 'Casos sin resolver', filterJson: '{"onlyFallbackCases":true}' },
-  { value: 'advanced', label: 'Filtro avanzado', filterJson: '{}' },
-];
-
-const defaultManualCampaign = (): ManualCampaignForm => ({
-  name: '',
-  description: '',
-  campaignType: 'Custom',
-  executionMode: 'Workflow',
-  channelAction: 'WorkflowStart',
-  channel: 'whatsapp',
-  scheduleType: 'Once',
-  scheduleExpression: '',
-  startAt: new Date().toISOString().slice(0, 16),
-  segmentId: '',
-  audiencePreset: 'all',
-  audienceFilterJson: '{}',
-  workflowDefinitionId: '',
-  runtimeModelProfileId: '',
-  messageDraft: '',
-  callScriptDraft: '',
-  assistantId: '',
-});
-
-const defaultManualSegment = (): ManualSegmentForm => ({
-  name: '',
-  description: '',
-  preset: 'all',
-  filterJson: '{}',
-});
-
-function statusColor(status: string): 'default' | 'success' | 'warning' | 'error' | 'info' {
-  switch (status) {
-    case 'Active':
-    case 'Completed':
-      return 'success';
-    case 'Published':
-      return 'info';
-    case 'Paused':
-      return 'warning';
-    case 'Failed':
-      return 'error';
-    default:
-      return 'default';
-  }
-}
-
-function panelSurface(theme: Theme, tone: 'brand' | 'soft' = 'soft') {
-  return tone === 'brand'
-    ? {
-        backgroundImage: `linear-gradient(135deg, ${alpha(theme.palette.success.dark, 0.52)} 0%, ${alpha(theme.palette.warning.light, 0.26)} 100%)`,
-        borderColor: alpha(theme.palette.success.main, 0.28),
-      }
-    : {
-        backgroundColor: alpha(theme.palette.background.paper, 0.9),
-        borderColor: alpha(theme.palette.divider, 0.18),
-      };
-}
-
-function formatDate(value?: string | null) {
-  if (!value) return 'Sin fecha';
-  return new Date(value).toLocaleString();
-}
-
-function toIsoOrNow(value: string) {
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString();
-}
-
-function prettyJson(value: unknown) {
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return '[]';
-  }
-}
-
-function audiencePresetToFilterJson(preset: string) {
-  return audiencePresetOptions.find((option) => option.value === preset)?.filterJson ?? '{}';
-}
-
-function scheduleHelperText(scheduleType: string) {
-  switch (scheduleType) {
-    case 'Once':
-      return 'Se ejecuta una sola vez en la fecha de inicio.';
-    case 'Hourly':
-      return 'Escribe cada cuantas horas. Ejemplo: 4';
-    case 'Daily':
-      return 'Escribe la hora diaria. Ejemplo: 09:30';
-    case 'Weekly':
-      return 'Escribe dia y hora. Ejemplo: Mon 09:30';
-    case 'Cron':
-      return 'Usa cron solo para casos avanzados.';
-    default:
-      return '';
-  }
-}
+// ----------------------------------------------------------------------
 
 export default function CampaignsPage() {
   const tenantId = useTenantId();
-  const [activeSection, setActiveSection] = useState<SectionKey>('summary');
-  const [prompt, setPrompt] = useState('');
-  const [draft, setDraft] = useState<BuilderDraft | null>(null);
-  const [campaigns, setCampaigns] = useState<CampaignItem[]>([]);
-  const [segments, setSegments] = useState<SegmentItem[]>([]);
-  const [runs, setRuns] = useState<RunItem[]>([]);
-  const [channels, setChannels] = useState<ChannelOption[]>([]);
-  const [workflows, setWorkflows] = useState<WorkflowOption[]>([]);
-  const [runtimeProfiles, setRuntimeProfiles] = useState<RuntimeProfileOption[]>([]);
-  const [manualCampaign, setManualCampaign] = useState<ManualCampaignForm>(defaultManualCampaign);
-  const [manualSegment, setManualSegment] = useState<ManualSegmentForm>(defaultManualSegment);
-  const [segmentPreview, setSegmentPreview] = useState<SegmentPreview | null>(null);
+  const apps = useTenantApps();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
-  const [savingDraft, setSavingDraft] = useState(false);
-  const [savingCampaign, setSavingCampaign] = useState(false);
-  const [savingSegment, setSavingSegment] = useState(false);
-  const [previewingSegment, setPreviewingSegment] = useState(false);
-  const [buildingDraft, setBuildingDraft] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState('');
+  const [typeFilter, setTypeFilter] = useState('');
+  const [query, setQuery] = useState('');
 
-  const overview = useMemo<OverviewMetrics>(
-    () => ({
-      campaigns: campaigns.length,
-      activeCampaigns: campaigns.filter((item) => item.status === 'Active' || item.status === 'Published').length,
-      segments: segments.length,
-      runs: runs.length,
-    }),
-    [campaigns, runs, segments.length]
-  );
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [editing, setEditing] = useState<Campaign | null>(null);
+  const [preset, setPreset] = useState<WizardPreset | null>(null);
 
-  const scheduledItems = useMemo(
-    () =>
-      campaigns
-        .filter((item) => item.nextRunAt)
-        .sort((a, b) => new Date(a.nextRunAt || a.startAt).getTime() - new Date(b.nextRunAt || b.startAt).getTime())
-        .slice(0, 6),
-    [campaigns]
-  );
+  const collectionsEnabled = apps === null || apps.has('collections');
 
-  const refresh = useCallback(async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [campaignsRes, segmentsRes, runsRes, channelsRes, workflowsRes, runtimeProfilesRes] = await Promise.all([
-        axios.get(endpoints.agentflow.campaigns.list(tenantId)),
-        axios.get(endpoints.agentflow.campaignSegments.list(tenantId)),
-        axios.get(endpoints.agentflow.campaigns.allRuns(tenantId, null, 25)),
-        axios.get(endpoints.agentflow.channels.list(tenantId)).catch(() => ({ data: [] })),
-        axios.get(endpoints.agentflow.workflows.list(tenantId)).catch(() => ({ data: [] })),
-        axios.get(endpoints.agentflow.runtimeModelProfiles.list(tenantId)).catch(() => ({ data: [] })),
-      ]);
-
-      setCampaigns(campaignsRes.data ?? []);
-      setSegments(segmentsRes.data ?? []);
-      setRuns(runsRes.data ?? []);
-      setChannels(
-        ((channelsRes.data ?? []) as any[])
-          .filter((item) => item?.id && item?.name)
-          .map((item) => ({ id: item.id, name: item.name, type: item.type }))
-      );
-      setWorkflows(
-        ((workflowsRes.data ?? []) as any[])
-          .filter((item) => item?.id && item?.name)
-          .map((item) => ({ id: item.id, name: item.name }))
-      );
-      setRuntimeProfiles(
-        ((runtimeProfilesRes.data ?? []) as any[]).map((item) => ({
-          id: item.id,
-          name: item.name,
-          runtimeKind: item.runtimeKind,
-          isDefault: item.isDefault,
-        }))
-      );
+      const res = await axios.get<Campaign[]>(endpoints.agentflow.campaigns.list(tenantId));
+      setCampaigns(res.data ?? []);
     } catch (err: any) {
-      setError(err?.message ?? 'No fue posible cargar campañas.');
+      setError(
+        err?.response?.data?.errorCode === 'APP_MODULE_DISABLED'
+          ? 'La app de Campañas no está habilitada para este cliente.'
+          : 'No se pudieron cargar las campañas.'
+      );
     } finally {
       setLoading(false);
     }
   }, [tenantId]);
 
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    load();
+  }, [load]);
 
+  // Deep link from Cobranza: /campaigns?audience=collections&stage=Dpd1To30 opens the wizard pre-filled.
   useEffect(() => {
-    if (!channels.length) return;
-    setManualCampaign((prev) => {
-      if (channels.some((item) => item.id === prev.channel)) return prev;
-      return { ...prev, channel: channels[0].id };
-    });
-  }, [channels]);
-
-  const handleDraft = async () => {
-    if (!prompt.trim()) return;
-    setBuildingDraft(true);
-    setNotice(null);
-    setError(null);
-    try {
-      const response = await axios.post(endpoints.agentflow.campaignBuilder.draftFromPrompt(tenantId), {
-        prompt,
-      });
-      setDraft(response.data as BuilderDraft);
-      setActiveSection('summary');
-    } catch (err: any) {
-      setError(err?.message ?? 'No fue posible generar el borrador.');
-    } finally {
-      setBuildingDraft(false);
+    const audience = searchParams.get('audience');
+    if (audience === 'collections' || audience === 'commerce') {
+      setPreset({ source: audience, stage: searchParams.get('stage') ?? undefined });
+      setEditing(null);
+      setWizardOpen(true);
+      setSearchParams({}, { replace: true });
     }
-  };
+  }, [searchParams, setSearchParams]);
 
-  const handleSaveDraft = async () => {
-    if (!draft) return;
-    setSavingDraft(true);
-    setNotice(null);
-    setError(null);
-    try {
-      const payload = {
-        name: draft.campaignDraft.name,
-        description: draft.campaignDraft.description,
-        status: 'Draft',
-        campaignType: draft.campaignDraft.campaignType,
-        executionMode: draft.campaignDraft.executionMode,
-        triggerType: 'Schedule',
-        channelAction: draft.campaignDraft.channelAction,
-        channel: draft.campaignDraft.channel,
-        workflowDefinitionId: draft.campaignDraft.workflowDefinitionId,
-        runtimeModelProfileId: draft.campaignDraft.runtimeModelProfileId,
-        messageDraft: draft.messageDraft ?? draft.campaignDraft.messageDraft,
-        callScriptDraft: draft.callScriptDraft ?? draft.campaignDraft.callScriptDraft,
-        promptOrigin: prompt,
-        scheduleType: draft.campaignDraft.scheduleType,
-        scheduleExpression: draft.campaignDraft.scheduleExpression,
-        startAt: draft.campaignDraft.startAt,
-        audienceFilterJson: draft.campaignDraft.audienceFilterJson ?? draft.segmentDraft.filterJson,
-        enabled: true,
-      };
-
-      await axios.post(endpoints.agentflow.campaigns.create(tenantId), payload);
-
-      if (draft.segmentDraft.filterJson && draft.segmentDraft.name) {
-        await axios.post(endpoints.agentflow.campaignSegments.create(tenantId), {
-          name: draft.segmentDraft.name,
-          description: draft.segmentDraft.description,
-          sourceModules: ['commerce', 'inbox', 'audit', 'threads'],
-          filterJson: draft.segmentDraft.filterJson,
-        });
-      }
-
-      setNotice('La campaña y su segmento sugerido quedaron guardados como borrador.');
-      await refresh();
-    } catch (err: any) {
-      setError(err?.message ?? 'No fue posible guardar el borrador.');
-    } finally {
-      setSavingDraft(false);
-    }
-  };
-
-  const handleCreateCampaign = async () => {
-    if (!manualCampaign.name.trim()) {
-      setError('La campaña manual necesita un nombre.');
-      return;
-    }
-
-    setSavingCampaign(true);
-    setNotice(null);
-    setError(null);
-    try {
-      await axios.post(endpoints.agentflow.campaigns.create(tenantId), {
-        name: manualCampaign.name,
-        description: manualCampaign.description,
-        status: 'Draft',
-        campaignType: manualCampaign.campaignType,
-        executionMode: manualCampaign.executionMode,
-        triggerType: 'Schedule',
-        channelAction: manualCampaign.channelAction,
-        channel: manualCampaign.channel,
-        scheduleType: manualCampaign.scheduleType,
-        scheduleExpression: manualCampaign.scheduleExpression || null,
-        startAt: toIsoOrNow(manualCampaign.startAt),
-        segmentId: manualCampaign.segmentId || null,
-        audienceFilterJson: manualCampaign.segmentId
-          ? '{}'
-          : manualCampaign.audiencePreset === 'advanced'
-            ? manualCampaign.audienceFilterJson
-            : audiencePresetToFilterJson(manualCampaign.audiencePreset),
-        workflowDefinitionId: manualCampaign.workflowDefinitionId || null,
-        assistantId: manualCampaign.assistantId || null,
-        runtimeModelProfileId: manualCampaign.runtimeModelProfileId || null,
-        messageDraft: manualCampaign.messageDraft || null,
-        callScriptDraft: manualCampaign.callScriptDraft || null,
-        enabled: true,
-      });
-
-      setManualCampaign(defaultManualCampaign());
-      setNotice('La campaña manual quedó creada como borrador.');
-      setActiveSection('campaigns');
-      await refresh();
-    } catch (err: any) {
-      setError(err?.message ?? 'No fue posible crear la campaña manual.');
-    } finally {
-      setSavingCampaign(false);
-    }
-  };
-
-  const handlePreviewSegment = async () => {
-    setPreviewingSegment(true);
-    setNotice(null);
-    setError(null);
-    try {
-      const response = await axios.post(endpoints.agentflow.campaignSegments.preview(tenantId), {
-        filterJson: manualSegment.preset === 'advanced'
-          ? manualSegment.filterJson
-          : audiencePresetToFilterJson(manualSegment.preset),
-      });
-      setSegmentPreview(response.data as SegmentPreview);
-    } catch (err: any) {
-      setError(err?.message ?? 'No fue posible previsualizar el segmento.');
-    } finally {
-      setPreviewingSegment(false);
-    }
-  };
-
-  const handleCreateSegment = async () => {
-    if (!manualSegment.name.trim()) {
-      setError('El segmento manual necesita un nombre.');
-      return;
-    }
-
-    setSavingSegment(true);
-    setNotice(null);
-    setError(null);
-    try {
-      await axios.post(endpoints.agentflow.campaignSegments.create(tenantId), {
-        name: manualSegment.name,
-        description: manualSegment.description,
-        sourceModules: ['commerce', 'inbox', 'audit', 'threads'],
-        filterJson: manualSegment.preset === 'advanced'
-          ? manualSegment.filterJson
-          : audiencePresetToFilterJson(manualSegment.preset),
-      });
-      setManualSegment(defaultManualSegment());
-      setSegmentPreview(null);
-      setNotice('El segmento manual quedó guardado.');
-      setActiveSection('segments');
-      await refresh();
-    } catch (err: any) {
-      setError(err?.message ?? 'No fue posible crear el segmento manual.');
-    } finally {
-      setSavingSegment(false);
-    }
-  };
-
-  const heroMeta = (
-    <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-      <Chip size="small" color="success" label={`${overview.activeCampaigns} activas o publicadas`} />
-      <Chip size="small" variant="outlined" label={`${overview.segments} segmentos reusables`} />
-      <Chip size="small" variant="outlined" label={`${overview.runs} corridas recientes`} />
-      <Chip size="small" color="warning" variant="outlined" label="Módulo nativo del producto" />
-    </Stack>
+  const filtered = useMemo(
+    () =>
+      campaigns.filter(
+        (c) =>
+          (!statusFilter || String(c.status) === statusFilter) &&
+          (!typeFilter || String(c.campaignType) === typeFilter) &&
+          (!query || c.name.toLowerCase().includes(query.toLowerCase()))
+      ),
+    [campaigns, statusFilter, typeFilter, query]
   );
 
-  const readyChannel = campaigns.some((item) => item.channel?.trim());
-  const readyWorkflow = campaigns.some((item) => item.workflowDefinitionId?.trim());
-  const readyInitialMessage = campaigns.some((item) => item.runtimeModelProfileId?.trim() || item.workflowDefinitionId?.trim());
-  const readinessItems = [
-    {
-      label: 'Canal listo',
-      ready: readyChannel,
-      detail: readyChannel ? 'Ya hay campanas con canal configurado' : 'Falta elegir canal de salida',
-      cta: 'Configurar canal',
-      href: paths.dashboard.system.channels,
-    },
-    {
-      label: 'Automatizacion asociada',
-      ready: readyWorkflow,
-      detail: readyWorkflow ? 'Ya existe al menos un flujo vinculado' : 'Falta elegir que flujo inicia la campana',
-      cta: 'Ir a automatizaciones',
-      href: paths.dashboard.workflows,
-    },
-    {
-      label: 'Mensaje inicial listo',
-      ready: readyInitialMessage,
-      detail: readyInitialMessage ? 'Hay guiones, perfiles o flujos definidos' : 'Falta definir mensaje, guion o flujo inicial',
-      cta: 'Completar borrador',
-      href: '',
-    },
-  ];
+  const selected = campaigns.find((c) => c.id === selectedId) ?? null;
+  const activeCount = campaigns.filter((c) => c.enabled && (c.status === 1 || c.status === 2)).length;
+  const scheduled = campaigns.filter((c) => c.nextRunAt).sort((a, b) => (a.nextRunAt! < b.nextRunAt! ? -1 : 1));
+
+  const openNew = () => {
+    setPreset(null);
+    setEditing(null);
+    setWizardOpen(true);
+  };
 
   return (
     <>
       <Helmet>
-        <title>Campañas | {CONFIG.appName}</title>
+        <title>Campañas</title>
       </Helmet>
 
       <DashboardContent maxWidth="xl">
-        {loading && <LinearProgress sx={{ mb: 2 }} />}
+        <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={2} sx={{ mb: 3 }}>
+          <Box>
+            <Typography variant="h4">Campañas</Typography>
+            <Typography variant="body2" color="text.secondary">
+              Envía mensajes a una audiencia y mide qué respondió cada contacto: aceptó, no le interesa, prometió pagar, no se
+              pudo contactar…
+            </Typography>
+          </Box>
+          <Button variant="contained" startIcon={<Iconify icon="mdi:plus" />} onClick={openNew} sx={{ alignSelf: 'flex-start' }}>
+            Nueva campaña
+          </Button>
+        </Stack>
 
-        <BrandPageHeader
-          eyebrow="Operación comercial"
-          title="Campañas"
-          description="Programa salidas, mensajes, llamadas y arranques de workflow con segmentos del negocio. No requiere instalar nada desde integraciones."
-          icon="mdi:bullhorn-variant-outline"
-          meta={heroMeta}
-          actions={
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-              <Button
-                variant="contained"
-                color="success"
-                startIcon={buildingDraft ? <CircularProgress color="inherit" size={16} /> : <Iconify icon="mdi:auto-fix" width={18} />}
-                onClick={handleDraft}
-                disabled={buildingDraft || !prompt.trim()}
-              >
-                Generar desde prompt
-              </Button>
-              <Button variant="outlined" href={paths.dashboard.workflows} startIcon={<Iconify icon="mdi:source-branch" width={18} />}>
-                Ir a automatizaciones
-              </Button>
-              <Button variant="outlined" startIcon={<Iconify icon="mdi:refresh" width={18} />} onClick={refresh}>
-                Actualizar
-              </Button>
-            </Stack>
-          }
-        />
+        {error && (
+          <Alert severity="warning" sx={{ mb: 3 }}>
+            {error}
+          </Alert>
+        )}
 
-        <Alert severity="info" sx={{ mb: 2.5 }}>
-          Regla de uso: <strong>Campanas</strong> decide a quien y cuando contactar. <strong>Canales</strong> define por donde sale la interaccion,
-          <strong> Automatizaciones</strong> define la logica y <strong>Asistentes</strong> define quien conversa.
-        </Alert>
+        <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(3, 1fr)' }, mb: 3 }}>
+          <Stat label="Campañas" value={campaigns.length} />
+          <Stat label="Activas" value={activeCount} />
+          <Card variant="outlined">
+            <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+              <Typography variant="caption" color="text.secondary">
+                Próximo envío programado
+              </Typography>
+              <Typography variant="subtitle1" noWrap>
+                {scheduled[0] ? `${dateTime(scheduled[0].nextRunAt)} · ${scheduled[0].name}` : 'Ninguno'}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Box>
 
-        {error && <Alert severity="error" sx={{ mb: 2.5 }}>{error}</Alert>}
-        {notice && <Alert severity="success" sx={{ mb: 2.5 }}>{notice}</Alert>}
+        <Card>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ p: 2 }}>
+            <TextField size="small" placeholder="Buscar campaña" value={query} onChange={(e) => setQuery(e.target.value)} sx={{ flex: 1 }} />
+            <TextField select size="small" label="Estado" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} sx={{ minWidth: 160 }}>
+              <MenuItem value="">Todos</MenuItem>
+              {CAMPAIGN_STATUS.map((s, i) => (
+                <MenuItem key={s.label} value={String(i)}>
+                  {s.label}
+                </MenuItem>
+              ))}
+            </TextField>
+            <TextField select size="small" label="Tipo" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} sx={{ minWidth: 160 }}>
+              <MenuItem value="">Todos</MenuItem>
+              {CAMPAIGN_TYPE.map((t, i) => (
+                <MenuItem key={t} value={String(i)}>
+                  {t}
+                </MenuItem>
+              ))}
+            </TextField>
+          </Stack>
 
-        <Grid container spacing={2.5}>
-          <Grid item xs={12} lg={3}>
-            <Card variant="outlined" sx={{ borderRadius: 3, p: 1.25 }}>
-              <List disablePadding>
-                {sections.map((section) => (
-                  <ListItemButton
-                    key={section.key}
-                    selected={activeSection === section.key}
-                    onClick={() => setActiveSection(section.key)}
-                    sx={{ borderRadius: 2, mb: 0.75, alignItems: 'flex-start' }}
-                  >
-                    <ListItemText
-                      primary={section.label}
-                      secondary={section.description}
-                      primaryTypographyProps={{ variant: 'subtitle2', fontWeight: 700 }}
-                      secondaryTypographyProps={{ variant: 'caption' }}
-                    />
-                  </ListItemButton>
-                ))}
-              </List>
-            </Card>
-          </Grid>
-
-          <Grid item xs={12} lg={9}>
-            <Stack spacing={2.5}>
-              <Card variant="outlined" sx={{ p: { xs: 2, md: 2.5 }, borderRadius: 3 }}>
-                <Stack spacing={1.5}>
-                  <Typography variant="subtitle1">Estado operativo</Typography>
-                  <Grid container spacing={1.5}>
-                    {readinessItems.map((item) => (
-                      <Grid item xs={12} md={4} key={item.label}>
-                        <Card variant="outlined" sx={{ p: 1.5, borderRadius: 2, height: '100%' }}>
-                          <Stack spacing={1}>
-                            <Chip size="small" color={item.ready ? 'success' : 'warning'} label={item.ready ? 'OK' : 'Pendiente'} sx={{ alignSelf: 'flex-start' }} />
-                            <Typography variant="subtitle2">{item.label}</Typography>
-                            <Typography variant="caption" color="text.secondary">{item.detail}</Typography>
-                            <Button size="small" variant={item.ready ? 'outlined' : 'contained'} href={item.href || undefined}>
-                              {item.cta}
-                            </Button>
-                          </Stack>
-                        </Card>
-                      </Grid>
-                    ))}
-                  </Grid>
-                </Stack>
-              </Card>
-
-              <Card variant="outlined" sx={{ borderRadius: 3, p: { xs: 2, md: 2.5 } }}>
-                <Stack spacing={2}>
-                  <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={2} flexWrap="wrap" useFlexGap>
-                    <Box>
-                      <Typography variant="subtitle1">Borrador asistido</Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Describe la campaña en lenguaje natural y deja que el asistente proponga un borrador editable.
+          <TableContainer>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Campaña</TableCell>
+                  <TableCell>Estado</TableCell>
+                  <TableCell>Audiencia</TableCell>
+                  <TableCell>Envío</TableCell>
+                  <TableCell>Programación</TableCell>
+                  <TableCell>Último envío</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {loading && (
+                  <TableRow>
+                    <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
+                      <CircularProgress size={24} />
+                    </TableCell>
+                  </TableRow>
+                )}
+                {!loading && filtered.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={6} align="center" sx={{ py: 6 }}>
+                      <Typography variant="subtitle1">Aún no hay campañas</Typography>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        Crea una para contactar a tu cartera o a tus clientes por WhatsApp.
                       </Typography>
-                    </Box>
-                    <Chip size="small" color="info" label="Asistido" />
-                  </Stack>
-                  <TextField
-                    fullWidth
-                    multiline
-                    minRows={3}
-                    label="Describe la campaña"
-                    placeholder="Ejemplo: crea una campaña de cobro para clientes con factura vencida hace 3 días por WhatsApp y luego llamada."
-                    value={prompt}
-                    onChange={(event) => setPrompt(event.target.value)}
-                  />
-                  {draft && (
-                    <Paper variant="outlined" sx={{ borderRadius: 2.5, p: 2, bgcolor: 'background.neutral' }}>
-                      <Stack spacing={1.25}>
-                        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-                          <Typography variant="subtitle2">{draft.campaignDraft.name ?? 'Borrador de campaña'}</Typography>
-                          <Chip size="small" color="info" label={draft.campaignDraft.channel ?? 'canal'} />
-                          <Chip size="small" variant="outlined" label={draft.campaignDraft.executionMode ?? 'modo'} />
-                          {draft.campaignDraft.runtimeModelProfileId && (
-                            <Chip size="small" variant="outlined" label={`Perfil runtime ${draft.campaignDraft.runtimeModelProfileId}`} />
-                          )}
-                        </Stack>
-                        <Typography variant="body2" color="text.secondary">
-                          {draft.campaignDraft.description}
-                        </Typography>
-                        <Typography variant="body2">
-                          <strong>Mensaje sugerido:</strong> {draft.messageDraft ?? 'Sin mensaje sugerido'}
-                        </Typography>
-                        <Typography variant="body2">
-                          <strong>Segmento sugerido:</strong> {draft.segmentDraft.name ?? 'Sin nombre'}
-                        </Typography>
-                        {draft.assumptions && draft.assumptions.length > 0 && (
+                      <Button variant="outlined" onClick={openNew}>
+                        Crear campaña
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                )}
+                {!loading &&
+                  filtered.map((c) => {
+                    const st = CAMPAIGN_STATUS[c.status] ?? CAMPAIGN_STATUS[0];
+                    const filter = parseFilter(c.audienceFilterJson);
+                    return (
+                      <TableRow key={c.id} hover sx={{ cursor: 'pointer' }} onClick={() => setSelectedId(c.id)}>
+                        <TableCell>
+                          <Typography variant="subtitle2">{c.name}</Typography>
                           <Typography variant="caption" color="text.secondary">
-                            {draft.assumptions.join(' ')}
+                            {CAMPAIGN_TYPE[c.campaignType]}
                           </Typography>
-                        )}
-                        {draft.warnings && draft.warnings.length > 0 && (
-                          <Alert severity="warning">{draft.warnings.join(' ')}</Alert>
-                        )}
-                        <Stack direction="row" spacing={1}>
-                          <Button
-                            variant="contained"
-                            color="success"
-                            disabled={savingDraft}
-                            startIcon={savingDraft ? <CircularProgress color="inherit" size={16} /> : <Iconify icon="mdi:content-save-outline" width={18} />}
-                            onClick={handleSaveDraft}
-                          >
-                            Guardar borrador
-                          </Button>
-                        </Stack>
-                      </Stack>
-                    </Paper>
-                  )}
-                </Stack>
-              </Card>
-
-              {activeSection === 'summary' && (
-                <Grid container spacing={2}>
-                  <Grid item xs={12} md={6}>
-                    <SummaryCard
-                      title="Campañas configuradas"
-                      value={overview.campaigns}
-                      helper={`${overview.activeCampaigns} listas para salir o ya publicadas`}
-                      tone="brand"
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={6}>
-                    <SummaryCard
-                      title="Segmentos reusables"
-                      value={overview.segments}
-                      helper="Audiencias listas para venta, cobro y recordatorios"
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={6}>
-                    <SummaryCard
-                      title="Corridas recientes"
-                      value={overview.runs}
-                      helper="Ejecuciones disparadas manualmente o por schedule"
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={6}>
-                    <SummaryCard
-                      title="Próximo foco"
-                      value={scheduledItems[0]?.name ?? 'Sin programación'}
-                      helper={
-                        scheduledItems[0]?.nextRunAt
-                          ? `Siguiente salida: ${formatDate(scheduledItems[0].nextRunAt)}`
-                          : 'Publica una campaña con schedule para verla aquí.'
-                      }
-                    />
-                  </Grid>
-                </Grid>
-              )}
-
-              {activeSection === 'campaigns' && (
-                <Stack spacing={2}>
-                  <Card variant="outlined" sx={{ borderRadius: 3, p: { xs: 2, md: 2.5 } }}>
-                    <Stack spacing={1.5}>
-                      <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" useFlexGap>
-                        <Typography variant="subtitle1">Nueva campaña manual</Typography>
-                        <Chip size="small" color="success" label="Manual" />
-                      </Stack>
-                      <Grid container spacing={2}>
-                        <Grid item xs={12} md={6}>
-                          <TextField fullWidth label="Nombre" value={manualCampaign.name} onChange={(e) => setManualCampaign((prev) => ({ ...prev, name: e.target.value }))} />
-                        </Grid>
-                        <Grid item xs={12} md={6}>
-                          <TextField
-                            select
-                            fullWidth
-                            label="Canal de salida"
-                            value={manualCampaign.channel}
-                            onChange={(e) => setManualCampaign((prev) => ({ ...prev, channel: e.target.value }))}
-                            helperText="Selecciona un canal existente. No necesitas escribir IDs."
-                          >
-                            {channels.length === 0 ? (
-                              <MenuItem value="" disabled>
-                                No hay canales configurados
-                              </MenuItem>
-                            ) : (
-                              channels.map((channel) => (
-                                <MenuItem key={channel.id} value={channel.id}>
-                                  {channel.name} {channel.type ? `(${channel.type})` : ''}
-                                </MenuItem>
-                              ))
-                            )}
-                          </TextField>
-                        </Grid>
-                        <Grid item xs={12}>
-                          <TextField fullWidth label="Descripción" value={manualCampaign.description} onChange={(e) => setManualCampaign((prev) => ({ ...prev, description: e.target.value }))} />
-                        </Grid>
-                        <Grid item xs={12} md={4}>
-                          <TextField select fullWidth label="Tipo" value={manualCampaign.campaignType} onChange={(e) => setManualCampaign((prev) => ({ ...prev, campaignType: e.target.value }))}>
-                            {campaignTypeOptions.map((option) => <MenuItem key={option} value={option}>{option}</MenuItem>)}
-                          </TextField>
-                        </Grid>
-                        <Grid item xs={12} md={4}>
-                          <TextField select fullWidth label="Modo de ejecución" value={manualCampaign.executionMode} onChange={(e) => setManualCampaign((prev) => ({ ...prev, executionMode: e.target.value }))}>
-                            {executionModeOptions.map((option) => <MenuItem key={option} value={option}>{option}</MenuItem>)}
-                          </TextField>
-                        </Grid>
-                        <Grid item xs={12} md={4}>
-                          <TextField select fullWidth label="Acción del canal" value={manualCampaign.channelAction} onChange={(e) => setManualCampaign((prev) => ({ ...prev, channelAction: e.target.value }))}>
-                            {channelActionOptions.map((option) => <MenuItem key={option} value={option}>{option}</MenuItem>)}
-                          </TextField>
-                        </Grid>
-                        <Grid item xs={12} md={4}>
-                          <TextField select fullWidth label="Schedule" value={manualCampaign.scheduleType} onChange={(e) => setManualCampaign((prev) => ({ ...prev, scheduleType: e.target.value }))}>
-                            {scheduleTypeOptions.map((option) => <MenuItem key={option} value={option}>{option}</MenuItem>)}
-                          </TextField>
-                        </Grid>
-                        <Grid item xs={12} md={4}>
-                          <TextField fullWidth label="Expresión schedule" value={manualCampaign.scheduleExpression} onChange={(e) => setManualCampaign((prev) => ({ ...prev, scheduleExpression: e.target.value }))} helperText="Para Cron, Hourly, Daily o Weekly" />
-                        </Grid>
-                        <Grid item xs={12} md={4}>
-                          <TextField fullWidth type="datetime-local" label="Inicio" InputLabelProps={{ shrink: true }} value={manualCampaign.startAt} onChange={(e) => setManualCampaign((prev) => ({ ...prev, startAt: e.target.value }))} />
-                        </Grid>
-                        <Grid item xs={12}>
-                          <Alert severity="info">{scheduleHelperText(manualCampaign.scheduleType)}</Alert>
-                        </Grid>
-                        <Grid item xs={12} md={6}>
-                          <TextField select fullWidth label="Segmento guardado" value={manualCampaign.segmentId} onChange={(e) => setManualCampaign((prev) => ({ ...prev, segmentId: e.target.value }))} helperText="Opcional. También puedes usar filtro inline abajo.">
-                            <MenuItem value="">Sin segmento enlazado</MenuItem>
-                            {segments.map((segment) => <MenuItem key={segment.id} value={segment.id}>{segment.name}</MenuItem>)}
-                          </TextField>
-                        </Grid>
-                        <Grid item xs={12} md={6}>
-                          <TextField
-                            select
-                            fullWidth
-                            label="Flujo a usar"
-                            value={manualCampaign.workflowDefinitionId}
-                            onChange={(e) => setManualCampaign((prev) => ({ ...prev, workflowDefinitionId: e.target.value }))}
-                            helperText="Selecciona la automatización desde la lista."
-                          >
-                            <MenuItem value="">Sin flujo vinculado</MenuItem>
-                            {workflows.map((workflow) => (
-                              <MenuItem key={workflow.id} value={workflow.id}>
-                                {workflow.name}
-                              </MenuItem>
-                            ))}
-                          </TextField>
-                        </Grid>
-                        <Grid item xs={12} md={6}>
-                          <TextField
-                            select
-                            fullWidth
-                            label="Perfil runtime (avanzado)"
-                            value={manualCampaign.runtimeModelProfileId}
-                            onChange={(e) => setManualCampaign((prev) => ({ ...prev, runtimeModelProfileId: e.target.value }))}
-                            helperText="Opcional. Normalmente el canal o flujo ya resuelve esto."
-                          >
-                            <MenuItem value="">Usar perfil automático</MenuItem>
-                            {runtimeProfiles.map((profile) => (
-                              <MenuItem key={profile.id} value={profile.id}>
-                                {profile.name} {profile.isDefault ? '(default)' : ''}
-                              </MenuItem>
-                            ))}
-                          </TextField>
-                        </Grid>
-                        <Grid item xs={12} md={6}>
-                          <TextField fullWidth label="Mensaje inicial" value={manualCampaign.messageDraft} onChange={(e) => setManualCampaign((prev) => ({ ...prev, messageDraft: e.target.value }))} />
-                        </Grid>
-                        <Grid item xs={12}>
-                          <TextField fullWidth multiline minRows={3} label="Filtro de audiencia inline (JSON)" value={manualCampaign.audienceFilterJson} onChange={(e) => setManualCampaign((prev) => ({ ...prev, audienceFilterJson: e.target.value }))} />
-                        </Grid>
-                        <Grid item xs={12}>
-                          <TextField fullWidth multiline minRows={3} label="Guion de llamada" value={manualCampaign.callScriptDraft} onChange={(e) => setManualCampaign((prev) => ({ ...prev, callScriptDraft: e.target.value }))} />
-                        </Grid>
-                      </Grid>
-                      <Stack direction="row" spacing={1}>
-                        <Button variant="contained" color="success" onClick={handleCreateCampaign} disabled={savingCampaign}>
-                          {savingCampaign ? 'Guardando...' : 'Crear campaña manual'}
-                        </Button>
-                        <Button variant="outlined" onClick={() => setManualCampaign(defaultManualCampaign())}>
-                          Limpiar
-                        </Button>
-                      </Stack>
-                    </Stack>
-                  </Card>
-
-                  <Card variant="outlined" sx={{ borderRadius: 3, p: { xs: 2, md: 2.5 } }}>
-                    <Stack spacing={1.5}>
-                      <Typography variant="subtitle1">Campañas guardadas</Typography>
-                      {campaigns.length === 0 ? (
-                        <Alert severity="info">Todavía no hay campañas creadas para este tenant.</Alert>
-                      ) : (
-                        campaigns.map((campaign) => (
-                          <Paper key={campaign.id} variant="outlined" sx={{ borderRadius: 2.5, p: 2 }}>
-                            <Stack spacing={1.25}>
-                              <Stack direction="row" justifyContent="space-between" spacing={1} flexWrap="wrap" useFlexGap>
-                                <Stack spacing={0.5}>
-                                  <Typography variant="subtitle2">{campaign.name}</Typography>
-                                  <Typography variant="caption" color="text.secondary">
-                                    {campaign.description || 'Sin descripción'}
-                                  </Typography>
-                                </Stack>
-                                <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                                  <Chip size="small" color={statusColor(campaign.status)} label={campaign.status} />
-                                  <Chip size="small" variant="outlined" label={campaign.channel} />
-                                  <Chip size="small" variant="outlined" label={campaign.executionMode} />
-                                </Stack>
-                              </Stack>
-                              <Typography variant="body2" color="text.secondary">
-                                Tipo {campaign.campaignType} - Inicia {campaign.channelAction} - Actualizada {formatDate(campaign.updatedAt)}
-                              </Typography>
-                            </Stack>
-                          </Paper>
-                        ))
-                      )}
-                    </Stack>
-                  </Card>
-                </Stack>
-              )}
-
-              {activeSection === 'segments' && (
-                <Stack spacing={2}>
-                  <Card variant="outlined" sx={{ borderRadius: 3, p: { xs: 2, md: 2.5 } }}>
-                    <Stack spacing={1.5}>
-                      <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" useFlexGap>
-                        <Typography variant="subtitle1">Nuevo segmento manual</Typography>
-                        <Chip size="small" color="success" label="Manual" />
-                      </Stack>
-                      <Grid container spacing={2}>
-                        <Grid item xs={12} md={6}>
-                          <TextField fullWidth label="Nombre" value={manualSegment.name} onChange={(e) => setManualSegment((prev) => ({ ...prev, name: e.target.value }))} />
-                        </Grid>
-                        <Grid item xs={12} md={6}>
-                          <TextField fullWidth label="Descripción" value={manualSegment.description} onChange={(e) => setManualSegment((prev) => ({ ...prev, description: e.target.value }))} />
-                        </Grid>
-                        <Grid item xs={12}>
-                          <TextField fullWidth multiline minRows={6} label="Filtro del segmento (JSON)" value={manualSegment.filterJson} onChange={(e) => setManualSegment((prev) => ({ ...prev, filterJson: e.target.value }))} helperText="Ejemplo: filtra por intención, compras, deuda o actividad reciente." />
-                        </Grid>
-                      </Grid>
-                      <Stack direction="row" spacing={1}>
-                        <Button variant="outlined" onClick={handlePreviewSegment} disabled={previewingSegment}>
-                          {previewingSegment ? 'Calculando...' : 'Previsualizar audiencia'}
-                        </Button>
-                        <Button variant="contained" color="success" onClick={handleCreateSegment} disabled={savingSegment}>
-                          {savingSegment ? 'Guardando...' : 'Guardar segmento'}
-                        </Button>
-                        <Button variant="outlined" onClick={() => { setManualSegment(defaultManualSegment()); setSegmentPreview(null); }}>
-                          Limpiar
-                        </Button>
-                      </Stack>
-                      {segmentPreview && (
-                        <Paper variant="outlined" sx={{ borderRadius: 2.5, p: 2, bgcolor: 'background.neutral' }}>
-                          <Stack spacing={1}>
-                            <Typography variant="subtitle2">Preview del segmento</Typography>
-                            <Typography variant="body2" color="text.secondary">
-                              Contactos estimados: {segmentPreview.estimatedCount ?? 0}
+                        </TableCell>
+                        <TableCell>
+                          <Chip size="small" label={st.label} color={st.color} variant="soft" />
+                        </TableCell>
+                        <TableCell>
+                          {filter.source === 'collections' ? 'Cartera' : 'Clientes'}
+                          {filter.stages.length > 0 && (
+                            <Typography variant="caption" color="text.secondary" component="div">
+                              {filter.stages.length} etapa(s)
                             </Typography>
-                            <TextField
-                              fullWidth
-                              multiline
-                              minRows={6}
-                              label="Muestra de contactos"
-                              value={prettyJson(segmentPreview.contacts ?? [])}
-                              InputProps={{ readOnly: true }}
-                            />
-                          </Stack>
-                        </Paper>
-                      )}
-                    </Stack>
-                  </Card>
-
-                  <Card variant="outlined" sx={{ borderRadius: 3, p: { xs: 2, md: 2.5 } }}>
-                    <Stack spacing={1.5}>
-                      <Typography variant="subtitle1">Segmentos guardados</Typography>
-                      {segments.length === 0 ? (
-                        <Alert severity="info">Todavía no hay segmentos guardados.</Alert>
-                      ) : (
-                        segments.map((segment) => (
-                          <Paper key={segment.id} variant="outlined" sx={{ borderRadius: 2.5, p: 2 }}>
-                            <Stack spacing={0.75}>
-                              <Typography variant="subtitle2">{segment.name}</Typography>
-                              <Typography variant="body2" color="text.secondary">
-                                {segment.description || 'Sin descripción'}
-                              </Typography>
-                              <Typography variant="caption" color="text.secondary">
-                                Alcance estimado: {segment.estimatedCount ?? 0} contactos - Actualizado {formatDate(segment.updatedAt)}
-                              </Typography>
-                            </Stack>
-                          </Paper>
-                        ))
-                      )}
-                    </Stack>
-                  </Card>
-                </Stack>
-              )}
-
-              {activeSection === 'calendar' && (
-                <Card variant="outlined" sx={{ borderRadius: 3, p: { xs: 2, md: 2.5 } }}>
-                  <Stack spacing={1.5}>
-                    <Typography variant="subtitle1">Calendario operativo</Typography>
-                    {scheduledItems.length === 0 ? (
-                      <Alert severity="info">No hay campañas con siguiente corrida programada.</Alert>
-                    ) : (
-                      scheduledItems.map((item) => (
-                        <Paper key={item.id} variant="outlined" sx={{ borderRadius: 2.5, p: 2 }}>
-                          <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={1}>
-                            <Box>
-                              <Typography variant="subtitle2">{item.name}</Typography>
-                              <Typography variant="body2" color="text.secondary">
-                                {item.channel} - {item.executionMode} - {item.channelAction}
-                              </Typography>
-                            </Box>
-                            <Chip color="info" label={item.nextRunAt ? formatDate(item.nextRunAt) : 'Sin próxima corrida'} />
-                          </Stack>
-                        </Paper>
-                      ))
-                    )}
-                  </Stack>
-                </Card>
-              )}
-
-              {activeSection === 'results' && (
-                <Card variant="outlined" sx={{ borderRadius: 3, p: { xs: 2, md: 2.5 } }}>
-                  <Stack spacing={1.5}>
-                    <Typography variant="subtitle1">Resultados</Typography>
-                    {runs.length === 0 ? (
-                      <Alert severity="info">Todavía no hay corridas de campañas.</Alert>
-                    ) : (
-                      runs.map((run) => (
-                        <Paper key={run.id} variant="outlined" sx={{ borderRadius: 2.5, p: 2 }}>
-                          <Stack spacing={0.75}>
-                            <Stack direction="row" justifyContent="space-between" spacing={1} flexWrap="wrap" useFlexGap>
-                              <Typography variant="subtitle2">{run.id}</Typography>
-                              <Chip size="small" color={statusColor(run.status)} label={run.status} />
-                            </Stack>
-                            <Typography variant="body2" color="text.secondary">
-                              Campaña {run.campaignId} - Trigger {run.triggeredBy} - Inicio {formatDate(run.startedAt)}
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {c.channel === 'whatsapp' ? 'WhatsApp' : c.channel}
+                          <Typography variant="caption" color="text.secondary" component="div">
+                            {c.workflowDefinitionId ? 'Automatización' : 'Mensaje directo'}
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          {c.triggerType === 1 ? 'Manual' : SCHEDULE_LABEL[c.scheduleType]}
+                          {c.nextRunAt && (
+                            <Typography variant="caption" color="text.secondary" component="div">
+                              próximo {dateTime(c.nextRunAt)}
                             </Typography>
-                            {run.completedAt && (
-                              <Typography variant="caption" color="text.secondary">
-                                Finalizó {formatDate(run.completedAt)}
-                              </Typography>
-                            )}
-                          </Stack>
-                        </Paper>
-                      ))
-                    )}
-                  </Stack>
-                </Card>
-              )}
-            </Stack>
-          </Grid>
-        </Grid>
+                          )}
+                        </TableCell>
+                        <TableCell>{c.lastRunAt ? dateTime(c.lastRunAt) : 'Nunca'}</TableCell>
+                      </TableRow>
+                    );
+                  })}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </Card>
       </DashboardContent>
+
+      <CampaignDetail
+        tenantId={tenantId}
+        campaign={selected}
+        onClose={() => setSelectedId(null)}
+        onEdit={(c) => {
+          setEditing(c);
+          setPreset(null);
+          setWizardOpen(true);
+        }}
+        onChanged={load}
+      />
+
+      <CampaignWizard
+        open={wizardOpen}
+        tenantId={tenantId}
+        campaign={editing}
+        preset={preset}
+        collectionsEnabled={collectionsEnabled}
+        onClose={() => setWizardOpen(false)}
+        onSaved={(saved) => {
+          setWizardOpen(false);
+          load();
+          setSelectedId(saved.id);
+        }}
+      />
     </>
   );
 }
 
-function SummaryCard({
-  title,
-  value,
-  helper,
-  tone = 'soft',
-}: {
-  title: string;
-  value: string | number;
-  helper: string;
-  tone?: 'brand' | 'soft';
-}) {
+function Stat({ label, value }: { label: string; value: number }) {
   return (
-    <Card
-      variant="outlined"
-      sx={(theme) => ({
-        borderRadius: 3,
-        p: 2,
-        ...panelSurface(theme, tone),
-      })}
-    >
-      <Stack spacing={1}>
-        <Typography variant="overline" color="text.secondary">
-          {title}
+    <Card variant="outlined">
+      <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+        <Typography variant="caption" color="text.secondary">
+          {label}
         </Typography>
-        <Typography variant="h4">{value}</Typography>
-        <Divider />
-        <Typography variant="body2" color="text.secondary">
-          {helper}
-        </Typography>
-      </Stack>
+        <Typography variant="h5">{value.toLocaleString('es-MX')}</Typography>
+      </CardContent>
     </Card>
   );
 }
