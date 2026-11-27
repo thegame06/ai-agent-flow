@@ -112,6 +112,10 @@ public sealed record ProviderMessageSendRequest
     public required string Recipient { get; init; }
     public required string Content { get; init; }
     public string? TemplateName { get; init; }
+    /// <summary>Template language code (default es).</summary>
+    public string? TemplateLanguage { get; init; }
+    /// <summary>The template "components" array (parameters per header/body/button), as JSON.</summary>
+    public string? TemplateComponentsJson { get; init; }
     public string? StatusCallbackUrl { get; init; }
     public IReadOnlyDictionary<string, string> Metadata { get; init; } = new Dictionary<string, string>();
 }

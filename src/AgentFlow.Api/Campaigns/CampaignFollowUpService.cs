@@ -40,12 +40,21 @@ public sealed class CampaignFollowUpService : ICampaignFollowUpService
     private readonly ICampaignStore _campaigns;
     private readonly IOutboundMessageSender _outbound;
     private readonly ICollectionsStore? _collections;
+    private readonly AgentFlow.Api.Messaging.IWhatsAppTemplateStore? _templates;
+    private readonly AgentFlow.Domain.Repositories.IChannelDefinitionRepository? _channels;
 
-    public CampaignFollowUpService(ICampaignStore campaigns, IOutboundMessageSender outbound, ICollectionsStore? collections = null)
+    public CampaignFollowUpService(
+        ICampaignStore campaigns,
+        IOutboundMessageSender outbound,
+        ICollectionsStore? collections = null,
+        AgentFlow.Api.Messaging.IWhatsAppTemplateStore? templates = null,
+        AgentFlow.Domain.Repositories.IChannelDefinitionRepository? channels = null)
     {
         _campaigns = campaigns;
         _outbound = outbound;
         _collections = collections;
+        _templates = templates;
+        _channels = channels;
     }
 
     public async Task<int> CountSendsTodayAsync(string tenantId, string recipientKey, CampaignContactPolicy policy, DateTimeOffset now, CancellationToken ct = default)
@@ -65,6 +74,9 @@ public sealed class CampaignFollowUpService : ICampaignFollowUpService
 
         var contactPolicy = CampaignContactPolicy.From(campaign);
         var windowOpen = contactPolicy.IsOpen(now);
+        var channel = _channels is null ? null : await CampaignChannels.ResolveAsync(_channels, campaign, ct);
+        var officialWhatsApp = CampaignChannels.IsOfficialWhatsApp(channel);
+        var templateCache = new Dictionary<string, AgentFlow.Api.Messaging.WhatsAppTemplateDocument?>();
         var optedOut = await _campaigns.GetOptedOutRecipientKeysAsync(tenantId, ct);
         var usesPromises = policy.Rules.Any(r => r.Trigger.StartsWith("promise_", StringComparison.OrdinalIgnoreCase));
 
@@ -117,23 +129,59 @@ public sealed class CampaignFollowUpService : ICampaignFollowUpService
                     continue;
                 }
 
-                var (text, missing) = CampaignMessageRenderer.Render(rule.Message ?? string.Empty, variables.Values);
+                var metadata = new Dictionary<string, string>
+                {
+                    ["campaign_contact_execution_id"] = contact.Id,
+                    ["campaign_follow_up_rule"] = rule.Id
+                };
+                string text;
+                string? templateName = null;
+                IReadOnlyList<string> missing;
+                // Free text only while the customer wrote in the last 24 h; otherwise the step's template.
+                var useTemplate = !string.IsNullOrWhiteSpace(rule.WhatsAppTemplateId) &&
+                                  (officialWhatsApp && !CampaignChannels.WindowOpen(contact, now) || string.IsNullOrWhiteSpace(rule.Message));
+                if (useTemplate)
+                {
+                    var template = await TemplateAsync(tenantId, rule.WhatsAppTemplateId!, templateCache, ct);
+                    var problem = template is null ? "La plantilla del seguimiento ya no existe."
+                        : template.Status != AgentFlow.Api.Messaging.WhatsAppTemplateStatuses.Approved ? $"La plantilla {template.Name} no esta aprobada (estado {template.Status})."
+                        : CampaignChannels.MetaAccountOf(channel) is { } waba && template.BusinessAccountId is { } own && waba != own ? $"La plantilla {template.Name} es de otra cuenta de Meta que el canal."
+                        : null;
+                    if (problem is not null)
+                    {
+                        records.Add(Record(rule, "failed", now, error: problem));
+                        failed++;
+                        continue;
+                    }
+                    var built = AgentFlow.Api.Messaging.WhatsAppTemplateText.Build(template!, variables.Values);
+                    (text, missing, templateName) = (built.Text, built.Missing, template!.Name);
+                    metadata[AgentFlow.Infrastructure.Channels.WhatsApp.WhatsAppTemplatePayload.MetadataKey] = built.ToSendJson();
+                    metadata["wa.template_id"] = template.Id;
+                    metadata["wa.template_version"] = template.Version.ToString(CultureInfo.InvariantCulture);
+                }
+                else if (officialWhatsApp && !CampaignChannels.WindowOpen(contact, now))
+                {
+                    // Meta would reject free text: say why instead of a failed send.
+                    records.Add(Record(rule, "failed", now, error: "Pasaron mas de 24 h desde el ultimo mensaje del cliente: este seguimiento necesita una plantilla de WhatsApp aprobada."));
+                    failed++;
+                    continue;
+                }
+                else
+                {
+                    (text, missing) = CampaignMessageRenderer.Render(rule.Message ?? string.Empty, variables.Values);
+                }
+
                 if (string.IsNullOrWhiteSpace(text) || missing.Count > 0)
                 {
-                    records.Add(Record(rule, "failed", now, text, missing.Count > 0 ? "Faltan datos: " + string.Join(", ", missing) : "Mensaje vacio"));
+                    records.Add(Record(rule, "failed", now, text, missing.Count > 0 ? "Faltan datos: " + string.Join(", ", missing) : "Mensaje vacio", templateName));
                     failed++;
                     continue;
                 }
 
                 var result = await _outbound.SendAsync(
-                    tenantId, campaign.Channel, contact.Recipient, text, "campaign-follow-up", campaign.Id, campaign.TemplateId,
-                    new Dictionary<string, string>
-                    {
-                        ["campaign_contact_execution_id"] = contact.Id,
-                        ["campaign_follow_up_rule"] = rule.Id
-                    }, ct);
+                    tenantId, campaign.Channel, contact.Recipient, text, "campaign-follow-up", campaign.Id, campaign.TemplateId, metadata, ct);
 
-                records.Add(Record(rule, result.Sent ? "sent" : "failed", now, text, result.Sent ? null : result.Error));
+                records.Add(Record(rule, result.Sent ? "sent" : "failed", now, text, result.Sent ? null : result.Error, templateName));
                 if (result.Sent) sent++; else failed++;
             }
 
@@ -145,6 +193,14 @@ public sealed class CampaignFollowUpService : ICampaignFollowUpService
             Campaigns = 1, Evaluated = evaluated, Sent = sent, HandedOff = handedOff, Failed = failed,
             Deferred = deferred, Limited = limited, Settled = settled
         };
+    }
+
+    private async Task<AgentFlow.Api.Messaging.WhatsAppTemplateDocument?> TemplateAsync(
+        string tenantId, string id, Dictionary<string, AgentFlow.Api.Messaging.WhatsAppTemplateDocument?> cache, CancellationToken ct)
+    {
+        if (!cache.TryGetValue(id, out var template))
+            cache[id] = template = _templates is null ? null : await _templates.GetAsync(tenantId, id, ct);
+        return template;
     }
 
     private async Task<CollectionPromiseDocument?> FindPromiseAsync(CampaignContactExecutionContract contact, CancellationToken ct)
@@ -187,7 +243,7 @@ public sealed class CampaignFollowUpService : ICampaignFollowUpService
         return (values, settled);
     }
 
-    private static CampaignFollowUpRecord Record(CampaignFollowUpRule rule, string status, DateTimeOffset at, string? message = null, string? error = null) => new()
+    private static CampaignFollowUpRecord Record(CampaignFollowUpRule rule, string status, DateTimeOffset at, string? message = null, string? error = null, string? template = null) => new()
     {
         RuleId = rule.Id,
         Trigger = rule.Trigger,
@@ -195,6 +251,7 @@ public sealed class CampaignFollowUpService : ICampaignFollowUpService
         Status = status,
         At = at,
         Message = message,
+        Template = template,
         Error = error
     };
 
@@ -236,11 +293,15 @@ public sealed class CampaignFollowUpWorker : BackgroundService
                 var store = scope.ServiceProvider.GetRequiredService<ICampaignStore>();
                 var followUps = scope.ServiceProvider.GetRequiredService<ICampaignFollowUpService>();
                 var entitlements = scope.ServiceProvider.GetRequiredService<IAppEntitlementService>();
+                var locks = scope.ServiceProvider.GetService<AgentFlow.Abstractions.IDistributedLockService>();
 
                 foreach (var campaign in await store.GetCampaignsWithFollowUpsAsync(stoppingToken))
                 {
                     if (campaign.Status is CampaignStatus.Paused or CampaignStatus.Archived or CampaignStatus.Draft) continue;
                     if (!await entitlements.IsEnabledAsync(campaign.TenantId, AppModules.Campaigns, stoppingToken)) continue;
+                    // One instance per campaign: two would send the same follow-up twice.
+                    await using var held = locks is null ? null : await locks.TryAcquireAsync($"campaign-followups:{campaign.TenantId}:{campaign.Id}", TimeSpan.FromMinutes(10), stoppingToken);
+                    if (locks is not null && held is null) continue;
                     try
                     {
                         var summary = await followUps.RunForCampaignAsync(campaign.TenantId, campaign.Id, DateTimeOffset.UtcNow, stoppingToken);

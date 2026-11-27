@@ -186,6 +186,132 @@ public sealed class ChannelGatewayTests
     }
 
     [Fact]
+    public async Task ProcessMessageAsync_ConversationWithAPerson_DoesNotRunTheAssistant()
+    {
+        var channelRepo = new Mock<IChannelDefinitionRepository>();
+        var sessionRepo = new Mock<IChannelSessionRepository>();
+        var messageRepo = new Mock<IChannelMessageRepository>();
+        var executor = new Mock<IAgentExecutor>();
+        var channel = ChannelDefinition.Create("tenant-1", "whatsapp", ChannelType.Api,
+            new Dictionary<string, string> { ["DefaultAgentId"] = "collections-assistant" });
+        var session = ChannelSession.Create("tenant-1", channel.Id, ChannelType.Api, "50581143874@c.us");
+        ConversationHandoff.Take(session, "advisor-1", DateTimeOffset.UtcNow);
+
+        channelRepo.Setup(x => x.GetByIdAsync(channel.Id, "tenant-1", It.IsAny<CancellationToken>())).ReturnsAsync(channel);
+        sessionRepo.Setup(x => x.GetByIdAsync(session.Id, "tenant-1", It.IsAny<CancellationToken>())).ReturnsAsync(session);
+        sessionRepo.Setup(x => x.UpdateAsync(session, It.IsAny<CancellationToken>())).ReturnsAsync(Result.Success());
+        messageRepo.Setup(x => x.InsertAsync(It.IsAny<ChannelMessage>(), It.IsAny<CancellationToken>())).ReturnsAsync(Result.Success());
+        messageRepo.Setup(x => x.UpdateAsync(It.IsAny<ChannelMessage>(), It.IsAny<CancellationToken>())).ReturnsAsync(Result.Success());
+
+        var gateway = new ChannelGateway(
+            channelRepo.Object, sessionRepo.Object, messageRepo.Object, executor.Object,
+            Mock.Of<IAgentHandoffExecutor>(), Mock.Of<IManagerHandoffPolicy>(), Mock.Of<IChannelExecutionRequestFactory>(),
+            Mock.Of<IAgentDefinitionRepository>(), Mock.Of<IAuditMemory>(), Mock.Of<IChannelCapabilityPolicy>(),
+            Mock.Of<IChannelSpamReputationRepository>(), null, new[] { new TestChannelHandler(ChannelType.Api) }, null,
+            NullLogger<ChannelGateway>.Instance);
+
+        var incoming = ChannelMessage.CreateIncoming("tenant-1", channel.Id, session.Id, "50581143874@c.us", "hola, sigue ahi?");
+        var result = await gateway.ProcessMessageAsync(incoming, CancellationToken.None);
+
+        Assert.Equal("WithPerson", result.Metadata["agentflow.execution_status"]);
+        Assert.Equal("1", session.Metadata["unread_count"]);
+        executor.Verify(x => x.ExecuteAsync(It.IsAny<AgentExecutionRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ProcessMessageAsync_HandoffMadeByATool_IsNotOverwrittenAfterTheRun()
+    {
+        var channelRepo = new Mock<IChannelDefinitionRepository>();
+        var sessionRepo = new Mock<IChannelSessionRepository>();
+        var messageRepo = new Mock<IChannelMessageRepository>();
+        var executor = new Mock<IAgentExecutor>();
+        var requestFactory = new Mock<IChannelExecutionRequestFactory>();
+        var channel = ChannelDefinition.Create("tenant-1", "whatsapp", ChannelType.Api,
+            new Dictionary<string, string> { ["DefaultAgentId"] = "collections-assistant" });
+
+        // The copy the gateway loads before the run, and the one in the database after a tool
+        // asked for a person while the agent ran.
+        var loaded = ChannelSession.Create("tenant-1", channel.Id, ChannelType.Api, "50581143874@c.us");
+        loaded.Metadata["routing.guard.stage"] = "classified";
+        var stored = ChannelSession.Create("tenant-1", channel.Id, ChannelType.Api, "50581143874@c.us");
+        stored.Metadata["routing.guard.stage"] = "classified";
+        ConversationHandoff.Request(stored, "Pide asesor", "collections-assistant", DateTimeOffset.UtcNow);
+        var current = loaded;
+        ChannelSession? lastSaved = null;
+
+        channelRepo.Setup(x => x.GetByIdAsync(channel.Id, "tenant-1", It.IsAny<CancellationToken>())).ReturnsAsync(channel);
+        sessionRepo.Setup(x => x.GetByIdAsync(It.IsAny<string>(), "tenant-1", It.IsAny<CancellationToken>())).ReturnsAsync(() => current);
+        sessionRepo.Setup(x => x.UpdateAsync(It.IsAny<ChannelSession>(), It.IsAny<CancellationToken>()))
+            .Callback((ChannelSession s, CancellationToken _) => lastSaved = s)
+            .ReturnsAsync(Result.Success());
+        messageRepo.Setup(x => x.InsertAsync(It.IsAny<ChannelMessage>(), It.IsAny<CancellationToken>())).ReturnsAsync(Result.Success());
+        messageRepo.Setup(x => x.UpdateAsync(It.IsAny<ChannelMessage>(), It.IsAny<CancellationToken>())).ReturnsAsync(Result.Success());
+        messageRepo.Setup(x => x.GetBySessionAsync(It.IsAny<string>(), "tenant-1", It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<ChannelMessage>());
+        executor.Setup(x => x.ExecuteAsync(It.IsAny<AgentExecutionRequest>(), It.IsAny<CancellationToken>()))
+            .Callback(() => current = stored)
+            .ReturnsAsync(new AgentExecutionResult
+            {
+                ExecutionId = "exec-1",
+                AgentKey = "collections-assistant",
+                AgentVersion = "v1",
+                Status = ExecutionStatus.Completed,
+                FinalResponse = "Un asesor te escribira por este chat."
+            });
+        requestFactory.Setup(x => x.CreateAsync(It.IsAny<ChannelMessage>(), It.IsAny<ChannelDefinition>(), It.IsAny<ChannelSession?>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ChannelMessage incoming, ChannelDefinition _, ChannelSession? s, string a, CancellationToken _) =>
+                BuildExecutionRequest(incoming, s, a));
+
+        var gateway = new ChannelGateway(
+            channelRepo.Object, sessionRepo.Object, messageRepo.Object, executor.Object,
+            Mock.Of<IAgentHandoffExecutor>(), Mock.Of<IManagerHandoffPolicy>(), requestFactory.Object,
+            Mock.Of<IAgentDefinitionRepository>(), Mock.Of<IAuditMemory>(), Mock.Of<IChannelCapabilityPolicy>(),
+            Mock.Of<IChannelSpamReputationRepository>(), null, new[] { new TestChannelHandler(ChannelType.Api) }, null,
+            NullLogger<ChannelGateway>.Instance);
+
+        var incoming = ChannelMessage.CreateIncoming("tenant-1", channel.Id, loaded.Id, "50581143874@c.us", "Quiero hablar con un asesor");
+        await gateway.ProcessMessageAsync(incoming, CancellationToken.None);
+
+        executor.Verify(x => x.ExecuteAsync(It.IsAny<AgentExecutionRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+        Assert.NotNull(lastSaved);
+        Assert.True(ConversationHandoff.AssistantPaused(lastSaved));
+    }
+
+    [Fact]
+    public void Handoff_TakeAndRelease_SwitchWhoAnswers()
+    {
+        var session = ChannelSession.Create("tenant-1", "ch", ChannelType.Api, "user");
+        Assert.False(ConversationHandoff.AssistantPaused(session));
+
+        ConversationHandoff.Request(session, "Pide asesor", "assistant", DateTimeOffset.UtcNow);
+        Assert.Equal(ConversationHandoff.Pending, ConversationHandoff.State(session));
+
+        ConversationHandoff.Take(session, "advisor-1", DateTimeOffset.UtcNow);
+        Assert.Equal(ConversationHandoff.WithPerson, ConversationHandoff.State(session));
+        Assert.Equal("Pide asesor", session.Metadata[ConversationHandoff.ReasonKey]);
+
+        ConversationHandoff.Request(session, "otra", "assistant", DateTimeOffset.UtcNow); // already with a person
+        Assert.Equal(ConversationHandoff.WithPerson, ConversationHandoff.State(session));
+
+        Assert.Null(ConversationHandoff.AssistantNote(session, DateTimeOffset.UtcNow)); // paused: no note yet
+
+        session.Metadata[ConversationHandoff.LastAdvisorMessageKey] = "Te ayudo con tu saldo";
+        session.LinkThread("thread-before-handoff");
+        ConversationHandoff.Release(session, DateTimeOffset.UtcNow);
+        Assert.False(ConversationHandoff.AssistantPaused(session));
+        Assert.Null(session.ThreadId); // the assistant starts a new thread
+
+        // The assistant learns a person handled it (its own thread ends with "I passed you to an advisor").
+        var note = ConversationHandoff.AssistantNote(session, DateTimeOffset.UtcNow);
+        Assert.NotNull(note);
+        Assert.Contains("Te ayudo con tu saldo", note);
+        Assert.Null(ConversationHandoff.AssistantNote(session, DateTimeOffset.UtcNow.AddDays(8)));
+
+        ConversationHandoff.Request(session, "otra vez", "assistant", DateTimeOffset.UtcNow);
+        Assert.Null(ConversationHandoff.AssistantNote(session, DateTimeOffset.UtcNow));
+    }
+
+    [Fact]
     public async Task ProcessMessageAsync_DelegatesViaHandoff_WhenManagerReturnsHandoffDirective()
     {
         var channelRepo = new Mock<IChannelDefinitionRepository>();

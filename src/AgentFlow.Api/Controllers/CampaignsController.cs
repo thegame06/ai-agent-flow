@@ -273,6 +273,9 @@ public sealed class CampaignsController : ControllerBase
             AssistantId = request.AssistantId ?? existing?.AssistantId,
             RuntimeModelProfileId = request.RuntimeModelProfileId ?? existing?.RuntimeModelProfileId,
             TemplateId = request.TemplateId ?? existing?.TemplateId,
+            // "" clears it (back to a free-text message).
+            WhatsAppTemplateId = request.WhatsAppTemplateId is null ? existing?.WhatsAppTemplateId
+                : request.WhatsAppTemplateId.Length == 0 ? null : request.WhatsAppTemplateId,
             MessageDraft = request.MessageDraft ?? existing?.MessageDraft,
             CallScriptDraft = request.CallScriptDraft ?? existing?.CallScriptDraft,
             PromptOrigin = request.PromptOrigin ?? existing?.PromptOrigin,
@@ -319,6 +322,7 @@ public sealed record UpsertCampaignRequest
     public string? AssistantId { get; init; }
     public string? RuntimeModelProfileId { get; init; }
     public string? TemplateId { get; init; }
+    public string? WhatsAppTemplateId { get; init; }
     public string? MessageDraft { get; init; }
     public string? CallScriptDraft { get; init; }
     public string? PromptOrigin { get; init; }

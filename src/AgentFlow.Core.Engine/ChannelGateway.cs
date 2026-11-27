@@ -23,6 +23,7 @@ public sealed class ChannelGateway : IChannelGateway
     private readonly IChannelExecutionRequestFactory _executionRequestFactory;
     private readonly IAuditMemory _auditMemory;
     private readonly IChannelDeliveryPolicy _deliveryPolicy;
+    private readonly IReadOnlyList<IChannelReplyTransformer> _replyTransformers;
     private readonly IChannelCapabilityPolicy _capabilityPolicy;
     private readonly IChannelSpamReputationRepository _spamReputationRepo;
     private readonly IHumanEscalationNotifier? _humanEscalationNotifier;
@@ -45,8 +46,10 @@ public sealed class ChannelGateway : IChannelGateway
         IEnumerable<IChannelHandler> handlers,
         IHumanEscalationNotifier? humanEscalationNotifier,
         ILogger<ChannelGateway> logger,
-        IChannelDeliveryPolicy? deliveryPolicy = null)
+        IChannelDeliveryPolicy? deliveryPolicy = null,
+        IEnumerable<IChannelReplyTransformer>? replyTransformers = null)
     {
+        _replyTransformers = replyTransformers?.ToList() ?? [];
         _channelRepo = channelRepo;
         _sessionRepo = sessionRepo;
         _messageRepo = messageRepo;
@@ -134,6 +137,22 @@ public sealed class ChannelGateway : IChannelGateway
         try
         {
             var session = await _sessionRepo.GetByIdAsync(incomingMessage.SessionId, incomingMessage.TenantId, ct);
+
+            // A person took (or was asked to take) this conversation: the assistant stays quiet
+            // and the message waits for that person.
+            if (session is not null && ConversationHandoff.AssistantPaused(session))
+            {
+                incomingMessage.Status = MessageStatus.Received;
+                incomingMessage.Metadata["agentflow.execution_status"] = "WithPerson";
+                incomingMessage.Metadata["agentflow.awaiting_human"] = "true";
+                await _messageRepo.UpdateAsync(incomingMessage, ct);
+                session.Metadata["reply_pending"] = "true";
+                session.Metadata["last_customer_message"] = incomingMessage.Content;
+                session.Metadata["unread_count"] = (int.TryParse(session.Metadata.GetValueOrDefault("unread_count"), out var unread) ? unread + 1 : 1).ToString();
+                await _sessionRepo.UpdateAsync(session, ct);
+                return incomingMessage;
+            }
+
             var agentKey = ResolveAgentKey(channel, session);
 
             if (session != null && agentKey is not null)
@@ -271,6 +290,9 @@ public sealed class ChannelGateway : IChannelGateway
             incomingMessage.LinkExecution(executionResult.ExecutionId);
             if (session != null)
             {
+                // Tools may have changed the session while the agent ran (a hand-off to a person, for
+                // one): continue from the stored copy instead of overwriting it with the one loaded before.
+                session = await _sessionRepo.GetByIdAsync(session.Id, session.TenantId, ct) ?? session;
                 session.LinkThreadIfMissing(executionResult.ThreadId);
                 await _sessionRepo.UpdateAsync(session, ct);
             }
@@ -342,7 +364,7 @@ public sealed class ChannelGateway : IChannelGateway
             }
 
             // Create outgoing message
-            var customerResponse = finalResponse!;
+            var customerResponse = await TransformReplyAsync(incomingMessage, channel, finalResponse!, ct);
             if (ChannelGatewayResponseInterpreter.ShouldSuppressCustomerDelivery(customerResponse))
             {
                 var customerSafeResponse = await _deliveryPolicy.BuildCustomerSafeFallbackAsync(
@@ -522,6 +544,24 @@ public sealed class ChannelGateway : IChannelGateway
         ErrorMessage = errorMessage
     };
 
+    /// <summary>Placeholders the agent wrote are filled in, then the text is formatted for the channel.</summary>
+    private async Task<string> TransformReplyAsync(ChannelMessage incoming, ChannelDefinition? channel, string reply, CancellationToken ct)
+    {
+        if (channel is null) return reply;
+        foreach (var transformer in _replyTransformers)
+        {
+            try
+            {
+                reply = await transformer.TransformAsync(incoming, channel, reply, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Reply transformer {Transformer} failed; the reply is sent as written", transformer.GetType().Name);
+            }
+        }
+        return ChannelReplyFormatting.ForChannel(channel.Type, reply);
+    }
+
     public async Task<SendResult> SendMessageAsync(string channelId, ChannelMessage message, CancellationToken ct = default)
     {
         var channel = await _channelRepo.GetByIdAsync(channelId, message.TenantId, ct);
@@ -570,7 +610,9 @@ public sealed class ChannelGateway : IChannelGateway
             return SendResult.Fail(outboundGuardError);
         }
 
-        await _messageRepo.InsertAsync(message, ct);
+        var stored = await _messageRepo.InsertAsync(message, ct);
+        if (!stored.IsSuccess)
+            _logger.LogWarning("Outgoing message {MessageId} was not stored: {Error}", message.Id, stored.Error?.Message);
         var result = await handler.SendReplyAsync(message, channel, ct);
 
         var session = await _sessionRepo.GetByIdAsync(message.SessionId, message.TenantId, ct);

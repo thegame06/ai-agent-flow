@@ -55,6 +55,7 @@ public static class DependencyInjection
     {
         services.AddDataProtection();
         services.AddHttpClient("workflow-runtime");
+        services.AddHttpClient("meta-graph", c => c.Timeout = TimeSpan.FromSeconds(30));
 
         services
             .AddDslEngine()
@@ -77,10 +78,19 @@ public static class DependencyInjection
             .AddScoped<IConnectStore, MongoConnectStore>()
             .AddScoped<IOutboundMessageSender, OutboundMessageSender>()
             .AddSingleton<ICollectionsStore, MongoCollectionsStore>()
+            .AddSingleton<ICollectionPaymentDeskStore, MongoCollectionPaymentDeskStore>()
+            .AddScoped<AgentFlow.Api.Connect.IMetaWhatsAppAccounts, AgentFlow.Api.Connect.MetaWhatsAppAccounts>()
+            .AddScoped<AgentFlow.Api.Connect.IWhatsAppChannelMetaService, AgentFlow.Api.Connect.WhatsAppChannelMetaService>()
+            .AddSingleton<AgentFlow.Api.Messaging.IWhatsAppTemplateStore, AgentFlow.Api.Messaging.MongoWhatsAppTemplateStore>()
+            .AddScoped<AgentFlow.Api.Messaging.IMetaTemplateApi, AgentFlow.Api.Messaging.MetaTemplateApi>()
+            .AddScoped<AgentFlow.Api.Messaging.IWhatsAppTemplateService, AgentFlow.Api.Messaging.WhatsAppTemplateService>()
             .AddScoped<ICollectionsImportService, CollectionsImportService>()
             .AddScoped<ICollectionPromiseService, CollectionPromiseService>()
             .AddScoped<ICollectionPaymentService, CollectionPaymentService>()
             .AddScoped<ICollectionsAssistantService, CollectionsAssistantService>()
+            .AddScoped<ICollectionsRecoveryService, CollectionsRecoveryService>()
+            .AddScoped<ICollectionPaymentReportService, CollectionPaymentReportService>()
+            .AddScoped<AgentFlow.Api.Connect.IConversationHandoffService, AgentFlow.Api.Connect.ConversationHandoffService>()
             .AddScoped<ICampaignOutcomeService, CampaignOutcomeService>()
             .AddScoped<ICampaignFollowUpService, CampaignFollowUpService>()
             .AddScoped<ICampaignStore, MongoCampaignStore>()
@@ -116,6 +126,7 @@ public static class DependencyInjection
         services.AddHostedService<WorkflowRuntimeWorker>();
         services.AddHostedService<CampaignSchedulerService>();
         services.AddHostedService<CampaignFollowUpWorker>();
+        services.AddHostedService<AgentFlow.Api.Messaging.WhatsAppTemplateSyncWorker>();
         services.AddHostedService<WorkflowCatalogSeeder>();
         services.AddHostedService<ModelRoutingBootstrapService>();
         services.AddHostedService<VoiceRuntimeEventDispatcher>();
@@ -144,6 +155,9 @@ public static class DependencyInjection
         services.AddSingleton<IToolPlugin, CollectionsRegisterPromiseTool>();
         services.AddSingleton<IToolPlugin, CollectionsRecordOutcomeTool>();
         services.AddSingleton<IToolPlugin, CollectionsHandoffTool>();
+        services.AddSingleton<IToolPlugin, CollectionsPaymentInstructionsTool>();
+        services.AddSingleton<IToolPlugin, CollectionsReportPaymentTool>();
+        services.AddSingleton<AgentFlow.Core.Engine.IChannelReplyTransformer, PaymentInstructionsReplyTransformer>();
 
         return services;
     }

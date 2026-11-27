@@ -34,11 +34,15 @@ import { Iconify } from 'src/components/iconify';
 import { LoansTab } from './LoansTab';
 import { LoanDrawer } from './LoanDrawer';
 import { PromisesTab } from './PromisesTab';
+import { AttentionTab } from './AttentionTab';
 import { ImportDialog } from './ImportDialog';
 import { CustomerDrawer } from './CustomerDrawer';
+import { PaymentReportsTab } from './PaymentReportsTab';
+import { ConversationDrawer } from './ConversationDrawer';
+import { PaymentSettingsDialog } from './PaymentSettingsDialog';
 import { day, Kpi, money, STAGE_KEYS, STAGE_COLOR, STAGE_LABEL, useDebounced } from './shared';
 
-import type { StageKey } from './shared';
+import type { StageKey, AttentionItem } from './shared';
 
 // ----------------------------------------------------------------------
 
@@ -69,14 +73,15 @@ type CustomerRow = {
   currency: string;
 };
 
-type TabKey = 'customers' | 'loans' | 'promises';
+type TabKey = 'customers' | 'loans' | 'promises' | 'attention' | 'payments';
 
 // ----------------------------------------------------------------------
 
 export default function CollectionsPage() {
   const tenantId = useTenantId();
   const navigate = useNavigate();
-  const base = `/api/v1/tenants/${tenantId}/collections`;
+  const tenantBase = `/api/v1/tenants/${tenantId}`;
+  const base = `${tenantBase}/collections`;
 
   const [tab, setTab] = useState<TabKey>('customers');
   const [summary, setSummary] = useState<Summary | null>(null);
@@ -87,6 +92,27 @@ export default function CollectionsPage() {
   const [customerId, setCustomerId] = useState<string | null>(null);
   const [loanId, setLoanId] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [conversation, setConversation] = useState<AttentionItem | null>(null);
+  const [attentionCount, setAttentionCount] = useState<number | null>(null);
+  const [attentionKey, setAttentionKey] = useState(0);
+  const [paymentSettingsOpen, setPaymentSettingsOpen] = useState(false);
+  const [reportedCount, setReportedCount] = useState<number | null>(null);
+
+  // The badge on "Para atender" shows before the tab is opened.
+  useEffect(() => {
+    axios
+      .get<AttentionItem[]>(`${tenantBase}/conversations/attention`)
+      .then((res) => setAttentionCount(res.data?.length ?? 0))
+      .catch(() => setAttentionCount(null));
+  }, [tenantBase, attentionKey]);
+
+  // Payments customers reported to the assistant, waiting for someone to confirm them.
+  useEffect(() => {
+    axios
+      .get<{ pending: number }>(`${base}/payment-reports`, { params: { status: 'Pending' } })
+      .then((res) => setReportedCount(res.data?.pending ?? 0))
+      .catch(() => setReportedCount(null));
+  }, [base, reloadKey]);
 
   useEffect(() => {
     setError(null);
@@ -149,6 +175,16 @@ export default function CollectionsPage() {
             </Typography>
           </Box>
           <Stack direction="row" spacing={1} alignItems="center">
+            <Button
+              variant="outlined"
+              startIcon={<Iconify icon="mdi:chart-timeline-variant-shimmer" />}
+              onClick={() => navigate(paths.dashboard.collectionsRecovery)}
+            >
+              Ver recuperación
+            </Button>
+            <Button variant="outlined" startIcon={<Iconify icon="mdi:bank-outline" />} onClick={() => setPaymentSettingsOpen(true)}>
+              Medios de pago
+            </Button>
             <Button
               variant="outlined"
               startIcon={<Iconify icon="mdi:strategy" />}
@@ -233,6 +269,24 @@ export default function CollectionsPage() {
             <Tab value="customers" label="Clientes" />
             <Tab value="loans" label="Préstamos" />
             <Tab value="promises" label="Promesas de pago" />
+            <Tab
+              value="attention"
+              label={
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <span>Para atender</span>
+                  {!!attentionCount && <Chip size="small" color="warning" label={attentionCount} />}
+                </Stack>
+              }
+            />
+            <Tab
+              value="payments"
+              label={
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <span>Pagos reportados</span>
+                  {!!reportedCount && <Chip size="small" color="info" label={reportedCount} />}
+                </Stack>
+              }
+            />
           </Tabs>
 
           {tab === 'customers' && (
@@ -240,9 +294,33 @@ export default function CollectionsPage() {
           )}
           {tab === 'loans' && <LoansTab base={base} initialStage={stage} onOpenLoan={setLoanId} />}
           {tab === 'promises' && <PromisesTab base={base} onOpenCustomer={setCustomerId} />}
+          {tab === 'payments' && (
+            <PaymentReportsTab
+              base={base}
+              reloadKey={reloadKey}
+              onOpenCustomer={setCustomerId}
+              onCount={setReportedCount}
+            />
+          )}
+          {tab === 'attention' && (
+            <AttentionTab
+              conversationsBase={`${tenantBase}/conversations`}
+              reloadKey={attentionKey}
+              onOpen={setConversation}
+              onCount={setAttentionCount}
+            />
+          )}
         </Card>
       </DashboardContent>
 
+      <PaymentSettingsDialog base={base} open={paymentSettingsOpen} onClose={() => setPaymentSettingsOpen(false)} />
+      <ConversationDrawer
+        tenantBase={tenantBase}
+        item={conversation}
+        onClose={() => setConversation(null)}
+        onChanged={() => setAttentionKey((k) => k + 1)}
+        onOpenCustomer={setCustomerId}
+      />
       <CustomerDrawer base={base} partyId={customerId} onClose={() => setCustomerId(null)} onOpenLoan={setLoanId} />
       <LoanDrawer
         base={base}

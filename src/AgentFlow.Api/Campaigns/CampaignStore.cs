@@ -36,6 +36,10 @@ public interface ICampaignStore
     Task<IReadOnlySet<string>> GetOptedOutRecipientKeysAsync(string tenantId, CancellationToken ct = default);
     /// <summary>Recent contacts to one recipient across campaigns (newest first), for daily send limits.</summary>
     Task<IReadOnlyList<CampaignContactExecutionContract>> GetContactExecutionsByRecipientKeyAsync(string tenantId, string recipientKey, int limit = 50, CancellationToken ct = default);
+    /// <summary>Contacts a person must look at (hand-offs, unanswered replies), newest first.</summary>
+    Task<IReadOnlyList<CampaignContactExecutionContract>> GetContactsNeedingAttentionAsync(string tenantId, int limit = 200, CancellationToken ct = default);
+    /// <summary>Contacts created in a period (all campaigns), for reports.</summary>
+    Task<IReadOnlyList<CampaignContactExecutionContract>> GetContactExecutionsCreatedBetweenAsync(string tenantId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default);
     /// <summary>Enabled campaigns (all tenants) that have a follow-up policy.</summary>
     Task<IReadOnlyList<CampaignContract>> GetCampaignsWithFollowUpsAsync(CancellationToken ct = default);
     Task<CampaignContactExecutionContract?> FindLatestContactByRecipientKeyAsync(string tenantId, string recipientKey, DateTimeOffset since, CancellationToken ct = default);
@@ -81,6 +85,8 @@ public sealed class MongoCampaignStore : ICampaignStore
             Builders<CampaignContactExecutionDocument>.IndexKeys.Ascending(x => x.TenantId).Ascending(x => x.CampaignId).Descending(x => x.CreatedAt)));
         _contacts.Indexes.CreateOne(new CreateIndexModel<CampaignContactExecutionDocument>(
             Builders<CampaignContactExecutionDocument>.IndexKeys.Ascending(x => x.TenantId).Ascending(x => x.RecipientKey).Descending(x => x.CreatedAt)));
+        _contacts.Indexes.CreateOne(new CreateIndexModel<CampaignContactExecutionDocument>(
+            Builders<CampaignContactExecutionDocument>.IndexKeys.Ascending(x => x.TenantId).Descending(x => x.CreatedAt)));
         _contacts.Indexes.CreateOne(new CreateIndexModel<CampaignContactExecutionDocument>(
             Builders<CampaignContactExecutionDocument>.IndexKeys.Ascending(x => x.TenantId).Ascending(x => x.PartyId).Descending(x => x.CreatedAt)));
         _outcomes.Indexes.CreateOne(new CreateIndexModel<CampaignCallOutcomeDocument>(
@@ -129,6 +135,7 @@ public sealed class MongoCampaignStore : ICampaignStore
             AssistantId = campaign.AssistantId,
             RuntimeModelProfileId = campaign.RuntimeModelProfileId,
             TemplateId = campaign.TemplateId,
+            WhatsAppTemplateId = campaign.WhatsAppTemplateId,
             MessageDraft = campaign.MessageDraft,
             CallScriptDraft = campaign.CallScriptDraft,
             PromptOrigin = campaign.PromptOrigin,
@@ -325,6 +332,16 @@ public sealed class MongoCampaignStore : ICampaignStore
                 .SortByDescending(x => x.CreatedAt).Limit(Math.Clamp(limit, 1, 500)).ToListAsync(ct))
             .Select(ToContract).ToList();
 
+    public async Task<IReadOnlyList<CampaignContactExecutionContract>> GetContactsNeedingAttentionAsync(string tenantId, int limit = 200, CancellationToken ct = default)
+        => (await _contacts.Find(x => x.TenantId == tenantId && x.NeedsAttention)
+                .SortByDescending(x => x.UpdatedAt).Limit(Math.Clamp(limit, 1, 1000)).ToListAsync(ct))
+            .Select(ToContract).ToList();
+
+    public async Task<IReadOnlyList<CampaignContactExecutionContract>> GetContactExecutionsCreatedBetweenAsync(string tenantId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
+        => (await _contacts.Find(x => x.TenantId == tenantId && x.CreatedAt >= from && x.CreatedAt <= to)
+                .Limit(50000).ToListAsync(ct))
+            .Select(ToContract).ToList();
+
     public async Task<IReadOnlyList<CampaignContract>> GetCampaignsWithFollowUpsAsync(CancellationToken ct = default)
         => (await _campaigns.Find(x => x.Enabled && x.FollowupPolicyJson != null && x.FollowupPolicyJson != "")
                 .ToListAsync(ct))
@@ -430,6 +447,7 @@ public sealed class MongoCampaignStore : ICampaignStore
         AssistantId = doc.AssistantId,
         RuntimeModelProfileId = doc.RuntimeModelProfileId,
         TemplateId = doc.TemplateId,
+        WhatsAppTemplateId = doc.WhatsAppTemplateId,
         MessageDraft = doc.MessageDraft,
         CallScriptDraft = doc.CallScriptDraft,
         PromptOrigin = doc.PromptOrigin,
@@ -522,6 +540,7 @@ public sealed class MongoCampaignStore : ICampaignStore
         DisplayName = doc.DisplayName,
         RenderedMessage = doc.RenderedMessage,
         RepliedAt = doc.RepliedAt,
+        LastReplyAt = doc.LastReplyAt,
         LastReply = doc.LastReply,
         ReplyCount = doc.ReplyCount,
         Outcome = doc.Outcome,
@@ -560,6 +579,7 @@ public sealed class MongoCampaignStore : ICampaignStore
         DisplayName = contact.DisplayName,
         RenderedMessage = contact.RenderedMessage,
         RepliedAt = contact.RepliedAt,
+        LastReplyAt = contact.LastReplyAt,
         LastReply = contact.LastReply,
         ReplyCount = contact.ReplyCount,
         Outcome = contact.Outcome,
@@ -622,6 +642,7 @@ public sealed class MongoCampaignStore : ICampaignStore
         public string? AssistantId { get; set; }
         public string? RuntimeModelProfileId { get; set; }
         public string? TemplateId { get; set; }
+        public string? WhatsAppTemplateId { get; set; }
         public string? MessageDraft { get; set; }
         public string? CallScriptDraft { get; set; }
         public string? PromptOrigin { get; set; }
@@ -720,6 +741,7 @@ public sealed class MongoCampaignStore : ICampaignStore
         public string? RenderedMessage { get; set; }
         public string? RecipientKey { get; set; }
         public DateTimeOffset? RepliedAt { get; set; }
+        public DateTimeOffset? LastReplyAt { get; set; }
         public string? LastReply { get; set; }
         public int ReplyCount { get; set; }
         public string? Outcome { get; set; }

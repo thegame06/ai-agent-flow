@@ -89,7 +89,10 @@ public sealed class WhatsAppBusinessApiTransport : IWhatsAppTransport
         return id;
     }
 
-    public async Task<string> SendTemplateMessageAsync(string to, string templateName, CancellationToken ct = default)
+    public Task<string> SendTemplateMessageAsync(string to, string templateName, CancellationToken ct = default)
+        => SendTemplateMessageAsync(to, templateName, "es", null, string.Empty, ct);
+
+    public async Task<string> SendTemplateMessageAsync(string to, string templateName, string language, string? componentsJson, string renderedText, CancellationToken ct = default)
     {
         if (!_isConnected || string.IsNullOrEmpty(_activePhoneNumberId) || string.IsNullOrEmpty(_options.ApiKey))
             throw new InvalidOperationException("WhatsApp Business transport is not connected");
@@ -100,7 +103,9 @@ public sealed class WhatsAppBusinessApiTransport : IWhatsAppTransport
             recipient_type = "individual",
             to,
             type = "template",
-            template = new { name = templateName, language = new { code = "es" } }
+            template = componentsJson is null
+                ? (object)new { name = templateName, language = new { code = language } }
+                : new { name = templateName, language = new { code = language }, components = JsonDocument.Parse(componentsJson).RootElement.Clone() }
         };
 
         var request = new HttpRequestMessage(HttpMethod.Post, $"{_options.BaseUrl}/{_activePhoneNumberId}/messages")
