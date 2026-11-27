@@ -48,7 +48,7 @@ public sealed class ChannelsController : ControllerBase
             Name = c.Name,
             Type = c.Type.ToString(),
             Status = c.Status.ToString(),
-            Config = c.Config,
+            Config = ChannelDto.SafeConfig(c.Config),
             CreatedAt = c.CreatedAt,
             LastActivityAt = c.LastActivityAt
         }));
@@ -69,7 +69,7 @@ public sealed class ChannelsController : ControllerBase
             Name = channel.Name,
             Type = channel.Type.ToString(),
             Status = channel.Status.ToString(),
-            Config = channel.Config,
+            Config = ChannelDto.SafeConfig(channel.Config),
             CreatedAt = channel.CreatedAt,
             LastActivityAt = channel.LastActivityAt
         });
@@ -879,6 +879,18 @@ public sealed record ChannelDto
     public Dictionary<string, string> Config { get; init; } = new();
     public DateTimeOffset CreatedAt { get; init; }
     public DateTimeOffset? LastActivityAt { get; init; }
+
+    /// <summary>Channel config without credentials (old WhatsApp Business channels kept the Meta token here).</summary>
+    public static Dictionary<string, string> SafeConfig(IReadOnlyDictionary<string, string> config)
+        => config.ToDictionary(
+            kv => kv.Key,
+            kv => IsSecret(kv.Key) && !string.IsNullOrEmpty(kv.Value) ? "********" : kv.Value);
+
+    private static bool IsSecret(string key)
+        => key.Contains("token", StringComparison.OrdinalIgnoreCase) ||
+           key.Contains("secret", StringComparison.OrdinalIgnoreCase) ||
+           key.Contains("password", StringComparison.OrdinalIgnoreCase) ||
+           key.Equals("ApiKey", StringComparison.OrdinalIgnoreCase);
 }
 
 public sealed record UpdateChannelRoutingRequest

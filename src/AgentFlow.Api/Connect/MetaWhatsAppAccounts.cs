@@ -1,4 +1,6 @@
 using System.Text.Json;
+using AgentFlow.Domain.Aggregates;
+using AgentFlow.Domain.Repositories;
 using Microsoft.AspNetCore.DataProtection;
 
 namespace AgentFlow.Api.Connect;
@@ -19,12 +21,18 @@ public sealed record MetaWhatsAppAccount
     public string? AccessToken { get; init; }
     /// <summary>Signs the webhooks Meta sends (X-Hub-Signature-256).</summary>
     public string? AppSecret { get; init; }
+    /// <summary>WhatsApp channels (numbers) that send through this account.</summary>
+    public IReadOnlyList<MetaAccountChannel> Channels { get; init; } = [];
 }
+
+public sealed record MetaAccountChannel(string ChannelId, string Name, string? PhoneNumberId);
 
 public interface IMetaWhatsAppAccounts
 {
     Task<IReadOnlyList<MetaWhatsAppAccount>> GetAllAsync(string tenantId, CancellationToken ct = default);
     Task<MetaWhatsAppAccount?> GetAsync(string tenantId, string connectionId, CancellationToken ct = default);
+    /// <summary>The Meta account a WhatsApp channel sends through (null for QR channels).</summary>
+    Task<MetaWhatsAppAccount?> GetForChannelAsync(string tenantId, string channelId, CancellationToken ct = default);
 }
 
 public sealed class MetaWhatsAppAccounts : IMetaWhatsAppAccounts
@@ -33,26 +41,40 @@ public sealed class MetaWhatsAppAccounts : IMetaWhatsAppAccounts
 
     private readonly ITenantConnectionStore _connections;
     private readonly IDataProtectionProvider _dataProtection;
+    private readonly IChannelDefinitionRepository? _channels;
 
-    public MetaWhatsAppAccounts(ITenantConnectionStore connections, IDataProtectionProvider dataProtection)
+    public MetaWhatsAppAccounts(ITenantConnectionStore connections, IDataProtectionProvider dataProtection, IChannelDefinitionRepository? channels = null)
     {
         _connections = connections;
         _dataProtection = dataProtection;
+        _channels = channels;
     }
 
     public async Task<IReadOnlyList<MetaWhatsAppAccount>> GetAllAsync(string tenantId, CancellationToken ct = default)
     {
+        var channels = await WhatsAppChannelsAsync(tenantId, ct);
         var accounts = new List<MetaWhatsAppAccount>();
         foreach (var connection in (await _connections.GetConnectionsAsync(tenantId, ct)).Where(IsMeta))
-            accounts.Add(await ToAccountAsync(tenantId, connection, ct));
+            accounts.Add(await ToAccountAsync(tenantId, connection, channels, ct));
         return accounts;
     }
 
     public async Task<MetaWhatsAppAccount?> GetAsync(string tenantId, string connectionId, CancellationToken ct = default)
     {
         var connection = await _connections.GetConnectionAsync(tenantId, connectionId, ct);
-        return connection is null || !IsMeta(connection) ? null : await ToAccountAsync(tenantId, connection, ct);
+        return connection is null || !IsMeta(connection) ? null : await ToAccountAsync(tenantId, connection, await WhatsAppChannelsAsync(tenantId, ct), ct);
     }
+
+    public async Task<MetaWhatsAppAccount?> GetForChannelAsync(string tenantId, string channelId, CancellationToken ct = default)
+    {
+        if (_channels is null) return null;
+        var channel = await _channels.GetByIdAsync(channelId, tenantId, ct);
+        var connectionId = channel?.Config.GetValueOrDefault("ConnectionId");
+        return string.IsNullOrWhiteSpace(connectionId) ? null : await GetAsync(tenantId, connectionId, ct);
+    }
+
+    private async Task<IReadOnlyList<ChannelDefinition>> WhatsAppChannelsAsync(string tenantId, CancellationToken ct)
+        => _channels is null ? [] : await _channels.GetByTypeAsync(ChannelType.WhatsApp, tenantId, ct);
 
     /// <summary>Same matching as the provider resolver: connector "meta"/"whatsapp-business" or config provider=meta.</summary>
     public static bool IsMeta(TenantConnectionContract connection)
@@ -60,7 +82,7 @@ public sealed class MetaWhatsAppAccounts : IMetaWhatsAppAccounts
            (c.Equals("meta", StringComparison.OrdinalIgnoreCase) || c.Equals("whatsapp-business", StringComparison.OrdinalIgnoreCase)) ||
            (connection.Config.TryGetValue("provider", out var provider) && provider.Equals("meta", StringComparison.OrdinalIgnoreCase));
 
-    private async Task<MetaWhatsAppAccount> ToAccountAsync(string tenantId, TenantConnectionContract connection, CancellationToken ct)
+    private async Task<MetaWhatsAppAccount> ToAccountAsync(string tenantId, TenantConnectionContract connection, IReadOnlyList<ChannelDefinition> channels, CancellationToken ct)
     {
         var secret = ReadSecret(await _connections.GetSecretAsync(tenantId, connection.Id, ct));
         string? Config(params string[] keys) => First(connection.Config, keys);
@@ -74,7 +96,11 @@ public sealed class MetaWhatsAppAccounts : IMetaWhatsAppAccounts
             AppId = Config("appId", "AppId"),
             BaseUrl = (Config("baseUrl") ?? DefaultBaseUrl).TrimEnd('/'),
             AccessToken = First(secret, "apiToken", "accessToken", "token", "secret"),
-            AppSecret = First(secret, "appSecret", "app_secret")
+            AppSecret = First(secret, "appSecret", "app_secret"),
+            Channels = channels
+                .Where(c => c.Config.GetValueOrDefault("ConnectionId") == connection.Id)
+                .Select(c => new MetaAccountChannel(c.Id, c.Name, c.Config.GetValueOrDefault("PhoneNumberId")))
+                .ToList()
         };
     }
 

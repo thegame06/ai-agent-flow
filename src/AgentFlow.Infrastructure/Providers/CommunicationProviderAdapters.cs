@@ -268,11 +268,7 @@ public sealed class MetaWhatsAppProviderAdapter : IMessageSendProviderAdapter
                 recipient_type = "individual",
                 to = request.Recipient,
                 type = "template",
-                template = new
-                {
-                    name = request.TemplateName,
-                    language = new { code = "es" }
-                }
+                template = BuildTemplate(request)
             };
 
         using var httpClient = new HttpClient();
@@ -295,6 +291,16 @@ public sealed class MetaWhatsAppProviderAdapter : IMessageSendProviderAdapter
             ProviderStatus = "accepted",
             RawResponse = body
         };
+    }
+
+    /// <summary>Template with its language and, when given, the parameters of each component.</summary>
+    private static object BuildTemplate(ProviderMessageSendRequest request)
+    {
+        var language = new { code = string.IsNullOrWhiteSpace(request.TemplateLanguage) ? "es" : request.TemplateLanguage };
+        if (string.IsNullOrWhiteSpace(request.TemplateComponentsJson))
+            return new { name = request.TemplateName, language };
+        using var components = JsonDocument.Parse(request.TemplateComponentsJson);
+        return new { name = request.TemplateName, language, components = components.RootElement.Clone() };
     }
 
     private static string? GetValue(ProviderConnectionProfile connection, string key, params string[] aliases)

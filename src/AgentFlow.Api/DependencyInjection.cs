@@ -55,6 +55,7 @@ public static class DependencyInjection
     {
         services.AddDataProtection();
         services.AddHttpClient("workflow-runtime");
+        services.AddHttpClient("meta-graph", c => c.Timeout = TimeSpan.FromSeconds(30));
 
         services
             .AddDslEngine()
@@ -79,6 +80,10 @@ public static class DependencyInjection
             .AddSingleton<ICollectionsStore, MongoCollectionsStore>()
             .AddSingleton<ICollectionPaymentDeskStore, MongoCollectionPaymentDeskStore>()
             .AddScoped<AgentFlow.Api.Connect.IMetaWhatsAppAccounts, AgentFlow.Api.Connect.MetaWhatsAppAccounts>()
+            .AddScoped<AgentFlow.Api.Connect.IWhatsAppChannelMetaService, AgentFlow.Api.Connect.WhatsAppChannelMetaService>()
+            .AddSingleton<AgentFlow.Api.Messaging.IWhatsAppTemplateStore, AgentFlow.Api.Messaging.MongoWhatsAppTemplateStore>()
+            .AddScoped<AgentFlow.Api.Messaging.IMetaTemplateApi, AgentFlow.Api.Messaging.MetaTemplateApi>()
+            .AddScoped<AgentFlow.Api.Messaging.IWhatsAppTemplateService, AgentFlow.Api.Messaging.WhatsAppTemplateService>()
             .AddScoped<ICollectionsImportService, CollectionsImportService>()
             .AddScoped<ICollectionPromiseService, CollectionPromiseService>()
             .AddScoped<ICollectionPaymentService, CollectionPaymentService>()
@@ -121,6 +126,7 @@ public static class DependencyInjection
         services.AddHostedService<WorkflowRuntimeWorker>();
         services.AddHostedService<CampaignSchedulerService>();
         services.AddHostedService<CampaignFollowUpWorker>();
+        services.AddHostedService<AgentFlow.Api.Messaging.WhatsAppTemplateSyncWorker>();
         services.AddHostedService<WorkflowCatalogSeeder>();
         services.AddHostedService<ModelRoutingBootstrapService>();
         services.AddHostedService<VoiceRuntimeEventDispatcher>();

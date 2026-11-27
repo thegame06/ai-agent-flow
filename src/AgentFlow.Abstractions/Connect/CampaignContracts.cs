@@ -110,6 +110,11 @@ public sealed record CampaignContract
     public string? AssistantId { get; init; }
     public string? RuntimeModelProfileId { get; init; }
     public string? TemplateId { get; init; }
+    /// <summary>
+    /// Approved WhatsApp template (Meta) the first message is sent with: Meta only lets a
+    /// business start a conversation with a template. Its placeholders are filled from the contact.
+    /// </summary>
+    public string? WhatsAppTemplateId { get; init; }
     public string? MessageDraft { get; init; }
     public string? CallScriptDraft { get; init; }
     public string? PromptOrigin { get; init; }

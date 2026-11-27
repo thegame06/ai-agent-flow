@@ -60,6 +60,7 @@ export const paths = {
     threads: `${ROOTS.DASHBOARD}/threads`,
     commerce: `${ROOTS.DASHBOARD}/commerce`,
     campaigns: `${ROOTS.DASHBOARD}/campaigns`,
+    whatsappTemplates: `${ROOTS.DASHBOARD}/whatsapp-templates`,
     collections: `${ROOTS.DASHBOARD}/collections`,
     collectionsRecovery: `${ROOTS.DASHBOARD}/collections/recovery`,
     evaluations: `${ROOTS.DASHBOARD}/evaluations`,

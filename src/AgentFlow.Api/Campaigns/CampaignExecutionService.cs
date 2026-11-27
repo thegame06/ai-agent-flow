@@ -29,6 +29,8 @@ public sealed class CampaignExecutionService : ICampaignExecutionService
     private readonly IRuntimeModelProfileStore _runtimeProfiles;
     private readonly IOutboundMessageSender _outbound;
     private readonly ICampaignFollowUpService? _followUps;
+    private readonly AgentFlow.Api.Messaging.IWhatsAppTemplateStore? _waTemplates;
+    private readonly AgentFlow.Domain.Repositories.IChannelDefinitionRepository? _channels;
 
     public CampaignExecutionService(
         ICampaignStore campaignStore,
@@ -38,9 +40,13 @@ public sealed class CampaignExecutionService : ICampaignExecutionService
         IAuditMemory auditMemory,
         IRuntimeModelProfileStore runtimeProfiles,
         IOutboundMessageSender outbound,
-        ICampaignFollowUpService? followUps = null)
+        ICampaignFollowUpService? followUps = null,
+        AgentFlow.Api.Messaging.IWhatsAppTemplateStore? waTemplates = null,
+        AgentFlow.Domain.Repositories.IChannelDefinitionRepository? channels = null)
     {
         _followUps = followUps;
+        _waTemplates = waTemplates;
+        _channels = channels;
         _campaignStore = campaignStore;
         _audienceService = audienceService;
         _connectStore = connectStore;
@@ -48,6 +54,16 @@ public sealed class CampaignExecutionService : ICampaignExecutionService
         _auditMemory = auditMemory;
         _runtimeProfiles = runtimeProfiles;
         _outbound = outbound;
+    }
+
+    /// <summary>The Meta account (WABA) of the channel the campaign sends through, when it is a Business API channel.</summary>
+    private async Task<string?> CampaignChannelWabaAsync(CampaignContract campaign, CancellationToken ct)
+    {
+        if (_channels is null || string.IsNullOrWhiteSpace(campaign.Channel)) return null;
+        var channel = await _channels.GetByIdAsync(campaign.Channel, campaign.TenantId, ct);
+        if (channel is null && Enum.TryParse<AgentFlow.Domain.Aggregates.ChannelType>(campaign.Channel, true, out var type))
+            channel = (await _channels.GetByTypeAsync(type, campaign.TenantId, ct)).FirstOrDefault(c => c.Status == AgentFlow.Domain.Aggregates.ChannelStatus.Active);
+        return channel?.Config.GetValueOrDefault("BusinessAccountId") is { Length: > 0 } waba ? waba : null;
     }
 
     public Task<CampaignAudiencePreviewContract> SimulateAsync(string tenantId, CampaignContract campaign, CancellationToken ct = default)
@@ -392,7 +408,51 @@ public sealed class CampaignExecutionService : ICampaignExecutionService
 
         if (campaign.ChannelAction == CampaignChannelAction.Message)
         {
-            var (message, missing) = CampaignMessageRenderer.Render(campaign.MessageDraft ?? "Mensaje de campana", execution.Variables);
+            var sendMetadata = new Dictionary<string, string>
+            {
+                ["campaign_run_id"] = run.Id,
+                ["campaign_contact_execution_id"] = execution.Id
+            };
+            string message;
+            IReadOnlyList<string> missing;
+            if (!string.IsNullOrWhiteSpace(campaign.WhatsAppTemplateId))
+            {
+                // A WhatsApp template: Meta needs it to start the conversation; the customer
+                // reads it filled in with their own data.
+                var template = _waTemplates is null ? null : await _waTemplates.GetAsync(campaign.TenantId, campaign.WhatsAppTemplateId!, ct);
+                if (template is null || template.Status != AgentFlow.Api.Messaging.WhatsAppTemplateStatuses.Approved)
+                {
+                    return (await _campaignStore.UpdateContactExecutionAsync(execution with
+                    {
+                        Status = CampaignContactExecutionStatus.Failed,
+                        SkipReason = template is null
+                            ? "La plantilla de WhatsApp de la campana ya no existe."
+                            : $"La plantilla {template.Name} no esta aprobada por Meta (estado {template.Status}).",
+                        UpdatedAt = DateTimeOffset.UtcNow
+                    }, ct))!;
+                }
+                // A template only exists in its own Meta account: the campaign's number must belong to it.
+                var channelWaba = await CampaignChannelWabaAsync(campaign, ct);
+                if (channelWaba is not null && template.BusinessAccountId is not null && channelWaba != template.BusinessAccountId)
+                {
+                    return (await _campaignStore.UpdateContactExecutionAsync(execution with
+                    {
+                        Status = CampaignContactExecutionStatus.Failed,
+                        SkipReason = $"La plantilla {template.Name} es de otra cuenta de Meta que el canal de la campana.",
+                        UpdatedAt = DateTimeOffset.UtcNow
+                    }, ct))!;
+                }
+                var built = AgentFlow.Api.Messaging.WhatsAppTemplateText.Build(template, execution.Variables);
+                message = built.Text;
+                missing = built.Missing;
+                sendMetadata[AgentFlow.Infrastructure.Channels.WhatsApp.WhatsAppTemplatePayload.MetadataKey] = built.ToSendJson();
+                sendMetadata["wa.template_id"] = template.Id;
+                sendMetadata["wa.template_version"] = template.Version.ToString();
+            }
+            else
+            {
+                (message, missing) = CampaignMessageRenderer.Render(campaign.MessageDraft ?? "Mensaje de campana", execution.Variables);
+            }
             if (missing.Count > 0)
             {
                 // Never send a message with "{{total_vencido}}" left in it.
@@ -413,11 +473,7 @@ public sealed class CampaignExecutionService : ICampaignExecutionService
                 run.RequestedBy,
                 campaign.Id,
                 campaign.TemplateId,
-                new Dictionary<string, string>
-                {
-                    ["campaign_run_id"] = run.Id,
-                    ["campaign_contact_execution_id"] = execution.Id
-                },
+                sendMetadata,
                 ct);
 
             return (await _campaignStore.UpdateContactExecutionAsync(execution with

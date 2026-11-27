@@ -80,6 +80,7 @@ export type Campaign = {
   goal: string;
   workflowDefinitionId?: string | null;
   messageDraft?: string | null;
+  whatsAppTemplateId?: string | null;
   scheduleType: number;
   scheduleExpression: string;
   timezone: string;

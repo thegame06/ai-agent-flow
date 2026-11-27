@@ -44,6 +44,7 @@ const CommerceAdminPage = lazy(() => import('src/aiagentflow/pages/commerce/Comm
 const CampaignsPage = lazy(() => import('src/aiagentflow/pages/campaigns/CampaignsPage'));
 const CollectionsPage = lazy(() => import('src/aiagentflow/pages/collections/CollectionsPage'));
 const RecoveryPage = lazy(() => import('src/aiagentflow/pages/collections/RecoveryPage'));
+const WhatsAppTemplatesPage = lazy(() => import('src/aiagentflow/pages/templates/WhatsAppTemplatesPage'));
 const EvaluationsPage = lazy(() => import('src/aiagentflow/pages/evaluations/EvaluationsPage'));
 const KycPaymentsPage = lazy(() => import('src/aiagentflow/pages/kyc/KycPaymentsPage'));
 const WorkflowsPage = lazy(() => import('src/aiagentflow/pages/workflows/WorkflowsPage'));
@@ -96,6 +97,7 @@ export const dashboardRoutes: RouteObject[] = [
       { path: 'threads', element: <ThreadsPage /> },
       { path: 'commerce', element: <CommerceAdminPage /> },
       { path: 'campaigns', element: <CampaignsPage /> },
+      { path: 'whatsapp-templates', element: <WhatsAppTemplatesPage /> },
       { path: 'collections', element: <CollectionsPage /> },
       { path: 'collections/recovery', element: <RecoveryPage /> },
       { path: 'evaluations', element: <EvaluationsPage /> },
