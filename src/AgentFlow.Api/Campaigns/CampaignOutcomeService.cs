@@ -101,6 +101,7 @@ public sealed class CampaignOutcomeService : ICampaignOutcomeService
         contact = contact with
         {
             RepliedAt = contact.RepliedAt ?? receivedAt,
+            LastReplyAt = receivedAt,
             LastReply = Truncate(text, 1000),
             ReplyCount = contact.ReplyCount + 1,
             UpdatedAt = DateTimeOffset.UtcNow

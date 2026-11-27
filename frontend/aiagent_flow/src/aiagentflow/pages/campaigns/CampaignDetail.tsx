@@ -328,6 +328,7 @@ export function CampaignDetail({ tenantId, campaign, onClose, onEdit, onChanged 
                             >
                               {'\u21b3'} {FOLLOW_UP_LABEL[f.trigger.startsWith('outcome:') ? 'outcome' : f.trigger] ?? f.ruleId}:{' '}
                               {FOLLOW_UP_STATUS[f.status] ?? f.status} {dateTime(f.at)}
+                              {f.template ? ` · plantilla ${f.template}` : ''}
                               {f.error ? ` (${f.error})` : ''}
                             </Typography>
                           ))}

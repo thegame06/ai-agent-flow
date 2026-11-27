@@ -149,6 +149,8 @@ export type FollowUpRecord = {
   status: string;
   at: string;
   message?: string | null;
+  /** WhatsApp template it went out with (outside the 24 h window). */
+  template?: string | null;
   error?: string | null;
 };
 
@@ -276,9 +278,11 @@ type FollowUpRule = {
   beforeHours?: number;
   action: 'message' | 'handoff';
   message?: string | null;
+  whatsAppTemplateId?: string | null;
 };
 
-export type FollowUpStep = { on: boolean; hours: number; message: string };
+/** templateId: approved WhatsApp template used when the customer has not written in 24 h (official API). */
+export type FollowUpStep = { on: boolean; hours: number; message: string; templateId: string };
 
 export type FollowUpForm = {
   noResponse: FollowUpStep;
@@ -303,6 +307,7 @@ export const defaultFollowUps = (collections: boolean): FollowUpForm => ({
   noResponse: {
     on: true,
     hours: 48,
+    templateId: '',
     message: collections
       ? 'Hola {{primer_nombre}}, seguimos pendientes de tu pago de {{total_vencido}} {{moneda}}. ¿Nos confirmas cuándo podrías pagar?'
       : 'Hola {{primer_nombre}}, ¿pudiste ver nuestro mensaje anterior?',
@@ -310,17 +315,20 @@ export const defaultFollowUps = (collections: boolean): FollowUpForm => ({
   promiseReminder: {
     on: collections,
     hours: 24,
+    templateId: '',
     message: 'Hola {{primer_nombre}}, te recordamos tu compromiso de pago de {{monto_promesa}} {{moneda}} para el {{fecha_promesa}}. ¡Gracias!',
   },
   promiseBroken: {
     on: collections,
     hours: 2,
+    templateId: '',
     message:
       'Hola {{primer_nombre}}, no vimos reflejado tu pago del {{fecha_promesa}}. Tu saldo vencido es {{total_vencido}} {{moneda}}. ¿Cuándo podrías pagar?',
   },
   callback: {
     on: true,
     hours: 24,
+    templateId: '',
     message: 'Hola {{primer_nombre}}, como quedamos te volvemos a escribir. ¿Es un buen momento?',
   },
   handoffHuman: true,
@@ -352,7 +360,9 @@ export const parseFollowUps = (campaign: Campaign | null, collections: boolean):
   const find = (id: string) => rules.find((r) => r.id === id);
   const step = (id: string, fallback: FollowUpStep, field: 'afterHours' | 'beforeHours' = 'afterHours'): FollowUpStep => {
     const r = find(id);
-    return r ? { on: true, hours: r[field] ?? fallback.hours, message: r.message ?? fallback.message } : { ...fallback, on: false };
+    return r
+      ? { on: true, hours: r[field] ?? fallback.hours, message: r.message ?? fallback.message, templateId: r.whatsAppTemplateId ?? '' }
+      : { ...fallback, on: false };
   };
   return {
     noResponse: step('sin-respuesta', base.noResponse),
@@ -374,7 +384,8 @@ export const parseFollowUps = (campaign: Campaign | null, collections: boolean):
 export const serializeFollowUps = (form: FollowUpForm, collections: boolean) => {
   const rules: FollowUpRule[] = [];
   const msg = (id: string, trigger: string, s: FollowUpStep, field: 'afterHours' | 'beforeHours' = 'afterHours') => {
-    if (s.on && s.message.trim()) rules.push({ id, trigger, action: 'message', [field]: s.hours, message: s.message });
+    if (s.on && (s.message.trim() || s.templateId))
+      rules.push({ id, trigger, action: 'message', [field]: s.hours, message: s.message, whatsAppTemplateId: s.templateId || null });
   };
   msg('sin-respuesta', 'no_response', form.noResponse);
   if (collections) {

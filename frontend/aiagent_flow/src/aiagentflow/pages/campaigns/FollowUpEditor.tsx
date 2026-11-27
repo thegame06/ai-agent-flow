@@ -1,12 +1,15 @@
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import Chip from '@mui/material/Chip';
+import Alert from '@mui/material/Alert';
 import Stack from '@mui/material/Stack';
 import Switch from '@mui/material/Switch';
+import MenuItem from '@mui/material/MenuItem';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import FormControlLabel from '@mui/material/FormControlLabel';
 
+import type { WaTemplate } from '../templates/templateModel';
 import type { FollowUpForm, FollowUpStep } from './campaignModel';
 
 // ----------------------------------------------------------------------
@@ -15,10 +18,15 @@ type Props = {
   value: FollowUpForm;
   collections: boolean;
   onChange: (value: FollowUpForm) => void;
+  /** Approved WhatsApp templates of the campaign's number. */
+  templates?: WaTemplate[];
+  /** The campaign sends through WhatsApp's official API (free text only within 24 h of the customer's last message). */
+  official?: boolean;
 };
 
 /** What happens after the first message: automatic follow-ups, hand-offs and contact rules. */
-export function FollowUpEditor({ value, collections, onChange }: Props) {
+export function FollowUpEditor({ value, collections, onChange, templates = [], official = false }: Props) {
+  const templateProps = { templates, official };
   const set = <K extends keyof FollowUpForm>(key: K, v: FollowUpForm[K]) => onChange({ ...value, [key]: v });
   const setStep = (key: 'noResponse' | 'promiseReminder' | 'promiseBroken' | 'callback', patch: Partial<FollowUpStep>) =>
     onChange({ ...value, [key]: { ...value[key], ...patch } });
@@ -35,6 +43,7 @@ export function FollowUpEditor({ value, collections, onChange }: Props) {
         hoursLabel="Esperar (horas)"
         step={value.noResponse}
         onChange={(patch) => setStep('noResponse', patch)}
+        {...templateProps}
       />
       {collections && (
         <>
@@ -44,12 +53,14 @@ export function FollowUpEditor({ value, collections, onChange }: Props) {
             step={value.promiseReminder}
             onChange={(patch) => setStep('promiseReminder', patch)}
             hint="Usa {{monto_promesa}} y {{fecha_promesa}}."
+            {...templateProps}
           />
           <StepCard
             title="Si incumple la promesa"
             hoursLabel="Horas después"
             step={value.promiseBroken}
             onChange={(patch) => setStep('promiseBroken', patch)}
+            {...templateProps}
           />
         </>
       )}
@@ -58,6 +69,7 @@ export function FollowUpEditor({ value, collections, onChange }: Props) {
         hoursLabel="Esperar (horas)"
         step={value.callback}
         onChange={(patch) => setStep('callback', patch)}
+        {...templateProps}
       />
 
       <Card variant="outlined" sx={{ p: 2 }}>
@@ -155,13 +167,18 @@ function StepCard({
   step,
   onChange,
   hint,
+  templates,
+  official,
 }: {
   title: string;
   hoursLabel: string;
   step: FollowUpStep;
   onChange: (patch: Partial<FollowUpStep>) => void;
   hint?: string;
+  templates: WaTemplate[];
+  official: boolean;
 }) {
+  const showTemplate = official || templates.length > 0;
   return (
     <Card variant="outlined" sx={{ p: 2, opacity: step.on ? 1 : 0.7 }}>
       <Stack direction="row" alignItems="center" justifyContent="space-between">
@@ -191,6 +208,31 @@ function StepCard({
             onChange={(e) => onChange({ message: e.target.value })}
             helperText={hint ?? 'Puedes usar los mismos datos del contacto: {{primer_nombre}}, {{total_vencido}}…'}
           />
+          {showTemplate && (
+            <TextField
+              select
+              fullWidth
+              size="small"
+              sx={{ mt: 1.5 }}
+              label="Plantilla de WhatsApp (si pasaron más de 24 h)"
+              value={step.templateId}
+              onChange={(e) => onChange({ templateId: e.target.value })}
+              helperText="Si el cliente escribió en las últimas 24 h se envía el mensaje de arriba; si no, esta plantilla con sus datos."
+            >
+              <MenuItem value="">Sin plantilla</MenuItem>
+              {templates.map((t) => (
+                <MenuItem key={t.id} value={t.id}>
+                  {t.name} · {t.language}
+                </MenuItem>
+              ))}
+            </TextField>
+          )}
+          {official && !step.templateId && (
+            <Alert severity="warning" sx={{ mt: 1 }}>
+              Sin plantilla, este seguimiento solo sale a quien escribió en las últimas 24 h: la API oficial de WhatsApp rechaza
+              texto libre después.
+            </Alert>
+          )}
         </Box>
       )}
     </Card>

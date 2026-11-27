@@ -540,6 +540,7 @@ public sealed class MongoCampaignStore : ICampaignStore
         DisplayName = doc.DisplayName,
         RenderedMessage = doc.RenderedMessage,
         RepliedAt = doc.RepliedAt,
+        LastReplyAt = doc.LastReplyAt,
         LastReply = doc.LastReply,
         ReplyCount = doc.ReplyCount,
         Outcome = doc.Outcome,
@@ -578,6 +579,7 @@ public sealed class MongoCampaignStore : ICampaignStore
         DisplayName = contact.DisplayName,
         RenderedMessage = contact.RenderedMessage,
         RepliedAt = contact.RepliedAt,
+        LastReplyAt = contact.LastReplyAt,
         LastReply = contact.LastReply,
         ReplyCount = contact.ReplyCount,
         Outcome = contact.Outcome,
@@ -739,6 +741,7 @@ public sealed class MongoCampaignStore : ICampaignStore
         public string? RenderedMessage { get; set; }
         public string? RecipientKey { get; set; }
         public DateTimeOffset? RepliedAt { get; set; }
+        public DateTimeOffset? LastReplyAt { get; set; }
         public string? LastReply { get; set; }
         public int ReplyCount { get; set; }
         public string? Outcome { get; set; }

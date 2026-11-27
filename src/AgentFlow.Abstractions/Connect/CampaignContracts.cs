@@ -194,6 +194,8 @@ public sealed record CampaignContactExecutionContract
     /// <summary>Last digits of the recipient, used to attribute inbound replies to this contact.</summary>
     public string? RecipientKey { get; init; }
     public DateTimeOffset? RepliedAt { get; init; }
+    /// <summary>The customer's latest reply: WhatsApp's 24-hour window for free text counts from here.</summary>
+    public DateTimeOffset? LastReplyAt { get; init; }
     public string? LastReply { get; init; }
     public int ReplyCount { get; init; }
     /// <summary>Business result of the contact (see <see cref="CampaignOutcomes"/>); null while unknown.</summary>
@@ -226,6 +228,8 @@ public sealed record CampaignFollowUpRecord
     public string Status { get; init; } = string.Empty;
     public DateTimeOffset At { get; init; }
     public string? Message { get; init; }
+    /// <summary>The WhatsApp template it was sent with (outside the 24-hour window).</summary>
+    public string? Template { get; init; }
     public string? Error { get; init; }
 }
 
