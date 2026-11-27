@@ -60,6 +60,7 @@ export const paths = {
     threads: `${ROOTS.DASHBOARD}/threads`,
     commerce: `${ROOTS.DASHBOARD}/commerce`,
     campaigns: `${ROOTS.DASHBOARD}/campaigns`,
+    collections: `${ROOTS.DASHBOARD}/collections`,
     evaluations: `${ROOTS.DASHBOARD}/evaluations`,
     kycPayments: `${ROOTS.DASHBOARD}/kyc-payments`,
     workflows: `${ROOTS.DASHBOARD}/studio/workflows`,

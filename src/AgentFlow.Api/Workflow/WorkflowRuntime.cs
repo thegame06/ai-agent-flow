@@ -110,14 +110,16 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
             if (definition is null)
                 throw new InvalidOperationException($"Workflow definition {execution.WorkflowDefinitionId} not found.");
 
-            var runtime = JsonSerializer.Deserialize<WorkflowRuntimeDefinition>(definition.DefinitionJson) ?? new WorkflowRuntimeDefinition();
+            // Case-insensitive: the designer saves "activities"/"type"/"config"; without this the
+            // definition deserialized to zero activities and every workflow "completed" doing nothing.
+            var runtime = JsonSerializer.Deserialize<WorkflowRuntimeDefinition>(definition.DefinitionJson, DefinitionJsonOptions) ?? new WorkflowRuntimeDefinition();
             var payload = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(execution.PayloadJson) ?? new();
             var context = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             var persistedContext = JsonSerializer.Deserialize<Dictionary<string, string>>(execution.ContextJson) ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             foreach (var kv in persistedContext)
                 context[kv.Key] = kv.Value;
             foreach (var kv in payload)
-                context[$"payload.{kv.Key}"] = kv.Value.ToString() ?? string.Empty;
+                WorkflowTemplateContext.FlattenPayload(context, $"payload.{kv.Key}", kv.Value);
 
             var byId = runtime.Activities.Where(x => !string.IsNullOrWhiteSpace(x.Id))
                 .ToDictionary(x => x.Id!, x => x, StringComparer.OrdinalIgnoreCase);
@@ -260,22 +262,9 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
             var content = GetConfig(resolvedConfig, "content", $"Triggered by workflow {execution.WorkflowDefinitionId}");
             var campaignId = GetConfig(resolvedConfig, "campaignId");
 
-            var created = await connectStore.CreateInboxMessageAsync(new ConnectInboxMessageContract
-            {
-                Id = Guid.NewGuid().ToString("N"),
-                TenantId = tenantId,
-                Channel = channel,
-                Recipient = recipient,
-                Content = content,
-                CampaignId = campaignId,
-                TemplateId = templateId,
-                Status = ConnectOperationalStatus.Queued,
-                CreatedAt = DateTimeOffset.UtcNow,
-                UpdatedAt = DateTimeOffset.UtcNow,
-                UpdatedBy = execution.RequestedBy
-            }, ct);
-
-            return JsonSerializer.Serialize(new { inboxMessageId = created.Id, created.Status, created.Channel });
+            // Real send through the channel (this used to only queue a record nobody dispatched).
+            return await SendOutboundOrThrowAsync(serviceProvider, tenantId, execution, activity.Type,
+                channel ?? "whatsapp", recipient, content ?? string.Empty, campaignId, templateId, ct);
         }
 
         if (string.Equals(activity.Type, "intent.branch", StringComparison.OrdinalIgnoreCase))
@@ -376,22 +365,13 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
             if (string.IsNullOrWhiteSpace(recipient))
                 throw new InvalidOperationException("Activity connect.enqueue_campaign_message requires config.recipient.");
 
-            var created = await connectStore.CreateInboxMessageAsync(new ConnectInboxMessageContract
-            {
-                Id = Guid.NewGuid().ToString("N"),
-                TenantId = tenantId,
-                Channel = GetConfig(resolvedConfig, "channel", "whatsapp"),
-                Recipient = recipient,
-                Content = GetConfig(resolvedConfig, "content", "Campaign workflow message"),
-                CampaignId = GetConfig(resolvedConfig, "campaignId"),
-                TemplateId = GetConfig(resolvedConfig, "templateId"),
-                Status = ConnectOperationalStatus.Queued,
-                CreatedAt = DateTimeOffset.UtcNow,
-                UpdatedAt = DateTimeOffset.UtcNow,
-                UpdatedBy = execution.RequestedBy
-            }, ct);
-
-            return JsonSerializer.Serialize(new { inboxMessageId = created.Id });
+            return await SendOutboundOrThrowAsync(serviceProvider, tenantId, execution, activity.Type,
+                GetConfig(resolvedConfig, "channel", "whatsapp") ?? "whatsapp",
+                recipient,
+                GetConfig(resolvedConfig, "content", "Campaign workflow message") ?? string.Empty,
+                GetConfig(resolvedConfig, "campaignId"),
+                GetConfig(resolvedConfig, "templateId"),
+                ct);
         }
 
         if (string.Equals(activity.Type, "human.assign", StringComparison.OrdinalIgnoreCase))
@@ -806,19 +786,60 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
             outgoing.Metadata["workflow_definition_id"]  = execution.WorkflowDefinitionId;
             outgoing.Metadata["activity_type"]           = "channel.send";
 
+            if (to!.Contains("{{", StringComparison.Ordinal))
+                throw new InvalidOperationException($"Activity channel.send: recipient '{to}' has an unresolved template token.");
+
             var sendResult = await channelGateway.SendMessageAsync(channelId, outgoing, ct);
+
+            // A failed send must fail the step (it used to report success=false and "complete").
+            if (!sendResult.Success)
+                throw new InvalidOperationException($"Activity channel.send failed: {sendResult.Error ?? "send_failed"}");
 
             return JsonSerializer.Serialize(new
             {
                 channelId,
                 to,
                 messageId  = outgoing.Id,
-                success    = sendResult.Success,
-                error      = sendResult.Error
+                success    = true
             });
         }
 
         throw new InvalidOperationException($"Unknown activity type '{activity.Type}'.");
+    }
+
+    private static async Task<string> SendOutboundOrThrowAsync(
+        IServiceProvider serviceProvider,
+        string tenantId,
+        WorkflowExecutionContract execution,
+        string activityType,
+        string channel,
+        string recipient,
+        string content,
+        string? campaignId,
+        string? templateId,
+        CancellationToken ct)
+    {
+        var sender = serviceProvider.GetRequiredService<AgentFlow.Api.Connect.IOutboundMessageSender>();
+        var result = await sender.SendAsync(
+            tenantId, channel, recipient, content, execution.RequestedBy, campaignId, templateId,
+            new Dictionary<string, string>
+            {
+                ["workflow_execution_id"] = execution.Id,
+                ["workflow_definition_id"] = execution.WorkflowDefinitionId,
+                ["activity_type"] = activityType
+            },
+            ct);
+
+        if (!result.Sent)
+            throw new InvalidOperationException($"Activity {activityType} failed to send: {result.Error}");
+
+        return JsonSerializer.Serialize(new
+        {
+            inboxMessageId = result.InboxMessageId,
+            channelId = result.ChannelId,
+            messageId = result.ChannelMessageId,
+            status = "Sent"
+        });
     }
 
     private static async Task<string?> ExecuteWithPolicyAsync(
@@ -1701,6 +1722,8 @@ public sealed class WorkflowRuntimeWorker : BackgroundService
         }
         return result;
     }
+
+    private static readonly JsonSerializerOptions DefinitionJsonOptions = new() { PropertyNameCaseInsensitive = true };
 
     private static void CaptureOutputs(Dictionary<string, string> context, WorkflowRuntimeActivity activity, string? outputJson)
     {

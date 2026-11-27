@@ -31,7 +31,10 @@ public sealed class WorkflowSecurityPolicyService : IWorkflowSecurityPolicyServi
         "storage.write",
         "mcp.tool_call",
         "voice.call",
-        "callcenter.outbound_call"
+        "callcenter.outbound_call",
+        // Direct send through a configured channel (WhatsApp API, API webhook, ...). The channel
+        // gateway still applies its outbound guard and capability checks.
+        "channel.send"
     };
 
     private const int MaxActivities = 100;
@@ -43,7 +46,9 @@ public sealed class WorkflowSecurityPolicyService : IWorkflowSecurityPolicyServi
     public void ValidateDefinitionOrThrow(string definitionJson)
     {
         using var doc = JsonDocument.Parse(definitionJson);
-        if (!doc.RootElement.TryGetProperty("activities", out var activities) || activities.ValueKind != JsonValueKind.Array)
+        // Property names are matched case-insensitively, exactly like the runtime reads them,
+        // so a definition that passes validation is the definition that executes.
+        if (!TryGetProperty(doc.RootElement, "activities", out var activities) || activities.ValueKind != JsonValueKind.Array)
             throw new InvalidOperationException("Workflow definition must include an activities array.");
 
         if (activities.GetArrayLength() > MaxActivities)
@@ -51,13 +56,13 @@ public sealed class WorkflowSecurityPolicyService : IWorkflowSecurityPolicyServi
 
         foreach (var activity in activities.EnumerateArray())
         {
-            var type = activity.TryGetProperty("type", out var typeValue) ? typeValue.GetString() : null;
+            var type = TryGetProperty(activity, "type", out var typeValue) ? typeValue.GetString() : null;
             if (string.IsNullOrWhiteSpace(type) || !IsAllowedActivityType(type))
                 throw new InvalidOperationException($"Activity type '{type ?? "(null)"}' is not allowed.");
 
-            var timeoutMs = activity.TryGetProperty("timeoutMs", out var timeoutValue) && timeoutValue.TryGetInt32(out var t) ? t : 30000;
-            var retryCount = activity.TryGetProperty("retryCount", out var retryValue) && retryValue.TryGetInt32(out var r) ? r : 0;
-            var retryDelayMs = activity.TryGetProperty("retryDelayMs", out var delayValue) && delayValue.TryGetInt32(out var d) ? d : 0;
+            var timeoutMs = TryGetProperty(activity, "timeoutMs", out var timeoutValue) && timeoutValue.TryGetInt32(out var t) ? t : 30000;
+            var retryCount = TryGetProperty(activity, "retryCount", out var retryValue) && retryValue.TryGetInt32(out var r) ? r : 0;
+            var retryDelayMs = TryGetProperty(activity, "retryDelayMs", out var delayValue) && delayValue.TryGetInt32(out var d) ? d : 0;
 
             if (timeoutMs <= 0 || timeoutMs > MaxTimeoutMs)
                 throw new InvalidOperationException($"Activity '{type}' timeoutMs must be between 1 and {MaxTimeoutMs}.");
@@ -77,4 +82,22 @@ public sealed class WorkflowSecurityPolicyService : IWorkflowSecurityPolicyServi
     }
 
     public bool IsAllowedActivityType(string activityType) => AllowedActivityTypes.Contains(activityType);
+
+    private static bool TryGetProperty(JsonElement element, string name, out JsonElement value)
+    {
+        if (element.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in element.EnumerateObject())
+            {
+                if (string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase))
+                {
+                    value = property.Value;
+                    return true;
+                }
+            }
+        }
+
+        value = default;
+        return false;
+    }
 }

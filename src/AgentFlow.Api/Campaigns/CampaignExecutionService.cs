@@ -24,6 +24,7 @@ public sealed class CampaignExecutionService : ICampaignExecutionService
     private readonly IWorkflowTriggerService _workflowTriggerService;
     private readonly IAuditMemory _auditMemory;
     private readonly IRuntimeModelProfileStore _runtimeProfiles;
+    private readonly IOutboundMessageSender _outbound;
 
     public CampaignExecutionService(
         ICampaignStore campaignStore,
@@ -31,7 +32,8 @@ public sealed class CampaignExecutionService : ICampaignExecutionService
         IConnectStore connectStore,
         IWorkflowTriggerService workflowTriggerService,
         IAuditMemory auditMemory,
-        IRuntimeModelProfileStore runtimeProfiles)
+        IRuntimeModelProfileStore runtimeProfiles,
+        IOutboundMessageSender outbound)
     {
         _campaignStore = campaignStore;
         _audienceService = audienceService;
@@ -39,6 +41,7 @@ public sealed class CampaignExecutionService : ICampaignExecutionService
         _workflowTriggerService = workflowTriggerService;
         _auditMemory = auditMemory;
         _runtimeProfiles = runtimeProfiles;
+        _outbound = outbound;
     }
 
     public Task<CampaignAudiencePreviewContract> SimulateAsync(string tenantId, CampaignContract campaign, CancellationToken ct = default)
@@ -257,9 +260,12 @@ public sealed class CampaignExecutionService : ICampaignExecutionService
             execution = (await _campaignStore.UpdateContactExecutionAsync(execution, ct))!;
         }
 
+        // Workflow mode is the default ExecutionMode, so it only routes a Message campaign to a
+        // workflow when one is configured; otherwise the message is sent directly.
+        var hasWorkflow = !string.IsNullOrWhiteSpace(campaign.WorkflowDefinitionId);
         if (campaign.ChannelAction == CampaignChannelAction.WorkflowStart ||
-            (campaign.ChannelAction == CampaignChannelAction.Call && !string.IsNullOrWhiteSpace(campaign.WorkflowDefinitionId)) ||
-            campaign.ExecutionMode == CampaignExecutionMode.Workflow)
+            (campaign.ChannelAction == CampaignChannelAction.Call && hasWorkflow) ||
+            (campaign.ExecutionMode == CampaignExecutionMode.Workflow && hasWorkflow))
         {
             var runtimeProfile = !string.IsNullOrWhiteSpace(campaign.RuntimeModelProfileId)
                 ? _runtimeProfiles.Get(campaign.TenantId, campaign.RuntimeModelProfileId!)
@@ -298,13 +304,23 @@ public sealed class CampaignExecutionService : ICampaignExecutionService
                     ["followupPolicyJson"] = campaign.FollowupPolicyJson
                 }
             };
-            var workflowExecution = await _workflowTriggerService.TriggerEventAsync(
-                campaign.TenantId,
-                "connect.campaign.triggered",
-                run.RequestedBy,
-                execution.Id,
-                payload,
-                ct);
+            // Run the campaign's own workflow; fall back to the event listener only when none is set.
+            var workflowExecution = hasWorkflow
+                ? await _workflowTriggerService.TriggerWorkflowAsync(
+                    campaign.TenantId,
+                    campaign.WorkflowDefinitionId!,
+                    "connect.campaign.triggered",
+                    run.RequestedBy,
+                    execution.Id,
+                    payload,
+                    ct)
+                : await _workflowTriggerService.TriggerEventAsync(
+                    campaign.TenantId,
+                    "connect.campaign.triggered",
+                    run.RequestedBy,
+                    execution.Id,
+                    payload,
+                    ct);
 
             return (await _campaignStore.UpdateContactExecutionAsync(execution with
             {
@@ -317,25 +333,27 @@ public sealed class CampaignExecutionService : ICampaignExecutionService
 
         if (campaign.ChannelAction == CampaignChannelAction.Message)
         {
-            var inbox = await _connectStore.CreateInboxMessageAsync(new ConnectInboxMessageContract
-            {
-                Id = Guid.NewGuid().ToString("N"),
-                TenantId = campaign.TenantId,
-                Channel = campaign.Channel,
-                Recipient = execution.Recipient,
-                Content = campaign.MessageDraft ?? "Mensaje de campana",
-                CampaignId = campaign.Id,
-                TemplateId = campaign.TemplateId,
-                Status = ConnectOperationalStatus.Queued,
-                CreatedAt = DateTimeOffset.UtcNow,
-                UpdatedAt = DateTimeOffset.UtcNow,
-                UpdatedBy = run.RequestedBy
-            }, ct);
+            // Real send through the campaign's channel; "Sent" only when the transport accepted it.
+            var sent = await _outbound.SendAsync(
+                campaign.TenantId,
+                campaign.Channel,
+                execution.Recipient,
+                campaign.MessageDraft ?? "Mensaje de campana",
+                run.RequestedBy,
+                campaign.Id,
+                campaign.TemplateId,
+                new Dictionary<string, string>
+                {
+                    ["campaign_run_id"] = run.Id,
+                    ["campaign_contact_execution_id"] = execution.Id
+                },
+                ct);
 
             return (await _campaignStore.UpdateContactExecutionAsync(execution with
             {
-                Status = CampaignContactExecutionStatus.Sent,
-                ChannelMessageId = inbox.Id,
+                Status = sent.Sent ? CampaignContactExecutionStatus.Sent : CampaignContactExecutionStatus.Failed,
+                ChannelMessageId = sent.ChannelMessageId ?? sent.InboxMessageId,
+                SkipReason = sent.Sent ? execution.SkipReason : sent.Error,
                 UpdatedAt = DateTimeOffset.UtcNow
             }, ct))!;
         }

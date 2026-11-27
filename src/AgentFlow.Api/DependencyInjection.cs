@@ -3,6 +3,7 @@ using AgentFlow.Api.AuthProfiles;
 using AgentFlow.Api.Commerce;
 using AgentFlow.Api.Connect;
 using AgentFlow.Api.Campaigns;
+using AgentFlow.Api.Collections;
 using AgentFlow.Api.Entitlements;
 using AgentFlow.Api.Routing;
 using AgentFlow.Api.Settings;
@@ -74,6 +75,9 @@ public static class DependencyInjection
             .AddSingleton<IRuntimeModelProfileStore, MongoRuntimeModelProfileStore>()
             .AddScoped<IModelCredentialResolver, AuthProfileModelCredentialResolver>()
             .AddScoped<IConnectStore, MongoConnectStore>()
+            .AddScoped<IOutboundMessageSender, OutboundMessageSender>()
+            .AddSingleton<ICollectionsStore, MongoCollectionsStore>()
+            .AddScoped<ICollectionsImportService, CollectionsImportService>()
             .AddScoped<ICampaignStore, MongoCampaignStore>()
             .AddScoped<ICampaignAudienceService, CampaignAudienceService>()
             .AddScoped<ICampaignBuilderService, CampaignBuilderService>()

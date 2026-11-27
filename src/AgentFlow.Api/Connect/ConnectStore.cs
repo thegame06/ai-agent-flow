@@ -36,17 +36,32 @@ public sealed class MongoConnectStore : IConnectStore
 
     private void EnsureIndexes()
     {
+        const string indexName = "ux_inbox_tenant_external_event";
         var externalEventIndex = Builders<ConnectInboxDocument>.IndexKeys
             .Ascending(x => x.TenantId)
             .Ascending(x => x.ExternalEventKey);
-        _inbox.Indexes.CreateOne(new CreateIndexModel<ConnectInboxDocument>(
+        // Dedupe only messages that carry an external event key (inbound webhooks). A sparse
+        // compound index still indexes TenantId, so every outbound message with a null key
+        // collided and only one campaign message per tenant could ever be stored.
+        var model = new CreateIndexModel<ConnectInboxDocument>(
             externalEventIndex,
-            new CreateIndexOptions
+            new CreateIndexOptions<ConnectInboxDocument>
             {
-                Name = "ux_inbox_tenant_external_event",
+                Name = indexName,
                 Unique = true,
-                Sparse = true
-            }));
+                PartialFilterExpression = Builders<ConnectInboxDocument>.Filter.Type(x => x.ExternalEventKey, BsonType.String)
+            });
+
+        try
+        {
+            _inbox.Indexes.CreateOne(model);
+        }
+        catch (MongoCommandException ex) when (ex.Code is 85 or 86) // IndexOptionsConflict / IndexKeySpecsConflict
+        {
+            // An older sparse version of the index exists: replace it.
+            _inbox.Indexes.DropOne(indexName);
+            _inbox.Indexes.CreateOne(model);
+        }
     }
 
     public async Task<IReadOnlyList<ConnectTemplateContract>> GetTemplatesAsync(string tenantId, CancellationToken ct = default)
