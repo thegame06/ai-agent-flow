@@ -123,6 +123,19 @@ public sealed class CampaignOutcomesTests
     }
 
     [Fact]
+    public async Task Reply_TheRulesCannotRead_IsFlaggedForAPerson_KeepingThePromise()
+    {
+        var (service, _, _) = CreateOutcomeService(CampaignType.Collections,
+            contact => contact with { Outcome = CampaignOutcomes.PromiseToPay, OutcomeSource = CampaignOutcomes.Sources.Reply });
+
+        var result = await service.AttributeReplyAsync(Tenant, "5215512345678@c.us", "Aja! Y que quiere que haga?", Now);
+
+        Assert.True(result!.NeedsAttention);
+        Assert.Equal("Respondio y espera respuesta", result.AttentionReason);
+        Assert.Equal(CampaignOutcomes.PromiseToPay, result.Outcome);
+    }
+
+    [Fact]
     public async Task Reply_FromANumberNoCampaignContacted_IsIgnored()
     {
         var (service, _, _) = CreateOutcomeService(CampaignType.Collections);

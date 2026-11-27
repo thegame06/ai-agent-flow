@@ -8,20 +8,28 @@ import Stack from '@mui/material/Stack';
 import Table from '@mui/material/Table';
 import Button from '@mui/material/Button';
 import Drawer from '@mui/material/Drawer';
+import Dialog from '@mui/material/Dialog';
 import Divider from '@mui/material/Divider';
 import TableRow from '@mui/material/TableRow';
 import TableBody from '@mui/material/TableBody';
 import TableCell from '@mui/material/TableCell';
 import TableHead from '@mui/material/TableHead';
+import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
+import DialogTitle from '@mui/material/DialogTitle';
+import DialogActions from '@mui/material/DialogActions';
+import DialogContent from '@mui/material/DialogContent';
 import LinearProgress from '@mui/material/LinearProgress';
 
 import axios from 'src/lib/axios';
+
+import { Iconify } from 'src/components/iconify';
 
 import {
   day,
   Field,
   money,
+  todayIso,
   stageKey,
   Sparkline,
   PromiseList,
@@ -88,7 +96,18 @@ type LoanDetail = {
   customer: { id: string; displayName?: string; fullName?: string; phone?: string; email?: string } | null;
   otherLoans: OtherLoan[];
   promises: CollectionPromise[];
+  payments: Payment[];
   contacts: ContactHistoryItem[];
+};
+
+type Payment = {
+  id: string;
+  amount: number;
+  paidAt: string;
+  reference?: string | null;
+  source: string;
+  overdueBefore: number;
+  overdueAfter: number;
 };
 
 type Props = {
@@ -102,6 +121,8 @@ export function LoanDrawer({ base, loanId, onClose, onOpenCustomer }: Props) {
   const [currentId, setCurrentId] = useState<string | null>(loanId);
   const [detail, setDetail] = useState<LoanDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [paymentOpen, setPaymentOpen] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => setCurrentId(loanId), [loanId]);
 
@@ -113,7 +134,7 @@ export function LoanDrawer({ base, loanId, onClose, onOpenCustomer }: Props) {
       .get<LoanDetail>(`${base}/loans/${currentId}`)
       .then((res) => setDetail(res.data))
       .catch(() => setError('No se pudo cargar el préstamo.'));
-  }, [base, currentId]);
+  }, [base, currentId, reloadKey]);
 
   const loan = detail?.loan;
   const history = detail ? [...detail.snapshots].reverse() : [];
@@ -262,6 +283,44 @@ export function LoanDrawer({ base, loanId, onClose, onOpenCustomer }: Props) {
             </>
           )}
 
+          <SectionTitle
+            action={
+              <Button size="small" startIcon={<Iconify icon="mdi:cash-plus" />} onClick={() => setPaymentOpen(true)}>
+                Registrar pago
+              </Button>
+            }
+          >
+            Pagos recibidos
+          </SectionTitle>
+          {detail.payments.length === 0 ? (
+            <Typography variant="body2" color="text.secondary">
+              Sin pagos registrados desde el último corte.
+            </Typography>
+          ) : (
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Fecha</TableCell>
+                  <TableCell align="right">Monto</TableCell>
+                  <TableCell align="right">Vencido antes → después</TableCell>
+                  <TableCell>Referencia</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {detail.payments.map((p) => (
+                  <TableRow key={p.id}>
+                    <TableCell>{day(p.paidAt)}</TableCell>
+                    <TableCell align="right">{money(p.amount, loan.currency)}</TableCell>
+                    <TableCell align="right">
+                      {money(p.overdueBefore, loan.currency)} → {money(p.overdueAfter, loan.currency)}
+                    </TableCell>
+                    <TableCell>{p.reference || (p.source === 'human' ? 'Operador' : '—')}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+
           <SectionTitle>Promesas de pago</SectionTitle>
           <PromiseList promises={detail.promises} currency={loan.currency} />
 
@@ -301,6 +360,94 @@ export function LoanDrawer({ base, loanId, onClose, onOpenCustomer }: Props) {
           </Button>
         </Box>
       )}
+      {loan && (
+        <PaymentDialog
+          base={base}
+          loanId={loan.loanExternalId}
+          currency={loan.currency}
+          suggested={loan.overdueBalance}
+          open={paymentOpen}
+          onClose={() => setPaymentOpen(false)}
+          onSaved={() => {
+            setPaymentOpen(false);
+            setReloadKey((k) => k + 1);
+          }}
+        />
+      )}
     </Drawer>
+  );
+}
+
+function PaymentDialog({
+  base,
+  loanId,
+  currency,
+  suggested,
+  open,
+  onClose,
+  onSaved,
+}: {
+  base: string;
+  loanId: string;
+  currency: string;
+  suggested: number;
+  open: boolean;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [amount, setAmount] = useState('');
+  const [date, setDate] = useState(todayIso());
+  const [reference, setReference] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setAmount(suggested > 0 ? suggested.toFixed(2) : '');
+    setDate(todayIso());
+    setReference('');
+    setError(null);
+  }, [open, suggested]);
+
+  const save = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await axios.post(`${base}/payments`, {
+        source: 'human',
+        payments: [{ loanId, amount: Number(amount), paidAt: `${date}T12:00:00Z`, reference: reference || null }],
+      });
+      if (res.data?.errors?.length) setError(res.data.errors[0].message);
+      else if (res.data?.duplicates) setError('Ya existe un pago con esa referencia.');
+      else onSaved();
+    } catch (err: any) {
+      setError(err?.response?.data?.message ?? 'No se pudo registrar el pago.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="xs">
+      <DialogTitle>Registrar pago</DialogTitle>
+      <DialogContent>
+        <Stack spacing={2} sx={{ pt: 1 }}>
+          <TextField label={`Monto (${currency})`} type="number" value={amount} onChange={(e) => setAmount(e.target.value)} />
+          <TextField label="Fecha de pago" type="date" value={date} onChange={(e) => setDate(e.target.value)} InputLabelProps={{ shrink: true }} />
+          <TextField label="Referencia (opcional)" value={reference} onChange={(e) => setReference(e.target.value)} helperText="Evita registrar dos veces el mismo pago." />
+          <Typography variant="caption" color="text.secondary">
+            El pago baja el saldo vencido de inmediato y cierra la promesa si la cubre. El siguiente corte importado reemplaza estos
+            números con los de tu sistema.
+          </Typography>
+          {error && <Alert severity="error">{error}</Alert>}
+        </Stack>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Cancelar</Button>
+        <Button variant="contained" disabled={busy || !(Number(amount) > 0)} onClick={save}>
+          Registrar
+        </Button>
+      </DialogActions>
+    </Dialog>
   );
 }

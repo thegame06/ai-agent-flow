@@ -79,7 +79,9 @@ public static class DependencyInjection
             .AddSingleton<ICollectionsStore, MongoCollectionsStore>()
             .AddScoped<ICollectionsImportService, CollectionsImportService>()
             .AddScoped<ICollectionPromiseService, CollectionPromiseService>()
+            .AddScoped<ICollectionPaymentService, CollectionPaymentService>()
             .AddScoped<ICampaignOutcomeService, CampaignOutcomeService>()
+            .AddScoped<ICampaignFollowUpService, CampaignFollowUpService>()
             .AddScoped<ICampaignStore, MongoCampaignStore>()
             .AddScoped<ICampaignAudienceService, CampaignAudienceService>()
             .AddScoped<ICampaignBuilderService, CampaignBuilderService>()
@@ -112,6 +114,7 @@ public static class DependencyInjection
         services.AddScoped<IWorkflowAuditService, WorkflowAuditService>();
         services.AddHostedService<WorkflowRuntimeWorker>();
         services.AddHostedService<CampaignSchedulerService>();
+        services.AddHostedService<CampaignFollowUpWorker>();
         services.AddHostedService<WorkflowCatalogSeeder>();
         services.AddHostedService<ModelRoutingBootstrapService>();
         services.AddHostedService<VoiceRuntimeEventDispatcher>();

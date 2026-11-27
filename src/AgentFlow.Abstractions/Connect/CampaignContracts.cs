@@ -200,8 +200,28 @@ public sealed record CampaignContactExecutionContract
     public string? OutcomeNotes { get; init; }
     public decimal? PromiseAmount { get; init; }
     public DateTimeOffset? PromiseDate { get; init; }
+    /// <summary>Follow-ups the campaign's policy already ran for this contact (each rule at most once).</summary>
+    public IReadOnlyList<CampaignFollowUpRecord>? FollowUps { get; init; }
+    /// <summary>A person should take over (e.g. the customer asked for an advisor).</summary>
+    public bool NeedsAttention { get; init; }
+    public string? AttentionReason { get; init; }
+    public DateTimeOffset? AttentionAt { get; init; }
     public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; init; } = DateTimeOffset.UtcNow;
+}
+
+/// <summary>A follow-up executed for a campaign contact.</summary>
+public sealed record CampaignFollowUpRecord
+{
+    public string RuleId { get; init; } = string.Empty;
+    public string Trigger { get; init; } = string.Empty;
+    /// <summary>message or handoff.</summary>
+    public string Action { get; init; } = string.Empty;
+    /// <summary>sent, failed or handed_off.</summary>
+    public string Status { get; init; } = string.Empty;
+    public DateTimeOffset At { get; init; }
+    public string? Message { get; init; }
+    public string? Error { get; init; }
 }
 
 /// <summary>One business result a campaign contact can end in.</summary>

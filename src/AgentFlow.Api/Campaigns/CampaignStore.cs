@@ -34,6 +34,10 @@ public interface ICampaignStore
     /// <summary>Most recent contact for a recipient key created after <paramref name="since"/>.</summary>
     /// <summary>Recipient keys of everyone who asked not to be contacted again (any campaign).</summary>
     Task<IReadOnlySet<string>> GetOptedOutRecipientKeysAsync(string tenantId, CancellationToken ct = default);
+    /// <summary>Recent contacts to one recipient across campaigns (newest first), for daily send limits.</summary>
+    Task<IReadOnlyList<CampaignContactExecutionContract>> GetContactExecutionsByRecipientKeyAsync(string tenantId, string recipientKey, int limit = 50, CancellationToken ct = default);
+    /// <summary>Enabled campaigns (all tenants) that have a follow-up policy.</summary>
+    Task<IReadOnlyList<CampaignContract>> GetCampaignsWithFollowUpsAsync(CancellationToken ct = default);
     Task<CampaignContactExecutionContract?> FindLatestContactByRecipientKeyAsync(string tenantId, string recipientKey, DateTimeOffset since, CancellationToken ct = default);
 
     Task<IReadOnlyList<CampaignCallOutcomeContract>> GetCallOutcomesByRunAsync(string tenantId, string runId, CancellationToken ct = default);
@@ -316,6 +320,16 @@ public sealed class MongoCampaignStore : ICampaignStore
         return keys.Where(k => !string.IsNullOrWhiteSpace(k)).Select(k => k!).ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
 
+    public async Task<IReadOnlyList<CampaignContactExecutionContract>> GetContactExecutionsByRecipientKeyAsync(string tenantId, string recipientKey, int limit = 50, CancellationToken ct = default)
+        => (await _contacts.Find(x => x.TenantId == tenantId && x.RecipientKey == recipientKey)
+                .SortByDescending(x => x.CreatedAt).Limit(Math.Clamp(limit, 1, 500)).ToListAsync(ct))
+            .Select(ToContract).ToList();
+
+    public async Task<IReadOnlyList<CampaignContract>> GetCampaignsWithFollowUpsAsync(CancellationToken ct = default)
+        => (await _campaigns.Find(x => x.Enabled && x.FollowupPolicyJson != null && x.FollowupPolicyJson != "")
+                .ToListAsync(ct))
+            .Select(ToContract).ToList();
+
     public async Task<CampaignContactExecutionContract?> FindLatestContactByRecipientKeyAsync(string tenantId, string recipientKey, DateTimeOffset since, CancellationToken ct = default)
     {
         var doc = await _contacts.Find(x => x.TenantId == tenantId && x.RecipientKey == recipientKey && x.CreatedAt >= since)
@@ -517,6 +531,10 @@ public sealed class MongoCampaignStore : ICampaignStore
         OutcomeNotes = doc.OutcomeNotes,
         PromiseAmount = doc.PromiseAmount,
         PromiseDate = doc.PromiseDate,
+        FollowUps = doc.FollowUps,
+        NeedsAttention = doc.NeedsAttention,
+        AttentionReason = doc.AttentionReason,
+        AttentionAt = doc.AttentionAt,
         CreatedAt = doc.CreatedAt,
         UpdatedAt = doc.UpdatedAt,
         Variables = doc.Variables,
@@ -551,6 +569,10 @@ public sealed class MongoCampaignStore : ICampaignStore
         OutcomeNotes = contact.OutcomeNotes,
         PromiseAmount = contact.PromiseAmount,
         PromiseDate = contact.PromiseDate,
+        FollowUps = contact.FollowUps?.ToList(),
+        NeedsAttention = contact.NeedsAttention,
+        AttentionReason = contact.AttentionReason,
+        AttentionAt = contact.AttentionAt,
         CreatedAt = contact.CreatedAt,
         UpdatedAt = contact.UpdatedAt,
         Variables = contact.Variables is null ? null : new Dictionary<string, string>(contact.Variables),
@@ -708,6 +730,10 @@ public sealed class MongoCampaignStore : ICampaignStore
         [BsonRepresentation(BsonType.Decimal128)]
         public decimal? PromiseAmount { get; set; }
         public DateTimeOffset? PromiseDate { get; set; }
+        public List<CampaignFollowUpRecord>? FollowUps { get; set; }
+        public bool NeedsAttention { get; set; }
+        public string? AttentionReason { get; set; }
+        public DateTimeOffset? AttentionAt { get; set; }
         public DateTimeOffset CreatedAt { get; set; }
         public DateTimeOffset UpdatedAt { get; set; }
     }

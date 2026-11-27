@@ -113,6 +113,20 @@ export default function CollectionsPage() {
     URL.revokeObjectURL(url);
   };
 
+  const [strategyBusy, setStrategyBusy] = useState(false);
+  const createStageStrategy = async () => {
+    setStrategyBusy(true);
+    setError(null);
+    try {
+      await axios.post(`${base}/strategies/by-stage`, { timezone: Intl.DateTimeFormat().resolvedOptions().timeZone });
+      navigate(paths.dashboard.campaigns);
+    } catch {
+      setError('No se pudo crear la estrategia. Revisa que la app de Campañas esté habilitada.');
+    } finally {
+      setStrategyBusy(false);
+    }
+  };
+
   const campaignForStage = (stageKeyValue: string) =>
     navigate(`${paths.dashboard.campaigns}?audience=collections&stage=${stageKeyValue}`);
 
@@ -135,6 +149,15 @@ export default function CollectionsPage() {
             </Typography>
           </Box>
           <Stack direction="row" spacing={1} alignItems="center">
+            <Button
+              variant="outlined"
+              startIcon={<Iconify icon="mdi:strategy" />}
+              disabled={strategyBusy}
+              onClick={createStageStrategy}
+              title="Crea 4 campañas en borrador (1-30, 31-60, 61-90 y 90+ días) con horario, límites y seguimientos"
+            >
+              Crear estrategia por etapa
+            </Button>
             <Button variant="outlined" startIcon={<Iconify icon="mdi:file-download-outline" />} onClick={downloadTemplate}>
               Plantilla CSV
             </Button>

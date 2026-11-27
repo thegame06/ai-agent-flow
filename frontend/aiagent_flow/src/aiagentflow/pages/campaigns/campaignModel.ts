@@ -86,6 +86,9 @@ export type Campaign = {
   startAt: string;
   segmentId?: string | null;
   audienceFilterJson: string;
+  followupPolicyJson?: string | null;
+  executionWindowJson?: string | null;
+  throttleJson?: string | null;
   enabled: boolean;
   lastRunAt?: string | null;
   nextRunAt?: string | null;
@@ -131,7 +134,21 @@ export type CampaignContact = {
   outcomeNotes?: string | null;
   promiseAmount?: number | null;
   promiseDate?: string | null;
+  followUps?: FollowUpRecord[] | null;
+  needsAttention?: boolean;
+  attentionReason?: string | null;
+  attentionAt?: string | null;
   createdAt: string;
+};
+
+export type FollowUpRecord = {
+  ruleId: string;
+  trigger: string;
+  action: string;
+  status: string;
+  at: string;
+  message?: string | null;
+  error?: string | null;
 };
 
 export type CampaignResults = {
@@ -146,6 +163,9 @@ export type CampaignResults = {
   contactRate: number;
   promises: number;
   promisedAmount: number;
+  followUpsSent: number;
+  needsAttention: number;
+  currency?: string | null;
   outcomes: { code: string; label: string; category: string; count: number }[];
   contactsList: CampaignContact[];
 };
@@ -244,3 +264,141 @@ export const day = (value?: string | null) =>
   value ? new Date(value).toLocaleDateString('es-MX', { timeZone: 'UTC' }) : '—';
 
 export const pct = (value: number) => `${Math.round(value * 100)}%`;
+
+// ----------------------------------------------------------------------
+// Follow-ups (stored in followupPolicyJson) and contact rules (executionWindowJson / throttleJson).
+
+type FollowUpRule = {
+  id: string;
+  trigger: string;
+  afterHours?: number;
+  beforeHours?: number;
+  action: 'message' | 'handoff';
+  message?: string | null;
+};
+
+export type FollowUpStep = { on: boolean; hours: number; message: string };
+
+export type FollowUpForm = {
+  noResponse: FollowUpStep;
+  promiseReminder: FollowUpStep;
+  promiseBroken: FollowUpStep;
+  callback: FollowUpStep;
+  handoffHuman: boolean;
+  handoffCannotPay: boolean;
+  maxFollowUps: number;
+  windowOn: boolean;
+  windowStart: number;
+  windowEnd: number;
+  skipSunday: boolean;
+  maxPerDay: number;
+  /** Rules this editor does not show (e.g. from the stage strategy template); kept as they are. */
+  extraRules: FollowUpRule[];
+};
+
+const KNOWN_RULES = ['sin-respuesta', 'recordatorio-promesa', 'promesa-incumplida', 'llamar-despues', 'asesor', 'no-puede-pagar'];
+
+export const defaultFollowUps = (collections: boolean): FollowUpForm => ({
+  noResponse: {
+    on: true,
+    hours: 48,
+    message: collections
+      ? 'Hola {{primer_nombre}}, seguimos pendientes de tu pago de {{total_vencido}} {{moneda}}. ¿Nos confirmas cuándo podrías pagar?'
+      : 'Hola {{primer_nombre}}, ¿pudiste ver nuestro mensaje anterior?',
+  },
+  promiseReminder: {
+    on: collections,
+    hours: 24,
+    message: 'Hola {{primer_nombre}}, te recordamos tu compromiso de pago de {{monto_promesa}} {{moneda}} para el {{fecha_promesa}}. ¡Gracias!',
+  },
+  promiseBroken: {
+    on: collections,
+    hours: 2,
+    message:
+      'Hola {{primer_nombre}}, no vimos reflejado tu pago del {{fecha_promesa}}. Tu saldo vencido es {{total_vencido}} {{moneda}}. ¿Cuándo podrías pagar?',
+  },
+  callback: {
+    on: true,
+    hours: 24,
+    message: 'Hola {{primer_nombre}}, como quedamos te volvemos a escribir. ¿Es un buen momento?',
+  },
+  handoffHuman: true,
+  handoffCannotPay: collections,
+  maxFollowUps: 3,
+  windowOn: true,
+  windowStart: 8,
+  windowEnd: 20,
+  skipSunday: true,
+  maxPerDay: 1,
+  extraRules: [],
+});
+
+const parseJson = <T,>(json?: string | null): T | null => {
+  try {
+    return json ? (JSON.parse(json) as T) : null;
+  } catch {
+    return null;
+  }
+};
+
+export const parseFollowUps = (campaign: Campaign | null, collections: boolean): FollowUpForm => {
+  const base = defaultFollowUps(collections);
+  if (!campaign) return base;
+  const policy = parseJson<{ enabled?: boolean; maxFollowUps?: number; rules?: FollowUpRule[] }>(campaign.followupPolicyJson);
+  const window = parseJson<{ startHour?: number; endHour?: number; days?: number[] }>(campaign.executionWindowJson);
+  const throttle = parseJson<{ maxPerRecipientPerDay?: number }>(campaign.throttleJson);
+  const rules = policy?.rules ?? [];
+  const find = (id: string) => rules.find((r) => r.id === id);
+  const step = (id: string, fallback: FollowUpStep, field: 'afterHours' | 'beforeHours' = 'afterHours'): FollowUpStep => {
+    const r = find(id);
+    return r ? { on: true, hours: r[field] ?? fallback.hours, message: r.message ?? fallback.message } : { ...fallback, on: false };
+  };
+  return {
+    noResponse: step('sin-respuesta', base.noResponse),
+    promiseReminder: step('recordatorio-promesa', base.promiseReminder, 'beforeHours'),
+    promiseBroken: step('promesa-incumplida', base.promiseBroken),
+    callback: step('llamar-despues', base.callback),
+    handoffHuman: !!find('asesor'),
+    handoffCannotPay: !!find('no-puede-pagar'),
+    maxFollowUps: policy?.maxFollowUps ?? base.maxFollowUps,
+    windowOn: !!window,
+    windowStart: window?.startHour ?? base.windowStart,
+    windowEnd: window?.endHour ?? base.windowEnd,
+    skipSunday: window ? !!window.days && !window.days.includes(0) : base.skipSunday,
+    maxPerDay: throttle?.maxPerRecipientPerDay ?? 0,
+    extraRules: rules.filter((r) => !KNOWN_RULES.includes(r.id)),
+  };
+};
+
+export const serializeFollowUps = (form: FollowUpForm, collections: boolean) => {
+  const rules: FollowUpRule[] = [];
+  const msg = (id: string, trigger: string, s: FollowUpStep, field: 'afterHours' | 'beforeHours' = 'afterHours') => {
+    if (s.on && s.message.trim()) rules.push({ id, trigger, action: 'message', [field]: s.hours, message: s.message });
+  };
+  msg('sin-respuesta', 'no_response', form.noResponse);
+  if (collections) {
+    msg('recordatorio-promesa', 'promise_due', form.promiseReminder, 'beforeHours');
+    msg('promesa-incumplida', 'promise_broken', form.promiseBroken);
+  }
+  msg('llamar-despues', 'outcome:callback_requested', form.callback);
+  if (form.handoffHuman) rules.push({ id: 'asesor', trigger: 'outcome:needs_human', action: 'handoff' });
+  if (collections && form.handoffCannotPay) rules.push({ id: 'no-puede-pagar', trigger: 'outcome:cannot_pay', action: 'handoff' });
+  rules.push(...form.extraRules);
+
+  return {
+    followupPolicyJson: rules.length ? JSON.stringify({ enabled: true, maxFollowUps: form.maxFollowUps, rules }) : '',
+    executionWindowJson: form.windowOn
+      ? JSON.stringify({
+          startHour: form.windowStart,
+          endHour: form.windowEnd,
+          days: form.skipSunday ? [1, 2, 3, 4, 5, 6] : [0, 1, 2, 3, 4, 5, 6],
+        })
+      : '',
+    throttleJson: form.maxPerDay > 0 ? JSON.stringify({ maxPerRecipientPerDay: form.maxPerDay }) : '',
+  };
+};
+
+export const FOLLOW_UP_VARIABLES = [
+  { key: 'monto_promesa', label: 'Monto prometido' },
+  { key: 'fecha_promesa', label: 'Fecha prometida' },
+];

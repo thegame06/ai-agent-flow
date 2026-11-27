@@ -627,10 +627,13 @@ public sealed class ChannelGateway : IChannelGateway
             : BroadcastResult.Partial(successCount, failedIds.Count, failedIds);
     }
 
+    private const string LegacyPlaceholderAgent = "default-agent";
+
     private static string? ResolveAgentKey(ChannelDefinition channel, ChannelSession? session)
     {
-        // Sticky routing: preserve owner agent for the current session.
-        if (!string.IsNullOrWhiteSpace(session?.AgentId))
+        // Sticky routing: preserve owner agent for the current session. "default-agent" was a
+        // placeholder older sessions got when the channel had no assistant; it is not an agent.
+        if (!string.IsNullOrWhiteSpace(session?.AgentId) && session.AgentId != LegacyPlaceholderAgent)
             return session.AgentId!;
 
         if (!string.IsNullOrWhiteSpace(channel.RouterAgentId))

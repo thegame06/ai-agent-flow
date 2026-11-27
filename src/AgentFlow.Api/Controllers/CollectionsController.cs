@@ -27,6 +27,7 @@ public sealed class CollectionsController : ControllerBase
     private readonly ITenantContextAccessor _tenantContext;
     private readonly ICollectionPromiseService _promises;
     private readonly ICampaignStore _campaigns;
+    private readonly ICollectionPaymentService _payments;
 
     public CollectionsController(
         ICollectionsStore store,
@@ -34,8 +35,10 @@ public sealed class CollectionsController : ControllerBase
         ICommerceStore parties,
         ITenantContextAccessor tenantContext,
         ICollectionPromiseService promises,
-        ICampaignStore campaigns)
+        ICampaignStore campaigns,
+        ICollectionPaymentService payments)
     {
+        _payments = payments;
         _store = store;
         _imports = imports;
         _parties = parties;
@@ -312,8 +315,42 @@ public sealed class CollectionsController : ControllerBase
             customer = party is null ? null : new { party.Id, party.DisplayName, party.FullName, party.Phone, party.Email },
             otherLoans = siblings.Select(l => new { l.Id, l.LoanExternalId, l.Product, l.TotalBalance, l.OverdueBalance, l.DaysPastDue, Stage = l.Stage.ToString(), Status = l.Status.ToString(), l.Currency }),
             promises,
+            payments = await _store.GetPaymentsByLoanAsync(tenantId, loan.Id, 50, ct),
             contacts = await ContactHistoryAsync(tenantId, loan.PartyId, ct)
         });
+    }
+
+    /// <summary>
+    /// Payments received (from the lender's system or typed by an operator). Each one lowers the
+    /// loan's overdue balance right away and closes promises that it covers. A repeated reference is ignored.
+    /// </summary>
+    [HttpPost("payments")]
+    public async Task<IActionResult> RegisterPayments([FromRoute] string tenantId, [FromBody] RegisterCollectionPaymentsRequest request, CancellationToken ct)
+    {
+        if (!CanAccess(tenantId, AgentFlowPermissions.ConnectOperate)) return Forbid();
+        if (request.Payments is not { Count: > 0 }) return BadRequest(new { message = "Envia al menos un pago." });
+        if (request.Payments.Count > MaxBatchRows) return BadRequest(new { message = $"Maximo {MaxBatchRows} pagos por envio." });
+        var source = string.IsNullOrWhiteSpace(request.Source) ? "api" : request.Source!;
+        return Ok(await _payments.RegisterAsync(tenantId, request.Payments, source, _tenantContext.Current!.UserId, ct));
+    }
+
+    /// <summary>
+    /// Creates a starting collections strategy: one draft campaign per delinquency stage, with
+    /// schedule, contact window and follow-ups. Nothing is sent until each campaign is activated.
+    /// </summary>
+    [HttpPost("strategies/by-stage")]
+    public async Task<IActionResult> CreateStageStrategy([FromRoute] string tenantId, [FromBody] CreateStageStrategyRequest? request, CancellationToken ct)
+    {
+        if (!CanAccess(tenantId, AgentFlowPermissions.ConnectManage)) return Forbid();
+        var created = CollectionsStrategyTemplates.Build(
+            tenantId,
+            string.IsNullOrWhiteSpace(request?.Timezone) ? "America/Mexico_City" : request!.Timezone!,
+            string.IsNullOrWhiteSpace(request?.Channel) ? "whatsapp" : request!.Channel!,
+            _tenantContext.Current!.UserId,
+            DateTimeOffset.UtcNow);
+        foreach (var campaign in created)
+            await _campaigns.UpsertCampaignAsync(campaign, ct);
+        return Ok(created);
     }
 
     /// <summary>Promises to pay, resolved against the current portfolio before listing.</summary>
@@ -456,4 +493,17 @@ public sealed record CreateCollectionPromiseRequest
     public DateTimeOffset? PromisedDate { get; init; }
     public string? Notes { get; init; }
     public List<string>? LoanIds { get; init; }
+}
+
+public sealed record RegisterCollectionPaymentsRequest
+{
+    public List<CollectionPaymentInput>? Payments { get; init; }
+    /// <summary>api (default), human or csv.</summary>
+    public string? Source { get; init; }
+}
+
+public sealed record CreateStageStrategyRequest
+{
+    public string? Timezone { get; init; }
+    public string? Channel { get; init; }
 }

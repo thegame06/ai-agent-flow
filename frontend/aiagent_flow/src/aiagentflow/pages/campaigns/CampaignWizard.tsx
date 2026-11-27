@@ -31,6 +31,7 @@ import axios, { endpoints } from 'src/lib/axios';
 
 import { Iconify } from 'src/components/iconify';
 
+import { FollowUpEditor } from './FollowUpEditor';
 import {
   money,
   WEEKDAYS,
@@ -41,18 +42,21 @@ import {
   renderMessage,
   CHANNEL_ACTION,
   EXECUTION_MODE,
+  parseFollowUps,
   serializeFilter,
+  defaultFollowUps,
   CampaignTypeValue,
   COMMERCE_VARIABLES,
+  serializeFollowUps,
   COLLECTIONS_VARIABLES,
   DEFAULT_COLLECTIONS_MESSAGE,
 } from './campaignModel';
 
-import type { Campaign, AudienceFilter, AudiencePreview } from './campaignModel';
+import type { Campaign, FollowUpForm, AudienceFilter, AudiencePreview } from './campaignModel';
 
 // ----------------------------------------------------------------------
 
-const STEPS = ['Objetivo', 'Audiencia', 'Mensaje', 'Programación', 'Revisar'];
+const STEPS = ['Objetivo', 'Audiencia', 'Mensaje', 'Programación', 'Seguimiento', 'Revisar'];
 
 const STAGES = [
   { key: 'Dpd1To30', label: '1-30 días' },
@@ -79,6 +83,7 @@ type Form = {
   time: string;
   weekday: string;
   timezone: string;
+  followUps: FollowUpForm;
 };
 
 export type WizardPreset = { source?: 'collections' | 'commerce'; stage?: string };
@@ -121,6 +126,7 @@ function initialForm(campaign: Campaign | null, preset: WizardPreset | null | un
       time: schedule === 'weekly' ? timeParts.join(':') || '09:00' : campaign.scheduleExpression || '09:00',
       weekday: schedule === 'weekly' ? weekday || 'Monday' : 'Monday',
       timezone: campaign.timezone || 'America/Mexico_City',
+      followUps: parseFollowUps(campaign, campaign.campaignType === CampaignTypeValue.Collections),
     };
   }
   const collections = (preset?.source ?? (collectionsEnabled ? 'collections' : 'commerce')) === 'collections';
@@ -142,6 +148,7 @@ function initialForm(campaign: Campaign | null, preset: WizardPreset | null | un
     time: '09:00',
     weekday: 'Monday',
     timezone: 'America/Mexico_City',
+    followUps: defaultFollowUps(collections),
   };
 }
 
@@ -250,6 +257,7 @@ export function CampaignWizard({ open, tenantId, campaign, preset, collectionsEn
       startAt: form.schedule === 'once' ? new Date(form.startAt).toISOString() : new Date().toISOString(),
       timezone: form.timezone,
       audienceFilterJson: filterJson,
+      ...serializeFollowUps(form.followUps, isCollections),
     };
     try {
       const res = campaign
@@ -547,6 +555,10 @@ export function CampaignWizard({ open, tenantId, campaign, preset, collectionsEn
         )}
 
         {step === 4 && (
+          <FollowUpEditor value={form.followUps} collections={isCollections} onChange={(v) => set('followUps', v)} />
+        )}
+
+        {step === 5 && (
           <Stack spacing={1.5}>
             <Review label="Campaña" value={`${form.name} · ${CAMPAIGN_TYPE[form.campaignType]}`} />
             <Review
@@ -573,6 +585,7 @@ export function CampaignWizard({ open, tenantId, campaign, preset, collectionsEn
                       : `${WEEKDAYS.find((d) => d.value === form.weekday)?.label} a las ${form.time}`
               }
             />
+            <Review label="Seguimiento" value={followUpSummary(form.followUps, isCollections)} />
             <Card variant="outlined" sx={{ p: 2 }}>
               <Typography variant="caption" color="text.secondary">
                 Ejemplo de mensaje
@@ -627,4 +640,16 @@ function Review({ label, value }: { label: string; value: string }) {
       <Typography variant="body2">{value}</Typography>
     </Stack>
   );
+}
+
+function followUpSummary(f: FollowUpForm, collections: boolean): string {
+  const parts: string[] = [];
+  if (f.noResponse.on) parts.push(`sin respuesta en ${f.noResponse.hours} h`);
+  if (collections && f.promiseReminder.on) parts.push('recordatorio de promesa');
+  if (collections && f.promiseBroken.on) parts.push('promesa incumplida');
+  if (f.callback.on) parts.push('volver a escribir');
+  if (f.handoffHuman || f.handoffCannotPay) parts.push('pasa a persona');
+  const rules = f.windowOn ? ` · de ${f.windowStart}:00 a ${f.windowEnd}:00${f.skipSunday ? ', sin domingos' : ''}` : '';
+  const cap = f.maxPerDay > 0 ? ` · máx. ${f.maxPerDay}/día` : '';
+  return `${parts.length ? parts.join(', ') : 'Sin seguimientos'}${rules}${cap}`;
 }

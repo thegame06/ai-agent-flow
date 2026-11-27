@@ -175,6 +175,11 @@ public sealed class CollectionsImportTests
         public Task<IReadOnlyList<CollectionLoanSnapshotDocument>> GetSnapshotsAsync(string tenantId, string loanId, int limit, CancellationToken ct = default) => Task.FromResult<IReadOnlyList<CollectionLoanSnapshotDocument>>(Snapshots.Values.Where(s => s.LoanId == loanId).ToList());
         public Task InsertImportBatchAsync(CollectionImportBatchDocument batch, CancellationToken ct = default) { Batches.Add(batch); return Task.CompletedTask; }
         public Task<IReadOnlyList<CollectionImportBatchDocument>> GetImportBatchesAsync(string tenantId, int limit, CancellationToken ct = default) => Task.FromResult<IReadOnlyList<CollectionImportBatchDocument>>(Batches);
+        public List<CollectionPaymentDocument> Payments { get; } = [];
+        public Task InsertPaymentAsync(CollectionPaymentDocument payment, CancellationToken ct = default) { Payments.Add(payment); return Task.CompletedTask; }
+        public Task<IReadOnlyList<CollectionPaymentDocument>> GetPaymentsByLoanAsync(string tenantId, string loanId, int limit = 50, CancellationToken ct = default)
+            => Task.FromResult<IReadOnlyList<CollectionPaymentDocument>>(Payments.Where(p => p.LoanId == loanId).ToList());
+        public Task<bool> PaymentReferenceExistsAsync(string tenantId, string reference, CancellationToken ct = default) => Task.FromResult(Payments.Any(p => p.Reference == reference));
         public List<CollectionPromiseDocument> Promises { get; } = [];
         public Task InsertPromiseAsync(CollectionPromiseDocument promise, CancellationToken ct = default) { Promises.Add(promise); return Task.CompletedTask; }
         public Task UpdatePromiseAsync(CollectionPromiseDocument promise, CancellationToken ct = default) => Task.CompletedTask;

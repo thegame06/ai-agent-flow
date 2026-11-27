@@ -143,7 +143,15 @@ export function CampaignDetail({ tenantId, campaign, onClose, onEdit, onChanged 
     load();
   };
 
-  const contacts = (results?.contactsList ?? []).filter((c) => !outcomeFilter || (c.outcome ?? 'pending') === outcomeFilter);
+  const contacts = (results?.contactsList ?? []).filter((c) =>
+    !outcomeFilter ? true : outcomeFilter === 'attention' ? !!c.needsAttention : (c.outcome ?? 'pending') === outcomeFilter
+  );
+  const currency = results?.currency || 'MXN';
+
+  const resolveAttention = async (contactId: string) => {
+    await axios.post(`${base}/campaign-contacts/${contactId}/attention/resolve`);
+    load();
+  };
   const outcomeLabel = (code?: string | null) => catalog.find((o) => o.code === code)?.label ?? results?.outcomes.find((o) => o.code === code)?.label ?? code;
   const outcomeColor = (code?: string | null) =>
     OUTCOME_CATEGORY_COLOR[catalog.find((o) => o.code === code)?.category ?? results?.outcomes.find((o) => o.code === code)?.category ?? ''] ?? 'default';
@@ -196,7 +204,7 @@ export function CampaignDetail({ tenantId, campaign, onClose, onEdit, onChanged 
               <Alert severity="info">Esta campaña aún no se ha enviado. Usa «Enviar ahora» o prográmala.</Alert>
             ) : (
               <>
-                <Box sx={{ display: 'grid', gap: 1.5, gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(5, 1fr)' } }}>
+                <Box sx={{ display: 'grid', gap: 1.5, gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(4, 1fr)' } }}>
                   <Metric label="Contactos" value={results.contacts} />
                   <Metric label="Enviados" value={results.sent} hint={results.failed ? `${results.failed} fallidos` : undefined} />
                   <Metric label="Respondieron" value={results.replied} hint={`${pct(results.replyRate)} de enviados`} />
@@ -204,8 +212,19 @@ export function CampaignDetail({ tenantId, campaign, onClose, onEdit, onChanged 
                   <Metric
                     label="Promesas de pago"
                     value={results.promises}
-                    hint={results.promisedAmount ? money(results.promisedAmount) : undefined}
+                    hint={results.promisedAmount ? money(results.promisedAmount, currency) : undefined}
                   />
+                  <Metric label="Seguimientos enviados" value={results.followUpsSent} />
+                  <Box
+                    sx={{ cursor: results.needsAttention ? 'pointer' : 'default' }}
+                    onClick={() => {
+                      if (!results.needsAttention) return;
+                      setOutcomeFilter('attention');
+                      setTab('contacts');
+                    }}
+                  >
+                    <Metric label="Para atender" value={results.needsAttention} hint={results.needsAttention ? 'Ver contactos' : undefined} />
+                  </Box>
                 </Box>
 
                 <Typography variant="overline" color="text.secondary" component="div" sx={{ mt: 3, mb: 1 }}>
@@ -250,6 +269,7 @@ export function CampaignDetail({ tenantId, campaign, onClose, onEdit, onChanged 
           <Box sx={{ mt: 2 }}>
             <TextField select size="small" label="Resultado" value={outcomeFilter} onChange={(e) => setOutcomeFilter(e.target.value)} sx={{ minWidth: 240, mb: 2 }}>
               <MenuItem value="">Todos</MenuItem>
+              <MenuItem value="attention">Para atender ({results.needsAttention})</MenuItem>
               <MenuItem value="pending">Sin resultado aún</MenuItem>
               {results.outcomes.map((o) => (
                 <MenuItem key={o.code} value={o.code}>
@@ -295,9 +315,22 @@ export function CampaignDetail({ tenantId, campaign, onClose, onEdit, onChanged 
                           </Typography>
                           {c.skipReason && (
                             <Typography variant="caption" color="error.main" component="div">
-                              {c.skipReason === 'opt_out' ? 'Pidió no ser contactado' : c.skipReason}
+                              {SKIP_REASON[c.skipReason] ?? c.skipReason}
                             </Typography>
                           )}
+                          {(c.followUps ?? []).map((f) => (
+                            <Typography
+                              key={`${f.ruleId}-${f.at}`}
+                              variant="caption"
+                              component="div"
+                              color={f.status === 'failed' ? 'error.main' : 'text.secondary'}
+                              title={f.message ?? f.error ?? ''}
+                            >
+                              {'\u21b3'} {FOLLOW_UP_LABEL[f.trigger.startsWith('outcome:') ? 'outcome' : f.trigger] ?? f.ruleId}:{' '}
+                              {FOLLOW_UP_STATUS[f.status] ?? f.status} {dateTime(f.at)}
+                              {f.error ? ` (${f.error})` : ''}
+                            </Typography>
+                          ))}
                         </TableCell>
                         <TableCell sx={{ maxWidth: 260 }}>
                           {c.lastReply ? (
@@ -329,14 +362,30 @@ export function CampaignDetail({ tenantId, campaign, onClose, onEdit, onChanged 
                           )}
                           {c.promiseDate && (
                             <Typography variant="caption" color="success.main" component="div">
-                              {c.promiseAmount ? money(c.promiseAmount) : 'Monto no indicado'} el {day(c.promiseDate)}
+                              {c.promiseAmount ? money(c.promiseAmount, currency) : 'Monto no indicado'} el {day(c.promiseDate)}
                             </Typography>
+                          )}
+                          {c.needsAttention && (
+                            <Chip
+                              size="small"
+                              color="warning"
+                              variant="soft"
+                              sx={{ mt: 0.5 }}
+                              label={`Para atender: ${c.attentionReason ?? ''}`}
+                            />
                           )}
                         </TableCell>
                         <TableCell align="right">
-                          <Button size="small" onClick={() => setEditing(c)}>
-                            Cambiar
-                          </Button>
+                          <Stack spacing={0.5} alignItems="flex-end">
+                            <Button size="small" onClick={() => setEditing(c)}>
+                              Cambiar
+                            </Button>
+                            {c.needsAttention && (
+                              <Button size="small" color="warning" onClick={() => resolveAttention(c.id)}>
+                                Marcar atendido
+                              </Button>
+                            )}
+                          </Stack>
                         </TableCell>
                       </TableRow>
                     );
@@ -384,7 +433,7 @@ export function CampaignDetail({ tenantId, campaign, onClose, onEdit, onChanged 
           </Stack>
         )}
 
-        {tab === 'settings' && <SettingsTab tenantId={tenantId} campaign={campaign} />}
+        {tab === 'settings' && <SettingsTab tenantId={tenantId} campaign={campaign} onChanged={load} />}
       </Box>
 
       <Dialog open={confirmRun !== null} onClose={() => setConfirmRun(null)}>
@@ -438,7 +487,44 @@ function Metric({ label, value, hint }: { label: string; value: number; hint?: s
   );
 }
 
-function SettingsTab({ tenantId, campaign }: { tenantId: string; campaign: Campaign }) {
+const SKIP_REASON: Record<string, string> = {
+  opt_out: 'Pidió no ser contactado',
+  limite_diario: 'Ya recibió el máximo de mensajes de hoy',
+};
+
+const FOLLOW_UP_LABEL: Record<string, string> = {
+  no_response: 'Seguimiento por no responder',
+  promise_due: 'Recordatorio de promesa',
+  promise_broken: 'Promesa incumplida',
+  outcome: 'Seguimiento por respuesta',
+};
+
+const FOLLOW_UP_STATUS: Record<string, string> = {
+  sent: 'enviado',
+  failed: 'falló',
+  handed_off: 'pasado a persona',
+  skipped: 'omitido',
+};
+
+function SettingsTab({ tenantId, campaign, onChanged }: { tenantId: string; campaign: Campaign; onChanged: () => void }) {
+  const [followUpResult, setFollowUpResult] = useState<string | null>(null);
+
+  const runFollowUps = async () => {
+    setFollowUpResult(null);
+    try {
+      const res = await axios.post(`/api/v1/tenants/${tenantId}/campaigns/${campaign.id}/follow-ups/run`);
+      const r = res.data ?? {};
+      setFollowUpResult(
+        `${r.sent ?? 0} enviados · ${r.handedOff ?? 0} pasados a persona · ${r.failed ?? 0} fallidos` +
+          (r.deferred ? ` · ${r.deferred} esperan el horario` : '') +
+          (r.limited ? ` · ${r.limited} por límite diario` : '') +
+          (r.settled ? ` · ${r.settled} ya pagaron` : '')
+      );
+      onChanged();
+    } catch (err: any) {
+      setFollowUpResult(err?.response?.data?.message ?? 'No se pudieron ejecutar los seguimientos.');
+    }
+  };
   const [recipient, setRecipient] = useState('');
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
   const filter = parseFilter(campaign.audienceFilterJson);
@@ -455,6 +541,22 @@ function SettingsTab({ tenantId, campaign }: { tenantId: string; campaign: Campa
 
   return (
     <Stack spacing={2} sx={{ mt: 2 }}>
+      <Card variant="outlined" sx={{ p: 2 }}>
+        <Typography variant="subtitle2">Seguimientos</Typography>
+        <Typography variant="caption" color="text.secondary" component="div">
+          {campaign.followupPolicyJson
+            ? 'Se ejecutan solos cada 5 minutos, respetando el horario de contacto. Puedes forzarlos ahora.'
+            : 'Esta campaña no tiene seguimientos. Configúralos en Editar → Seguimiento.'}
+        </Typography>
+        <Button variant="outlined" size="small" sx={{ mt: 1 }} disabled={!campaign.followupPolicyJson} onClick={runFollowUps}>
+          Ejecutar seguimientos ahora
+        </Button>
+        {followUpResult && (
+          <Alert severity="info" sx={{ mt: 1 }}>
+            {followUpResult}
+          </Alert>
+        )}
+      </Card>
       <Card variant="outlined" sx={{ p: 2 }}>
         <Typography variant="subtitle2">Enviar una prueba</Typography>
         <Typography variant="caption" color="text.secondary">

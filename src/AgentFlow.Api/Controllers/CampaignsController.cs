@@ -18,13 +18,45 @@ public sealed class CampaignsController : ControllerBase
     private readonly ICampaignExecutionService _executionService;
     private readonly ITenantContextAccessor _tenantContext;
     private readonly ICampaignOutcomeService _outcomes;
+    private readonly ICampaignFollowUpService _followUps;
 
-    public CampaignsController(ICampaignStore store, ICampaignExecutionService executionService, ITenantContextAccessor tenantContext, ICampaignOutcomeService outcomes)
+    public CampaignsController(ICampaignStore store, ICampaignExecutionService executionService, ITenantContextAccessor tenantContext, ICampaignOutcomeService outcomes, ICampaignFollowUpService followUps)
     {
         _store = store;
         _executionService = executionService;
         _tenantContext = tenantContext;
         _outcomes = outcomes;
+        _followUps = followUps;
+    }
+
+    /// <summary>Runs the campaign's follow-ups now (they also run on their own every few minutes).</summary>
+    [HttpPost("campaigns/{campaignId}/follow-ups/run")]
+    public async Task<IActionResult> RunFollowUps([FromRoute] string tenantId, [FromRoute] string campaignId, CancellationToken ct)
+    {
+        if (!CanAccess(tenantId, AgentFlowPermissions.ConnectOperate)) return Forbid();
+        try
+        {
+            return Ok(await _followUps.RunForCampaignAsync(tenantId, campaignId, DateTimeOffset.UtcNow, ct));
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound(new { message = "Campaign not found." });
+        }
+    }
+
+    /// <summary>A person took care of a contact the campaign flagged for attention.</summary>
+    [HttpPost("campaign-contacts/{contactId}/attention/resolve")]
+    public async Task<IActionResult> ResolveAttention([FromRoute] string tenantId, [FromRoute] string contactId, CancellationToken ct)
+    {
+        if (!CanAccess(tenantId, AgentFlowPermissions.ConnectOperate)) return Forbid();
+        try
+        {
+            return Ok(await _outcomes.ResolveAttentionAsync(tenantId, contactId, ct));
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound(new { message = "Campaign contact not found." });
+        }
     }
 
     /// <summary>Outcome catalog, optionally narrowed to the outcomes a campaign type offers.</summary>

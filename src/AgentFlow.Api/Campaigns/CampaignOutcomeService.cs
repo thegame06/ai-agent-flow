@@ -27,6 +27,10 @@ public sealed record CampaignResultsContract
     public decimal ContactRate { get; init; }
     public int Promises { get; init; }
     public decimal PromisedAmount { get; init; }
+    public int FollowUpsSent { get; init; }
+    public int NeedsAttention { get; init; }
+    /// <summary>Currency of the amounts (from the audience variables), when known.</summary>
+    public string? Currency { get; init; }
     public IReadOnlyList<CampaignOutcomeCount> Outcomes { get; init; } = [];
     public IReadOnlyList<CampaignContactExecutionContract> ContactsList { get; init; } = [];
 }
@@ -46,6 +50,9 @@ public interface ICampaignOutcomeService
     Task<CampaignContactExecutionContract?> AttributeReplyAsync(string tenantId, string from, string text, DateTimeOffset receivedAt, CancellationToken ct = default);
 
     Task<CampaignResultsContract> GetResultsAsync(string tenantId, string campaignId, CancellationToken ct = default);
+
+    /// <summary>An operator took care of a contact flagged for a person.</summary>
+    Task<CampaignContactExecutionContract> ResolveAttentionAsync(string tenantId, string contactExecutionId, CancellationToken ct = default);
 }
 
 public sealed class CampaignOutcomeService : ICampaignOutcomeService
@@ -98,13 +105,26 @@ public sealed class CampaignOutcomeService : ICampaignOutcomeService
             UpdatedAt = DateTimeOffset.UtcNow
         };
 
-        if (contact.OutcomeSource is not null && StickySources.Contains(contact.OutcomeSource))
-            return await _campaigns.UpdateContactExecutionAsync(contact, ct) ?? contact;
-
         var campaign = await _campaigns.GetCampaignAsync(tenantId, contact.CampaignId, ct);
         // "manana" / "el viernes" are relative to the customer's day, not UTC.
         var classification = CampaignReplyClassifier.Classify(text, ToLocal(receivedAt, campaign?.Timezone));
         var outcome = classification.Outcome;
+
+        // A reply the rules cannot read (a question, a doubt, "hola") is waiting for an answer:
+        // never let it sit unseen.
+        if (outcome is null)
+        {
+            contact = contact with
+            {
+                NeedsAttention = true,
+                AttentionReason = "Respondio y espera respuesta",
+                AttentionAt = receivedAt
+            };
+        }
+        // An outcome set by a person, an agent or a workflow is not overwritten by the reply classifier.
+        if (contact.OutcomeSource is not null && StickySources.Contains(contact.OutcomeSource))
+            return await _campaigns.UpdateContactExecutionAsync(contact, ct) ?? contact;
+
         // Keep a specific earlier outcome ("promesa") when a follow-up reply is just chatter ("gracias").
         if (outcome is null && contact.Outcome is not null && contact.Outcome != CampaignOutcomes.Replied)
             return await _campaigns.UpdateContactExecutionAsync(contact, ct) ?? contact;
@@ -120,6 +140,14 @@ public sealed class CampaignOutcomeService : ICampaignOutcomeService
             Notes: classification.Outcome is null ? null : $"Clasificado automaticamente de la respuesta: \"{Truncate(text, 200)}\"",
             PromiseAmount: classification.PromiseAmount,
             PromiseDate: classification.PromiseDate), ct);
+    }
+
+    public async Task<CampaignContactExecutionContract> ResolveAttentionAsync(string tenantId, string contactExecutionId, CancellationToken ct = default)
+    {
+        var contact = await _campaigns.GetContactExecutionAsync(tenantId, contactExecutionId, ct)
+            ?? throw new KeyNotFoundException("Campaign contact not found.");
+        var updated = contact with { NeedsAttention = false, UpdatedAt = DateTimeOffset.UtcNow };
+        return await _campaigns.UpdateContactExecutionAsync(updated, ct) ?? updated;
     }
 
     public async Task<CampaignResultsContract> GetResultsAsync(string tenantId, string campaignId, CancellationToken ct = default)
@@ -155,6 +183,9 @@ public sealed class CampaignOutcomeService : ICampaignOutcomeService
             ContactRate = contacts.Count == 0 ? 0 : Math.Round((decimal)positiveOrContacted / contacts.Count, 4),
             Promises = promises.Count,
             PromisedAmount = promises.Sum(p => p.PromiseAmount ?? 0m),
+            FollowUpsSent = contacts.Sum(c => (c.FollowUps ?? []).Count(f => f.Action == "message" && f.Status == "sent")),
+            NeedsAttention = contacts.Count(c => c.NeedsAttention),
+            Currency = contacts.Select(c => c.Variables?.GetValueOrDefault("moneda")).FirstOrDefault(m => !string.IsNullOrWhiteSpace(m)),
             Outcomes = outcomes,
             ContactsList = contacts.Select(c => c with { Outcome = EffectiveOutcome(c, now) ?? c.Outcome }).ToList()
         };
@@ -202,6 +233,8 @@ public sealed class CampaignOutcomeService : ICampaignOutcomeService
             OutcomeNotes = notes,
             PromiseAmount = outcome == CampaignOutcomes.PromiseToPay ? request.PromiseAmount : null,
             PromiseDate = outcome == CampaignOutcomes.PromiseToPay ? promiseDate : null,
+            // An operator recording the result means a person took care of it.
+            NeedsAttention = request.Source == CampaignOutcomes.Sources.Human ? false : contact.NeedsAttention,
             UpdatedAt = now
         };
         updated = await _campaigns.UpdateContactExecutionAsync(updated, ct) ?? updated;
