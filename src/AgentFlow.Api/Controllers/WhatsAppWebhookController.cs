@@ -2,6 +2,7 @@ using AgentFlow.Abstractions.Connect;
 using AgentFlow.Abstractions.Workflow;
 using AgentFlow.Api.Campaigns;
 using AgentFlow.Api.Connect;
+using AgentFlow.Api.Security;
 using AgentFlow.Api.Workflow;
 using AgentFlow.Application.Channels;
 using AgentFlow.Domain.Aggregates;
@@ -76,6 +77,7 @@ public sealed class WhatsAppWebhookController : ControllerBase
     /// Receive incoming WhatsApp messages from Meta Business API
     /// </summary>
     [HttpPost]
+    [RequireMetaSignature]
     public async Task<IActionResult> ReceiveWebhook(string tenantId, [FromBody] WhatsAppWebhookPayload payload, CancellationToken ct)
     {
         try
@@ -182,6 +184,7 @@ public sealed class WhatsAppWebhookController : ControllerBase
     /// workflow listening on the "connect.message.received" event.
     /// </summary>
     [HttpPost("qr")]
+    [RequireQrBridgeKey]
     public async Task<IActionResult> ReceiveQrMessage(string tenantId, [FromBody] QrWhatsAppMessage message, CancellationToken ct)
     {
         try
