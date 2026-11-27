@@ -78,6 +78,7 @@ public static class DependencyInjection
             .AddScoped<IOutboundMessageSender, OutboundMessageSender>()
             .AddSingleton<ICollectionsStore, MongoCollectionsStore>()
             .AddSingleton<ICollectionPaymentDeskStore, MongoCollectionPaymentDeskStore>()
+            .AddScoped<AgentFlow.Api.Connect.IMetaWhatsAppAccounts, AgentFlow.Api.Connect.MetaWhatsAppAccounts>()
             .AddScoped<ICollectionsImportService, CollectionsImportService>()
             .AddScoped<ICollectionPromiseService, CollectionPromiseService>()
             .AddScoped<ICollectionPaymentService, CollectionPaymentService>()

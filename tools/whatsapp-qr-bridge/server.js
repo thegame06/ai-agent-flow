@@ -42,7 +42,8 @@ async function postToAgentFlowWithRetry(url, payload, attempts = 3) {
   let lastErr;
   for (let i = 1; i <= attempts; i++) {
     try {
-      return await axios.post(url, payload, { timeout: 15000 });
+      // AgentFlow only accepts forwarded messages that carry the shared bridge key.
+      return await axios.post(url, payload, { timeout: 15000, headers: API_KEY ? { 'X-Bridge-Key': API_KEY } : {} });
     } catch (err) {
       lastErr = err;
       if (i < attempts) await sleep(400 * i);

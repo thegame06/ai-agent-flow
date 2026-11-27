@@ -1,3 +1,4 @@
+using AgentFlow.Abstractions;
 using AgentFlow.Abstractions.Connect;
 using AgentFlow.Extensions;
 using Microsoft.Extensions.DependencyInjection;
@@ -27,9 +28,17 @@ public sealed class CampaignSchedulerService : BackgroundService
                 var store = scope.ServiceProvider.GetRequiredService<ICampaignStore>();
                 var executor = scope.ServiceProvider.GetRequiredService<ICampaignExecutionService>();
                 var entitlements = scope.ServiceProvider.GetRequiredService<IAppEntitlementService>();
+                var locks = scope.ServiceProvider.GetService<IDistributedLockService>();
                 var dueCampaigns = await store.GetDueCampaignsAsync(DateTimeOffset.UtcNow, stoppingToken);
-                foreach (var campaign in dueCampaigns)
+                foreach (var due in dueCampaigns)
                 {
+                    // With several API instances every one sees the same due campaigns: only the
+                    // instance holding the lock runs it, and it re-reads the campaign so a run that
+                    // another instance just finished is not repeated.
+                    await using var held = locks is null ? null : await locks.TryAcquireAsync($"campaign-run:{due.TenantId}:{due.Id}", TimeSpan.FromMinutes(30), stoppingToken);
+                    if (locks is not null && held is null) continue;
+                    var campaign = await store.GetCampaignAsync(due.TenantId, due.Id, stoppingToken);
+                    if (campaign is null || campaign.NextRunAt is null || campaign.NextRunAt > DateTimeOffset.UtcNow) continue;
                     try
                     {
                         // A tenant without the Campaigns app must not get scheduled sends.

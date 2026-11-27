@@ -34,7 +34,7 @@ public sealed class ExtensionsController : ControllerBase
     /// </summary>
     [HttpGet("tenants/{tenantId}/apps")]
     public async Task<IActionResult> GetTenantApps([FromRoute] string tenantId, CancellationToken ct)
-        => Ok(await _entitlements.GetEffectiveAsync(tenantId, ct));
+        => IsTenant(tenantId) ? Ok(await _entitlements.GetEffectiveAsync(tenantId, ct)) : Forbid();
 
     [HttpGet("tools")]
     public IActionResult GetTools()
@@ -89,6 +89,7 @@ public sealed class ExtensionsController : ControllerBase
     [HttpPost("catalog/register")]
     public async Task<IActionResult> RegisterPackageAsync([FromBody] ExtensionPackageRegistrationRequest request, CancellationToken ct)
     {
+        if (!IsPlatformAdmin()) return Forbid();
         var result = await _registry.RegisterPackageAsync(request, ct);
         return result.IsSuccess ? Ok(result.Value) : BadRequest(result.Error);
     }
@@ -96,6 +97,7 @@ public sealed class ExtensionsController : ControllerBase
     [HttpPost("tenants/{tenantId}/install")]
     public async Task<IActionResult> InstallForTenantAsync(string tenantId, [FromBody] TenantInstallRequest request, CancellationToken ct)
     {
+        if (!CanManageTenant(tenantId)) return Forbid();
         var result = await _registry.SetTenantInstallStateAsync(tenantId, request.ExtensionId, installed: true, enabled: request.EnableAfterInstall, ct);
         return result.IsSuccess ? Ok() : BadRequest(result.Error);
     }
@@ -103,6 +105,7 @@ public sealed class ExtensionsController : ControllerBase
     [HttpPost("tenants/{tenantId}/uninstall")]
     public async Task<IActionResult> UninstallForTenantAsync(string tenantId, [FromBody] TenantInstallRequest request, CancellationToken ct)
     {
+        if (!CanManageTenant(tenantId)) return Forbid();
         var result = await _registry.SetTenantInstallStateAsync(tenantId, request.ExtensionId, installed: false, enabled: false, ct);
         return result.IsSuccess ? Ok() : BadRequest(result.Error);
     }
@@ -110,6 +113,7 @@ public sealed class ExtensionsController : ControllerBase
     [HttpPost("tenants/{tenantId}/enable")]
     public async Task<IActionResult> EnableForTenantAsync(string tenantId, [FromBody] TenantToggleRequest request, CancellationToken ct)
     {
+        if (!CanManageTenant(tenantId)) return Forbid();
         var result = await _registry.SetTenantEnabledStateAsync(tenantId, request.ExtensionId, enabled: true, ct);
         return result.IsSuccess ? Ok() : BadRequest(result.Error);
     }
@@ -117,6 +121,7 @@ public sealed class ExtensionsController : ControllerBase
     [HttpPost("tenants/{tenantId}/disable")]
     public async Task<IActionResult> DisableForTenantAsync(string tenantId, [FromBody] TenantToggleRequest request, CancellationToken ct)
     {
+        if (!CanManageTenant(tenantId)) return Forbid();
         var result = await _registry.SetTenantEnabledStateAsync(tenantId, request.ExtensionId, enabled: false, ct);
         return result.IsSuccess ? Ok() : BadRequest(result.Error);
     }
@@ -124,6 +129,7 @@ public sealed class ExtensionsController : ControllerBase
     [HttpGet("tenants/{tenantId}/states")]
     public async Task<IActionResult> GetTenantStatesAsync(string tenantId, CancellationToken ct)
     {
+        if (!IsTenant(tenantId)) return Forbid();
         var states = await _registry.GetTenantExtensionStatesAsync(tenantId, ct);
         return Ok(states);
     }
@@ -131,6 +137,7 @@ public sealed class ExtensionsController : ControllerBase
     [HttpPut("tenants/{tenantId}/allowlist")]
     public async Task<IActionResult> PutAllowlistAsync(string tenantId, [FromBody] TenantAllowlistRequest request, CancellationToken ct)
     {
+        if (!IsPlatformAdmin()) return Forbid();
         var result = await _registry.SetTenantAllowlistAsync(tenantId, request.ExtensionIds, ct);
         return result.IsSuccess ? Ok() : BadRequest(result.Error);
     }
@@ -138,6 +145,7 @@ public sealed class ExtensionsController : ControllerBase
     [HttpGet("tenants/{tenantId}/allowlist")]
     public async Task<IActionResult> GetAllowlistAsync(string tenantId, CancellationToken ct)
     {
+        if (!IsTenant(tenantId)) return Forbid();
         var allowlist = await _registry.GetTenantAllowlistAsync(tenantId, ct);
         return Ok(allowlist);
     }
@@ -145,9 +153,21 @@ public sealed class ExtensionsController : ControllerBase
     [HttpPost("catalog/{extensionId}/quarantine")]
     public async Task<IActionResult> QuarantineAsync(string extensionId, [FromBody] QuarantineRequest request, CancellationToken ct)
     {
+        if (!IsPlatformAdmin()) return Forbid();
         var result = await _registry.QuarantineExtensionAsync(extensionId, request.Reason, ct);
         return result.IsSuccess ? Ok() : BadRequest(result.Error);
     }
+
+    private bool IsPlatformAdmin() => _tenantContext.Current?.IsPlatformAdmin == true;
+
+    /// <summary>Reading a tenant's apps and states: that tenant's users, or a platform admin.</summary>
+    private bool IsTenant(string tenantId)
+        => _tenantContext.Current is { } c && (c.IsPlatformAdmin || string.Equals(c.TenantId, tenantId, StringComparison.Ordinal));
+
+    /// <summary>Installing or toggling apps: a tenant manager of that tenant, or a platform admin.</summary>
+    private bool CanManageTenant(string tenantId)
+        => _tenantContext.Current is { } c &&
+           (c.IsPlatformAdmin || (string.Equals(c.TenantId, tenantId, StringComparison.Ordinal) && c.HasPermission(AgentFlowPermissions.TenantManage)));
 }
 
 public sealed record ToolInvokeRequest

@@ -236,11 +236,15 @@ public sealed class CampaignFollowUpWorker : BackgroundService
                 var store = scope.ServiceProvider.GetRequiredService<ICampaignStore>();
                 var followUps = scope.ServiceProvider.GetRequiredService<ICampaignFollowUpService>();
                 var entitlements = scope.ServiceProvider.GetRequiredService<IAppEntitlementService>();
+                var locks = scope.ServiceProvider.GetService<AgentFlow.Abstractions.IDistributedLockService>();
 
                 foreach (var campaign in await store.GetCampaignsWithFollowUpsAsync(stoppingToken))
                 {
                     if (campaign.Status is CampaignStatus.Paused or CampaignStatus.Archived or CampaignStatus.Draft) continue;
                     if (!await entitlements.IsEnabledAsync(campaign.TenantId, AppModules.Campaigns, stoppingToken)) continue;
+                    // One instance per campaign: two would send the same follow-up twice.
+                    await using var held = locks is null ? null : await locks.TryAcquireAsync($"campaign-followups:{campaign.TenantId}:{campaign.Id}", TimeSpan.FromMinutes(10), stoppingToken);
+                    if (locks is not null && held is null) continue;
                     try
                     {
                         var summary = await followUps.RunForCampaignAsync(campaign.TenantId, campaign.Id, DateTimeOffset.UtcNow, stoppingToken);
