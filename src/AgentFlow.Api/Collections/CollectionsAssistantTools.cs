@@ -41,7 +41,8 @@ internal abstract class CollectionsAssistantToolBase : IToolPlugin
 
             var input = Parse(context.InputJson);
             var service = scope.ServiceProvider.GetRequiredService<ICollectionsAssistantService>();
-            var result = await RunAsync(service, context.TenantId, phone!, input, ct);
+            var call = new AssistantCall(context.TenantId, phone!, context.Metadata.GetValueOrDefault("channel.session_id"));
+            var result = await RunAsync(service, call, input, ct);
             return ToolResult.Success(JsonSerializer.Serialize(result, Json));
         }
         catch (Exception ex)
@@ -50,7 +51,10 @@ internal abstract class CollectionsAssistantToolBase : IToolPlugin
         }
     }
 
-    protected abstract Task<object> RunAsync(ICollectionsAssistantService service, string tenantId, string phone, JsonElement input, CancellationToken ct);
+    /// <summary>Who the tool acts for: tenant, customer phone and the live conversation (if any).</summary>
+    protected sealed record AssistantCall(string TenantId, string Phone, string? SessionId);
+
+    protected abstract Task<object> RunAsync(ICollectionsAssistantService service, AssistantCall call, JsonElement input, CancellationToken ct);
 
     private static async Task<string?> ResolveCustomerPhoneAsync(IServiceProvider services, ToolExecutionContext context, CancellationToken ct)
     {
@@ -103,8 +107,8 @@ internal sealed class CollectionsGetCustomerContextTool(IServiceScopeFactory sco
         "Datos del cliente con el que hablas: nombre, prestamos, saldo vencido, dias de atraso, promesa pendiente, el ultimo mensaje de cobranza que le enviamos y la fecha de hoy. Llamala antes de responder.";
     public override string InputSchemaJson => """{"type":"object","properties":{}}""";
 
-    protected override async Task<object> RunAsync(ICollectionsAssistantService service, string tenantId, string phone, JsonElement input, CancellationToken ct)
-        => await service.GetContextAsync(tenantId, phone, ct);
+    protected override async Task<object> RunAsync(ICollectionsAssistantService service, AssistantCall call, JsonElement input, CancellationToken ct)
+        => await service.GetContextAsync(call.TenantId, call.Phone, ct, call.SessionId);
 }
 
 internal sealed class CollectionsRegisterPromiseTool(IServiceScopeFactory scopeFactory) : CollectionsAssistantToolBase(scopeFactory)
@@ -116,12 +120,12 @@ internal sealed class CollectionsRegisterPromiseTool(IServiceScopeFactory scopeF
     public override string InputSchemaJson =>
         """{"type":"object","properties":{"whenText":{"type":"string","description":"Lo que dijo el cliente sobre la fecha, p.ej. 'el lunes'"},"promisedDate":{"type":"string","description":"YYYY-MM-DD, solo si no hay whenText"},"amount":{"type":"number","description":"Monto prometido; omitelo si el cliente no lo dijo"},"notes":{"type":"string"}}}""";
 
-    protected override async Task<object> RunAsync(ICollectionsAssistantService service, string tenantId, string phone, JsonElement input, CancellationToken ct)
+    protected override async Task<object> RunAsync(ICollectionsAssistantService service, AssistantCall call, JsonElement input, CancellationToken ct)
     {
         DateTimeOffset? date = DateTime.TryParseExact(Str(input, "promisedDate"), ["yyyy-MM-dd", "dd/MM/yyyy", "yyyy/MM/dd"], CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed)
             ? new DateTimeOffset(parsed.Date, TimeSpan.Zero)
             : null;
-        return await service.RegisterPromiseAsync(tenantId, phone, Dec(input, "amount"), date, Str(input, "whenText"), Str(input, "notes"), ct);
+        return await service.RegisterPromiseAsync(call.TenantId, call.Phone, Dec(input, "amount"), date, Str(input, "whenText"), Str(input, "notes"), ct);
     }
 }
 
@@ -134,8 +138,8 @@ internal sealed class CollectionsRecordOutcomeTool(IServiceScopeFactory scopeFac
     public override string InputSchemaJson =>
         """{"type":"object","required":["outcome"],"properties":{"outcome":{"type":"string","enum":["already_paid","cannot_pay","dispute","not_interested","opt_out","wrong_number","callback_requested","interested"]},"notes":{"type":"string"}}}""";
 
-    protected override async Task<object> RunAsync(ICollectionsAssistantService service, string tenantId, string phone, JsonElement input, CancellationToken ct)
-        => await service.RecordOutcomeAsync(tenantId, phone, Str(input, "outcome") ?? string.Empty, Str(input, "notes"), ct);
+    protected override async Task<object> RunAsync(ICollectionsAssistantService service, AssistantCall call, JsonElement input, CancellationToken ct)
+        => await service.RecordOutcomeAsync(call.TenantId, call.Phone, Str(input, "outcome") ?? string.Empty, Str(input, "notes"), ct);
 }
 
 internal sealed class CollectionsHandoffTool(IServiceScopeFactory scopeFactory) : CollectionsAssistantToolBase(scopeFactory)
@@ -147,8 +151,8 @@ internal sealed class CollectionsHandoffTool(IServiceScopeFactory scopeFactory) 
     public override string InputSchemaJson =>
         """{"type":"object","required":["reason"],"properties":{"reason":{"type":"string"}}}""";
 
-    protected override async Task<object> RunAsync(ICollectionsAssistantService service, string tenantId, string phone, JsonElement input, CancellationToken ct)
-        => await service.HandoffAsync(tenantId, phone, Str(input, "reason") ?? "El asistente pide un asesor", ct);
+    protected override async Task<object> RunAsync(ICollectionsAssistantService service, AssistantCall call, JsonElement input, CancellationToken ct)
+        => await service.HandoffAsync(call.TenantId, call.Phone, Str(input, "reason") ?? "El asistente pide un asesor", ct, call.SessionId);
 }
 
 /// <summary>The collections assistant agent: prompt and tool list, seeded per tenant.</summary>
@@ -183,7 +187,8 @@ Como responder:
 - Si ya tiene una promesa pendiente: recuerdasela y pregunta si la mantiene.
 - Si dice que ya pago: llama af_campaign_record_outcome con already_paid, agradece y dile que lo verificaremos.
 - Si no puede pagar: muestra empatia, llama af_campaign_record_outcome con cannot_pay y af_conversation_handoff_to_human para que un asesor le ofrezca opciones.
-- Si pide un asesor, desconoce la deuda, insulta o se queja claramente, o pregunta algo que no esta en el contexto (por ejemplo condiciones, intereses o donde pagar): llama af_conversation_handoff_to_human con el motivo y dile que un asesor lo contactara. Una pregunta o una duda no es una queja: respondela con el contexto.
+- Si pide un asesor, desconoce la deuda, insulta o se queja claramente, o pregunta algo que no esta en el contexto (por ejemplo condiciones, intereses o donde pagar): llama af_conversation_handoff_to_human con el motivo y dile que un asesor le escribira por este mismo chat. Mientras lo atiende una persona no recibiras sus mensajes. Una pregunta o una duda no es una queja: respondela con el contexto.
+- Si el contexto trae "conversation", un asesor ya lo atendio y te devolvio la conversacion: si recibes un mensaje, la conversacion es tuya. Atiende su ultimo mensaje normalmente (por ejemplo, "cuanto debo?" -> sus saldos) y no lo vuelvas a pasar a un asesor salvo que en ese mensaje lo pida otra vez.
 - Si pide que no le escriban: llama af_campaign_record_outcome con opt_out y despidete sin insistir.
 - Solo si dice expresamente que NO es el titular ("no soy esa persona", "numero equivocado"): llama af_campaign_record_outcome con wrong_number, disculpate y a partir de ahi no reveles montos ni datos del credito.
 

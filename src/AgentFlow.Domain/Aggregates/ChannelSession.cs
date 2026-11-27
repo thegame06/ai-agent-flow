@@ -49,6 +49,12 @@ public sealed class ChannelSession
         ThreadId = threadId;
     }
 
+    /// <summary>The next agent run starts a new conversation thread.</summary>
+    public void UnlinkThread()
+    {
+        ThreadId = null;
+    }
+
     public void RecordMessage()
     {
         MessageCount++;

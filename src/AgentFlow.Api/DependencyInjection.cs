@@ -81,6 +81,7 @@ public static class DependencyInjection
             .AddScoped<ICollectionPromiseService, CollectionPromiseService>()
             .AddScoped<ICollectionPaymentService, CollectionPaymentService>()
             .AddScoped<ICollectionsAssistantService, CollectionsAssistantService>()
+            .AddScoped<AgentFlow.Api.Connect.IConversationHandoffService, AgentFlow.Api.Connect.ConversationHandoffService>()
             .AddScoped<ICampaignOutcomeService, CampaignOutcomeService>()
             .AddScoped<ICampaignFollowUpService, CampaignFollowUpService>()
             .AddScoped<ICampaignStore, MongoCampaignStore>()

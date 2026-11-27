@@ -270,3 +270,41 @@ export function Sparkline({ values, height = 48 }: { values: number[]; height?: 
     </Box>
   );
 }
+
+// ----------------------------------------------------------------------
+// Hand-off to an advisor
+
+export type AttentionItem = {
+  sessionId?: string | null;
+  channelId?: string | null;
+  contactId?: string | null;
+  campaignId?: string | null;
+  campaignName?: string | null;
+  partyId?: string | null;
+  customer: string;
+  recipient: string;
+  state: 'pending' | 'human' | 'flagged';
+  reason: string;
+  since?: string | null;
+  assignee?: string | null;
+  lastCustomerMessage?: string | null;
+  unread: number;
+};
+
+export const HANDOFF_STATE: Record<string, { label: string; color: 'warning' | 'info' | 'default' | 'success' }> = {
+  pending: { label: 'Esperando asesor', color: 'warning' },
+  human: { label: 'Con un asesor', color: 'info' },
+  flagged: { label: 'Marcado por campaña', color: 'default' },
+  assistant: { label: 'Con el asistente', color: 'success' },
+};
+
+/** "12 min", "3 h", "2 d" since the given time. */
+export const waitingFor = (since?: string | null) => {
+  if (!since) return '—';
+  const minutes = Math.max(0, Math.round((Date.now() - new Date(since).getTime()) / 60000));
+  if (minutes < 1) return 'ahora';
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 48) return `${hours} h`;
+  return `${Math.round(hours / 24)} d`;
+};
