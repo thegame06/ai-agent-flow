@@ -23,6 +23,7 @@ public sealed class ChannelGateway : IChannelGateway
     private readonly IChannelExecutionRequestFactory _executionRequestFactory;
     private readonly IAuditMemory _auditMemory;
     private readonly IChannelDeliveryPolicy _deliveryPolicy;
+    private readonly IReadOnlyList<IChannelReplyTransformer> _replyTransformers;
     private readonly IChannelCapabilityPolicy _capabilityPolicy;
     private readonly IChannelSpamReputationRepository _spamReputationRepo;
     private readonly IHumanEscalationNotifier? _humanEscalationNotifier;
@@ -45,8 +46,10 @@ public sealed class ChannelGateway : IChannelGateway
         IEnumerable<IChannelHandler> handlers,
         IHumanEscalationNotifier? humanEscalationNotifier,
         ILogger<ChannelGateway> logger,
-        IChannelDeliveryPolicy? deliveryPolicy = null)
+        IChannelDeliveryPolicy? deliveryPolicy = null,
+        IEnumerable<IChannelReplyTransformer>? replyTransformers = null)
     {
+        _replyTransformers = replyTransformers?.ToList() ?? [];
         _channelRepo = channelRepo;
         _sessionRepo = sessionRepo;
         _messageRepo = messageRepo;
@@ -361,7 +364,7 @@ public sealed class ChannelGateway : IChannelGateway
             }
 
             // Create outgoing message
-            var customerResponse = finalResponse!;
+            var customerResponse = await TransformReplyAsync(incomingMessage, channel, finalResponse!, ct);
             if (ChannelGatewayResponseInterpreter.ShouldSuppressCustomerDelivery(customerResponse))
             {
                 var customerSafeResponse = await _deliveryPolicy.BuildCustomerSafeFallbackAsync(
@@ -540,6 +543,24 @@ public sealed class ChannelGateway : IChannelGateway
         ErrorCode = errorCode,
         ErrorMessage = errorMessage
     };
+
+    /// <summary>Placeholders the agent wrote are filled in, then the text is formatted for the channel.</summary>
+    private async Task<string> TransformReplyAsync(ChannelMessage incoming, ChannelDefinition? channel, string reply, CancellationToken ct)
+    {
+        if (channel is null) return reply;
+        foreach (var transformer in _replyTransformers)
+        {
+            try
+            {
+                reply = await transformer.TransformAsync(incoming, channel, reply, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Reply transformer {Transformer} failed; the reply is sent as written", transformer.GetType().Name);
+            }
+        }
+        return ChannelReplyFormatting.ForChannel(channel.Type, reply);
+    }
 
     public async Task<SendResult> SendMessageAsync(string channelId, ChannelMessage message, CancellationToken ct = default)
     {

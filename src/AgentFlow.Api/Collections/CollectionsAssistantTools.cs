@@ -4,6 +4,7 @@ using AgentFlow.Abstractions;
 using AgentFlow.Abstractions.Connect;
 using AgentFlow.Domain.Repositories;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace AgentFlow.Api.Collections;
 
@@ -43,13 +44,21 @@ internal abstract class CollectionsAssistantToolBase : IToolPlugin
             var service = scope.ServiceProvider.GetRequiredService<ICollectionsAssistantService>();
             var call = new AssistantCall(context.TenantId, phone!, context.Metadata.GetValueOrDefault("channel.session_id"));
             var result = await RunAsync(service, call, input, ct);
-            return ToolResult.Success(JsonSerializer.Serialize(result, Json));
+            var output = JsonSerializer.Serialize(result, Json);
+            Logger(scope.ServiceProvider).LogDebug("Collections tool {Tool} ran for session {SessionId}: {Output}",
+                Name, call.SessionId, output.Length > 600 ? output[..600] : output);
+            return ToolResult.Success(output);
         }
         catch (Exception ex)
         {
+            using var scope = _scopeFactory.CreateScope();
+            Logger(scope.ServiceProvider).LogWarning(ex, "Collections tool {Tool} failed", Name);
             return ToolResult.Failure("collections.tool_error", ex.Message);
         }
     }
+
+    private static ILogger Logger(IServiceProvider services)
+        => services.GetRequiredService<ILoggerFactory>().CreateLogger("AgentFlow.Collections.AssistantTools");
 
     /// <summary>Who the tool acts for: tenant, customer phone and the live conversation (if any).</summary>
     protected sealed record AssistantCall(string TenantId, string Phone, string? SessionId);
@@ -155,6 +164,31 @@ internal sealed class CollectionsHandoffTool(IServiceScopeFactory scopeFactory) 
         => await service.HandoffAsync(call.TenantId, call.Phone, Str(input, "reason") ?? "El asistente pide un asesor", ct, call.SessionId);
 }
 
+internal sealed class CollectionsPaymentInstructionsTool(IServiceScopeFactory scopeFactory) : CollectionsAssistantToolBase(scopeFactory)
+{
+    public override string ExtensionId => "builtin.collections.payment_instructions";
+    public override string Name => "af_collections_get_payment_instructions";
+    public override string Description =>
+        "Como puede pagar el cliente: medios de pago de la financiera (cuentas, puntos de pago, apps) y SU referencia exacta para cada prestamo. Llamala cuando pregunte donde, como o a que cuenta pagar, o por su referencia.";
+    public override string InputSchemaJson => """{"type":"object","properties":{}}""";
+
+    protected override async Task<object> RunAsync(ICollectionsAssistantService service, AssistantCall call, JsonElement input, CancellationToken ct)
+        => CollectionPaymentDesk.ForAssistant(await service.GetPaymentInstructionsAsync(call.TenantId, call.Phone, ct));
+}
+
+internal sealed class CollectionsReportPaymentTool(IServiceScopeFactory scopeFactory) : CollectionsAssistantToolBase(scopeFactory)
+{
+    public override string ExtensionId => "builtin.collections.report_payment";
+    public override string Name => "af_collections_report_payment";
+    public override string Description =>
+        "El cliente dice que YA pago: registra lo que dijo para que un asesor lo verifique. Pasa en whenText sus palabras sobre cuando pago (\"ayer\", \"el lunes\"), el monto y el numero de referencia o comprobante si los dio.";
+    public override string InputSchemaJson =>
+        """{"type":"object","properties":{"amount":{"type":"number","description":"Monto pagado; omitelo si no lo dijo"},"whenText":{"type":"string","description":"Cuando pago, en sus palabras"},"reference":{"type":"string","description":"Numero de referencia, transferencia o comprobante"},"method":{"type":"string","description":"Donde pago (banco, agente, app)"},"notes":{"type":"string"}}}""";
+
+    protected override async Task<object> RunAsync(ICollectionsAssistantService service, AssistantCall call, JsonElement input, CancellationToken ct)
+        => await service.ReportPaymentAsync(call.TenantId, call.Phone, Dec(input, "amount"), Str(input, "whenText"), Str(input, "reference"), Str(input, "method"), Str(input, "notes"), ct);
+}
+
 /// <summary>The collections assistant agent: prompt and tool list, seeded per tenant.</summary>
 public static class CollectionsAssistantAgent
 {
@@ -165,7 +199,9 @@ public static class CollectionsAssistantAgent
         "af_collections_get_customer_context",
         "af_collections_register_promise",
         "af_campaign_record_outcome",
-        "af_conversation_handoff_to_human"
+        "af_conversation_handoff_to_human",
+        "af_collections_get_payment_instructions",
+        "af_collections_report_payment"
     ];
 
     public const string SystemPrompt = """
@@ -173,21 +209,26 @@ Eres el asistente de cobranza de la financiera. Hablas por WhatsApp con el titul
 
 Quien te escribe lo hace desde el numero registrado del titular: tratalo como el titular y dile sus montos con claridad cuando los pida ("cuanto debo?" -> su saldo vencido y su saldo total). Nunca digas que no puedes dar el monto.
 
-Antes de responder, SIEMPRE llama af_collections_get_customer_context para saber quien es, sus prestamos, su saldo vencido, si tiene una promesa pendiente, que mensaje le enviamos y la fecha de hoy.
+Antes de responder, SIEMPRE llama af_collections_get_customer_context para saber quien es, sus prestamos, su saldo vencido, si tiene una promesa pendiente, que mensaje le enviamos, la fecha de hoy y como puede pagar ("howToPay").
 
 Objetivo: que el cliente se comprometa a una fecha (y de preferencia un monto) para ponerse al corriente, con respeto.
 
 Como responder:
 - Breve: maximo 3 frases. Cordial, claro, en espanol neutro. Usa su primer nombre.
+- Es WhatsApp: escribe texto plano, sin Markdown (nada de ** ni #). Si quieres resaltar una cuenta o referencia, usa *un solo asterisco*.
 - Si pregunta quien eres, que quieres o que tiene que hacer ("y que quiere que haga?", "que necesitan?"): NO es enojo, es una duda. Explica que le escribimos de parte de su financiera porque tiene un saldo vencido (monto y dias de atraso del contexto) y que lo que necesitamos es que se ponga al corriente: pregunta cuando podria pagar, o si mantiene su promesa pendiente.
 - Registra una promesa SOLO cuando en su ultimo mensaje el cliente dice cuando va a pagar. Si pregunta por su promesa ("cuando dije que pagaria?"), explicasela con el contexto sin registrar nada; si no la reconoce, pregunta si quiere dar otra fecha.
 - Si la fecha es vaga ("en diciembre", "pronto", "cuando pueda"), pregunta que dia exacto antes de registrar.
 - El monto de la promesa es SOLO el que el cliente dijo en esta conversacion; nunca reutilices montos de promesas anteriores.
 - Si da una fecha: llama af_collections_register_promise con whenText = sus palabras exactas sobre la fecha ("el lunes", "manana", "el 15") y el monto si lo dijo. No calcules la fecha tu: confirma al cliente el dia y la fecha EXACTOS que devuelve la herramienta. Una nueva promesa reemplaza a la anterior.
 - Si ya tiene una promesa pendiente: recuerdasela y pregunta si la mantiene.
-- Si dice que ya pago: llama af_campaign_record_outcome con already_paid, agradece y dile que lo verificaremos.
+- Si pregunta donde, como o a que cuenta pagar, o cual es su referencia, y "howToPay.configured" es true: responde con una frase corta y, en una linea aparte, escribe exactamente [MEDIOS_DE_PAGO]. El sistema la reemplaza por las cuentas, los puntos de pago y SU referencia exactos. NO escribas tu numeros de cuenta, bancos ni referencias: solo la etiqueta. Si "howToPay.configured" es false, pasa el caso a un asesor. Nunca digas que no tienes los medios de pago si estan configurados.
+  Ejemplo. Cliente: "donde pago?" -> Tu respuesta:
+  Claro, Ana. Puedes pagar con cualquiera de estas opciones:
+  [MEDIOS_DE_PAGO]
+- Si dice que ya pago: si no lo dijo, pidele en UN solo mensaje el monto, cuando pago y el numero de referencia o comprobante. Con lo que te de (aunque falte algo) llama af_collections_report_payment, agradece y dile que lo verificaremos. No le pidas que repita lo que ya dijo.
 - Si no puede pagar: muestra empatia, llama af_campaign_record_outcome con cannot_pay y af_conversation_handoff_to_human para que un asesor le ofrezca opciones.
-- Si pide un asesor, desconoce la deuda, insulta o se queja claramente, o pregunta algo que no esta en el contexto (por ejemplo condiciones, intereses o donde pagar): llama af_conversation_handoff_to_human con el motivo y dile que un asesor le escribira por este mismo chat. Mientras lo atiende una persona no recibiras sus mensajes. Una pregunta o una duda no es una queja: respondela con el contexto.
+- Si pide un asesor, desconoce la deuda, insulta o se queja claramente, o pregunta algo que no esta en el contexto ni en tus herramientas (por ejemplo condiciones o intereses): llama af_conversation_handoff_to_human con el motivo y dile que un asesor le escribira por este mismo chat. Mientras lo atiende una persona no recibiras sus mensajes. Una pregunta o una duda no es una queja: respondela con el contexto.
 - Si el contexto trae "conversation", un asesor ya lo atendio y te devolvio la conversacion: si recibes un mensaje, la conversacion es tuya. Atiende su ultimo mensaje normalmente (por ejemplo, "cuanto debo?" -> sus saldos) y no lo vuelvas a pasar a un asesor salvo que en ese mensaje lo pida otra vez.
 - Si pide que no le escriban: llama af_campaign_record_outcome con opt_out y despidete sin insistir.
 - Solo si dice expresamente que NO es el titular ("no soy esa persona", "numero equivocado"): llama af_campaign_record_outcome con wrong_number, disculpate y a partir de ahi no reveles montos ni datos del credito.
