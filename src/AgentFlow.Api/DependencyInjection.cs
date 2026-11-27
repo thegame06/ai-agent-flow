@@ -3,6 +3,7 @@ using AgentFlow.Api.AuthProfiles;
 using AgentFlow.Api.Commerce;
 using AgentFlow.Api.Connect;
 using AgentFlow.Api.Campaigns;
+using AgentFlow.Api.Entitlements;
 using AgentFlow.Api.Routing;
 using AgentFlow.Api.Settings;
 using AgentFlow.Api.Voice;
@@ -34,6 +35,7 @@ using AgentFlow.Prompting;
 using AgentFlow.Security;
 using AgentFlow.TestRunner;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.IdentityModel.Tokens;
 using MongoDB.Bson.Serialization;
 using MongoDB.Driver;
@@ -93,6 +95,10 @@ public static class DependencyInjection
                 configuration["Telemetry:Exporter"] ?? "none",
                 configuration["Telemetry:OtlpEndpoint"])
             .AddMcpGateway(configuration);
+
+        // Per-tenant app entitlements must survive restarts and be shared across instances:
+        // replace the in-memory default registered by AddAgentFlowExtensions.
+        services.Replace(ServiceDescriptor.Singleton<ITenantExtensionStateStore, MongoTenantExtensionStateStore>());
 
         services.AddSingleton<IWorkflowExecutionQueue, InMemoryWorkflowExecutionQueue>();
         services.AddSingleton<IWorkflowSecurityPolicyService, WorkflowSecurityPolicyService>();

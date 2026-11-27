@@ -9,6 +9,8 @@ public static class ExtensionDependencyInjection
 {
     public static IServiceCollection AddAgentFlowExtensions(this IServiceCollection services)
     {
+        // Default is process-local; hosts that sell apps per tenant replace it with a durable store.
+        services.TryAddSingleton<ITenantExtensionStateStore, InMemoryTenantExtensionStateStore>();
         services.TryAddSingleton<IExtensionRegistry, ExtensionRegistry>();
         services.TryAddSingleton<IToolInvoker, ToolInvoker>();
         
@@ -41,6 +43,7 @@ public static class ExtensionDependencyInjection
         where T : class, IToolPlugin
     {
         // Ensure core extension services are registered (idempotent with TryAdd)
+        services.TryAddSingleton<ITenantExtensionStateStore, InMemoryTenantExtensionStateStore>();
         services.TryAddSingleton<IExtensionRegistry, ExtensionRegistry>();
         services.TryAddSingleton<IToolInvoker, ToolInvoker>();
         

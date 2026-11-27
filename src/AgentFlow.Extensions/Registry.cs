@@ -78,16 +78,18 @@ public sealed class ExtensionRegistry : IExtensionRegistry
     private readonly ConcurrentDictionary<string, IToolPlugin> _tools = new();
     private readonly ConcurrentDictionary<string, IPolicyEvaluator> _policies = new();
     private readonly ConcurrentDictionary<string, ExtensionCatalogEntry> _catalog = new();
-    private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, bool>> _tenantStates = new();
-    private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, byte>> _tenantAllowlists = new();
-    private readonly ConcurrentDictionary<string, string> _quarantine = new();
+    // Tenant install/enable state, allowlists and quarantine live in the store so they
+    // survive restarts and are shared across instances (see ITenantExtensionStateStore).
+    private readonly ITenantExtensionStateStore _stateStore;
     private readonly ILogger<ExtensionRegistry> _logger;
 
     public ExtensionRegistry(
         IEnumerable<IToolPlugin> tools,
         IEnumerable<IPolicyEvaluator> policies,
+        ITenantExtensionStateStore stateStore,
         ILogger<ExtensionRegistry> logger)
     {
+        _stateStore = stateStore;
         _logger = logger;
         foreach (var tool in tools) RegisterTool(tool);
         foreach (var policy in policies) RegisterPolicy(policy);
@@ -136,20 +138,21 @@ public sealed class ExtensionRegistry : IExtensionRegistry
         return all;
     }
 
-    public Task<Result<ExtensionCatalogEntry>> RegisterPackageAsync(ExtensionPackageRegistrationRequest request, CancellationToken ct = default)
+    public async Task<Result<ExtensionCatalogEntry>> RegisterPackageAsync(ExtensionPackageRegistrationRequest request, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(request.ExtensionId) || string.IsNullOrWhiteSpace(request.Version))
         {
-            return Task.FromResult(Result<ExtensionCatalogEntry>.Failure(Error.Validation("extension", "ExtensionId/version are required.")));
+            return Result<ExtensionCatalogEntry>.Failure(Error.Validation("extension", "ExtensionId/version are required."));
         }
 
         var signatureValid = ValidatePackageSignature(request);
         if (!signatureValid)
         {
-            return Task.FromResult(Result<ExtensionCatalogEntry>.Failure(Error.Validation("signature", "Invalid extension package signature.")));
+            return Result<ExtensionCatalogEntry>.Failure(Error.Validation("signature", "Invalid extension package signature."));
         }
 
-        var quarantined = _quarantine.TryGetValue(request.ExtensionId, out var quarantineReason);
+        var quarantine = await _stateStore.GetQuarantinedAsync(ct);
+        var quarantined = quarantine.TryGetValue(request.ExtensionId, out var quarantineReason);
 
         var entry = new ExtensionCatalogEntry
         {
@@ -172,12 +175,17 @@ public sealed class ExtensionRegistry : IExtensionRegistry
         };
 
         _catalog[request.ExtensionId] = entry;
-        return Task.FromResult(Result<ExtensionCatalogEntry>.Success(entry));
+        return Result<ExtensionCatalogEntry>.Success(entry);
     }
 
-    public Task<IReadOnlyList<ExtensionCatalogEntry>> BrowseCatalogAsync(string? search = null, CancellationToken ct = default)
+    public async Task<IReadOnlyList<ExtensionCatalogEntry>> BrowseCatalogAsync(string? search = null, CancellationToken ct = default)
     {
-        IEnumerable<ExtensionCatalogEntry> query = _catalog.Values;
+        // The catalog is rebuilt at startup; overlay the persisted quarantine so it survives restarts.
+        var quarantine = await _stateStore.GetQuarantinedAsync(ct);
+        IEnumerable<ExtensionCatalogEntry> query = _catalog.Values.Select(entry =>
+            quarantine.TryGetValue(entry.ExtensionId, out var reason)
+                ? entry with { Metadata = entry.Metadata with { IsQuarantined = true, QuarantineReason = reason } }
+                : entry);
 
         if (!string.IsNullOrWhiteSpace(search))
         {
@@ -187,7 +195,7 @@ public sealed class ExtensionRegistry : IExtensionRegistry
                 x.Metadata.Vendor.Contains(search, StringComparison.OrdinalIgnoreCase));
         }
 
-        return Task.FromResult<IReadOnlyList<ExtensionCatalogEntry>>(query.OrderBy(x => x.Name).ToList());
+        return query.OrderBy(x => x.Name).ToList();
     }
 
     public Task<IReadOnlyList<string>> GetSourcesAsync(CancellationToken ct = default)
@@ -195,86 +203,62 @@ public sealed class ExtensionRegistry : IExtensionRegistry
         return Task.FromResult<IReadOnlyList<string>>(_catalog.Values.Select(x => x.Source).Distinct().OrderBy(x => x).ToList());
     }
 
-    public Task<Result> SetTenantInstallStateAsync(string tenantId, string extensionId, bool installed, bool enabled, CancellationToken ct = default)
+    public async Task<Result> SetTenantInstallStateAsync(string tenantId, string extensionId, bool installed, bool enabled, CancellationToken ct = default)
     {
         if (!_catalog.ContainsKey(extensionId))
         {
-            return Task.FromResult(Result.Failure(Error.NotFound($"extension:{extensionId}")));
+            return Result.Failure(Error.NotFound($"extension:{extensionId}"));
         }
 
         if (installed)
         {
-            var allowlist = _tenantAllowlists.GetOrAdd(tenantId, _ => new ConcurrentDictionary<string, byte>());
-            if (allowlist.Count > 0 && !allowlist.ContainsKey(extensionId))
+            var allowlist = await _stateStore.GetAllowlistAsync(tenantId, ct);
+            if (allowlist.Count > 0 && !allowlist.Contains(extensionId))
             {
-                return Task.FromResult(Result.Failure(Error.Forbidden($"extension '{extensionId}' is not allowlisted for tenant '{tenantId}'")));
+                return Result.Failure(Error.Forbidden($"extension '{extensionId}' is not allowlisted for tenant '{tenantId}'"));
             }
 
-            var state = _tenantStates.GetOrAdd(tenantId, _ => new ConcurrentDictionary<string, bool>());
-            state[extensionId] = enabled;
-            return Task.FromResult(Result.Success());
+            await _stateStore.SetStateAsync(tenantId, extensionId, enabled, ct);
+            return Result.Success();
         }
 
-        if (_tenantStates.TryGetValue(tenantId, out var states))
-        {
-            states.TryRemove(extensionId, out _);
-        }
-
-        return Task.FromResult(Result.Success());
+        await _stateStore.RemoveStateAsync(tenantId, extensionId, ct);
+        return Result.Success();
     }
 
-    public Task<Result> SetTenantEnabledStateAsync(string tenantId, string extensionId, bool enabled, CancellationToken ct = default)
+    public async Task<Result> SetTenantEnabledStateAsync(string tenantId, string extensionId, bool enabled, CancellationToken ct = default)
     {
-        if (_quarantine.ContainsKey(extensionId))
+        var quarantine = await _stateStore.GetQuarantinedAsync(ct);
+        if (quarantine.ContainsKey(extensionId))
         {
-            return Task.FromResult(Result.Failure(Error.Forbidden($"extension '{extensionId}' is quarantined")));
+            return Result.Failure(Error.Forbidden($"extension '{extensionId}' is quarantined"));
         }
 
-        var state = _tenantStates.GetOrAdd(tenantId, _ => new ConcurrentDictionary<string, bool>());
-        if (!state.ContainsKey(extensionId))
+        var states = await _stateStore.GetStatesAsync(tenantId, ct);
+        if (!states.ContainsKey(extensionId))
         {
-            return Task.FromResult(Result.Failure(Error.NotFound($"tenant-extension:{tenantId}:{extensionId}")));
+            return Result.Failure(Error.NotFound($"tenant-extension:{tenantId}:{extensionId}"));
         }
 
-        state[extensionId] = enabled;
-        return Task.FromResult(Result.Success());
+        await _stateStore.SetStateAsync(tenantId, extensionId, enabled, ct);
+        return Result.Success();
     }
 
     public Task<IReadOnlyDictionary<string, bool>> GetTenantExtensionStatesAsync(string tenantId, CancellationToken ct = default)
-    {
-        if (!_tenantStates.TryGetValue(tenantId, out var state))
-        {
-            return Task.FromResult<IReadOnlyDictionary<string, bool>>(new Dictionary<string, bool>());
-        }
+        => _stateStore.GetStatesAsync(tenantId, ct);
 
-        return Task.FromResult<IReadOnlyDictionary<string, bool>>(state.ToDictionary(x => x.Key, x => x.Value));
-    }
-
-    public Task<Result> SetTenantAllowlistAsync(string tenantId, IReadOnlyList<string> extensionIds, CancellationToken ct = default)
+    public async Task<Result> SetTenantAllowlistAsync(string tenantId, IReadOnlyList<string> extensionIds, CancellationToken ct = default)
     {
-        var allowlist = new ConcurrentDictionary<string, byte>(extensionIds.Distinct().ToDictionary(x => x, _ => (byte)1));
-        _tenantAllowlists[tenantId] = allowlist;
-        return Task.FromResult(Result.Success());
+        await _stateStore.SetAllowlistAsync(tenantId, extensionIds.Distinct().ToList(), ct);
+        return Result.Success();
     }
 
     public Task<IReadOnlySet<string>> GetTenantAllowlistAsync(string tenantId, CancellationToken ct = default)
+        => _stateStore.GetAllowlistAsync(tenantId, ct);
+
+    public async Task<Result> QuarantineExtensionAsync(string extensionId, string reason, CancellationToken ct = default)
     {
-        if (!_tenantAllowlists.TryGetValue(tenantId, out var allowlist))
-        {
-            return Task.FromResult<IReadOnlySet<string>>(new HashSet<string>());
-        }
-
-        return Task.FromResult<IReadOnlySet<string>>(allowlist.Keys.ToHashSet());
-    }
-
-    public Task<Result> QuarantineExtensionAsync(string extensionId, string reason, CancellationToken ct = default)
-    {
-        _quarantine[extensionId] = reason;
-
-        foreach (var tenant in _tenantStates.Values)
-        {
-            if (tenant.ContainsKey(extensionId)) tenant[extensionId] = false;
-        }
+        await _stateStore.QuarantineAsync(extensionId, reason, ct);
 
         if (_catalog.TryGetValue(extensionId, out var existing))
         {
@@ -284,7 +268,7 @@ public sealed class ExtensionRegistry : IExtensionRegistry
             };
         }
 
-        return Task.FromResult(Result.Success());
+        return Result.Success();
     }
 
     private static bool ValidatePackageSignature(ExtensionPackageRegistrationRequest request)
