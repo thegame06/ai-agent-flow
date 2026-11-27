@@ -36,6 +36,8 @@ public interface ICampaignStore
     Task<IReadOnlySet<string>> GetOptedOutRecipientKeysAsync(string tenantId, CancellationToken ct = default);
     /// <summary>Recent contacts to one recipient across campaigns (newest first), for daily send limits.</summary>
     Task<IReadOnlyList<CampaignContactExecutionContract>> GetContactExecutionsByRecipientKeyAsync(string tenantId, string recipientKey, int limit = 50, CancellationToken ct = default);
+    /// <summary>Contacts a person must look at (hand-offs, unanswered replies), newest first.</summary>
+    Task<IReadOnlyList<CampaignContactExecutionContract>> GetContactsNeedingAttentionAsync(string tenantId, int limit = 200, CancellationToken ct = default);
     /// <summary>Enabled campaigns (all tenants) that have a follow-up policy.</summary>
     Task<IReadOnlyList<CampaignContract>> GetCampaignsWithFollowUpsAsync(CancellationToken ct = default);
     Task<CampaignContactExecutionContract?> FindLatestContactByRecipientKeyAsync(string tenantId, string recipientKey, DateTimeOffset since, CancellationToken ct = default);
@@ -323,6 +325,11 @@ public sealed class MongoCampaignStore : ICampaignStore
     public async Task<IReadOnlyList<CampaignContactExecutionContract>> GetContactExecutionsByRecipientKeyAsync(string tenantId, string recipientKey, int limit = 50, CancellationToken ct = default)
         => (await _contacts.Find(x => x.TenantId == tenantId && x.RecipientKey == recipientKey)
                 .SortByDescending(x => x.CreatedAt).Limit(Math.Clamp(limit, 1, 500)).ToListAsync(ct))
+            .Select(ToContract).ToList();
+
+    public async Task<IReadOnlyList<CampaignContactExecutionContract>> GetContactsNeedingAttentionAsync(string tenantId, int limit = 200, CancellationToken ct = default)
+        => (await _contacts.Find(x => x.TenantId == tenantId && x.NeedsAttention)
+                .SortByDescending(x => x.UpdatedAt).Limit(Math.Clamp(limit, 1, 1000)).ToListAsync(ct))
             .Select(ToContract).ToList();
 
     public async Task<IReadOnlyList<CampaignContract>> GetCampaignsWithFollowUpsAsync(CancellationToken ct = default)

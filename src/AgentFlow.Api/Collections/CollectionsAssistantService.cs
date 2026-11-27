@@ -24,6 +24,8 @@ public sealed record CollectionsCustomerContext
     /// <summary>Today in the customer's timezone ("2026-11-27 (viernes)"): models don't know the date.</summary>
     public string Today { get; init; } = string.Empty;
     public string? Note { get; init; }
+    /// <summary>Set when an advisor handled this conversation and gave it back to the assistant.</summary>
+    public string? Conversation { get; init; }
 }
 
 public sealed record CollectionsLoanBrief(
@@ -46,11 +48,12 @@ public sealed record CollectionsAssistantActionResult(bool Ok, string Message);
 /// </summary>
 public interface ICollectionsAssistantService
 {
-    Task<CollectionsCustomerContext> GetContextAsync(string tenantId, string phone, CancellationToken ct = default);
+    Task<CollectionsCustomerContext> GetContextAsync(string tenantId, string phone, CancellationToken ct = default, string? sessionId = null);
     /// <param name="whenText">What the customer said about the date ("el lunes"); resolved here, preferred over <paramref name="promisedDate"/>.</param>
     Task<CollectionsAssistantActionResult> RegisterPromiseAsync(string tenantId, string phone, decimal? amount, DateTimeOffset? promisedDate, string? whenText, string? notes, CancellationToken ct = default);
     Task<CollectionsAssistantActionResult> RecordOutcomeAsync(string tenantId, string phone, string outcome, string? notes, CancellationToken ct = default);
-    Task<CollectionsAssistantActionResult> HandoffAsync(string tenantId, string phone, string reason, CancellationToken ct = default);
+    /// <param name="sessionId">The live conversation: it waits for a person and the assistant stops answering.</param>
+    Task<CollectionsAssistantActionResult> HandoffAsync(string tenantId, string phone, string reason, CancellationToken ct = default, string? sessionId = null);
 }
 
 public sealed class CollectionsAssistantService : ICollectionsAssistantService
@@ -62,20 +65,30 @@ public sealed class CollectionsAssistantService : ICollectionsAssistantService
     private readonly ICollectionPromiseService _promises;
     private readonly ICampaignStore _campaigns;
     private readonly ICampaignOutcomeService _outcomes;
+    private readonly AgentFlow.Api.Connect.IConversationHandoffService? _handoff;
 
     public CollectionsAssistantService(
         ICollectionsStore collections,
         ICollectionPromiseService promises,
         ICampaignStore campaigns,
-        ICampaignOutcomeService outcomes)
+        ICampaignOutcomeService outcomes,
+        AgentFlow.Api.Connect.IConversationHandoffService? handoff = null)
     {
+        _handoff = handoff;
         _collections = collections;
         _promises = promises;
         _campaigns = campaigns;
         _outcomes = outcomes;
     }
 
-    public async Task<CollectionsCustomerContext> GetContextAsync(string tenantId, string phone, CancellationToken ct = default)
+    public async Task<CollectionsCustomerContext> GetContextAsync(string tenantId, string phone, CancellationToken ct = default, string? sessionId = null)
+    {
+        var context = await BuildContextAsync(tenantId, phone, ct);
+        if (string.IsNullOrWhiteSpace(sessionId) || _handoff is null) return context;
+        return context with { Conversation = await _handoff.GetAssistantNoteAsync(tenantId, sessionId!, ct) };
+    }
+
+    private async Task<CollectionsCustomerContext> BuildContextAsync(string tenantId, string phone, CancellationToken ct)
     {
         var (partyId, loans) = await FindCustomerAsync(tenantId, phone, ct);
         var contact = await LatestContactAsync(tenantId, phone, ct);
@@ -162,14 +175,19 @@ public sealed class CollectionsAssistantService : ICollectionsAssistantService
         return new(true, "Resultado registrado.");
     }
 
-    public async Task<CollectionsAssistantActionResult> HandoffAsync(string tenantId, string phone, string reason, CancellationToken ct = default)
+    public async Task<CollectionsAssistantActionResult> HandoffAsync(string tenantId, string phone, string reason, CancellationToken ct = default, string? sessionId = null)
     {
+        var why = string.IsNullOrWhiteSpace(reason) ? "El asistente pide un asesor" : reason.Trim();
+        var paused = !string.IsNullOrWhiteSpace(sessionId) && _handoff is not null &&
+                     await _handoff.RequestAsync(tenantId, sessionId!, why, Actor, ct);
+
         var contact = await LatestContactAsync(tenantId, phone, ct);
-        if (contact is null) return new(false, "Este cliente no tiene un contacto de campana reciente.");
+        if (contact is null)
+            return paused ? new(true, "Caso pasado a un asesor.") : new(false, "Este cliente no tiene un contacto de campana reciente.");
         await _campaigns.UpdateContactExecutionAsync(contact with
         {
             NeedsAttention = true,
-            AttentionReason = string.IsNullOrWhiteSpace(reason) ? "El asistente pide un asesor" : reason.Trim(),
+            AttentionReason = why,
             AttentionAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow
         }, ct);

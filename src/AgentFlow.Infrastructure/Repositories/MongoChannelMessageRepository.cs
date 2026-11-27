@@ -1,6 +1,7 @@
 using AgentFlow.Abstractions;
 using AgentFlow.Domain.Aggregates;
 using AgentFlow.Domain.Repositories;
+using MongoDB.Bson;
 using MongoDB.Driver;
 using Result = AgentFlow.Abstractions.Result;
 
@@ -28,19 +29,40 @@ public sealed class MongoChannelMessageRepository : IChannelMessageRepository
                 .Descending(x => x.CreatedAt)
         ));
 
-        _collection.Indexes.CreateOne(new CreateIndexModel<ChannelMessage>(
+        EnsureExternalMessageIndex();
+    }
+
+    /// <summary>
+    /// One message per provider id. Only messages that have a provider id are indexed: a sparse
+    /// compound index still indexes the others (TenantId is always there) with a null id, which let
+    /// a channel store a single outgoing message and silently dropped every later reply.
+    /// </summary>
+    private void EnsureExternalMessageIndex()
+    {
+        const string name = "ux_channel_messages_external_message";
+        var model = new CreateIndexModel<ChannelMessage>(
             Builders<ChannelMessage>.IndexKeys
                 .Ascending(x => x.TenantId)
                 .Ascending(x => x.ChannelId)
                 .Ascending(x => x.Direction)
                 .Ascending(x => x.ExternalMessageId),
-            new CreateIndexOptions
+            new CreateIndexOptions<ChannelMessage>
             {
-                Name = "ux_channel_messages_external_message",
+                Name = name,
                 Unique = true,
-                Sparse = true
-            }
-        ));
+                PartialFilterExpression = Builders<ChannelMessage>.Filter.Type(x => x.ExternalMessageId, BsonType.String)
+            });
+
+        try
+        {
+            _collection.Indexes.CreateOne(model);
+        }
+        catch (MongoCommandException ex) when (ex.CodeName is "IndexOptionsConflict" or "IndexKeySpecsConflict")
+        {
+            // Older deployments have the sparse version under the same name.
+            _collection.Indexes.DropOne(name);
+            _collection.Indexes.CreateOne(model);
+        }
     }
 
     public async Task<ChannelMessage?> GetByIdAsync(string messageId, string tenantId, CancellationToken ct = default)
