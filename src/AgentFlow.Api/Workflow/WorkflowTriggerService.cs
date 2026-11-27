@@ -13,6 +13,19 @@ public interface IWorkflowTriggerService
         Dictionary<string, object?>? payload,
         CancellationToken ct = default);
 
+    /// <summary>
+    /// Runs one specific published workflow (e.g. the one a campaign is configured with),
+    /// instead of whichever published workflow listens to the event.
+    /// </summary>
+    Task<WorkflowExecutionContract> TriggerWorkflowAsync(
+        string tenantId,
+        string workflowDefinitionId,
+        string eventName,
+        string requestedBy,
+        string? correlationId,
+        Dictionary<string, object?>? payload,
+        CancellationToken ct = default);
+
     Task<WorkflowExecutionContract> RetryExecutionAsync(
         string tenantId,
         string executionId,
@@ -52,6 +65,38 @@ public sealed class WorkflowTriggerService : IWorkflowTriggerService
 
         if (definition is null)
             throw new InvalidOperationException("No published workflow matches the requested event.");
+        return await StartAsync(tenantId, definition, eventName, requestedBy, correlationId, payload, ct);
+    }
+
+    public async Task<WorkflowExecutionContract> TriggerWorkflowAsync(
+        string tenantId,
+        string workflowDefinitionId,
+        string eventName,
+        string requestedBy,
+        string? correlationId,
+        Dictionary<string, object?>? payload,
+        CancellationToken ct = default)
+    {
+        var defs = await _store.GetDefinitionsAsync(tenantId, ct);
+        var definition = defs
+            .Where(x => x.Status == WorkflowDefinitionStatus.Published && string.Equals(x.Id, workflowDefinitionId, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(x => x.Version)
+            .FirstOrDefault();
+
+        if (definition is null)
+            throw new InvalidOperationException($"Workflow '{workflowDefinitionId}' is not published.");
+        return await StartAsync(tenantId, definition, eventName, requestedBy, correlationId, payload, ct);
+    }
+
+    private async Task<WorkflowExecutionContract> StartAsync(
+        string tenantId,
+        WorkflowDefinitionContract definition,
+        string eventName,
+        string requestedBy,
+        string? correlationId,
+        Dictionary<string, object?>? payload,
+        CancellationToken ct)
+    {
         _policy.ValidateDefinitionOrThrow(definition.DefinitionJson);
         _policy.ValidatePayloadOrThrow(payload);
 

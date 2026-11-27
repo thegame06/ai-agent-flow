@@ -74,6 +74,7 @@ public static class DependencyInjection
             .AddSingleton<IRuntimeModelProfileStore, MongoRuntimeModelProfileStore>()
             .AddScoped<IModelCredentialResolver, AuthProfileModelCredentialResolver>()
             .AddScoped<IConnectStore, MongoConnectStore>()
+            .AddScoped<IOutboundMessageSender, OutboundMessageSender>()
             .AddScoped<ICampaignStore, MongoCampaignStore>()
             .AddScoped<ICampaignAudienceService, CampaignAudienceService>()
             .AddScoped<ICampaignBuilderService, CampaignBuilderService>()

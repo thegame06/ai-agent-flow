@@ -89,6 +89,7 @@ public sealed class ApiChannelHandler : IChannelHandler
                     correlationId  = message.Metadata.GetValueOrDefault("correlation_id"),
                     content        = message.Content,
                     from           = message.From,
+                    to             = message.To, // recipient, so the receiver can route business-initiated sends
                     channelId      = message.ChannelId,
                     tenantId       = message.TenantId,
                     executionId    = message.AgentExecutionId,
