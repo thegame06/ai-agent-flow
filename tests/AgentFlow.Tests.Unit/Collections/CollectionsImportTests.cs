@@ -180,6 +180,10 @@ public sealed class CollectionsImportTests
         public Task<IReadOnlyList<CollectionPaymentDocument>> GetPaymentsByLoanAsync(string tenantId, string loanId, int limit = 50, CancellationToken ct = default)
             => Task.FromResult<IReadOnlyList<CollectionPaymentDocument>>(Payments.Where(p => p.LoanId == loanId).ToList());
         public Task<bool> PaymentReferenceExistsAsync(string tenantId, string reference, CancellationToken ct = default) => Task.FromResult(Payments.Any(p => p.Reference == reference));
+        public Task<IReadOnlyList<CollectionPaymentDocument>> GetPaymentsBetweenAsync(string tenantId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
+            => Task.FromResult<IReadOnlyList<CollectionPaymentDocument>>(Payments.Where(p => p.PaidAt >= from && p.PaidAt <= to).ToList());
+        public Task<IReadOnlyList<CollectionLoanSnapshotDocument>> GetSnapshotsBetweenAsync(string tenantId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
+            => Task.FromResult<IReadOnlyList<CollectionLoanSnapshotDocument>>(Snapshots.Values.Where(s => s.SnapshotDate >= from && s.SnapshotDate <= to).ToList());
         public List<CollectionPromiseDocument> Promises { get; } = [];
         public Task InsertPromiseAsync(CollectionPromiseDocument promise, CancellationToken ct = default) { Promises.Add(promise); return Task.CompletedTask; }
         public Task UpdatePromiseAsync(CollectionPromiseDocument promise, CancellationToken ct = default) => Task.CompletedTask;

@@ -95,6 +95,31 @@ public sealed class CollectionsController : ControllerBase
         return Ok(await _store.GetImportBatchesAsync(tenantId, Math.Clamp(limit, 1, 100), ct));
     }
 
+    /// <summary>
+    /// Recovery in a period: money that came back, how much of it followed a campaign contact,
+    /// the contact funnel, promises and the breakdown by campaign, stage and day.
+    /// <paramref name="from"/> and <paramref name="to"/> are days (yyyy-MM-dd, UTC, inclusive); default: the last 30 days.
+    /// </summary>
+    [HttpGet("recovery")]
+    public async Task<IActionResult> GetRecovery(
+        [FromRoute] string tenantId,
+        [FromQuery] DateTime? from,
+        [FromQuery] DateTime? to,
+        [FromServices] ICollectionsRecoveryService recovery,
+        CancellationToken ct)
+    {
+        if (!CanAccess(tenantId, AgentFlowPermissions.ConnectRead)) return Forbid();
+
+        var lastDay = (to ?? DateTime.UtcNow).Date;
+        var firstDay = (from ?? lastDay.AddDays(-29)).Date;
+        if (firstDay > lastDay) return BadRequest(new { message = "La fecha inicial es posterior a la final." });
+        if ((lastDay - firstDay).TotalDays > 366) return BadRequest(new { message = "El periodo puede ser de hasta un año." });
+
+        var start = new DateTimeOffset(DateTime.SpecifyKind(firstDay, DateTimeKind.Utc));
+        var end = new DateTimeOffset(DateTime.SpecifyKind(lastDay.AddDays(1).AddTicks(-1), DateTimeKind.Utc));
+        return Ok(await recovery.GetReportAsync(tenantId, start, end, ct));
+    }
+
     /// <summary>Portfolio totals and the breakdown by delinquency stage (active loans).</summary>
     [HttpGet("summary")]
     public async Task<IActionResult> GetSummary([FromRoute] string tenantId, CancellationToken ct)

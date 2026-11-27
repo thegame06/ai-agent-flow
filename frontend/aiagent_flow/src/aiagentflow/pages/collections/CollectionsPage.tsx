@@ -165,6 +165,13 @@ export default function CollectionsPage() {
           <Stack direction="row" spacing={1} alignItems="center">
             <Button
               variant="outlined"
+              startIcon={<Iconify icon="mdi:chart-timeline-variant-shimmer" />}
+              onClick={() => navigate(paths.dashboard.collectionsRecovery)}
+            >
+              Ver recuperación
+            </Button>
+            <Button
+              variant="outlined"
               startIcon={<Iconify icon="mdi:strategy" />}
               disabled={strategyBusy}
               onClick={createStageStrategy}
