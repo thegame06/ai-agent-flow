@@ -105,13 +105,26 @@ public sealed class CampaignOutcomeService : ICampaignOutcomeService
             UpdatedAt = DateTimeOffset.UtcNow
         };
 
-        if (contact.OutcomeSource is not null && StickySources.Contains(contact.OutcomeSource))
-            return await _campaigns.UpdateContactExecutionAsync(contact, ct) ?? contact;
-
         var campaign = await _campaigns.GetCampaignAsync(tenantId, contact.CampaignId, ct);
         // "manana" / "el viernes" are relative to the customer's day, not UTC.
         var classification = CampaignReplyClassifier.Classify(text, ToLocal(receivedAt, campaign?.Timezone));
         var outcome = classification.Outcome;
+
+        // A reply the rules cannot read (a question, a doubt, "hola") is waiting for an answer:
+        // never let it sit unseen.
+        if (outcome is null)
+        {
+            contact = contact with
+            {
+                NeedsAttention = true,
+                AttentionReason = "Respondio y espera respuesta",
+                AttentionAt = receivedAt
+            };
+        }
+        // An outcome set by a person, an agent or a workflow is not overwritten by the reply classifier.
+        if (contact.OutcomeSource is not null && StickySources.Contains(contact.OutcomeSource))
+            return await _campaigns.UpdateContactExecutionAsync(contact, ct) ?? contact;
+
         // Keep a specific earlier outcome ("promesa") when a follow-up reply is just chatter ("gracias").
         if (outcome is null && contact.Outcome is not null && contact.Outcome != CampaignOutcomes.Replied)
             return await _campaigns.UpdateContactExecutionAsync(contact, ct) ?? contact;
