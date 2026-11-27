@@ -57,20 +57,24 @@ public sealed class WhatsAppWebhookController : ControllerBase
     }
 
     /// <summary>
-    /// Meta Business API webhook verification (GET)
+    /// Meta Business API webhook verification (GET). Meta sends hub.mode, hub.verify_token and
+    /// hub.challenge, and expects the challenge echoed back as plain text.
     /// </summary>
     [HttpGet]
-    public IActionResult VerifyWebhook([FromQuery] string? mode, [FromQuery] string? verify_token, [FromQuery] string? challenge)
+    public IActionResult VerifyWebhook(
+        [FromQuery(Name = "hub.mode")] string? mode,
+        [FromQuery(Name = "hub.verify_token")] string? verifyToken,
+        [FromQuery(Name = "hub.challenge")] string? challenge)
     {
-        if (mode == "subscribe" && verify_token == _waOptions.WebhookVerifyToken)
+        var result = MetaWebhookVerification.Check(mode, verifyToken, challenge, _waOptions.WebhookVerifyToken);
+        if (result is not null)
         {
             _logger.LogInformation("WhatsApp webhook verified successfully");
-            return Challenge(string.IsNullOrEmpty(challenge) ? "verified" : challenge);
+            return Content(result, "text/plain");
         }
 
-        _logger.LogWarning("WhatsApp webhook verification failed: mode={Mode}, token_match={TokenMatch}",
-            mode, verify_token == _waOptions.WebhookVerifyToken);
-        return Forbid();
+        _logger.LogWarning("WhatsApp webhook verification failed: mode={Mode}", mode);
+        return StatusCode(StatusCodes.Status403Forbidden);
     }
 
     /// <summary>
@@ -83,17 +87,24 @@ public sealed class WhatsAppWebhookController : ControllerBase
             ? id.ValueKind == System.Text.Json.JsonValueKind.String ? id.GetString() : id.GetRawText()
             : null;
 
-    /// <summary>The active channel of that number; with one number (or an unknown one) the first active channel.</summary>
+    /// <summary>
+    /// The active Business API channel of the number Meta delivered to. A number bound to no channel finds
+    /// only a channel with no number set (single-number setups); never another number's channel, and never a
+    /// QR channel, which does not receive Meta's webhooks.
+    /// </summary>
     public static ChannelDefinition? ChannelForNumber(IReadOnlyList<ChannelDefinition> channels, string? phoneNumberId)
     {
-        var active = channels.Where(c => c.Status == ChannelStatus.Active).ToList();
+        var business = channels
+            .Where(c => c.Status == ChannelStatus.Active)
+            .Where(c => !string.Equals(c.Config.GetValueOrDefault("AuthMode"), "qr", StringComparison.OrdinalIgnoreCase))
+            .ToList();
         if (!string.IsNullOrWhiteSpace(phoneNumberId))
         {
-            var match = active.FirstOrDefault(c => c.Config.GetValueOrDefault("PhoneNumberId") == phoneNumberId);
+            var match = business.FirstOrDefault(c => c.Config.GetValueOrDefault("PhoneNumberId") == phoneNumberId);
             if (match is not null) return match;
         }
-        return active.FirstOrDefault(c => !string.Equals(c.Config.GetValueOrDefault("AuthMode"), "qr", StringComparison.OrdinalIgnoreCase))
-               ?? active.FirstOrDefault();
+        return business.FirstOrDefault(c => string.IsNullOrWhiteSpace(c.Config.GetValueOrDefault("PhoneNumberId")))
+               ?? (string.IsNullOrWhiteSpace(phoneNumberId) ? business.FirstOrDefault() : null);
     }
 
     [HttpPost]

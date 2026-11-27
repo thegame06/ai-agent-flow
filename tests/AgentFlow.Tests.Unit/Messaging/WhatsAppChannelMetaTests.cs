@@ -75,8 +75,25 @@ public sealed class WhatsAppChannelMetaTests
 
         Assert.Same(ventas, WhatsAppWebhookController.ChannelForNumber(channels, "222"));
         Assert.Same(cobranza, WhatsAppWebhookController.ChannelForNumber(channels, "111"));
-        // Unknown number: a Business channel before the QR one.
-        Assert.Same(cobranza, WhatsAppWebhookController.ChannelForNumber(channels, "999"));
+        // A number no channel has (e.g. Meta's dashboard sample) goes nowhere: not to another number, not to QR.
+        Assert.Null(WhatsAppWebhookController.ChannelForNumber(channels, "999"));
+        // No number in the payload: the first Business channel.
+        Assert.Same(cobranza, WhatsAppWebhookController.ChannelForNumber(channels, null));
+    }
+
+    [Fact]
+    public void IncomingMessage_NeverFallsBackToAQrChannel()
+    {
+        var qr = Channel("QR", new() { ["AuthMode"] = "qr" });
+        Assert.Null(WhatsAppWebhookController.ChannelForNumber([qr], "999"));
+        Assert.Null(WhatsAppWebhookController.ChannelForNumber([qr], null));
+    }
+
+    [Fact]
+    public void IncomingMessage_ReachesASingleNumberChannelWithoutPhoneNumberId()
+    {
+        var legacy = Channel("Legacy", new() { ["AuthMode"] = "business" });
+        Assert.Same(legacy, WhatsAppWebhookController.ChannelForNumber([legacy], "999"));
     }
 
     [Fact]
