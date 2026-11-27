@@ -20,6 +20,11 @@ public sealed record CampaignFollowUpRule
     /// <summary>message (send <see cref="Message"/>) or handoff (flag the contact for a person).</summary>
     public string Action { get; init; } = "message";
     public string? Message { get; init; }
+    /// <summary>
+    /// Approved WhatsApp template for when the customer has not written in the last 24 hours: the
+    /// official API rejects free text then. Inside the window the message is sent as text.
+    /// </summary>
+    public string? WhatsAppTemplateId { get; init; }
 }
 
 /// <summary>A campaign's follow-up policy, stored in <c>FollowupPolicyJson</c>.</summary>

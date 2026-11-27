@@ -42,6 +42,8 @@ public static partial class WhatsAppTemplateText
         new("prestamos", "Préstamos", "PR-1001", "Cobranza"),
         new("proximo_pago_fecha", "Próximo pago (fecha)", "05/12/2026", "Cobranza"),
         new("proximo_pago_monto", "Próximo pago (monto)", "4,100.00", "Cobranza"),
+        new("monto_promesa", "Monto prometido (seguimientos)", "500.00", "Cobranza"),
+        new("fecha_promesa", "Fecha prometida (seguimientos)", "15/12/2026", "Cobranza"),
         new("compras", "Compras", "3", "Ventas"),
         new("total_comprado", "Total comprado", "12,500.00", "Ventas"),
         new("saldo_pendiente", "Saldo pendiente", "2,300.00", "Ventas"),

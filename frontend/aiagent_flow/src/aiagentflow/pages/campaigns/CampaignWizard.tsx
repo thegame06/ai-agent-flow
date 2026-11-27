@@ -249,6 +249,8 @@ export function CampaignWizard({ open, tenantId, campaign, preset, collectionsEn
     if (step === 0 && !form.name.trim()) return 'Ponle un nombre a la campaña.';
     if (step === 2 && form.delivery === 'message' && !form.whatsAppTemplateId && !form.messageDraft.trim()) return 'Escribe el mensaje.';
     if (step === 2 && chosenTemplate && chosenTemplate.status !== 'APPROVED') return `La plantilla ${chosenTemplate.name} no está aprobada por Meta.`;
+    if (step === 2 && form.delivery === 'message' && chosenChannel?.business && !form.whatsAppTemplateId)
+      return 'Con la API oficial de WhatsApp el primer mensaje debe ser una plantilla aprobada.';
     if (step === 2 && form.delivery === 'workflow' && !form.workflowDefinitionId) return 'Elige la automatización.';
     return null;
   })();
@@ -649,7 +651,13 @@ export function CampaignWizard({ open, tenantId, campaign, preset, collectionsEn
         )}
 
         {step === 4 && (
-          <FollowUpEditor value={form.followUps} collections={isCollections} onChange={(v) => set('followUps', v)} />
+          <FollowUpEditor
+            value={form.followUps}
+            collections={isCollections}
+            onChange={(v) => set('followUps', v)}
+            templates={templateOptions.filter((t) => t.status === 'APPROVED')}
+            official={!!chosenChannel?.business}
+          />
         )}
 
         {step === 5 && (

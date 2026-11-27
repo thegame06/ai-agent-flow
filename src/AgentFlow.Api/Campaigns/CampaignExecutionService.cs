@@ -58,12 +58,15 @@ public sealed class CampaignExecutionService : ICampaignExecutionService
 
     /// <summary>The Meta account (WABA) of the channel the campaign sends through, when it is a Business API channel.</summary>
     private async Task<string?> CampaignChannelWabaAsync(CampaignContract campaign, CancellationToken ct)
+        => _channels is null ? null : CampaignChannels.MetaAccountOf(await CampaignChannels.ResolveAsync(_channels, campaign, ct));
+
+    /// <summary>The customer wrote to us in the last 24 hours (any campaign): free text is still allowed.</summary>
+    private async Task<bool> RecentlyWroteAsync(string tenantId, CampaignContactExecutionContract execution, CancellationToken ct)
     {
-        if (_channels is null || string.IsNullOrWhiteSpace(campaign.Channel)) return null;
-        var channel = await _channels.GetByIdAsync(campaign.Channel, campaign.TenantId, ct);
-        if (channel is null && Enum.TryParse<AgentFlow.Domain.Aggregates.ChannelType>(campaign.Channel, true, out var type))
-            channel = (await _channels.GetByTypeAsync(type, campaign.TenantId, ct)).FirstOrDefault(c => c.Status == AgentFlow.Domain.Aggregates.ChannelStatus.Active);
-        return channel?.Config.GetValueOrDefault("BusinessAccountId") is { Length: > 0 } waba ? waba : null;
+        if (string.IsNullOrWhiteSpace(execution.RecipientKey)) return false;
+        var now = DateTimeOffset.UtcNow;
+        var latest = await _campaignStore.FindLatestContactByRecipientKeyAsync(tenantId, execution.RecipientKey!, now - TimeSpan.FromDays(30), ct);
+        return latest is not null && CampaignChannels.WindowOpen(latest, now);
     }
 
     public Task<CampaignAudiencePreviewContract> SimulateAsync(string tenantId, CampaignContract campaign, CancellationToken ct = default)
@@ -451,6 +454,17 @@ public sealed class CampaignExecutionService : ICampaignExecutionService
             }
             else
             {
+                // The official WhatsApp API only lets a business start a conversation with a template.
+                var channel = _channels is null ? null : await CampaignChannels.ResolveAsync(_channels, campaign, ct);
+                if (CampaignChannels.IsOfficialWhatsApp(channel) && !await RecentlyWroteAsync(campaign.TenantId, execution, ct))
+                {
+                    return (await _campaignStore.UpdateContactExecutionAsync(execution with
+                    {
+                        Status = CampaignContactExecutionStatus.Failed,
+                        SkipReason = "Con la API oficial de WhatsApp el primer mensaje debe ser una plantilla aprobada: elige una en la campana.",
+                        UpdatedAt = DateTimeOffset.UtcNow
+                    }, ct))!;
+                }
                 (message, missing) = CampaignMessageRenderer.Render(campaign.MessageDraft ?? "Mensaje de campana", execution.Variables);
             }
             if (missing.Count > 0)
