@@ -61,6 +61,7 @@ export const paths = {
     commerce: `${ROOTS.DASHBOARD}/commerce`,
     campaigns: `${ROOTS.DASHBOARD}/campaigns`,
     collections: `${ROOTS.DASHBOARD}/collections`,
+    collectionsRecovery: `${ROOTS.DASHBOARD}/collections/recovery`,
     evaluations: `${ROOTS.DASHBOARD}/evaluations`,
     kycPayments: `${ROOTS.DASHBOARD}/kyc-payments`,
     workflows: `${ROOTS.DASHBOARD}/studio/workflows`,

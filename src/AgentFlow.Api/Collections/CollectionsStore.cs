@@ -19,6 +19,8 @@ public interface ICollectionsStore
     Task InsertPaymentAsync(CollectionPaymentDocument payment, CancellationToken ct = default);
     Task<IReadOnlyList<CollectionPaymentDocument>> GetPaymentsByLoanAsync(string tenantId, string loanId, int limit = 50, CancellationToken ct = default);
     Task<bool> PaymentReferenceExistsAsync(string tenantId, string reference, CancellationToken ct = default);
+    Task<IReadOnlyList<CollectionPaymentDocument>> GetPaymentsBetweenAsync(string tenantId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default);
+    Task<IReadOnlyList<CollectionLoanSnapshotDocument>> GetSnapshotsBetweenAsync(string tenantId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default);
 
     Task InsertPromiseAsync(CollectionPromiseDocument promise, CancellationToken ct = default);
     Task UpdatePromiseAsync(CollectionPromiseDocument promise, CancellationToken ct = default);
@@ -125,4 +127,10 @@ public sealed class MongoCollectionsStore : ICollectionsStore
 
     public async Task<bool> PaymentReferenceExistsAsync(string tenantId, string reference, CancellationToken ct = default)
         => await _payments.Find(x => x.TenantId == tenantId && x.Reference == reference).AnyAsync(ct);
+
+    public async Task<IReadOnlyList<CollectionPaymentDocument>> GetPaymentsBetweenAsync(string tenantId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
+        => await _payments.Find(x => x.TenantId == tenantId && x.PaidAt >= from && x.PaidAt <= to).ToListAsync(ct);
+
+    public async Task<IReadOnlyList<CollectionLoanSnapshotDocument>> GetSnapshotsBetweenAsync(string tenantId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
+        => await _snapshots.Find(x => x.TenantId == tenantId && x.SnapshotDate >= from && x.SnapshotDate <= to).ToListAsync(ct);
 }

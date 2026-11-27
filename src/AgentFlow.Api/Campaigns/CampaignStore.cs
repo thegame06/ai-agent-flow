@@ -38,6 +38,8 @@ public interface ICampaignStore
     Task<IReadOnlyList<CampaignContactExecutionContract>> GetContactExecutionsByRecipientKeyAsync(string tenantId, string recipientKey, int limit = 50, CancellationToken ct = default);
     /// <summary>Contacts a person must look at (hand-offs, unanswered replies), newest first.</summary>
     Task<IReadOnlyList<CampaignContactExecutionContract>> GetContactsNeedingAttentionAsync(string tenantId, int limit = 200, CancellationToken ct = default);
+    /// <summary>Contacts created in a period (all campaigns), for reports.</summary>
+    Task<IReadOnlyList<CampaignContactExecutionContract>> GetContactExecutionsCreatedBetweenAsync(string tenantId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default);
     /// <summary>Enabled campaigns (all tenants) that have a follow-up policy.</summary>
     Task<IReadOnlyList<CampaignContract>> GetCampaignsWithFollowUpsAsync(CancellationToken ct = default);
     Task<CampaignContactExecutionContract?> FindLatestContactByRecipientKeyAsync(string tenantId, string recipientKey, DateTimeOffset since, CancellationToken ct = default);
@@ -83,6 +85,8 @@ public sealed class MongoCampaignStore : ICampaignStore
             Builders<CampaignContactExecutionDocument>.IndexKeys.Ascending(x => x.TenantId).Ascending(x => x.CampaignId).Descending(x => x.CreatedAt)));
         _contacts.Indexes.CreateOne(new CreateIndexModel<CampaignContactExecutionDocument>(
             Builders<CampaignContactExecutionDocument>.IndexKeys.Ascending(x => x.TenantId).Ascending(x => x.RecipientKey).Descending(x => x.CreatedAt)));
+        _contacts.Indexes.CreateOne(new CreateIndexModel<CampaignContactExecutionDocument>(
+            Builders<CampaignContactExecutionDocument>.IndexKeys.Ascending(x => x.TenantId).Descending(x => x.CreatedAt)));
         _contacts.Indexes.CreateOne(new CreateIndexModel<CampaignContactExecutionDocument>(
             Builders<CampaignContactExecutionDocument>.IndexKeys.Ascending(x => x.TenantId).Ascending(x => x.PartyId).Descending(x => x.CreatedAt)));
         _outcomes.Indexes.CreateOne(new CreateIndexModel<CampaignCallOutcomeDocument>(
@@ -330,6 +334,11 @@ public sealed class MongoCampaignStore : ICampaignStore
     public async Task<IReadOnlyList<CampaignContactExecutionContract>> GetContactsNeedingAttentionAsync(string tenantId, int limit = 200, CancellationToken ct = default)
         => (await _contacts.Find(x => x.TenantId == tenantId && x.NeedsAttention)
                 .SortByDescending(x => x.UpdatedAt).Limit(Math.Clamp(limit, 1, 1000)).ToListAsync(ct))
+            .Select(ToContract).ToList();
+
+    public async Task<IReadOnlyList<CampaignContactExecutionContract>> GetContactExecutionsCreatedBetweenAsync(string tenantId, DateTimeOffset from, DateTimeOffset to, CancellationToken ct = default)
+        => (await _contacts.Find(x => x.TenantId == tenantId && x.CreatedAt >= from && x.CreatedAt <= to)
+                .Limit(50000).ToListAsync(ct))
             .Select(ToContract).ToList();
 
     public async Task<IReadOnlyList<CampaignContract>> GetCampaignsWithFollowUpsAsync(CancellationToken ct = default)

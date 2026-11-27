@@ -18,6 +18,7 @@ const ICONS = {
   commerce: icon('mdi:store-cog-outline'),
   campaigns: icon('mdi:bullhorn-variant-outline'),
   collections: icon('mdi:cash-clock'),
+  recovery: icon('mdi:chart-timeline-variant-shimmer'),
   activity: icon('mdi:chart-timeline-variant'),
   humanReview: icon('mdi:account-supervisor-outline'),
   // kycPayments: icon('mdi:shield-account-outline'),
@@ -65,6 +66,11 @@ export const navData: NavSectionProps['data'] = [
         title: 'Cobranza',
         path: paths.dashboard.collections,
         icon: ICONS.collections,
+      },
+      {
+        title: 'Recuperación',
+        path: paths.dashboard.collectionsRecovery,
+        icon: ICONS.recovery,
       },
       {
         title: 'Campanas',

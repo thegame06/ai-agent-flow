@@ -43,6 +43,7 @@ const ThreadsPage = lazy(() => import('src/aiagentflow/pages/threads/ThreadsPage
 const CommerceAdminPage = lazy(() => import('src/aiagentflow/pages/commerce/CommerceAdminPage'));
 const CampaignsPage = lazy(() => import('src/aiagentflow/pages/campaigns/CampaignsPage'));
 const CollectionsPage = lazy(() => import('src/aiagentflow/pages/collections/CollectionsPage'));
+const RecoveryPage = lazy(() => import('src/aiagentflow/pages/collections/RecoveryPage'));
 const EvaluationsPage = lazy(() => import('src/aiagentflow/pages/evaluations/EvaluationsPage'));
 const KycPaymentsPage = lazy(() => import('src/aiagentflow/pages/kyc/KycPaymentsPage'));
 const WorkflowsPage = lazy(() => import('src/aiagentflow/pages/workflows/WorkflowsPage'));
@@ -96,6 +97,7 @@ export const dashboardRoutes: RouteObject[] = [
       { path: 'commerce', element: <CommerceAdminPage /> },
       { path: 'campaigns', element: <CampaignsPage /> },
       { path: 'collections', element: <CollectionsPage /> },
+      { path: 'collections/recovery', element: <RecoveryPage /> },
       { path: 'evaluations', element: <EvaluationsPage /> },
       { path: 'kyc-payments', element: <KycPaymentsPage /> },
       { path: 'studio/workflows', element: <WorkflowsPage /> },
