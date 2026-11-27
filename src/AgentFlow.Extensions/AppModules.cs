@@ -24,6 +24,7 @@ public static class AppModules
     public const string Campaigns = "campaigns";
     public const string Conversations = "conversations";
     public const string Workflows = "workflows";
+    public const string Collections = "collections";
 
     public const string CommunicationInbox = "communication-inbox";
     public const string Inventory = "inventory";
@@ -35,6 +36,8 @@ public static class AppModules
         new(Campaigns, "Campaigns", "Campanas salientes, segmentos y playbooks de llamada", "Campanas", DefaultEnabled: true),
         new(Conversations, "Conversations", "Bandeja de conversaciones y casos sin clasificar", "Bandeja", DefaultEnabled: true),
         new(Workflows, "Workflows", "Automatizaciones: diseno, publicacion y control de workflows", "Automatizaciones", DefaultEnabled: true),
+        // New sellable app: opt-in per tenant.
+        new(Collections, "Collections", "Cobranza: cartera de clientes y prestamos, importacion y seguimiento por dias de atraso", "Cobranza", DefaultEnabled: false),
         new(CommunicationInbox, "Communication Inbox", "Inbox comercial integrado en chat", "Comercio", DefaultEnabled: false),
         new(Inventory, "Inventory", "Inventario y catalogo de productos", "Comercio", DefaultEnabled: false),
         new(SalesPos, "Sales POS", "Punto de venta y ordenes comerciales", "Comercio", DefaultEnabled: false),

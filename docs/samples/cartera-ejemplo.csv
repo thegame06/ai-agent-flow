@@ -1,0 +1,14 @@
+customer_id,full_name,phone,email,loan_id,product,currency,original_amount,disbursed_at,payment_frequency,total_balance,overdue_principal,overdue_interest,overdue_penalties,overdue_fees,days_past_due,next_payment_date,next_payment_amount,last_payment_date,last_payment_amount,status
+CLI-1001,Ana López Ramírez,+5215550100001,ana.lopez@example.com,PR-50001,Personal,MXN,25000,2026-02-10,quincenal,14200,1800,410,95,60,22,2026-12-01,1900,2026-10-15,1900,activo
+CLI-1001,Ana López Ramírez,+5215550100001,ana.lopez@example.com,PR-50002,Nómina,MXN,9000,2026-07-01,mensual,6100,0,0,0,0,0,2026-12-10,1050,2026-11-10,1050,activo
+CLI-1001,Ana López Ramírez,+5215550100001,ana.lopez@example.com,PR-49870,Personal,MXN,5000,2025-06-01,quincenal,0,0,0,0,0,0,,,2026-03-01,780,liquidado
+CLI-1002,Carlos Méndez Soto,+5215550100002,carlos.mendez@example.com,PR-50010,Personal,MXN,40000,2025-11-20,mensual,31800,5200,1300,420,150,48,2026-12-05,4100,2026-09-30,4100,activo
+CLI-1003,María Fernanda Ruiz,+5215550100003,mf.ruiz@example.com,PR-50020,Microcrédito,MXN,8000,2026-04-05,semanal,3900,600,140,45,20,9,2026-11-30,520,2026-11-13,520,activo
+CLI-1003,María Fernanda Ruiz,+5215550100003,mf.ruiz@example.com,PR-50021,Microcrédito,MXN,6000,2026-08-12,semanal,4800,0,0,0,0,0,2026-12-04,430,2026-11-27,430,activo
+CLI-1004,Jorge Hernández Gil,+5215550100004,,PR-50030,Personal,MXN,30000,2025-08-15,quincenal,26700,7400,1900,980,300,76,2026-12-01,2300,2026-08-20,2300,activo
+CLI-1005,Lucía Torres Vega,+5215550100005,lucia.torres@example.com,PR-50040,Nómina,MXN,15000,2026-05-01,mensual,9800,0,0,0,0,0,2026-12-15,1600,2026-11-15,1600,activo
+CLI-1006,Roberto Castillo Paz,+5215550100006,roberto.castillo@example.com,PR-50050,Personal,MXN,20000,2025-03-10,mensual,18900,9800,2600,1700,400,132,2026-12-10,2100,2026-07-01,2100,activo
+CLI-1006,Roberto Castillo Paz,+5215550100006,roberto.castillo@example.com,PR-49990,Personal,MXN,12000,2024-10-01,mensual,11500,11500,0,0,0,310,,,2025-12-15,1300,castigado
+CLI-1007,Sofía Ramírez Luna,+5215550100007,sofia.ramirez@example.com,PR-50060,Microcrédito,MXN,7000,2026-06-20,semanal,5200,350,80,25,10,4,2026-11-29,410,2026-11-18,410,activo
+CLI-1008,Diego Morales Cruz,+5215550100008,diego.morales@example.com,PR-50070,Personal,MXN,35000,2025-12-01,quincenal,29400,3900,980,310,120,37,2026-12-01,2650,2026-10-01,2650,activo
+CLI-1008,Diego Morales Cruz,+5215550100008,diego.morales@example.com,PR-50071,Nómina,MXN,10000,2026-09-01,mensual,8700,0,0,0,0,0,2026-12-01,1200,2026-11-01,1200,reestructurado

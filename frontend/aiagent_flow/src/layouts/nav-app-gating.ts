@@ -14,6 +14,7 @@ export const APP_GATES: Record<string, string[]> = {
   [paths.dashboard.threads]: ['conversations'],
   [paths.dashboard.inbox]: ['conversations'],
   [paths.dashboard.campaigns]: ['campaigns'],
+  [paths.dashboard.collections]: ['collections'],
   [paths.dashboard.workflows]: ['workflows'],
   [paths.dashboard.commerce]: ['communication-inbox', 'inventory', 'sales-pos', 'billing'],
 };
