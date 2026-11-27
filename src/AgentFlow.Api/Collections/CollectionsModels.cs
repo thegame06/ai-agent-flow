@@ -180,3 +180,41 @@ public sealed record CollectionImportResult
     public int Failed { get; init; }
     public IReadOnlyList<CollectionImportError> Errors { get; init; } = [];
 }
+
+public enum CollectionPromiseStatus
+{
+    Pending,
+    Kept,
+    Broken,
+    Cancelled
+}
+
+/// <summary>
+/// A promise to pay made by a customer (by WhatsApp reply, an agent, a workflow or an operator).
+/// It is resolved against later portfolio cut-offs: kept when the overdue balance went down by
+/// the promised amount (or to zero), broken when the promised date passed without that.
+/// </summary>
+[BsonIgnoreExtraElements]
+public sealed class CollectionPromiseDocument
+{
+    [BsonId]
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string TenantId { get; set; } = string.Empty;
+    public string PartyId { get; set; } = string.Empty;
+    public string? CustomerName { get; set; }
+    public List<string> LoanIds { get; set; } = [];
+    public decimal? Amount { get; set; }
+    public DateTimeOffset PromisedDate { get; set; }
+    public CollectionPromiseStatus Status { get; set; } = CollectionPromiseStatus.Pending;
+    /// <summary>Customer overdue balance when the promise was made; the baseline to resolve it.</summary>
+    public decimal OverdueAtCreation { get; set; }
+    public decimal? OverdueAtResolution { get; set; }
+    /// <summary>reply, agent, workflow or human.</summary>
+    public string Source { get; set; } = "human";
+    public string? CampaignId { get; set; }
+    public string? ContactExecutionId { get; set; }
+    public string? Notes { get; set; }
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public string CreatedBy { get; set; } = string.Empty;
+    public DateTimeOffset? ResolvedAt { get; set; }
+}

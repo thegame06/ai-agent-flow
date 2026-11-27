@@ -1,4 +1,6 @@
 using System.Text;
+using AgentFlow.Abstractions.Connect;
+using AgentFlow.Api.Campaigns;
 using AgentFlow.Api.Collections;
 using AgentFlow.Api.Commerce;
 using AgentFlow.Api.Entitlements;
@@ -23,13 +25,23 @@ public sealed class CollectionsController : ControllerBase
     private readonly ICollectionsImportService _imports;
     private readonly ICommerceStore _parties;
     private readonly ITenantContextAccessor _tenantContext;
+    private readonly ICollectionPromiseService _promises;
+    private readonly ICampaignStore _campaigns;
 
-    public CollectionsController(ICollectionsStore store, ICollectionsImportService imports, ICommerceStore parties, ITenantContextAccessor tenantContext)
+    public CollectionsController(
+        ICollectionsStore store,
+        ICollectionsImportService imports,
+        ICommerceStore parties,
+        ITenantContextAccessor tenantContext,
+        ICollectionPromiseService promises,
+        ICampaignStore campaigns)
     {
         _store = store;
         _imports = imports;
         _parties = parties;
         _tenantContext = tenantContext;
+        _promises = promises;
+        _campaigns = campaigns;
     }
 
     /// <summary>Import a portfolio CSV (one row per loan). Use dryRun=true to preview and validate without saving.</summary>
@@ -110,7 +122,8 @@ public sealed class CollectionsController : ControllerBase
                     overdueBalance = inStage.Sum(l => l.OverdueBalance)
                 };
             }),
-            lastImport = lastImport is null ? null : new { lastImport.Id, lastImport.SnapshotDate, lastImport.CreatedAt, lastImport.Source, lastImport.FileName }
+            lastImport = lastImport is null ? null : new { lastImport.Id, lastImport.SnapshotDate, lastImport.CreatedAt, lastImport.Source, lastImport.FileName },
+            promises = await PromiseTotalsAsync(tenantId, ct)
         });
     }
 
@@ -178,13 +191,105 @@ public sealed class CollectionsController : ControllerBase
         if (loans.Count == 0) return NotFound(new { message = "Customer has no loans in the portfolio." });
         var party = await _parties.GetPartyByIdAsync(tenantId, partyId, ct);
 
+        await _promises.ResolveAsync(tenantId, DateTimeOffset.UtcNow, partyId, ct);
         return Ok(new
         {
             party = party is null ? null : new { party.Id, party.DisplayName, party.FullName, party.Phone, party.Email, party.Kind },
-            loans
+            loans,
+            promises = await _store.GetPromisesAsync(tenantId, null, partyId, 50, ct),
+            contacts = await ContactHistoryAsync(tenantId, partyId, ct)
         });
     }
 
+    /// <summary>Every loan of the portfolio, with filters, sorting and paging.</summary>
+    [HttpGet("loans")]
+    public async Task<IActionResult> GetLoans(
+        [FromRoute] string tenantId,
+        [FromQuery] string? query = null,
+        [FromQuery] string? stage = null,
+        [FromQuery] string? status = null,
+        [FromQuery] string? product = null,
+        [FromQuery] int? minDaysPastDue = null,
+        [FromQuery] int? maxDaysPastDue = null,
+        [FromQuery] string sort = "dpd",
+        [FromQuery] bool desc = true,
+        [FromQuery] int page = 0,
+        [FromQuery] int pageSize = 50,
+        CancellationToken ct = default)
+    {
+        if (!CanAccess(tenantId, AgentFlowPermissions.ConnectRead)) return Forbid();
+
+        var all = await _store.GetLoansAsync(tenantId, ct);
+        IEnumerable<CollectionLoanDocument> loans = all;
+        if (!string.IsNullOrWhiteSpace(query))
+        {
+            var q = query.Trim();
+            loans = loans.Where(l =>
+                l.LoanExternalId.Contains(q, StringComparison.OrdinalIgnoreCase) ||
+                (l.CustomerName?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                (l.CustomerExternalId?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                (l.CustomerPhone?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false));
+        }
+        if (Enum.TryParse<DelinquencyStage>(stage, true, out var stageValue))
+            loans = loans.Where(l => l.Stage == stageValue);
+        if (Enum.TryParse<CollectionLoanStatus>(status, true, out var statusValue))
+            loans = loans.Where(l => l.Status == statusValue);
+        if (!string.IsNullOrWhiteSpace(product))
+            loans = loans.Where(l => string.Equals(l.Product, product, StringComparison.OrdinalIgnoreCase));
+        if (minDaysPastDue is not null)
+            loans = loans.Where(l => l.DaysPastDue >= minDaysPastDue);
+        if (maxDaysPastDue is not null)
+            loans = loans.Where(l => l.DaysPastDue <= maxDaysPastDue);
+
+        Func<CollectionLoanDocument, object?> key = sort.ToLowerInvariant() switch
+        {
+            "overdue" => l => l.OverdueBalance,
+            "balance" => l => l.TotalBalance,
+            "nextpayment" => l => l.NextPaymentDate,
+            "customer" => l => l.CustomerName,
+            "loan" => l => l.LoanExternalId,
+            "disbursed" => l => l.DisbursedAt,
+            _ => l => l.DaysPastDue
+        };
+        var filtered = (desc ? loans.OrderByDescending(key) : loans.OrderBy(key)).ToList();
+        pageSize = Math.Clamp(pageSize, 1, 200);
+
+        return Ok(new
+        {
+            total = filtered.Count,
+            page,
+            pageSize,
+            totalBalance = filtered.Sum(l => l.TotalBalance),
+            overdueBalance = filtered.Sum(l => l.OverdueBalance),
+            products = all.Select(l => l.Product).Where(p => !string.IsNullOrWhiteSpace(p)).Distinct().OrderBy(p => p).ToList(),
+            items = filtered.Skip(Math.Max(0, page) * pageSize).Take(pageSize).Select(l => new
+            {
+                l.Id,
+                l.LoanExternalId,
+                l.PartyId,
+                l.CustomerExternalId,
+                l.CustomerName,
+                l.CustomerPhone,
+                l.Product,
+                l.Currency,
+                l.OriginalAmount,
+                l.DisbursedAt,
+                l.TotalBalance,
+                l.OverdueBalance,
+                l.DaysPastDue,
+                Stage = l.Stage.ToString(),
+                StageLabel = DelinquencyStages.Label(l.Stage),
+                Status = l.Status.ToString(),
+                l.NextPaymentDate,
+                l.NextPaymentAmount,
+                l.LastPaymentDate,
+                l.LastPaymentAmount,
+                l.SnapshotDate
+            })
+        });
+    }
+
+    /// <summary>One loan with its history of cut-offs, the customer's other loans, promises and contacts.</summary>
     [HttpGet("loans/{loanId}")]
     public async Task<IActionResult> GetLoan([FromRoute] string tenantId, [FromRoute] string loanId, CancellationToken ct)
     {
@@ -192,7 +297,115 @@ public sealed class CollectionsController : ControllerBase
 
         var loan = await _store.GetLoanAsync(tenantId, loanId, ct);
         if (loan is null) return NotFound(new { message = "Loan not found." });
-        return Ok(new { loan, snapshots = await _store.GetSnapshotsAsync(tenantId, loanId, 60, ct) });
+
+        await _promises.ResolveAsync(tenantId, DateTimeOffset.UtcNow, loan.PartyId, ct);
+        var party = await _parties.GetPartyByIdAsync(tenantId, loan.PartyId, ct);
+        var siblings = (await _store.GetLoansByPartyAsync(tenantId, loan.PartyId, ct)).Where(l => l.Id != loan.Id).ToList();
+        var promises = (await _store.GetPromisesAsync(tenantId, null, loan.PartyId, 50, ct))
+            .Where(p => p.LoanIds.Count == 0 || p.LoanIds.Contains(loan.Id)).ToList();
+
+        return Ok(new
+        {
+            loan,
+            stageLabel = DelinquencyStages.Label(loan.Stage),
+            snapshots = await _store.GetSnapshotsAsync(tenantId, loanId, 60, ct),
+            customer = party is null ? null : new { party.Id, party.DisplayName, party.FullName, party.Phone, party.Email },
+            otherLoans = siblings.Select(l => new { l.Id, l.LoanExternalId, l.Product, l.TotalBalance, l.OverdueBalance, l.DaysPastDue, Stage = l.Stage.ToString(), Status = l.Status.ToString(), l.Currency }),
+            promises,
+            contacts = await ContactHistoryAsync(tenantId, loan.PartyId, ct)
+        });
+    }
+
+    /// <summary>Promises to pay, resolved against the current portfolio before listing.</summary>
+    [HttpGet("promises")]
+    public async Task<IActionResult> GetPromises([FromRoute] string tenantId, [FromQuery] string? status = null, CancellationToken ct = default)
+    {
+        if (!CanAccess(tenantId, AgentFlowPermissions.ConnectRead)) return Forbid();
+        await _promises.ResolveAsync(tenantId, DateTimeOffset.UtcNow, null, ct);
+        CollectionPromiseStatus? filter = Enum.TryParse<CollectionPromiseStatus>(status, true, out var parsed) ? parsed : null;
+        return Ok(new
+        {
+            totals = await PromiseTotalsAsync(tenantId, ct),
+            items = await _store.GetPromisesAsync(tenantId, filter, null, 500, ct)
+        });
+    }
+
+    /// <summary>An operator records a promise to pay (e.g. after a phone call).</summary>
+    [HttpPost("promises")]
+    public async Task<IActionResult> CreatePromise([FromRoute] string tenantId, [FromBody] CreateCollectionPromiseRequest request, CancellationToken ct)
+    {
+        if (!CanAccess(tenantId, AgentFlowPermissions.ConnectOperate)) return Forbid();
+        if (request.PromisedDate is null) return BadRequest(new { message = "Indica la fecha prometida." });
+        if (request.Amount is < 0) return BadRequest(new { message = "El monto no puede ser negativo." });
+
+        var promise = await _promises.CreateAsync(
+            tenantId, request.PartyId, request.Amount, request.PromisedDate.Value,
+            CampaignOutcomes.Sources.Human, _tenantContext.Current!.UserId, request.Notes,
+            loanIds: request.LoanIds, ct: ct);
+        return promise is null ? NotFound(new { message = "El cliente no tiene prestamos en la cartera." }) : Ok(promise);
+    }
+
+    [HttpPost("promises/{promiseId}/cancel")]
+    public async Task<IActionResult> CancelPromise([FromRoute] string tenantId, [FromRoute] string promiseId, CancellationToken ct)
+    {
+        if (!CanAccess(tenantId, AgentFlowPermissions.ConnectOperate)) return Forbid();
+        var promise = await _store.GetPromiseAsync(tenantId, promiseId, ct);
+        if (promise is null) return NotFound(new { message = "Promise not found." });
+        if (promise.Status != CollectionPromiseStatus.Pending) return Conflict(new { message = "Solo se puede cancelar una promesa pendiente." });
+        promise.Status = CollectionPromiseStatus.Cancelled;
+        promise.ResolvedAt = DateTimeOffset.UtcNow;
+        await _store.UpdatePromiseAsync(promise, ct);
+        return Ok(promise);
+    }
+
+    private async Task<object> PromiseTotalsAsync(string tenantId, CancellationToken ct)
+    {
+        var all = await _store.GetPromisesAsync(tenantId, null, null, 5000, ct);
+        var resolved = all.Count(p => p.Status is CollectionPromiseStatus.Kept or CollectionPromiseStatus.Broken);
+        var kept = all.Count(p => p.Status == CollectionPromiseStatus.Kept);
+        return new
+        {
+            pending = all.Count(p => p.Status == CollectionPromiseStatus.Pending),
+            pendingAmount = all.Where(p => p.Status == CollectionPromiseStatus.Pending).Sum(p => p.Amount ?? 0m),
+            kept,
+            broken = all.Count(p => p.Status == CollectionPromiseStatus.Broken),
+            keptRate = resolved == 0 ? 0m : Math.Round((decimal)kept / resolved, 4)
+        };
+    }
+
+    private async Task<IReadOnlyList<object>> ContactHistoryAsync(string tenantId, string partyId, CancellationToken ct)
+    {
+        var contacts = await _campaigns.GetContactExecutionsByPartyAsync(tenantId, partyId, 30, ct);
+        var names = new Dictionary<string, string>();
+        var now = DateTimeOffset.UtcNow;
+        var result = new List<object>();
+        foreach (var c in contacts)
+        {
+            if (!names.TryGetValue(c.CampaignId, out var name))
+                names[c.CampaignId] = name = (await _campaigns.GetCampaignAsync(tenantId, c.CampaignId, ct))?.Name ?? "Campana";
+            var outcome = CampaignOutcomeService.EffectiveOutcome(c, now);
+            result.Add(new
+            {
+                c.Id,
+                c.CampaignId,
+                CampaignName = name,
+                c.Channel,
+                c.Recipient,
+                Status = c.Status.ToString(),
+                c.RenderedMessage,
+                c.LastReply,
+                c.RepliedAt,
+                Outcome = outcome,
+                OutcomeLabel = CampaignOutcomes.Find(outcome)?.Label,
+                c.OutcomeSource,
+                c.OutcomeNotes,
+                c.PromiseAmount,
+                c.PromiseDate,
+                c.SkipReason,
+                c.CreatedAt
+            });
+        }
+        return result;
     }
 
     private bool CanAccess(string tenantId, string permission)
@@ -234,4 +447,13 @@ public sealed record CollectionsCustomerRow
     public string StageLabel { get; init; } = string.Empty;
     public string Currency { get; init; } = "MXN";
     public DateTimeOffset SnapshotDate { get; init; }
+}
+
+public sealed record CreateCollectionPromiseRequest
+{
+    public string PartyId { get; init; } = string.Empty;
+    public decimal? Amount { get; init; }
+    public DateTimeOffset? PromisedDate { get; init; }
+    public string? Notes { get; init; }
+    public List<string>? LoanIds { get; init; }
 }

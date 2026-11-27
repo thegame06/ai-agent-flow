@@ -136,13 +136,13 @@ public sealed class ChannelGateway : IChannelGateway
             var session = await _sessionRepo.GetByIdAsync(incomingMessage.SessionId, incomingMessage.TenantId, ct);
             var agentKey = ResolveAgentKey(channel, session);
 
-            if (session != null)
+            if (session != null && agentKey is not null)
             {
                 session.LinkAgent(agentKey);
                 await _sessionRepo.UpdateAsync(session, ct);
             }
 
-            var inboundGuard = await EvaluateInboundGuardAsync(incomingMessage, channel, session, agentKey, ct);
+            var inboundGuard = await EvaluateInboundGuardAsync(incomingMessage, channel, session, agentKey ?? string.Empty, ct);
             if (inboundGuard is not null)
             {
                 incomingMessage.LinkExecution(inboundGuard.ExecutionId);
@@ -202,7 +202,7 @@ public sealed class ChannelGateway : IChannelGateway
                 await _auditMemory.RecordAsync(new AuditEntry
                 {
                     ExecutionId = inboundGuard.ExecutionId,
-                    AgentId = agentKey,
+                    AgentId = agentKey ?? string.Empty,
                     TenantId = incomingMessage.TenantId,
                     UserId = incomingMessage.From,
                     EventType = AuditEventType.RoutingDecision,
@@ -233,7 +233,7 @@ public sealed class ChannelGateway : IChannelGateway
                     inboundGuard.CustomerMessage);
                 guardedReply.Metadata["actor"] = "system";
                 guardedReply.Metadata["actor_label"] = "Sistema";
-                guardedReply.Metadata["actor_agent_id"] = agentKey;
+                guardedReply.Metadata["actor_agent_id"] = agentKey ?? string.Empty;
                 guardedReply.Metadata["agentflow.delivery"] = "sent";
                 guardedReply.Metadata["agentflow.safe_fallback"] = "true";
                 guardedReply.Metadata["agentflow.inbound_guard"] = "true";
@@ -244,6 +244,20 @@ public sealed class ChannelGateway : IChannelGateway
                     _logger.LogWarning("Inbound guard reply blocked or failed: {Error}", guardedSend.Error);
 
                 return guardedReply;
+            }
+
+            // A channel with no assistant (human-only inbox, or a campaign channel whose replies
+            // are only classified): keep the message for a person instead of failing the request.
+            if (agentKey is null)
+            {
+                incomingMessage.Status = MessageStatus.Received;
+                incomingMessage.Metadata["agentflow.execution_status"] = "NoAgent";
+                incomingMessage.Metadata["agentflow.awaiting_human"] = "true";
+                await _messageRepo.UpdateAsync(incomingMessage, ct);
+                _logger.LogInformation(
+                    "Channel {ChannelId} has no assistant; message {MessageId} left for a person",
+                    channel.Id, incomingMessage.Id);
+                return incomingMessage;
             }
 
             var executionRequest = await _executionRequestFactory.CreateAsync(
@@ -613,7 +627,7 @@ public sealed class ChannelGateway : IChannelGateway
             : BroadcastResult.Partial(successCount, failedIds.Count, failedIds);
     }
 
-    private static string ResolveAgentKey(ChannelDefinition channel, ChannelSession? session)
+    private static string? ResolveAgentKey(ChannelDefinition channel, ChannelSession? session)
     {
         // Sticky routing: preserve owner agent for the current session.
         if (!string.IsNullOrWhiteSpace(session?.AgentId))
@@ -622,9 +636,9 @@ public sealed class ChannelGateway : IChannelGateway
         if (!string.IsNullOrWhiteSpace(channel.RouterAgentId))
             return channel.RouterAgentId!;
 
-        return channel.Config.GetValueOrDefault("DefaultAgentId")
-            ?? channel.Metadata?.GetValueOrDefault("DefaultAgentId")
-            ?? "default-agent";
+        var configured = channel.Config.GetValueOrDefault("DefaultAgentId")
+            ?? channel.Metadata?.GetValueOrDefault("DefaultAgentId");
+        return string.IsNullOrWhiteSpace(configured) ? null : configured;
     }
 
     private async Task<InboundGuardDecision?> EvaluateInboundGuardAsync(

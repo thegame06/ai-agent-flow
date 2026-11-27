@@ -159,7 +159,7 @@ public sealed class CollectionsImportTests
         return (new CollectionsImportService(store, parties.Object), store, parties);
     }
 
-    private sealed class InMemoryCollectionsStore : ICollectionsStore
+    internal sealed class InMemoryCollectionsStore : ICollectionsStore
     {
         public Dictionary<string, CollectionLoanDocument> Loans { get; } = new(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, CollectionLoanSnapshotDocument> Snapshots { get; } = new();
@@ -175,5 +175,11 @@ public sealed class CollectionsImportTests
         public Task<IReadOnlyList<CollectionLoanSnapshotDocument>> GetSnapshotsAsync(string tenantId, string loanId, int limit, CancellationToken ct = default) => Task.FromResult<IReadOnlyList<CollectionLoanSnapshotDocument>>(Snapshots.Values.Where(s => s.LoanId == loanId).ToList());
         public Task InsertImportBatchAsync(CollectionImportBatchDocument batch, CancellationToken ct = default) { Batches.Add(batch); return Task.CompletedTask; }
         public Task<IReadOnlyList<CollectionImportBatchDocument>> GetImportBatchesAsync(string tenantId, int limit, CancellationToken ct = default) => Task.FromResult<IReadOnlyList<CollectionImportBatchDocument>>(Batches);
+        public List<CollectionPromiseDocument> Promises { get; } = [];
+        public Task InsertPromiseAsync(CollectionPromiseDocument promise, CancellationToken ct = default) { Promises.Add(promise); return Task.CompletedTask; }
+        public Task UpdatePromiseAsync(CollectionPromiseDocument promise, CancellationToken ct = default) => Task.CompletedTask;
+        public Task<CollectionPromiseDocument?> GetPromiseAsync(string tenantId, string promiseId, CancellationToken ct = default) => Task.FromResult(Promises.FirstOrDefault(p => p.Id == promiseId));
+        public Task<IReadOnlyList<CollectionPromiseDocument>> GetPromisesAsync(string tenantId, CollectionPromiseStatus? status = null, string? partyId = null, int limit = 500, CancellationToken ct = default)
+            => Task.FromResult<IReadOnlyList<CollectionPromiseDocument>>(Promises.Where(p => (status == null || p.Status == status) && (partyId == null || p.PartyId == partyId)).ToList());
     }
 }

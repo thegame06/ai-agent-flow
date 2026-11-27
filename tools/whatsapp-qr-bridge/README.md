@@ -8,6 +8,7 @@ Bridge para habilitar modo QR (WhatsApp Web) y conectar con AgentFlow.
 - `AGENTFLOW_BASE_URL` (ej. `http://localhost:5000`)
 - `TENANT_ID` (tenant para webhook QR)
 - `BRIDGE_API_KEY` (opcional)
+- `ALLOWED_NUMBERS` (recomendado al vincular un WhatsApp personal): teléfonos separados por coma. Solo se reenvían mensajes de esos números y solo se les puede escribir a ellos. Los grupos, estados y difusiones nunca se reenvían.
 
 ## Uso
 

@@ -180,8 +180,94 @@ public sealed record CampaignContactExecutionContract
     public string? CallId { get; init; }
     public string? CallOutcomeId { get; init; }
     public string? AssistantExecutionId { get; init; }
+    /// <summary>Name shown to operators (from the audience source).</summary>
+    public string? DisplayName { get; init; }
+    /// <summary>Per-contact template variables (e.g. total_vencido) resolved from the audience source.</summary>
+    public IReadOnlyDictionary<string, string>? Variables { get; init; }
+    /// <summary>The message actually sent to this contact, after variables were filled in.</summary>
+    public string? RenderedMessage { get; init; }
+    /// <summary>Last digits of the recipient, used to attribute inbound replies to this contact.</summary>
+    public string? RecipientKey { get; init; }
+    public DateTimeOffset? RepliedAt { get; init; }
+    public string? LastReply { get; init; }
+    public int ReplyCount { get; init; }
+    /// <summary>Business result of the contact (see <see cref="CampaignOutcomes"/>); null while unknown.</summary>
+    public string? Outcome { get; init; }
+    /// <summary>Who set the outcome: system, reply, agent, workflow or human.</summary>
+    public string? OutcomeSource { get; init; }
+    public DateTimeOffset? OutcomeAt { get; init; }
+    public string? OutcomeBy { get; init; }
+    public string? OutcomeNotes { get; init; }
+    public decimal? PromiseAmount { get; init; }
+    public DateTimeOffset? PromiseDate { get; init; }
     public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; init; } = DateTimeOffset.UtcNow;
+}
+
+/// <summary>One business result a campaign contact can end in.</summary>
+/// <param name="Category">positive, negative, neutral or unreachable — drives colors and rates.</param>
+/// <param name="CampaignTypes">Campaign types the outcome is offered for; empty = all.</param>
+public sealed record CampaignOutcomeDefinition(
+    string Code,
+    string Label,
+    string Category,
+    IReadOnlyList<CampaignType> CampaignTypes);
+
+/// <summary>
+/// Generic catalog of contact outcomes shared by every campaign type. Collections-only outcomes
+/// (promise to pay, already paid, ...) are tagged so sales campaigns don't offer them.
+/// </summary>
+public static class CampaignOutcomes
+{
+    public const string NoResponse = "no_response";
+    public const string Unreachable = "unreachable";
+    public const string Replied = "replied";
+    public const string Interested = "interested";
+    public const string NotInterested = "not_interested";
+    public const string PromiseToPay = "promise_to_pay";
+    public const string AlreadyPaid = "already_paid";
+    public const string CannotPay = "cannot_pay";
+    public const string Dispute = "dispute";
+    public const string CallbackRequested = "callback_requested";
+    public const string WrongNumber = "wrong_number";
+    public const string OptOut = "opt_out";
+    public const string NeedsHuman = "needs_human";
+
+    public static class Sources
+    {
+        public const string System = "system";
+        public const string Reply = "reply";
+        public const string Agent = "agent";
+        public const string Workflow = "workflow";
+        public const string Human = "human";
+    }
+
+    private static readonly CampaignType[] CollectionsOnly = [CampaignType.Collections, CampaignType.Reminder];
+
+    public static readonly IReadOnlyList<CampaignOutcomeDefinition> All =
+    [
+        new(Interested, "Dijo que si / interesado", "positive", []),
+        new(PromiseToPay, "Promesa de pago", "positive", CollectionsOnly),
+        new(AlreadyPaid, "Dice que ya pago", "positive", CollectionsOnly),
+        new(CallbackRequested, "Pidio que lo contacten despues", "neutral", []),
+        new(NeedsHuman, "Requiere asesor", "neutral", []),
+        new(Replied, "Respondio (sin clasificar)", "neutral", []),
+        new(NotInterested, "Dijo que no / no interesado", "negative", []),
+        new(CannotPay, "No puede pagar", "negative", CollectionsOnly),
+        new(Dispute, "Desconoce la deuda", "negative", CollectionsOnly),
+        new(OptOut, "Pidio no ser contactado", "negative", []),
+        new(WrongNumber, "Numero equivocado", "unreachable", []),
+        new(NoResponse, "Sin respuesta", "unreachable", []),
+        new(Unreachable, "No se pudo contactar", "unreachable", [])
+    ];
+
+    public static CampaignOutcomeDefinition? Find(string? code) =>
+        string.IsNullOrWhiteSpace(code)
+            ? null
+            : All.FirstOrDefault(x => string.Equals(x.Code, code, StringComparison.OrdinalIgnoreCase));
+
+    public static IReadOnlyList<CampaignOutcomeDefinition> For(CampaignType type) =>
+        All.Where(x => x.CampaignTypes.Count == 0 || x.CampaignTypes.Contains(type)).ToList();
 }
 
 public sealed record CampaignCallPlaybookContract
@@ -247,6 +333,8 @@ public sealed record CampaignAudienceContactContract
     public int OpenInvoiceCount { get; init; }
     public decimal OutstandingAmount { get; init; }
     public string Reason { get; init; } = string.Empty;
+    /// <summary>Template variables for this contact (e.g. nombre, total_vencido, dias_atraso).</summary>
+    public IReadOnlyDictionary<string, string> Variables { get; init; } = new Dictionary<string, string>();
 }
 
 public sealed record CampaignBuilderDraftContract
@@ -273,4 +361,30 @@ public sealed record CampaignMetricsContract
     public int Connected { get; init; }
     public int WorkflowStarted { get; init; }
     public int Skipped { get; init; }
+}
+
+/// <summary>
+/// Normalizes phone-like recipients so an inbound reply ("5215512345678@c.us") can be matched to
+/// the number a campaign sent to ("+52 55 1234 5678"): digits only, last 10 digits.
+/// </summary>
+public static class RecipientKeys
+{
+    private static readonly string[] Prefixes = ["whatsapp:", "tel:", "sms:"];
+
+    public static string? From(string? recipient)
+    {
+        if (string.IsNullOrWhiteSpace(recipient)) return null;
+        var value = recipient.Trim();
+        foreach (var prefix in Prefixes)
+            if (value.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) value = value[prefix.Length..];
+        var at = value.IndexOf('@');
+        var local = at > 0 ? value[..at] : value;
+
+        // Not a phone number (user id, email local part...): match it as-is, case-insensitively.
+        if (local.Any(char.IsLetter)) return value.ToLowerInvariant();
+
+        var digits = new string(local.Where(char.IsDigit).ToArray());
+        if (digits.Length == 0) return null;
+        return digits.Length > 10 ? digits[^10..] : digits;
+    }
 }
