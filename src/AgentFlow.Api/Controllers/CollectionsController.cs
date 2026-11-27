@@ -120,6 +120,87 @@ public sealed class CollectionsController : ControllerBase
         return Ok(await recovery.GetReportAsync(tenantId, start, end, ct));
     }
 
+    /// <summary>How customers pay: payment methods and which reference they quote. The assistant reads it.</summary>
+    [HttpGet("payment-settings")]
+    public async Task<IActionResult> GetPaymentSettings([FromRoute] string tenantId, [FromServices] ICollectionPaymentDeskStore desk, CancellationToken ct)
+    {
+        if (!CanAccess(tenantId, AgentFlowPermissions.ConnectRead)) return Forbid();
+        return Ok(await desk.GetSettingsAsync(tenantId, ct) ?? new CollectionPaymentSettingsDocument { TenantId = tenantId });
+    }
+
+    [HttpPut("payment-settings")]
+    public async Task<IActionResult> SavePaymentSettings(
+        [FromRoute] string tenantId,
+        [FromBody] SaveCollectionPaymentSettingsRequest request,
+        [FromServices] ICollectionPaymentDeskStore desk,
+        CancellationToken ct)
+    {
+        if (!CanAccess(tenantId, AgentFlowPermissions.ConnectManage)) return Forbid();
+        var methods = (request.Methods ?? []).Where(m => !string.IsNullOrWhiteSpace(m.Name)).ToList();
+        if (methods.Count > 30) return BadRequest(new { message = "Maximo 30 medios de pago." });
+        foreach (var m in methods)
+        {
+            m.Id = string.IsNullOrWhiteSpace(m.Id) ? Guid.NewGuid().ToString("N")[..8] : m.Id;
+            m.Name = m.Name.Trim();
+            m.Type = m.Type is "bank_transfer" or "cash" or "app" or "other" ? m.Type : "other";
+            m.Currency = string.IsNullOrWhiteSpace(m.Currency) ? null : m.Currency.Trim().ToUpperInvariant();
+        }
+
+        var settings = new CollectionPaymentSettingsDocument
+        {
+            TenantId = tenantId,
+            Methods = methods,
+            ReferenceKind = request.ReferenceKind == "customer" ? "customer" : "loan",
+            Notes = string.IsNullOrWhiteSpace(request.Notes) ? null : request.Notes.Trim(),
+            UpdatedAt = DateTimeOffset.UtcNow,
+            UpdatedBy = _tenantContext.Current!.UserId
+        };
+        await desk.SaveSettingsAsync(settings, ct);
+        return Ok(settings);
+    }
+
+    /// <summary>Payments customers said they made (through the assistant), waiting for a person.</summary>
+    [HttpGet("payment-reports")]
+    public async Task<IActionResult> GetPaymentReports(
+        [FromRoute] string tenantId,
+        [FromQuery] CollectionPaymentReportStatus? status,
+        [FromServices] ICollectionPaymentDeskStore desk,
+        CancellationToken ct)
+    {
+        if (!CanAccess(tenantId, AgentFlowPermissions.ConnectRead)) return Forbid();
+        var reports = await desk.GetReportsAsync(tenantId, status, 200, ct);
+        var pending = status == CollectionPaymentReportStatus.Pending
+            ? reports.Count
+            : (await desk.GetReportsAsync(tenantId, CollectionPaymentReportStatus.Pending, 1000, ct)).Count;
+        return Ok(new { items = reports, pending });
+    }
+
+    [HttpPost("payment-reports/{reportId}/confirm")]
+    public async Task<IActionResult> ConfirmPaymentReport(
+        [FromRoute] string tenantId,
+        [FromRoute] string reportId,
+        [FromBody] ConfirmPaymentReportRequest? request,
+        [FromServices] ICollectionPaymentReportService reports,
+        CancellationToken ct)
+    {
+        if (!CanAccess(tenantId, AgentFlowPermissions.ConnectOperate)) return Forbid();
+        var result = await reports.ConfirmAsync(tenantId, reportId, request?.LoanId, request?.Amount, request?.PaidAt, _tenantContext.Current!.UserId, ct);
+        return result.Ok ? Ok(result) : UnprocessableEntity(result);
+    }
+
+    [HttpPost("payment-reports/{reportId}/reject")]
+    public async Task<IActionResult> RejectPaymentReport(
+        [FromRoute] string tenantId,
+        [FromRoute] string reportId,
+        [FromBody] RejectPaymentReportRequest? request,
+        [FromServices] ICollectionPaymentReportService reports,
+        CancellationToken ct)
+    {
+        if (!CanAccess(tenantId, AgentFlowPermissions.ConnectOperate)) return Forbid();
+        var result = await reports.RejectAsync(tenantId, reportId, request?.Notes, _tenantContext.Current!.UserId, ct);
+        return result.Ok ? Ok(result) : UnprocessableEntity(result);
+    }
+
     /// <summary>Portfolio totals and the breakdown by delinquency stage (active loans).</summary>
     [HttpGet("summary")]
     public async Task<IActionResult> GetSummary([FromRoute] string tenantId, CancellationToken ct)
@@ -531,4 +612,23 @@ public sealed record CreateStageStrategyRequest
 {
     public string? Timezone { get; init; }
     public string? Channel { get; init; }
+}
+
+public sealed record SaveCollectionPaymentSettingsRequest
+{
+    public List<CollectionPaymentMethod>? Methods { get; init; }
+    public string? ReferenceKind { get; init; }
+    public string? Notes { get; init; }
+}
+
+public sealed record ConfirmPaymentReportRequest
+{
+    public string? LoanId { get; init; }
+    public decimal? Amount { get; init; }
+    public DateTimeOffset? PaidAt { get; init; }
+}
+
+public sealed record RejectPaymentReportRequest
+{
+    public string? Notes { get; init; }
 }

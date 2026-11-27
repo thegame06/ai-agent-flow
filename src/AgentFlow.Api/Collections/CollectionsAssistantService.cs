@@ -26,6 +26,11 @@ public sealed record CollectionsCustomerContext
     public string? Note { get; init; }
     /// <summary>Set when an advisor handled this conversation and gave it back to the assistant.</summary>
     public string? Conversation { get; init; }
+    /// <summary>
+    /// How this customer pays (the lender's methods and the customer's references). Always in the
+    /// context: with it only behind a separate tool, the model kept saying it had no payment data.
+    /// </summary>
+    public PaymentInstructions? HowToPay { get; init; }
 }
 
 public sealed record CollectionsLoanBrief(
@@ -52,6 +57,10 @@ public interface ICollectionsAssistantService
     /// <param name="whenText">What the customer said about the date ("el lunes"); resolved here, preferred over <paramref name="promisedDate"/>.</param>
     Task<CollectionsAssistantActionResult> RegisterPromiseAsync(string tenantId, string phone, decimal? amount, DateTimeOffset? promisedDate, string? whenText, string? notes, CancellationToken ct = default);
     Task<CollectionsAssistantActionResult> RecordOutcomeAsync(string tenantId, string phone, string outcome, string? notes, CancellationToken ct = default);
+    /// <summary>How this customer can pay: the lender's payment methods and the customer's own references.</summary>
+    Task<PaymentInstructions> GetPaymentInstructionsAsync(string tenantId, string phone, CancellationToken ct = default);
+    /// <summary>The customer says they already paid: saved for a person to verify.</summary>
+    Task<CollectionsAssistantActionResult> ReportPaymentAsync(string tenantId, string phone, decimal? amount, string? whenText, string? reference, string? method, string? notes, CancellationToken ct = default);
     /// <param name="sessionId">The live conversation: it waits for a person and the assistant stops answering.</param>
     Task<CollectionsAssistantActionResult> HandoffAsync(string tenantId, string phone, string reason, CancellationToken ct = default, string? sessionId = null);
 }
@@ -66,15 +75,18 @@ public sealed class CollectionsAssistantService : ICollectionsAssistantService
     private readonly ICampaignStore _campaigns;
     private readonly ICampaignOutcomeService _outcomes;
     private readonly AgentFlow.Api.Connect.IConversationHandoffService? _handoff;
+    private readonly ICollectionPaymentDeskStore? _paymentDesk;
 
     public CollectionsAssistantService(
         ICollectionsStore collections,
         ICollectionPromiseService promises,
         ICampaignStore campaigns,
         ICampaignOutcomeService outcomes,
-        AgentFlow.Api.Connect.IConversationHandoffService? handoff = null)
+        AgentFlow.Api.Connect.IConversationHandoffService? handoff = null,
+        ICollectionPaymentDeskStore? paymentDesk = null)
     {
         _handoff = handoff;
+        _paymentDesk = paymentDesk;
         _collections = collections;
         _promises = promises;
         _campaigns = campaigns;
@@ -84,6 +96,8 @@ public sealed class CollectionsAssistantService : ICollectionsAssistantService
     public async Task<CollectionsCustomerContext> GetContextAsync(string tenantId, string phone, CancellationToken ct = default, string? sessionId = null)
     {
         var context = await BuildContextAsync(tenantId, phone, ct);
+        if (context.Found && _paymentDesk is not null)
+            context = context with { HowToPay = CollectionPaymentDesk.ForAssistant(await GetPaymentInstructionsAsync(tenantId, phone, ct)) };
         if (string.IsNullOrWhiteSpace(sessionId) || _handoff is null) return context;
         return context with { Conversation = await _handoff.GetAssistantNoteAsync(tenantId, sessionId!, ct) };
     }
@@ -173,6 +187,73 @@ public sealed class CollectionsAssistantService : ICollectionsAssistantService
         if (contact is null) return new(false, "Este cliente no tiene un contacto de campana reciente.");
         await _outcomes.RecordAsync(tenantId, contact.Id, new CampaignOutcomeRequest(outcome, CampaignOutcomes.Sources.Agent, Actor, notes), ct);
         return new(true, "Resultado registrado.");
+    }
+
+    public async Task<PaymentInstructions> GetPaymentInstructionsAsync(string tenantId, string phone, CancellationToken ct = default)
+    {
+        var (partyId, loans) = await FindCustomerAsync(tenantId, phone, ct);
+        var settings = _paymentDesk is null ? null : await _paymentDesk.GetSettingsAsync(tenantId, ct);
+        var instructions = CollectionPaymentDesk.BuildInstructions(settings, loans);
+        return partyId is null && instructions.Configured
+            ? instructions with { Message = "No hay prestamos registrados para este numero: da los medios de pago pero no inventes una referencia; si la necesita, pasa a un asesor." }
+            : instructions;
+    }
+
+    public async Task<CollectionsAssistantActionResult> ReportPaymentAsync(string tenantId, string phone, decimal? amount, string? whenText, string? reference, string? method, string? notes, CancellationToken ct = default)
+    {
+        if (amount is <= 0) return new(false, "El monto debe ser mayor a cero; si no lo dijo, omitelo.");
+        var (partyId, loans) = await FindCustomerAsync(tenantId, phone, ct);
+        if (partyId is null) return new(false, "No encontre prestamos para este cliente: pasa el caso a un asesor.");
+
+        var contact = await LatestContactAsync(tenantId, phone, ct);
+        var campaign = contact is null ? null : await _campaigns.GetCampaignAsync(tenantId, contact.CampaignId, ct);
+        var localNow = CampaignContactPolicy.ToLocal(DateTimeOffset.UtcNow, campaign?.Timezone ?? "America/Mexico_City");
+        var paidOn = CollectionPaymentDesk.ResolvePastDate(whenText, localNow);
+        var open = loans.Where(l => l.Status is not CollectionLoanStatus.PaidOff).ToList();
+        string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+        if (_paymentDesk is not null)
+        {
+            await _paymentDesk.InsertReportAsync(new CollectionPaymentReportDocument
+            {
+                TenantId = tenantId,
+                PartyId = partyId,
+                CustomerName = loans.Select(l => l.CustomerName).FirstOrDefault(n => !string.IsNullOrWhiteSpace(n)),
+                Phone = phone,
+                Amount = amount,
+                Currency = loans.Select(l => l.Currency).FirstOrDefault(c => !string.IsNullOrWhiteSpace(c)) ?? "MXN",
+                PaidOnText = Clean(whenText),
+                PaidOn = paidOn,
+                Reference = Clean(reference),
+                Method = Clean(method),
+                Notes = Clean(notes),
+                LoanId = open.Count == 1 ? open[0].Id : null,
+                ContactExecutionId = contact?.Id,
+                Source = CampaignOutcomes.Sources.Agent
+            }, ct);
+        }
+
+        // The campaign result is "already paid" right away; the money counts once a person confirms it.
+        if (contact is not null && contact.Outcome != CampaignOutcomes.AlreadyPaid)
+        {
+            var summary = string.Join(" ", new[]
+            {
+                amount is > 0 ? $"Monto {amount.Value.ToString("#,##0.00", CultureInfo.InvariantCulture)}." : null,
+                Clean(reference) is { } r ? $"Ref. {r}." : null
+            }.Where(x => x is not null));
+            await _outcomes.RecordAsync(tenantId, contact.Id, new CampaignOutcomeRequest(
+                CampaignOutcomes.AlreadyPaid, CampaignOutcomes.Sources.Agent, Actor, summary.Length == 0 ? null : summary), ct);
+        }
+
+        var missing = new[]
+        {
+            amount is null ? "monto" : null,
+            paidOn is null ? "fecha" : null,
+            Clean(reference) is null ? "numero de referencia o comprobante" : null
+        }.Where(x => x is not null).ToList();
+        return new(true, missing.Count == 0
+            ? "Pago reportado; un asesor lo verificara."
+            : $"Pago reportado; un asesor lo verificara. Faltan: {string.Join(", ", missing)}. Si no los dio, pideselos una sola vez; si los da, vuelve a reportarlo.");
     }
 
     public async Task<CollectionsAssistantActionResult> HandoffAsync(string tenantId, string phone, string reason, CancellationToken ct = default, string? sessionId = null)

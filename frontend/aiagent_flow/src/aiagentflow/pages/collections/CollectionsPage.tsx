@@ -37,7 +37,9 @@ import { PromisesTab } from './PromisesTab';
 import { AttentionTab } from './AttentionTab';
 import { ImportDialog } from './ImportDialog';
 import { CustomerDrawer } from './CustomerDrawer';
+import { PaymentReportsTab } from './PaymentReportsTab';
 import { ConversationDrawer } from './ConversationDrawer';
+import { PaymentSettingsDialog } from './PaymentSettingsDialog';
 import { day, Kpi, money, STAGE_KEYS, STAGE_COLOR, STAGE_LABEL, useDebounced } from './shared';
 
 import type { StageKey, AttentionItem } from './shared';
@@ -71,7 +73,7 @@ type CustomerRow = {
   currency: string;
 };
 
-type TabKey = 'customers' | 'loans' | 'promises' | 'attention';
+type TabKey = 'customers' | 'loans' | 'promises' | 'attention' | 'payments';
 
 // ----------------------------------------------------------------------
 
@@ -93,6 +95,8 @@ export default function CollectionsPage() {
   const [conversation, setConversation] = useState<AttentionItem | null>(null);
   const [attentionCount, setAttentionCount] = useState<number | null>(null);
   const [attentionKey, setAttentionKey] = useState(0);
+  const [paymentSettingsOpen, setPaymentSettingsOpen] = useState(false);
+  const [reportedCount, setReportedCount] = useState<number | null>(null);
 
   // The badge on "Para atender" shows before the tab is opened.
   useEffect(() => {
@@ -101,6 +105,14 @@ export default function CollectionsPage() {
       .then((res) => setAttentionCount(res.data?.length ?? 0))
       .catch(() => setAttentionCount(null));
   }, [tenantBase, attentionKey]);
+
+  // Payments customers reported to the assistant, waiting for someone to confirm them.
+  useEffect(() => {
+    axios
+      .get<{ pending: number }>(`${base}/payment-reports`, { params: { status: 'Pending' } })
+      .then((res) => setReportedCount(res.data?.pending ?? 0))
+      .catch(() => setReportedCount(null));
+  }, [base, reloadKey]);
 
   useEffect(() => {
     setError(null);
@@ -169,6 +181,9 @@ export default function CollectionsPage() {
               onClick={() => navigate(paths.dashboard.collectionsRecovery)}
             >
               Ver recuperación
+            </Button>
+            <Button variant="outlined" startIcon={<Iconify icon="mdi:bank-outline" />} onClick={() => setPaymentSettingsOpen(true)}>
+              Medios de pago
             </Button>
             <Button
               variant="outlined"
@@ -263,6 +278,15 @@ export default function CollectionsPage() {
                 </Stack>
               }
             />
+            <Tab
+              value="payments"
+              label={
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <span>Pagos reportados</span>
+                  {!!reportedCount && <Chip size="small" color="info" label={reportedCount} />}
+                </Stack>
+              }
+            />
           </Tabs>
 
           {tab === 'customers' && (
@@ -270,6 +294,14 @@ export default function CollectionsPage() {
           )}
           {tab === 'loans' && <LoansTab base={base} initialStage={stage} onOpenLoan={setLoanId} />}
           {tab === 'promises' && <PromisesTab base={base} onOpenCustomer={setCustomerId} />}
+          {tab === 'payments' && (
+            <PaymentReportsTab
+              base={base}
+              reloadKey={reloadKey}
+              onOpenCustomer={setCustomerId}
+              onCount={setReportedCount}
+            />
+          )}
           {tab === 'attention' && (
             <AttentionTab
               conversationsBase={`${tenantBase}/conversations`}
@@ -281,6 +313,7 @@ export default function CollectionsPage() {
         </Card>
       </DashboardContent>
 
+      <PaymentSettingsDialog base={base} open={paymentSettingsOpen} onClose={() => setPaymentSettingsOpen(false)} />
       <ConversationDrawer
         tenantBase={tenantBase}
         item={conversation}

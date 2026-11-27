@@ -117,6 +117,8 @@ public sealed class MafBrain : IAgentBrain
     {
         if (context.AvailableTools.Count == 0)
             return null;
+        _logger.LogDebug("MAF tools for execution {ExecutionId}: {Tools}", context.ExecutionId,
+            string.Join(", ", context.AvailableTools.Select(t => t.Name)));
 
         var tools = new List<AITool>(context.AvailableTools.Count);
         foreach (var tool in context.AvailableTools)

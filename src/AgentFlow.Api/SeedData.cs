@@ -898,10 +898,20 @@ Always be concrete: tell the user EXACTLY what to click or configure."
             .FirstOrDefault(a => string.Equals(a.Name, AgentFlow.Api.Collections.CollectionsAssistantAgent.Name, StringComparison.OrdinalIgnoreCase));
         if (existing is not null)
         {
-            // Keep the instructions of an existing assistant in sync with the shipped prompt.
+            // Keep an existing assistant in sync with what ships: new tools and the prompt.
+            var missingTools = AgentFlow.Api.Collections.CollectionsAssistantAgent.Tools
+                .Where(t => existing.AuthorizedTools.All(b => !string.Equals(b.ToolId, t, StringComparison.OrdinalIgnoreCase)))
+                .ToList();
+            foreach (var toolName in missingTools)
+                existing.AddTool(CollectionsAssistantToolBinding(toolName));
+
             var prompt = AgentFlow.Api.Collections.CollectionsAssistantAgent.SystemPrompt;
             if (string.Equals(existing.Brain.SystemPromptTemplate?.Trim(), prompt.Trim(), StringComparison.Ordinal))
+            {
+                if (missingTools.Count > 0)
+                    await agentRepo.UpdateAsync(existing);
                 return;
+            }
             var update = existing.Update(
                 name: existing.Name,
                 description: existing.Description,
@@ -960,21 +970,21 @@ Always be concrete: tell the user EXACTLY what to click or configure."
         var agent = create.Value!;
         agent.SetTags(new[] { "collections", "seed" }.ToList().AsReadOnly());
         foreach (var toolName in AgentFlow.Api.Collections.CollectionsAssistantAgent.Tools)
-        {
-            agent.AddTool(new ToolBinding
-            {
-                ToolId = toolName,
-                ToolName = toolName,
-                ToolVersion = "1.0.0",
-                IsEnabled = true,
-                MaxCallsPerExecution = 4,
-                GrantedPermissions = new[] { "tool:execute:low" }.ToList().AsReadOnly()
-            });
-        }
+            agent.AddTool(CollectionsAssistantToolBinding(toolName));
 
         if (agent.Publish(ownerUser).IsSuccess)
             await agentRepo.InsertAsync(agent);
     }
+
+    private static ToolBinding CollectionsAssistantToolBinding(string toolName) => new()
+    {
+        ToolId = toolName,
+        ToolName = toolName,
+        ToolVersion = "1.0.0",
+        IsEnabled = true,
+        MaxCallsPerExecution = 4,
+        GrantedPermissions = new[] { "tool:execute:low" }.ToList().AsReadOnly()
+    };
 
     private static async Task SeedSalesHappyPathAsync(IServiceProvider services, string tenantId, string ownerUser)
     {

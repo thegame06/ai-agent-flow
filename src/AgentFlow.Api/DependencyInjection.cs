@@ -77,11 +77,13 @@ public static class DependencyInjection
             .AddScoped<IConnectStore, MongoConnectStore>()
             .AddScoped<IOutboundMessageSender, OutboundMessageSender>()
             .AddSingleton<ICollectionsStore, MongoCollectionsStore>()
+            .AddSingleton<ICollectionPaymentDeskStore, MongoCollectionPaymentDeskStore>()
             .AddScoped<ICollectionsImportService, CollectionsImportService>()
             .AddScoped<ICollectionPromiseService, CollectionPromiseService>()
             .AddScoped<ICollectionPaymentService, CollectionPaymentService>()
             .AddScoped<ICollectionsAssistantService, CollectionsAssistantService>()
             .AddScoped<ICollectionsRecoveryService, CollectionsRecoveryService>()
+            .AddScoped<ICollectionPaymentReportService, CollectionPaymentReportService>()
             .AddScoped<AgentFlow.Api.Connect.IConversationHandoffService, AgentFlow.Api.Connect.ConversationHandoffService>()
             .AddScoped<ICampaignOutcomeService, CampaignOutcomeService>()
             .AddScoped<ICampaignFollowUpService, CampaignFollowUpService>()
@@ -146,6 +148,9 @@ public static class DependencyInjection
         services.AddSingleton<IToolPlugin, CollectionsRegisterPromiseTool>();
         services.AddSingleton<IToolPlugin, CollectionsRecordOutcomeTool>();
         services.AddSingleton<IToolPlugin, CollectionsHandoffTool>();
+        services.AddSingleton<IToolPlugin, CollectionsPaymentInstructionsTool>();
+        services.AddSingleton<IToolPlugin, CollectionsReportPaymentTool>();
+        services.AddSingleton<AgentFlow.Core.Engine.IChannelReplyTransformer, PaymentInstructionsReplyTransformer>();
 
         return services;
     }
