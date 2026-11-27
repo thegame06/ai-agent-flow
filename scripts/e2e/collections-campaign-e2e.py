@@ -216,6 +216,62 @@ def main() -> int:
     _, kept = api.call("GET", f"{c}/promises?status=Kept")
     check(any(p.get("customerName") == "Ana E2E" for p in kept["items"]), "full payment on the next cut-off -> promise kept")
 
+    print("8. Follow-ups: no response, promise reminder, hand-off, payments, daily cap")
+    fu = {k: f"E2E-{run}-{k}" for k in ("E", "F", "G")}
+    fphone = {"E": f"+52155{run}05", "F": f"+52155{run}06", "G": f"+52155{run}07"}
+    api.call("POST", f"{c}/accounts/batch", {"snapshotDate": f"{today}T00:00:00Z", "rows": [
+        {"customerId": fu[k], "fullName": f"{k}ena E2E", "phone": fphone[k], "loanId": f"{fu[k]}-L1",
+         "totalBalance": 2000, "overduePrincipal": 300, "daysPastDue": 15} for k in fu]})
+    policy = {"enabled": True, "maxFollowUps": 3, "rules": [
+        {"id": "sin-respuesta", "trigger": "no_response", "afterHours": 0, "action": "message",
+         "message": "Seguimos pendientes {{primer_nombre}}: {{total_vencido}}"},
+        {"id": "recordatorio-promesa", "trigger": "promise_due", "beforeHours": 24 * 30, "action": "message",
+         "message": "Recuerda tu pago de {{monto_promesa}} el {{fecha_promesa}}"},
+        {"id": "asesor", "trigger": "outcome:needs_human", "action": "handoff"}]}
+    _, fcamp = api.call("POST", f"{t}/campaigns", {
+        "name": f"E2E seguimiento {run}", "campaignType": 1, "channel": "api", "channelAction": 0, "executionMode": 1,
+        "triggerType": 1, "messageDraft": "Hola {{primer_nombre}}, debes {{total_vencido}}",
+        "audienceFilterJson": json.dumps({"source": "collections", "customerIds": list(fu.values())}),
+        "followupPolicyJson": json.dumps(policy), "timezone": "America/Mexico_City"})
+    api.call("POST", f"{t}/campaigns/{fcamp['id']}/publish")
+    _, frun = api.call("POST", f"{t}/campaigns/{fcamp['id']}/run-now")
+    check(json.loads(frun["countersJson"]).get("Sent") == 3, "follow-up campaign sent to 3 customers", frun["countersJson"])
+    api.call("POST", f"{t}/channels/{channel_id}/messages", {"from": fphone["F"], "content": "te pago 300 el viernes"})
+    api.call("POST", f"{t}/channels/{channel_id}/messages", {"from": fphone["G"], "content": "quiero hablar con un asesor"})
+
+    RECEIVED.clear()
+    _, summary = api.call("POST", f"{t}/campaigns/{fcamp['id']}/follow-ups/run")
+    check((summary.get("sent"), summary.get("handedOff")) == (2, 1), "follow-ups: 2 messages + 1 hand-off", str(summary))
+    time.sleep(1)
+    texts = [str(m.get("content") or m) for m in RECEIVED]
+    check(any("Seguimos pendientes Eena" in x and "300.00" in x for x in texts), "no-response follow-up quotes today's debt", str(texts)[:200])
+    check(any("Recuerda tu pago de 300.00" in x for x in texts), "promise reminder quotes the promised amount", str(texts)[:200])
+    _, again = api.call("POST", f"{t}/campaigns/{fcamp['id']}/follow-ups/run")
+    check(again.get("sent") == 0 and again.get("handedOff") == 0, "each follow-up runs once per contact", str(again))
+
+    _, fres = api.call("GET", f"{t}/campaigns/{fcamp['id']}/results")
+    g = next(x for x in fres["contactsList"] if x["recipient"] == fphone["G"])
+    check(fres["needsAttention"] == 1 and g["needsAttention"] and fres["followUpsSent"] == 2, "results show 1 to attend and 2 follow-ups",
+          str({k: fres[k] for k in ("needsAttention", "followUpsSent")}))
+    status, _ = api.call("POST", f"{t}/campaign-contacts/{g['id']}/attention/resolve")
+    _, fres = api.call("GET", f"{t}/campaigns/{fcamp['id']}/results")
+    check(status == 200 and fres["needsAttention"] == 0, "operator marks the contact as attended")
+
+    _, pay = api.call("POST", f"{c}/payments", {"payments": [{"loanId": f"{fu['F']}-L1", "amount": 300, "reference": f"E2E-PAY-{run}"}]})
+    _, dup = api.call("POST", f"{c}/payments", {"payments": [{"loanId": f"{fu['F']}-L1", "amount": 300, "reference": f"E2E-PAY-{run}"}]})
+    check(pay.get("applied") == 1 and pay.get("promisesResolved") == 1 and dup.get("duplicates") == 1,
+          "payment applied, promise closed the same day, repeated reference ignored", str({"pay": pay.get("applied"), "resolved": pay.get("promisesResolved"), "dup": dup.get("duplicates")}))
+    _, floans = api.call("GET", f"{c}/loans?query={fu['F']}")
+    floan = floans["items"][0]
+    check(floan["overdueBalance"] == 0 and floan["stage"] == "Current", "loan is current after the payment", str({k: floan[k] for k in ("overdueBalance", "stage")}))
+
+    _, capcamp = api.call("POST", f"{t}/campaigns", {
+        "name": f"E2E limite {run}", "campaignType": 1, "channel": "api", "channelAction": 0, "executionMode": 1, "triggerType": 1,
+        "messageDraft": "Hola {{primer_nombre}}", "throttleJson": json.dumps({"maxPerRecipientPerDay": 2}),
+        "audienceFilterJson": json.dumps({"source": "collections", "customerIds": [fu["E"]]})})
+    _, caprun = api.call("POST", f"{t}/campaigns/{capcamp['id']}/run-now")
+    check(json.loads(caprun["countersJson"]).get("Skipped") == 1, "daily cap: a customer messaged twice today is skipped", caprun["countersJson"])
+
     api.call("POST", f"{t}/channels/{channel_id}/deactivate")
     api.call("DELETE", f"{t}/channels/{channel_id}")
     print(f"\n{'ALL PASSED' if not FAILURES else f'{len(FAILURES)} FAILED'} (run {run})")

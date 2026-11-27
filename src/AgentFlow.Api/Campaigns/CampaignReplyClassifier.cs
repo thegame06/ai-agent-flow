@@ -30,6 +30,15 @@ public static partial class CampaignReplyClassifier
         (CampaignOutcomes.Interested, R(@"^(si|claro|ok|okay|va|vale|de acuerdo|acepto|perfecto|esta bien|dale|sale|me interesa|por supuesto|con gusto)\b|me interesa"))
     ];
 
+    // Doubt words: "no se si pueda pagar el viernes" is not a promise. Left for a person to read.
+    private static readonly Regex Hedge = R(@"no se si|tal vez|talvez|quizas|quiza|a lo mejor|creo que|igual y|no estoy seguro|no prometo|si me pagan|si me depositan|a ver si|vere si|lo intento|intentare");
+
+    private static readonly HashSet<string> ClearEvenWithDoubt =
+    [
+        CampaignOutcomes.OptOut, CampaignOutcomes.WrongNumber, CampaignOutcomes.Dispute,
+        CampaignOutcomes.NeedsHuman, CampaignOutcomes.CallbackRequested
+    ];
+
     private static readonly string[] Weekdays = ["domingo", "lunes", "martes", "miercoles", "jueves", "viernes", "sabado"];
     private static readonly string[] Months = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
 
@@ -39,11 +48,16 @@ public static partial class CampaignReplyClassifier
         var text = Normalize(reply);
         if (text.Length == 0) return new(null, null, null, null);
 
+        // With doubt ("no se si", "tal vez"...) only unambiguous intents count; yes/no/promise are left for a person.
+        var hedged = Hedge.IsMatch(text);
         foreach (var (outcome, pattern) in Rules)
         {
+            if (hedged && !ClearEvenWithDoubt.Contains(outcome)) continue;
             if (!pattern.IsMatch(text)) continue;
             if (outcome != CampaignOutcomes.PromiseToPay)
                 return new(outcome, null, null, pattern.ToString());
+            if (Hedge.IsMatch(text))
+                return new(null, null, null, "hedge");
 
             return new(outcome, ExtractAmount(text), ExtractDate(text, receivedAt), pattern.ToString());
         }
@@ -51,6 +65,8 @@ public static partial class CampaignReplyClassifier
         // A bare date or amount after a collections message ("el viernes", "$500 el 15") is a promise.
         var date = ExtractDate(text, receivedAt);
         var amount = ExtractAmount(text);
+        if (Hedge.IsMatch(text))
+            return new(null, null, null, "hedge");
         if (date is not null && (amount is not null || text.Length <= 40))
             return new(CampaignOutcomes.PromiseToPay, amount, date, "date_or_amount");
 

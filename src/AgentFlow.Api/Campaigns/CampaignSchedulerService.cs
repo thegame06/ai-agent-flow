@@ -40,6 +40,16 @@ public sealed class CampaignSchedulerService : BackgroundService
                             continue;
                         }
 
+                        // Outside the contact window (e.g. 8:00-20:00 in the campaign's timezone): move the
+                        // run to when the window opens instead of messaging customers at night.
+                        var window = CampaignContactPolicy.From(campaign);
+                        var now = DateTimeOffset.UtcNow;
+                        if (!window.IsOpen(now))
+                        {
+                            await store.UpsertCampaignAsync(campaign with { NextRunAt = window.NextOpen(now) }, stoppingToken);
+                            continue;
+                        }
+
                         await executor.RunNowAsync(campaign.TenantId, campaign.Id, "campaign-scheduler", CampaignRunTrigger.Schedule, stoppingToken);
                     }
                     catch (Exception ex)

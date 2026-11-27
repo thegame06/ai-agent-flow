@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using AgentFlow.Abstractions.Connect;
 using AgentFlow.Api.AuthProfiles;
@@ -27,6 +28,7 @@ public sealed class CampaignExecutionService : ICampaignExecutionService
     private readonly IAuditMemory _auditMemory;
     private readonly IRuntimeModelProfileStore _runtimeProfiles;
     private readonly IOutboundMessageSender _outbound;
+    private readonly ICampaignFollowUpService? _followUps;
 
     public CampaignExecutionService(
         ICampaignStore campaignStore,
@@ -35,8 +37,10 @@ public sealed class CampaignExecutionService : ICampaignExecutionService
         IWorkflowTriggerService workflowTriggerService,
         IAuditMemory auditMemory,
         IRuntimeModelProfileStore runtimeProfiles,
-        IOutboundMessageSender outbound)
+        IOutboundMessageSender outbound,
+        ICampaignFollowUpService? followUps = null)
     {
+        _followUps = followUps;
         _campaignStore = campaignStore;
         _audienceService = audienceService;
         _connectStore = connectStore;
@@ -57,6 +61,7 @@ public sealed class CampaignExecutionService : ICampaignExecutionService
         // The whole audience (a preview is capped at 50 contacts for display).
         var preview = await _audienceService.ResolveAsync(tenantId, campaign.AudienceFilterJson, campaign.Id, ct);
         var optedOut = await _campaignStore.GetOptedOutRecipientKeysAsync(tenantId, ct);
+        var contactPolicy = CampaignContactPolicy.From(campaign);
         var run = await _campaignStore.CreateRunAsync(new CampaignRunContract
         {
             Id = Guid.NewGuid().ToString("N"),
@@ -90,6 +95,19 @@ public sealed class CampaignExecutionService : ICampaignExecutionService
                 CreatedAt = DateTimeOffset.UtcNow,
                 UpdatedAt = DateTimeOffset.UtcNow
             }, ct);
+
+            if (execution.RecipientKey is not null && _followUps is not null && contactPolicy.MaxPerRecipientPerDay > 0 &&
+                await _followUps.CountSendsTodayAsync(tenantId, execution.RecipientKey, contactPolicy, DateTimeOffset.UtcNow, ct) >= contactPolicy.MaxPerRecipientPerDay)
+            {
+                execution = (await _campaignStore.UpdateContactExecutionAsync(execution with
+                {
+                    Status = CampaignContactExecutionStatus.Skipped,
+                    SkipReason = "limite_diario",
+                    UpdatedAt = DateTimeOffset.UtcNow
+                }, ct))!;
+                counters.Observe(execution.Status);
+                continue;
+            }
 
             if (execution.RecipientKey is not null && optedOut.Contains(execution.RecipientKey))
             {
@@ -257,8 +275,8 @@ public sealed class CampaignExecutionService : ICampaignExecutionService
         {
             CampaignScheduleType.Once => campaign.StartAt > now ? campaign.StartAt : null,
             CampaignScheduleType.Hourly => now.AddHours(1),
-            CampaignScheduleType.Daily => ComputeDaily(campaign.ScheduleExpression, now),
-            CampaignScheduleType.Weekly => ComputeWeekly(campaign.ScheduleExpression, now),
+            CampaignScheduleType.Daily => ComputeDaily(campaign.ScheduleExpression, now, campaign.Timezone),
+            CampaignScheduleType.Weekly => ComputeWeekly(campaign.ScheduleExpression, now, campaign.Timezone),
             CampaignScheduleType.Cron => now.AddMinutes(15),
             _ => null
         };
@@ -421,28 +439,53 @@ public sealed class CampaignExecutionService : ICampaignExecutionService
         }, ct))!;
     }
 
-    private static DateTimeOffset ComputeDaily(string expression, DateTimeOffset now)
+    // Schedules are wall-clock times in the campaign's timezone ("09:00" = 9 am in America/Managua),
+    // not in the server's UTC clock.
+    public static DateTimeOffset ComputeDaily(string expression, DateTimeOffset now, string? timezone = null)
     {
-        if (!TimeOnly.TryParse(expression, out var time))
+        if (!TimeOnly.TryParse(expression, CultureInfo.InvariantCulture, out var time))
             time = new TimeOnly(9, 0);
-        var candidate = new DateTimeOffset(now.Year, now.Month, now.Day, time.Hour, time.Minute, 0, now.Offset);
-        return candidate > now ? candidate : candidate.AddDays(1);
+        var local = CampaignContactPolicy.ToLocal(now, timezone);
+        for (var i = 0; i < 3; i++)
+        {
+            var candidate = LocalToUtc(local.Date.AddDays(i) + time.ToTimeSpan(), timezone);
+            if (candidate > now) return candidate;
+        }
+        return now.AddDays(1);
     }
 
-    private static DateTimeOffset ComputeWeekly(string expression, DateTimeOffset now)
+    /// <param name="expression">"Monday:09:30" (day, then the time).</param>
+    public static DateTimeOffset ComputeWeekly(string expression, DateTimeOffset now, string? timezone = null)
     {
-        var parts = expression.Split(':', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-        var day = DayOfWeek.Monday;
-        var time = new TimeOnly(9, 0);
-        if (parts.Length > 0 && Enum.TryParse<DayOfWeek>(parts[0], true, out var parsedDay))
-            day = parsedDay;
-        if (parts.Length > 1 && TimeOnly.TryParse(parts[1], out var parsedTime))
-            time = parsedTime;
+        var separator = expression.IndexOf(':');
+        var dayPart = separator < 0 ? expression : expression[..separator];
+        var timePart = separator < 0 ? string.Empty : expression[(separator + 1)..];
+        var day = Enum.TryParse<DayOfWeek>(dayPart.Trim(), true, out var parsedDay) ? parsedDay : DayOfWeek.Monday;
+        var time = TimeOnly.TryParse(timePart.Trim(), CultureInfo.InvariantCulture, out var parsedTime) ? parsedTime : new TimeOnly(9, 0);
 
-        var candidate = new DateTimeOffset(now.Year, now.Month, now.Day, time.Hour, time.Minute, 0, now.Offset);
-        while (candidate.DayOfWeek != day || candidate <= now)
-            candidate = candidate.AddDays(1);
-        return candidate;
+        var local = CampaignContactPolicy.ToLocal(now, timezone);
+        for (var i = 0; i < 15; i++)
+        {
+            var date = local.Date.AddDays(i);
+            if (date.DayOfWeek != day) continue;
+            var candidate = LocalToUtc(date + time.ToTimeSpan(), timezone);
+            if (candidate > now) return candidate;
+        }
+        return now.AddDays(7);
+    }
+
+    private static DateTimeOffset LocalToUtc(DateTime localWallClock, string? timezone)
+    {
+        var unspecified = DateTime.SpecifyKind(localWallClock, DateTimeKind.Unspecified);
+        try
+        {
+            var zone = string.IsNullOrWhiteSpace(timezone) ? TimeZoneInfo.Utc : TimeZoneInfo.FindSystemTimeZoneById(timezone);
+            return new DateTimeOffset(TimeZoneInfo.ConvertTimeToUtc(unspecified, zone), TimeSpan.Zero);
+        }
+        catch (Exception)
+        {
+            return new DateTimeOffset(unspecified, TimeSpan.Zero);
+        }
     }
 
     private sealed class CampaignCounters

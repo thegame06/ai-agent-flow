@@ -218,3 +218,25 @@ public sealed class CollectionPromiseDocument
     public string CreatedBy { get; set; } = string.Empty;
     public DateTimeOffset? ResolvedAt { get; set; }
 }
+
+/// <summary>A payment received for a loan (from the lender's system, a file or an operator).</summary>
+[BsonIgnoreExtraElements]
+public sealed class CollectionPaymentDocument
+{
+    [BsonId]
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string TenantId { get; set; } = string.Empty;
+    public string LoanId { get; set; } = string.Empty;
+    public string LoanExternalId { get; set; } = string.Empty;
+    public string PartyId { get; set; } = string.Empty;
+    public decimal Amount { get; set; }
+    public DateTimeOffset PaidAt { get; set; }
+    /// <summary>The lender's payment reference; a repeated reference is ignored.</summary>
+    public string? Reference { get; set; }
+    /// <summary>api, human or csv.</summary>
+    public string Source { get; set; } = "api";
+    public decimal OverdueBefore { get; set; }
+    public decimal OverdueAfter { get; set; }
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public string CreatedBy { get; set; } = string.Empty;
+}

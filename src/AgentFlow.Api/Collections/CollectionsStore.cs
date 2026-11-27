@@ -16,6 +16,10 @@ public interface ICollectionsStore
     Task InsertImportBatchAsync(CollectionImportBatchDocument batch, CancellationToken ct = default);
     Task<IReadOnlyList<CollectionImportBatchDocument>> GetImportBatchesAsync(string tenantId, int limit, CancellationToken ct = default);
 
+    Task InsertPaymentAsync(CollectionPaymentDocument payment, CancellationToken ct = default);
+    Task<IReadOnlyList<CollectionPaymentDocument>> GetPaymentsByLoanAsync(string tenantId, string loanId, int limit = 50, CancellationToken ct = default);
+    Task<bool> PaymentReferenceExistsAsync(string tenantId, string reference, CancellationToken ct = default);
+
     Task InsertPromiseAsync(CollectionPromiseDocument promise, CancellationToken ct = default);
     Task UpdatePromiseAsync(CollectionPromiseDocument promise, CancellationToken ct = default);
     Task<CollectionPromiseDocument?> GetPromiseAsync(string tenantId, string promiseId, CancellationToken ct = default);
@@ -28,6 +32,7 @@ public sealed class MongoCollectionsStore : ICollectionsStore
     private readonly IMongoCollection<CollectionLoanSnapshotDocument> _snapshots;
     private readonly IMongoCollection<CollectionImportBatchDocument> _batches;
     private readonly IMongoCollection<CollectionPromiseDocument> _promises;
+    private readonly IMongoCollection<CollectionPaymentDocument> _payments;
 
     public MongoCollectionsStore(IMongoDatabase database)
     {
@@ -35,6 +40,11 @@ public sealed class MongoCollectionsStore : ICollectionsStore
         _snapshots = database.GetCollection<CollectionLoanSnapshotDocument>("collection_loan_snapshots");
         _batches = database.GetCollection<CollectionImportBatchDocument>("collection_import_batches");
         _promises = database.GetCollection<CollectionPromiseDocument>("collection_promises");
+        _payments = database.GetCollection<CollectionPaymentDocument>("collection_payments");
+        _payments.Indexes.CreateOne(new CreateIndexModel<CollectionPaymentDocument>(
+            Builders<CollectionPaymentDocument>.IndexKeys.Ascending(x => x.TenantId).Ascending(x => x.LoanId).Descending(x => x.PaidAt)));
+        _payments.Indexes.CreateOne(new CreateIndexModel<CollectionPaymentDocument>(
+            Builders<CollectionPaymentDocument>.IndexKeys.Ascending(x => x.TenantId).Ascending(x => x.Reference)));
         _promises.Indexes.CreateOne(new CreateIndexModel<CollectionPromiseDocument>(
             Builders<CollectionPromiseDocument>.IndexKeys.Ascending(x => x.TenantId).Ascending(x => x.PartyId).Descending(x => x.CreatedAt)));
         _promises.Indexes.CreateOne(new CreateIndexModel<CollectionPromiseDocument>(
@@ -106,4 +116,13 @@ public sealed class MongoCollectionsStore : ICollectionsStore
             filter &= Builders<CollectionPromiseDocument>.Filter.Eq(x => x.PartyId, partyId);
         return await _promises.Find(filter).SortByDescending(x => x.CreatedAt).Limit(Math.Clamp(limit, 1, 5000)).ToListAsync(ct);
     }
+
+    public Task InsertPaymentAsync(CollectionPaymentDocument payment, CancellationToken ct = default)
+        => _payments.InsertOneAsync(payment, cancellationToken: ct);
+
+    public async Task<IReadOnlyList<CollectionPaymentDocument>> GetPaymentsByLoanAsync(string tenantId, string loanId, int limit = 50, CancellationToken ct = default)
+        => await _payments.Find(x => x.TenantId == tenantId && x.LoanId == loanId).SortByDescending(x => x.PaidAt).Limit(Math.Clamp(limit, 1, 500)).ToListAsync(ct);
+
+    public async Task<bool> PaymentReferenceExistsAsync(string tenantId, string reference, CancellationToken ct = default)
+        => await _payments.Find(x => x.TenantId == tenantId && x.Reference == reference).AnyAsync(ct);
 }
