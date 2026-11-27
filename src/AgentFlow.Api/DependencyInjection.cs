@@ -80,6 +80,7 @@ public static class DependencyInjection
             .AddSingleton<ICollectionsStore, MongoCollectionsStore>()
             .AddSingleton<ICollectionPaymentDeskStore, MongoCollectionPaymentDeskStore>()
             .AddScoped<AgentFlow.Api.Connect.IMetaWhatsAppAccounts, AgentFlow.Api.Connect.MetaWhatsAppAccounts>()
+            .AddScoped<AgentFlow.Api.Connect.IWhatsAppChannelMetaService, AgentFlow.Api.Connect.WhatsAppChannelMetaService>()
             .AddSingleton<AgentFlow.Api.Messaging.IWhatsAppTemplateStore, AgentFlow.Api.Messaging.MongoWhatsAppTemplateStore>()
             .AddScoped<AgentFlow.Api.Messaging.IMetaTemplateApi, AgentFlow.Api.Messaging.MetaTemplateApi>()
             .AddScoped<AgentFlow.Api.Messaging.IWhatsAppTemplateService, AgentFlow.Api.Messaging.WhatsAppTemplateService>()

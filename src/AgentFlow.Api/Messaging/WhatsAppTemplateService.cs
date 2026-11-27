@@ -18,6 +18,8 @@ public sealed record TemplateSyncResult
 /// <summary>A template as a person writes it (header, body with {{field}} placeholders, footer, buttons).</summary>
 public sealed record TemplateDraft
 {
+    /// <summary>The WhatsApp channel whose Meta account gets the template.</summary>
+    public string? ChannelId { get; init; }
     public string? ConnectionId { get; init; }
     public string Name { get; init; } = string.Empty;
     public string Language { get; init; } = "es";
@@ -32,7 +34,8 @@ public sealed record TemplateOperationResult(bool Ok, string? Error = null, What
 
 public interface IWhatsAppTemplateService
 {
-    Task<TemplateSyncResult> SyncAsync(string tenantId, string? connectionId, string user, CancellationToken ct = default);
+    /// <param name="channelId">Only the Meta account of this channel; null syncs every account.</param>
+    Task<TemplateSyncResult> SyncAsync(string tenantId, string? channelId, string user, CancellationToken ct = default);
     Task<TemplateOperationResult> CreateAsync(string tenantId, TemplateDraft draft, string user, CancellationToken ct = default);
     Task<TemplateOperationResult> EditAsync(string tenantId, string templateId, TemplateDraft draft, string user, CancellationToken ct = default);
     Task<TemplateOperationResult> DeleteAsync(string tenantId, string templateId, string user, CancellationToken ct = default);
@@ -57,13 +60,22 @@ public sealed partial class WhatsAppTemplateService : IWhatsAppTemplateService
     [GeneratedRegex("^[a-z0-9_]{1,512}$")]
     private static partial Regex ValidName();
 
-    public async Task<TemplateSyncResult> SyncAsync(string tenantId, string? connectionId, string user, CancellationToken ct = default)
+    public async Task<TemplateSyncResult> SyncAsync(string tenantId, string? channelId, string user, CancellationToken ct = default)
     {
-        var accounts = (await _accounts.GetAllAsync(tenantId, ct))
-            .Where(a => connectionId is null || a.ConnectionId == connectionId)
+        var all = await _accounts.GetAllAsync(tenantId, ct);
+        if (channelId is not null)
+        {
+            var ofChannel = await _accounts.GetForChannelAsync(tenantId, channelId, ct);
+            all = ofChannel is null ? [] : all.Where(a => a.BusinessAccountId == ofChannel.BusinessAccountId).ToList();
+        }
+        // Templates belong to the Meta account (WABA): several channels of the same account sync it once.
+        var accounts = all
+            .Where(a => !string.IsNullOrWhiteSpace(a.BusinessAccountId))
+            .GroupBy(a => a.BusinessAccountId!)
+            .Select(g => g.FirstOrDefault(a => !string.IsNullOrWhiteSpace(a.AccessToken)) ?? g.First())
             .ToList();
         if (accounts.Count == 0)
-            return new TemplateSyncResult { Errors = ["No hay una conexion de Meta (WhatsApp Business) configurada para este tenant."] };
+            return new TemplateSyncResult { Errors = ["Ningun canal de WhatsApp tiene una cuenta de Meta (WhatsApp Business) configurada. Configurala en Canales."] };
 
         var existing = await _store.ListAsync(tenantId, ct);
         int created = 0, updated = 0, statusChanged = 0, unchanged = 0, removed = 0;
@@ -83,7 +95,8 @@ public sealed partial class WhatsAppTemplateService : IWhatsAppTemplateService
                 continue;
             }
 
-            var mine = existing.Where(t => t.ConnectionId == account.ConnectionId).ToList();
+            var mine = existing.Where(t => t.BusinessAccountId == account.BusinessAccountId ||
+                                           (t.BusinessAccountId is null && t.ConnectionId == account.ConnectionId)).ToList();
             var seen = new HashSet<string>();
             foreach (var r in remote)
             {
@@ -98,6 +111,7 @@ public sealed partial class WhatsAppTemplateService : IWhatsAppTemplateService
                     {
                         TenantId = tenantId,
                         ConnectionId = account.ConnectionId,
+                        BusinessAccountId = account.BusinessAccountId,
                         Origin = "meta",
                         CreatedAt = now
                     };
@@ -124,6 +138,7 @@ public sealed partial class WhatsAppTemplateService : IWhatsAppTemplateService
                     }
                     else
                     {
+                        local.BusinessAccountId ??= account.BusinessAccountId;
                         local.MetaTemplateId = r.Id;
                         local.Status = r.Status;
                         local.QualityScore = r.QualityScore;
@@ -175,11 +190,13 @@ public sealed partial class WhatsAppTemplateService : IWhatsAppTemplateService
         var error = Validate(draft);
         if (error is not null) return new(false, error);
 
-        var account = await ResolveAccountAsync(tenantId, draft.ConnectionId, ct);
-        if (account is null) return new(false, "No hay una conexion de Meta (WhatsApp Business) configurada.");
+        var account = !string.IsNullOrWhiteSpace(draft.ChannelId)
+            ? await _accounts.GetForChannelAsync(tenantId, draft.ChannelId!, ct)
+            : await ResolveAccountAsync(tenantId, draft.ConnectionId, ct);
+        if (account is null) return new(false, "El canal no tiene una cuenta de Meta (WhatsApp Business) configurada. Configurala en Canales.");
 
         var existing = await _store.ListAsync(tenantId, ct);
-        if (existing.Any(t => t.ConnectionId == account.ConnectionId && t.Name == draft.Name && t.Language == draft.Language && t.Status != WhatsAppTemplateStatuses.Deleted))
+        if (existing.Any(t => t.BusinessAccountId == account.BusinessAccountId && t.Name == draft.Name && t.Language == draft.Language && t.Status != WhatsAppTemplateStatuses.Deleted))
             return new(false, $"Ya existe la plantilla {draft.Name} en {draft.Language}.");
 
         var (components, parameters) = WhatsAppTemplateText.ToPositional(ToComponents(draft));
@@ -234,8 +251,8 @@ public sealed partial class WhatsAppTemplateService : IWhatsAppTemplateService
         var error = Validate(draft with { Name = template.Name, Language = template.Language });
         if (error is not null) return new(false, error);
 
-        var account = await ResolveAccountAsync(tenantId, template.ConnectionId, ct);
-        if (account is null) return new(false, "La conexion de Meta de esta plantilla ya no existe.");
+        var account = await AccountOfAsync(tenantId, template, ct);
+        if (account is null) return new(false, "Ningun canal tiene ya la cuenta de Meta de esta plantilla.");
 
         var (components, parameters) = WhatsAppTemplateText.ToPositional(ToComponents(draft));
         // A slot that still holds the same field keeps what the person set (example, static value);
@@ -283,8 +300,8 @@ public sealed partial class WhatsAppTemplateService : IWhatsAppTemplateService
 
         if (template.MetaTemplateId is not null && template.Status != WhatsAppTemplateStatuses.Deleted)
         {
-            var account = await ResolveAccountAsync(tenantId, template.ConnectionId, ct);
-            if (account is null) return new(false, "La conexion de Meta de esta plantilla ya no existe.");
+            var account = await AccountOfAsync(tenantId, template, ct);
+            if (account is null) return new(false, "Ningun canal tiene ya la cuenta de Meta de esta plantilla.");
             try
             {
                 await _meta.DeleteAsync(account, template.Name, template.MetaTemplateId, ct);
@@ -379,6 +396,14 @@ public sealed partial class WhatsAppTemplateService : IWhatsAppTemplateService
     private static void TrimHistory(WhatsAppTemplateDocument t)
     {
         if (t.StatusHistory.Count > 30) t.StatusHistory = t.StatusHistory.TakeLast(30).ToList();
+    }
+
+    /// <summary>An account of the template's WABA that can call Meta (has a token).</summary>
+    private async Task<MetaWhatsAppAccount?> AccountOfAsync(string tenantId, WhatsAppTemplateDocument template, CancellationToken ct)
+    {
+        var accounts = await _accounts.GetAllAsync(tenantId, ct);
+        return accounts.FirstOrDefault(a => a.BusinessAccountId == template.BusinessAccountId && !string.IsNullOrWhiteSpace(a.AccessToken))
+               ?? accounts.FirstOrDefault(a => a.ConnectionId == template.ConnectionId);
     }
 
     private async Task<MetaWhatsAppAccount?> ResolveAccountAsync(string tenantId, string? connectionId, CancellationToken ct)

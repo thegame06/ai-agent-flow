@@ -20,12 +20,12 @@ import { Iconify } from 'src/components/iconify';
 
 import { TemplateBubble } from './TemplateBubble';
 
-import type { WaTemplate, MetaAccount, TemplateField, TemplateButton, TemplateParameter, TemplateComponent } from './templateModel';
+import type { WaTemplate, ChannelMeta, TemplateField, TemplateButton, TemplateParameter, TemplateComponent } from './templateModel';
 
 // ----------------------------------------------------------------------
 
 type Draft = {
-  connectionId: string;
+  channelId: string;
   name: string;
   language: string;
   category: string;
@@ -48,7 +48,9 @@ type Props = {
   base: string;
   open: boolean;
   template: WaTemplate | null; // null = new
-  accounts: MetaAccount[];
+  /** Business channels; the template is created in the Meta account of the chosen one. */
+  channels: ChannelMeta[];
+  defaultChannelId?: string;
   fields: TemplateField[];
   onClose: () => void;
   onSaved: () => void;
@@ -62,10 +64,10 @@ function toAuthorText(text: string | null | undefined, component: string, parame
   });
 }
 
-function fromTemplate(t: WaTemplate | null, accounts: MetaAccount[]): Draft {
+function fromTemplate(t: WaTemplate | null, channels: ChannelMeta[], defaultChannelId?: string): Draft {
   if (!t)
     return {
-      connectionId: accounts[0]?.connectionId ?? '',
+      channelId: defaultChannelId || channels.find((c) => c.hasToken)?.channelId || channels[0]?.channelId || '',
       name: '',
       language: 'es',
       category: 'UTILITY',
@@ -76,7 +78,7 @@ function fromTemplate(t: WaTemplate | null, accounts: MetaAccount[]): Draft {
     };
   const find = (type: string) => t.components.find((c) => c.type.toUpperCase() === type);
   return {
-    connectionId: t.connectionId,
+    channelId: channels.find((c) => c.businessAccountId === t.businessAccountId)?.channelId ?? '',
     name: t.name,
     language: t.language,
     category: t.category,
@@ -87,8 +89,8 @@ function fromTemplate(t: WaTemplate | null, accounts: MetaAccount[]): Draft {
   };
 }
 
-export function TemplateEditorDialog({ base, open, template, accounts, fields, onClose, onSaved }: Props) {
-  const [draft, setDraft] = useState<Draft>(() => fromTemplate(template, accounts));
+export function TemplateEditorDialog({ base, open, template, channels, defaultChannelId, fields, onClose, onSaved }: Props) {
+  const [draft, setDraft] = useState<Draft>(() => fromTemplate(template, channels, defaultChannelId));
   const [target, setTarget] = useState<'body' | 'headerText'>('body');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -96,10 +98,10 @@ export function TemplateEditorDialog({ base, open, template, accounts, fields, o
 
   useEffect(() => {
     if (open) {
-      setDraft(fromTemplate(template, accounts));
+      setDraft(fromTemplate(template, channels, defaultChannelId));
       setError(null);
     }
-  }, [open, template, accounts]);
+  }, [open, template, channels, defaultChannelId]);
 
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) => setDraft((d) => ({ ...d, [key]: value }));
 
@@ -163,15 +165,21 @@ export function TemplateEditorDialog({ base, open, template, accounts, fields, o
                   helperText="Minúsculas, números y guion bajo. Ej. recordatorio_pago"
                   fullWidth
                 />
-                {accounts.length > 1 && (
-                  <TextField select label="Cuenta de Meta" value={draft.connectionId} onChange={(e) => set('connectionId', e.target.value)} sx={{ minWidth: 200 }}>
-                    {accounts.map((a) => (
-                      <MenuItem key={a.connectionId} value={a.connectionId}>
-                        {a.name}
-                      </MenuItem>
-                    ))}
-                  </TextField>
-                )}
+                <TextField
+                  select
+                  label="Canal (cuenta de Meta)"
+                  value={draft.channelId}
+                  onChange={(e) => set('channelId', e.target.value)}
+                  helperText="La plantilla se crea en la cuenta de Meta de este número."
+                  sx={{ minWidth: 240 }}
+                >
+                  {channels.map((c) => (
+                    <MenuItem key={c.channelId} value={c.channelId} disabled={!c.hasToken}>
+                      {c.channelName} · WABA {c.businessAccountId ?? '—'}
+                      {!c.hasToken ? ' (sin token)' : ''}
+                    </MenuItem>
+                  ))}
+                </TextField>
               </Stack>
             )}
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>

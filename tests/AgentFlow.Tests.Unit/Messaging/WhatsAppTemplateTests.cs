@@ -198,7 +198,53 @@ public sealed class WhatsAppTemplateTests
     {
         var (service, _, _) = Create(withAccount: false);
         var result = await service.SyncAsync(Tenant, null, "u");
-        Assert.Contains("conexion de Meta", Assert.Single(result.Errors));
+        Assert.Contains("cuenta de Meta", Assert.Single(result.Errors));
+    }
+
+    [Fact]
+    public async Task Sync_ByMetaAccount_OncePerAccount_EvenWithSeveralChannels()
+    {
+        // Collections and sales numbers share one Meta account; marketing has its own.
+        var store = new InMemoryTemplateStore();
+        var meta = new FakeMeta();
+        meta.ByWaba["waba-1"] = [Parse(MetaReminder)];
+        meta.ByWaba["waba-2"] = [Parse(MetaReminder.Replace("\"1001\"", "\"2001\"").Replace("recordatorio_pago", "promo_navidad"))];
+        var accounts = new FakeAccounts(
+        [
+            Account("conn-cobranza", "waba-1", "ch-cobranza"),
+            Account("conn-ventas", "waba-1", "ch-ventas"),
+            Account("conn-marketing", "waba-2", "ch-marketing"),
+        ]);
+        var service = new WhatsAppTemplateService(store, accounts, meta);
+
+        var result = await service.SyncAsync(Tenant, null, "u");
+
+        Assert.Equal(2, result.Accounts);
+        Assert.Equal(2, result.Created);
+        Assert.Equal(2, meta.ListCalls); // waba-1 once, waba-2 once
+        var templates = await store.ListAsync(Tenant);
+        Assert.Equal("waba-1", templates.Single(t => t.Name == "recordatorio_pago").BusinessAccountId);
+        Assert.Equal("waba-2", templates.Single(t => t.Name == "promo_navidad").BusinessAccountId);
+
+        // Syncing from one channel only touches its account.
+        meta.ListCalls = 0;
+        await service.SyncAsync(Tenant, "ch-marketing", "u");
+        Assert.Equal(1, meta.ListCalls);
+    }
+
+    [Fact]
+    public async Task Create_GoesToTheMetaAccountOfTheChosenChannel()
+    {
+        var store = new InMemoryTemplateStore();
+        var meta = new FakeMeta();
+        var accounts = new FakeAccounts([Account("conn-cobranza", "waba-1", "ch-cobranza"), Account("conn-marketing", "waba-2", "ch-marketing")]);
+        var service = new WhatsAppTemplateService(store, accounts, meta);
+
+        var result = await service.CreateAsync(Tenant, new TemplateDraft { ChannelId = "ch-marketing", Name = "promo", Body = "Hola {{primer_nombre}}, tenemos una oferta." }, "u");
+
+        Assert.True(result.Ok, result.Error);
+        Assert.Equal("waba-2", Assert.Single(meta.CreatedOn));
+        Assert.Equal("waba-2", Assert.Single(await store.ListAsync(Tenant)).BusinessAccountId);
     }
 
     [Fact]
@@ -303,22 +349,38 @@ public sealed class WhatsAppTemplateTests
     {
         var store = new InMemoryTemplateStore();
         var meta = new FakeMeta();
-        var accounts = new FakeAccounts(withAccount
-            ? [new MetaWhatsAppAccount { ConnectionId = "c1", Name = "Meta", BusinessAccountId = "waba-1", AccessToken = "t" }]
-            : []);
+        var accounts = new FakeAccounts(withAccount ? [Account("c1", "waba-1", "ch-1")] : []);
         return (new WhatsAppTemplateService(store, accounts, meta), store, meta);
     }
+
+    private static MetaWhatsAppAccount Account(string connectionId, string waba, string channelId) => new()
+    {
+        ConnectionId = connectionId,
+        Name = connectionId,
+        BusinessAccountId = waba,
+        AccessToken = "t",
+        Channels = [new MetaAccountChannel(channelId, channelId, "phone-" + channelId)]
+    };
 
     private sealed class FakeMeta : IMetaTemplateApi
     {
         public List<MetaTemplate> Templates { get; } = [];
+        /// <summary>Per Meta account; when empty, <see cref="Templates"/> is returned for any account.</summary>
+        public Dictionary<string, List<MetaTemplate>> ByWaba { get; } = [];
         public List<JsonObject> Created { get; } = [];
+        public List<string?> CreatedOn { get; } = [];
         public List<(string Id, JsonObject Body)> Edited { get; } = [];
+        public int ListCalls { get; set; }
 
         public Task<IReadOnlyList<MetaTemplate>> ListAsync(MetaWhatsAppAccount account, CancellationToken ct = default)
-            => Task.FromResult<IReadOnlyList<MetaTemplate>>(Templates.ToList());
+        {
+            ListCalls++;
+            var list = ByWaba.Count > 0 ? ByWaba.GetValueOrDefault(account.BusinessAccountId ?? string.Empty) ?? [] : Templates;
+            return Task.FromResult<IReadOnlyList<MetaTemplate>>(list.ToList());
+        }
         public Task<(string Id, string Status, string? Category)> CreateAsync(MetaWhatsAppAccount account, JsonObject request, CancellationToken ct = default)
         {
+            CreatedOn.Add(account.BusinessAccountId);
             Created.Add(request);
             return Task.FromResult(($"meta-new-{Created.Count}", "PENDING", (string?)null));
         }
@@ -335,6 +397,8 @@ public sealed class WhatsAppTemplateTests
         public Task<IReadOnlyList<MetaWhatsAppAccount>> GetAllAsync(string tenantId, CancellationToken ct = default) => Task.FromResult(accounts);
         public Task<MetaWhatsAppAccount?> GetAsync(string tenantId, string connectionId, CancellationToken ct = default)
             => Task.FromResult(accounts.FirstOrDefault(a => a.ConnectionId == connectionId));
+        public Task<MetaWhatsAppAccount?> GetForChannelAsync(string tenantId, string channelId, CancellationToken ct = default)
+            => Task.FromResult(accounts.FirstOrDefault(a => a.Channels.Any(c => c.ChannelId == channelId)));
     }
 
     private sealed class InMemoryTemplateStore : IWhatsAppTemplateStore

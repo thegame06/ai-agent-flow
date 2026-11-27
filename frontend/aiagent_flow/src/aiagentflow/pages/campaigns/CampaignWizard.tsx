@@ -167,6 +167,8 @@ export function CampaignWizard({ open, tenantId, campaign, preset, collectionsEn
   const [workflows, setWorkflows] = useState<{ id: string; name: string }[]>([]);
   const [segments, setSegments] = useState<{ id: string; name: string; filterJson: string }[]>([]);
   const [waTemplates, setWaTemplates] = useState<WaTemplate[]>([]);
+  // WhatsApp numbers: each is a channel, with its own Meta account (collections, sales, marketing...).
+  const [waChannels, setWaChannels] = useState<{ id: string; name: string; business: boolean; businessAccountId?: string }[]>([]);
   const [prompt, setPrompt] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -190,6 +192,21 @@ export function CampaignWizard({ open, tenantId, campaign, preset, collectionsEn
       .get<{ items: WaTemplate[] }>(`/api/v1/tenants/${tenantId}/whatsapp/templates`)
       .then((res) => setWaTemplates(res.data.items ?? []))
       .catch(() => setWaTemplates([]));
+    axios
+      .get(endpoints.agentflow.channels.list(tenantId))
+      .then((res) =>
+        setWaChannels(
+          ((res.data ?? []) as any[])
+            .filter((c) => c?.type === 'WhatsApp')
+            .map((c) => ({
+              id: c.id,
+              name: c.name,
+              business: (c.config?.AuthMode ?? 'qr') !== 'qr',
+              businessAccountId: c.config?.BusinessAccountId,
+            }))
+        )
+      )
+      .catch(() => setWaChannels([]));
   }, [open, campaign, preset, collectionsEnabled, tenantId]);
 
   const filterJson = useMemo(() => serializeFilter(form.filter), [form.filter]);
@@ -216,8 +233,14 @@ export function CampaignWizard({ open, tenantId, campaign, preset, collectionsEn
   const variables = isCollections ? COLLECTIONS_VARIABLES : COMMERCE_VARIABLES;
   const sample = preview?.contacts?.[0];
   const rendered = renderMessage(form.messageDraft, sample?.variables);
-  // Only approved templates can be sent; the one already chosen stays listed even if it changed state.
-  const templateOptions = waTemplates.filter((t) => t.status === 'APPROVED' || t.id === form.whatsAppTemplateId);
+  const chosenChannel = waChannels.find((c) => c.id === form.channel) ?? null;
+  const isWhatsApp = form.channel === 'whatsapp' || !!chosenChannel;
+  // Only approved templates of the chosen number's Meta account; the one already chosen stays listed.
+  const templateOptions = waTemplates.filter(
+    (t) =>
+      (t.status === 'APPROVED' && (!chosenChannel?.businessAccountId || t.businessAccountId === chosenChannel.businessAccountId)) ||
+      t.id === form.whatsAppTemplateId
+  );
   const chosenTemplate = waTemplates.find((t) => t.id === form.whatsAppTemplateId) ?? null;
   const templateMissing = chosenTemplate && sample ? missingFor(chosenTemplate, sample.variables) : [];
   const missing = Array.from(rendered.matchAll(/\{\{\s*([\w.]+)\s*\}\}/g)).map((m) => m[1]);
@@ -270,7 +293,7 @@ export function CampaignWizard({ open, tenantId, campaign, preset, collectionsEn
       workflowDefinitionId: form.delivery === 'workflow' ? form.workflowDefinitionId : '',
       messageDraft: form.messageDraft,
       // "" clears it on the server.
-      whatsAppTemplateId: form.delivery === 'message' && form.channel === 'whatsapp' ? form.whatsAppTemplateId : '',
+      whatsAppTemplateId: form.delivery === 'message' && isWhatsApp ? form.whatsAppTemplateId : '',
       scheduleType,
       scheduleExpression: form.schedule === 'weekly' ? `${form.weekday}:${form.time}` : form.schedule === 'daily' ? form.time : '',
       startAt: form.schedule === 'once' ? new Date(form.startAt).toISOString() : new Date().toISOString(),
@@ -481,8 +504,20 @@ export function CampaignWizard({ open, tenantId, campaign, preset, collectionsEn
         {step === 2 && (
           <Stack spacing={2}>
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-              <TextField select label="Canal" value={form.channel} onChange={(e) => set('channel', e.target.value)} sx={{ minWidth: 180 }}>
-                <MenuItem value="whatsapp">WhatsApp</MenuItem>
+              <TextField
+                select
+                label="Canal"
+                value={form.channel}
+                onChange={(e) => setForm((f) => ({ ...f, channel: e.target.value, whatsAppTemplateId: '' }))}
+                sx={{ minWidth: 220 }}
+              >
+                {waChannels.map((c) => (
+                  <MenuItem key={c.id} value={c.id}>
+                    WhatsApp · {c.name}
+                    {c.business ? '' : ' (QR)'}
+                  </MenuItem>
+                ))}
+                <MenuItem value="whatsapp">WhatsApp (primer número activo)</MenuItem>
                 <MenuItem value="api">API / webhook</MenuItem>
                 <MenuItem value="webchat">Webchat</MenuItem>
               </TextField>
@@ -509,7 +544,7 @@ export function CampaignWizard({ open, tenantId, campaign, preset, collectionsEn
               </TextField>
             )}
 
-            {form.delivery === 'message' && form.channel === 'whatsapp' && (
+            {form.delivery === 'message' && isWhatsApp && (
               <TextField
                 select
                 label="Plantilla de WhatsApp (Meta)"
@@ -628,7 +663,7 @@ export function CampaignWizard({ open, tenantId, campaign, preset, collectionsEn
             />
             <Review
               label="Envío"
-              value={`${form.channel === 'whatsapp' ? 'WhatsApp' : form.channel} · ${
+              value={`${chosenChannel ? `WhatsApp · ${chosenChannel.name}` : form.channel === 'whatsapp' ? 'WhatsApp' : form.channel} · ${
                 form.delivery === 'workflow' ? `automatización ${workflows.find((w) => w.id === form.workflowDefinitionId)?.name ?? ''}` : 'mensaje directo'
               }`}
             />

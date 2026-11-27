@@ -24,6 +24,7 @@ export type StatusChange = { status: string; reason?: string | null; source: str
 export type WaTemplate = {
   id: string;
   connectionId: string;
+  businessAccountId?: string | null;
   metaTemplateId?: string | null;
   name: string;
   language: string;
@@ -43,14 +44,7 @@ export type WaTemplate = {
 
 export type TemplateField = { key: string; label: string; example: string; group: string };
 
-export type MetaAccount = {
-  connectionId: string;
-  name: string;
-  businessAccountId?: string | null;
-  phoneNumberId?: string | null;
-  hasToken: boolean;
-  hasAppSecret: boolean;
-};
+export type { ChannelMeta } from '../channels/WhatsAppMetaDialog';
 
 export const TEMPLATE_STATUS: Record<string, { label: string; color: 'success' | 'warning' | 'error' | 'default' | 'info' }> = {
   APPROVED: { label: 'Aprobada', color: 'success' },

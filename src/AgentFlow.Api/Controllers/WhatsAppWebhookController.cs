@@ -76,6 +76,26 @@ public sealed class WhatsAppWebhookController : ControllerBase
     /// <summary>
     /// Receive incoming WhatsApp messages from Meta Business API
     /// </summary>
+    /// <summary>value.metadata.phone_number_id: the business number the customer wrote to.</summary>
+    private static string? PhoneNumberIdOf(WhatsAppWebhookValue value)
+        => value.Metadata is { ValueKind: System.Text.Json.JsonValueKind.Object } metadata &&
+           metadata.TryGetProperty("phone_number_id", out var id)
+            ? id.ValueKind == System.Text.Json.JsonValueKind.String ? id.GetString() : id.GetRawText()
+            : null;
+
+    /// <summary>The active channel of that number; with one number (or an unknown one) the first active channel.</summary>
+    public static ChannelDefinition? ChannelForNumber(IReadOnlyList<ChannelDefinition> channels, string? phoneNumberId)
+    {
+        var active = channels.Where(c => c.Status == ChannelStatus.Active).ToList();
+        if (!string.IsNullOrWhiteSpace(phoneNumberId))
+        {
+            var match = active.FirstOrDefault(c => c.Config.GetValueOrDefault("PhoneNumberId") == phoneNumberId);
+            if (match is not null) return match;
+        }
+        return active.FirstOrDefault(c => !string.Equals(c.Config.GetValueOrDefault("AuthMode"), "qr", StringComparison.OrdinalIgnoreCase))
+               ?? active.FirstOrDefault();
+    }
+
     [HttpPost]
     [RequireMetaSignature]
     public async Task<IActionResult> ReceiveWebhook(
@@ -124,20 +144,26 @@ public sealed class WhatsAppWebhookController : ControllerBase
                 return Ok(new { status = "no_messages" });
             }
 
-            // Find WhatsApp channel for this tenant
+            // Each message goes to the channel of the number it was sent to: a company can have several
+            // numbers (collections, sales, marketing), each with its own assistant.
             var channels = await _channelRepo.GetByTypeAsync(ChannelType.WhatsApp, tenantId, ct);
-            var activeChannel = channels.FirstOrDefault(c => c.Status == ChannelStatus.Active);
-
-            if (activeChannel == null)
-            {
-                _logger.LogWarning("No active WhatsApp channel for tenant {TenantId}", tenantId);
-                return BadRequest(new { error = "No active WhatsApp channel configured" });
-            }
+            var byMessageId = payload.Entry!
+                .SelectMany(e => e.Changes ?? new List<WhatsAppWebhookChange>())
+                .SelectMany(c => (c.Value?.Messages ?? new List<WhatsAppIncomingMessage>()).Select(m => (m.Id, Phone: PhoneNumberIdOf(c.Value!))))
+                .GroupBy(x => x.Id)
+                .ToDictionary(g => g.Key, g => g.First().Phone);
 
             // Process each message
             var results = new List<object>();
             foreach (var waMessage in messages)
             {
+                var activeChannel = ChannelForNumber(channels, byMessageId.GetValueOrDefault(waMessage.Id));
+                if (activeChannel == null)
+                {
+                    _logger.LogWarning("No active WhatsApp channel for tenant {TenantId} and number {PhoneNumberId}", tenantId, byMessageId.GetValueOrDefault(waMessage.Id));
+                    results.Add(new { from = waMessage.From, status = "no_channel" });
+                    continue;
+                }
                 try
                 {
                     var externalEventKey = BuildExternalEventKey("wa-meta", waMessage);

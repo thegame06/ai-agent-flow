@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router';
 import { Helmet } from 'react-helmet-async';
 import { useState, useEffect, useCallback } from 'react';
 
@@ -8,7 +9,6 @@ import Alert from '@mui/material/Alert';
 import Stack from '@mui/material/Stack';
 import Table from '@mui/material/Table';
 import Button from '@mui/material/Button';
-import Dialog from '@mui/material/Dialog';
 import MenuItem from '@mui/material/MenuItem';
 import TableRow from '@mui/material/TableRow';
 import TableBody from '@mui/material/TableBody';
@@ -16,11 +16,10 @@ import TableCell from '@mui/material/TableCell';
 import TableHead from '@mui/material/TableHead';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
-import DialogTitle from '@mui/material/DialogTitle';
-import DialogActions from '@mui/material/DialogActions';
-import DialogContent from '@mui/material/DialogContent';
 import TableContainer from '@mui/material/TableContainer';
 import CircularProgress from '@mui/material/CircularProgress';
+
+import { paths } from 'src/routes/paths';
 
 import axios from 'src/lib/axios';
 import { DashboardContent } from 'src/layouts/dashboard';
@@ -30,21 +29,28 @@ import { Iconify } from 'src/components/iconify';
 
 import { TemplateDrawer } from './TemplateDrawer';
 import { TemplateEditorDialog } from './TemplateEditorDialog';
+import { WhatsAppMetaDialog } from '../channels/WhatsAppMetaDialog';
 import { slots, QUALITY, statusOf, CATEGORY_LABEL } from './templateModel';
 
-import type { WaTemplate, MetaAccount, TemplateField } from './templateModel';
+import type { WaTemplate, ChannelMeta, TemplateField } from './templateModel';
 
 // ----------------------------------------------------------------------
 
-type ListResponse = { items: WaTemplate[]; accounts: MetaAccount[]; fields: TemplateField[] };
+type ListResponse = { items: WaTemplate[]; channels: ChannelMeta[]; fields: TemplateField[] };
 type SyncResult = { accounts: number; created: number; updated: number; statusChanged: number; unchanged: number; removed: number; errors: string[] };
 
+/**
+ * Templates live in Meta accounts (WABA); numbers are WhatsApp channels configured in Channels. A
+ * company can have one account per area (collections, sales, marketing), or several numbers in one.
+ */
 export default function WhatsAppTemplatesPage() {
   const tenantId = useTenantId();
+  const navigate = useNavigate();
   const base = `/api/v1/tenants/${tenantId}/whatsapp/templates`;
 
   const [data, setData] = useState<ListResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [channelId, setChannelId] = useState('');
   const [status, setStatus] = useState('');
   const [query, setQuery] = useState('');
   const [syncing, setSyncing] = useState(false);
@@ -52,7 +58,7 @@ export default function WhatsAppTemplatesPage() {
   const [error, setError] = useState<string | null>(null);
   const [editor, setEditor] = useState<{ open: boolean; template: WaTemplate | null }>({ open: false, template: null });
   const [openId, setOpenId] = useState<string | null>(null);
-  const [connectOpen, setConnectOpen] = useState(false);
+  const [metaChannelId, setMetaChannelId] = useState<string | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -67,12 +73,33 @@ export default function WhatsAppTemplatesPage() {
     load();
   }, [load]);
 
+  const channels = data?.channels ?? [];
+  const fields = data?.fields ?? [];
+  const selected = channels.find((c) => c.channelId === channelId) ?? null;
+  const ready = channels.filter((c) => c.hasToken && c.businessAccountId);
+
+  // Channels grouped by Meta account, to show which numbers share templates.
+  const accounts = Array.from(
+    channels.reduce((map, c) => {
+      const key = c.businessAccountId || `sin-cuenta-${c.channelId}`;
+      map.set(key, [...(map.get(key) ?? []), c]);
+      return map;
+    }, new Map<string, ChannelMeta[]>())
+  );
+
+  const items = (data?.items ?? []).filter(
+    (t) =>
+      (!selected || t.businessAccountId === selected.businessAccountId) &&
+      (!status || t.status === status) &&
+      (!query || t.name.includes(query.toLowerCase()))
+  );
+
   const sync = async () => {
     setSyncing(true);
     setError(null);
     setSyncResult(null);
     try {
-      const res = await axios.post<SyncResult>(`${base}/sync`);
+      const res = await axios.post<SyncResult>(`${base}/sync`, null, { params: { channelId: channelId || undefined } });
       setSyncResult(res.data);
       load();
     } catch (err: any) {
@@ -82,11 +109,8 @@ export default function WhatsAppTemplatesPage() {
     }
   };
 
-  const accounts = data?.accounts ?? [];
-  const fields = data?.fields ?? [];
-  const items = (data?.items ?? []).filter(
-    (t) => (!status || t.status === status) && (!query || t.name.includes(query.toLowerCase()))
-  );
+  const channelNames = (t: WaTemplate) =>
+    channels.filter((c) => c.businessAccountId && c.businessAccountId === t.businessAccountId).map((c) => c.channelName);
 
   return (
     <>
@@ -100,42 +124,68 @@ export default function WhatsAppTemplatesPage() {
             <Typography variant="h4">Plantillas de WhatsApp</Typography>
             <Typography variant="body2" color="text.secondary">
               Mensajes aprobados por Meta. Son obligatorios para escribirle primero a un cliente o pasadas 24 h de su último
-              mensaje.
+              mensaje. Cada cuenta de Meta tiene sus plantillas; los números se configuran en Canales.
             </Typography>
           </Box>
           <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-            <Button variant="outlined" startIcon={<Iconify icon="mdi:link-variant" />} onClick={() => setConnectOpen(true)}>
-              {accounts.length ? 'Cuenta de Meta' : 'Conectar cuenta de Meta'}
+            <Button variant="outlined" startIcon={<Iconify icon="mdi:sync" />} disabled={!ready.length || syncing} onClick={sync}>
+              {syncing ? 'Sincronizando…' : selected ? `Sincronizar ${selected.channelName}` : 'Sincronizar con Meta'}
             </Button>
-            <Button variant="outlined" startIcon={<Iconify icon="mdi:sync" />} disabled={!accounts.length || syncing} onClick={sync}>
-              {syncing ? 'Sincronizando…' : 'Sincronizar con Meta'}
-            </Button>
-            <Button variant="contained" startIcon={<Iconify icon="mdi:plus" />} disabled={!accounts.length} onClick={() => setEditor({ open: true, template: null })}>
+            <Button variant="contained" startIcon={<Iconify icon="mdi:plus" />} disabled={!ready.length} onClick={() => setEditor({ open: true, template: null })}>
               Nueva plantilla
             </Button>
           </Stack>
         </Stack>
 
-        {!loading && accounts.length === 0 && (
-          <Alert severity="info" sx={{ mb: 3 }}>
-            Conecta la cuenta de WhatsApp Business de Meta para traer sus plantillas, crear nuevas y usarlas en campañas.
-            Necesitas el id de la cuenta de WhatsApp Business, el id del número y un token de acceso de Meta for Developers.
+        {!loading && channels.length === 0 && (
+          <Alert
+            severity="info"
+            sx={{ mb: 3 }}
+            action={
+              <Button color="inherit" size="small" onClick={() => navigate(paths.dashboard.system.channels)}>
+                Ir a Canales
+              </Button>
+            }
+          >
+            Crea un canal de WhatsApp con la API de WhatsApp Business (Meta) en Canales. Cada número es un canal (por ejemplo
+            Cobranza, Ventas y Marketing) y puede tener su propia cuenta de Meta.
           </Alert>
         )}
-        {accounts.map((a) => (
-          <Stack key={a.connectionId} direction="row" spacing={1} sx={{ mb: 2 }} flexWrap="wrap" useFlexGap>
-            <Chip icon={<Iconify icon="mdi:whatsapp" />} label={a.name} variant="outlined" />
-            <Chip size="small" label={`Cuenta ${a.businessAccountId ?? 'sin id'}`} />
-            {!a.hasToken && <Chip size="small" color="error" label="Sin token" />}
-            {!a.hasAppSecret && <Chip size="small" color="warning" label="Sin app secret: el webhook no se puede verificar" />}
-          </Stack>
-        ))}
+
+        {accounts.length > 0 && (
+          <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', md: 'repeat(auto-fill, minmax(320px, 1fr))' }, mb: 3 }}>
+            {accounts.map(([key, group]) => (
+              <Card key={key} variant="outlined" sx={{ p: 2 }}>
+                <Typography variant="overline" color="text.secondary">
+                  Cuenta de Meta
+                </Typography>
+                <Typography variant="subtitle2">{group[0].businessAccountId ? `WABA ${group[0].businessAccountId}` : 'Sin cuenta configurada'}</Typography>
+                <Stack spacing={0.75} sx={{ mt: 1 }}>
+                  {group.map((c) => (
+                    <Stack key={c.channelId} direction="row" spacing={1} alignItems="center" justifyContent="space-between">
+                      <Stack direction="row" spacing={1} alignItems="center">
+                        <Iconify icon="mdi:whatsapp" />
+                        <Typography variant="body2">{c.channelName}</Typography>
+                        {!c.hasToken && <Chip size="small" color="error" label="Sin token" />}
+                        {c.hasToken && !c.hasAppSecret && <Chip size="small" color="warning" label="Sin app secret" />}
+                        {c.tokenInPlainConfig && <Chip size="small" color="warning" label="Token sin cifrar" />}
+                      </Stack>
+                      <Button size="small" onClick={() => setMetaChannelId(c.channelId)}>
+                        Cuenta de Meta
+                      </Button>
+                    </Stack>
+                  ))}
+                </Stack>
+              </Card>
+            ))}
+          </Box>
+        )}
 
         {syncResult && (
           <Alert severity={syncResult.errors.length ? 'warning' : 'success'} sx={{ mb: 2 }} onClose={() => setSyncResult(null)}>
             {syncResult.errors.length
               ? syncResult.errors.join(' · ')
-              : `Sincronizado: ${syncResult.created} nuevas, ${syncResult.updated} con cambios (nueva versión), ${syncResult.statusChanged} cambiaron de estado, ${syncResult.removed} eliminadas en Meta, ${syncResult.unchanged} sin cambios.`}
+              : `Sincronizado (${syncResult.accounts} cuenta${syncResult.accounts === 1 ? '' : 's'}): ${syncResult.created} nuevas, ${syncResult.updated} con cambios (nueva versión), ${syncResult.statusChanged} cambiaron de estado, ${syncResult.removed} eliminadas en Meta, ${syncResult.unchanged} sin cambios.`}
           </Alert>
         )}
         {error && (
@@ -145,8 +195,16 @@ export default function WhatsAppTemplatesPage() {
         )}
 
         <Card>
-          <Stack direction="row" spacing={2} sx={{ p: 2 }}>
-            <TextField size="small" placeholder="Buscar por nombre" value={query} onChange={(e) => setQuery(e.target.value)} sx={{ minWidth: 240 }} />
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ p: 2 }}>
+            <TextField select size="small" label="Canal" value={channelId} onChange={(e) => setChannelId(e.target.value)} sx={{ minWidth: 220 }}>
+              <MenuItem value="">Todos los canales</MenuItem>
+              {channels.map((c) => (
+                <MenuItem key={c.channelId} value={c.channelId}>
+                  {c.channelName}
+                </MenuItem>
+              ))}
+            </TextField>
+            <TextField size="small" placeholder="Buscar por nombre" value={query} onChange={(e) => setQuery(e.target.value)} sx={{ minWidth: 220 }} />
             <TextField select size="small" label="Estado" value={status} onChange={(e) => setStatus(e.target.value)} sx={{ minWidth: 180 }}>
               <MenuItem value="">Todos</MenuItem>
               {['APPROVED', 'PENDING', 'REJECTED', 'PAUSED', 'DISABLED', 'DELETED'].map((s) => (
@@ -161,13 +219,13 @@ export default function WhatsAppTemplatesPage() {
               <TableHead>
                 <TableRow>
                   <TableCell>Nombre</TableCell>
+                  <TableCell>Canales</TableCell>
                   <TableCell>Idioma</TableCell>
                   <TableCell>Categoría</TableCell>
                   <TableCell>Estado</TableCell>
                   <TableCell>Calidad</TableCell>
                   <TableCell align="right">Variables</TableCell>
                   <TableCell align="right">Versión</TableCell>
-                  <TableCell>Origen</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -181,9 +239,9 @@ export default function WhatsAppTemplatesPage() {
                 {!loading && items.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={8} align="center" sx={{ py: 4, color: 'text.secondary' }}>
-                      {accounts.length
+                      {ready.length
                         ? 'No hay plantillas. Sincroniza con Meta para traer las que ya tienes, o crea una nueva.'
-                        : 'Conecta tu cuenta de Meta para empezar.'}
+                        : 'Configura la cuenta de Meta de un canal de WhatsApp para empezar.'}
                     </TableCell>
                   </TableRow>
                 )}
@@ -192,6 +250,7 @@ export default function WhatsAppTemplatesPage() {
                     const st = statusOf(t.status);
                     const total = slots(t.components).length;
                     const mapped = t.parameters.filter((p) => (p.source === 'field' ? !!p.field : !!p.staticValue)).length;
+                    const names = channelNames(t);
                     return (
                       <TableRow key={t.id} hover sx={{ cursor: 'pointer', opacity: t.status === 'DELETED' ? 0.5 : 1 }} onClick={() => setOpenId(t.id)}>
                         <TableCell>
@@ -202,21 +261,23 @@ export default function WhatsAppTemplatesPage() {
                             </Typography>
                           )}
                         </TableCell>
+                        <TableCell>{names.length ? names.join(', ') : <Typography variant="caption" color="text.secondary">Sin canal</Typography>}</TableCell>
                         <TableCell>{t.language}</TableCell>
                         <TableCell>{CATEGORY_LABEL[t.category] ?? t.category}</TableCell>
                         <TableCell>
                           <Chip size="small" label={st.label} color={st.color} variant="soft" />
                         </TableCell>
                         <TableCell>
-                          {t.qualityScore ? <Chip size="small" variant="outlined" label={QUALITY[t.qualityScore]?.label ?? t.qualityScore} color={QUALITY[t.qualityScore]?.color ?? 'default'} /> : '—'}
-                        </TableCell>
-                        <TableCell align="right">
-                          {total === 0 ? '—' : (
-                            <Chip size="small" variant="soft" color={mapped === total ? 'success' : 'warning'} label={`${mapped}/${total} mapeadas`} />
+                          {t.qualityScore ? (
+                            <Chip size="small" variant="outlined" label={QUALITY[t.qualityScore]?.label ?? t.qualityScore} color={QUALITY[t.qualityScore]?.color ?? 'default'} />
+                          ) : (
+                            '—'
                           )}
                         </TableCell>
+                        <TableCell align="right">
+                          {total === 0 ? '—' : <Chip size="small" variant="soft" color={mapped === total ? 'success' : 'warning'} label={`${mapped}/${total} mapeadas`} />}
+                        </TableCell>
                         <TableCell align="right">v{t.version}</TableCell>
-                        <TableCell>{t.origin === 'agentflow' ? 'Creada aquí' : 'Meta'}</TableCell>
                       </TableRow>
                     );
                   })}
@@ -238,7 +299,8 @@ export default function WhatsAppTemplatesPage() {
         base={base}
         open={editor.open}
         template={editor.template}
-        accounts={accounts}
+        channels={ready}
+        defaultChannelId={selected?.channelId}
         fields={fields}
         onClose={() => setEditor({ open: false, template: null })}
         onSaved={() => {
@@ -247,136 +309,7 @@ export default function WhatsAppTemplatesPage() {
           load();
         }}
       />
-      <ConnectMetaDialog
-        tenantId={tenantId}
-        open={connectOpen}
-        account={accounts[0] ?? null}
-        onClose={() => setConnectOpen(false)}
-        onSaved={() => {
-          setConnectOpen(false);
-          load();
-        }}
-      />
+      <WhatsAppMetaDialog tenantId={tenantId} channelId={metaChannelId} onClose={() => setMetaChannelId(null)} onSaved={() => load()} />
     </>
-  );
-}
-
-// ----------------------------------------------------------------------
-
-/**
- * Saves the Meta account as a tenant connection: ids in the config, token and app secret in the
- * encrypted secret (never shown again).
- */
-function ConnectMetaDialog({
-  tenantId,
-  open,
-  account,
-  onClose,
-  onSaved,
-}: {
-  tenantId: string;
-  open: boolean;
-  account: MetaAccount | null;
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const [form, setForm] = useState({ name: '', businessAccountId: '', phoneNumberId: '', appId: '', accessToken: '', appSecret: '' });
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (open)
-      setForm({
-        name: account?.name ?? 'WhatsApp Business',
-        businessAccountId: account?.businessAccountId ?? '',
-        phoneNumberId: account?.phoneNumberId ?? '',
-        appId: '',
-        accessToken: '',
-        appSecret: '',
-      });
-    setError(null);
-  }, [open, account]);
-
-  const set = (key: keyof typeof form, value: string) => setForm((f) => ({ ...f, [key]: value }));
-
-  const save = async () => {
-    // The secret is replaced as a whole: changing one value alone would erase the other.
-    if (account && !!form.accessToken.trim() !== !!form.appSecret.trim()) {
-      setError('Para cambiar las credenciales escribe el token y el app secret juntos.');
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    const id = account?.connectionId ?? 'meta-whatsapp';
-    try {
-      await axios.put(`/api/v1/tenants/${tenantId}/connections/${id}`, {
-        name: form.name,
-        type: 'Messaging',
-        connectorId: 'whatsapp-business',
-        config: {
-          provider: 'meta',
-          businessAccountId: form.businessAccountId.trim(),
-          phoneNumberId: form.phoneNumberId.trim(),
-          ...(form.appId.trim() ? { appId: form.appId.trim() } : {}),
-        },
-        allowedAgentIds: [],
-        allowedNodeIds: [],
-        allowedConnectorIds: [],
-      });
-      // Only replace the secret when new values were typed (they are never read back).
-      if (form.accessToken.trim() || form.appSecret.trim() || !account) {
-        await axios.post(`/api/v1/tenants/${tenantId}/connections/${id}/secret`, {
-          secret: JSON.stringify({ apiToken: form.accessToken.trim(), appSecret: form.appSecret.trim() }),
-          expiresAt: null,
-        });
-      }
-      onSaved();
-    } catch (err: any) {
-      setError(err?.response?.data?.message ?? 'No se pudo guardar la conexión.');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
-      <DialogTitle>Cuenta de WhatsApp Business (Meta)</DialogTitle>
-      <DialogContent>
-        <Stack spacing={2} sx={{ pt: 1 }}>
-          <Typography variant="body2" color="text.secondary">
-            En Meta for Developers, dentro de tu app, en WhatsApp → Configuración de la API, están el id de la cuenta de
-            WhatsApp Business y el id del número. El token debe ser de un usuario del sistema con permisos
-            whatsapp_business_management y whatsapp_business_messaging. El app secret está en Configuración → Básica.
-          </Typography>
-          <TextField label="Nombre" value={form.name} onChange={(e) => set('name', e.target.value)} />
-          <TextField label="Id de la cuenta de WhatsApp Business (WABA)" value={form.businessAccountId} onChange={(e) => set('businessAccountId', e.target.value)} />
-          <TextField label="Id del número de teléfono" value={form.phoneNumberId} onChange={(e) => set('phoneNumberId', e.target.value)} />
-          <TextField label="Id de la app (opcional)" value={form.appId} onChange={(e) => set('appId', e.target.value)} />
-          <TextField
-            label="Token de acceso"
-            type="password"
-            value={form.accessToken}
-            onChange={(e) => set('accessToken', e.target.value)}
-            helperText={account ? 'Déjalo vacío para conservar el actual.' : 'Se guarda cifrado y no se vuelve a mostrar.'}
-            autoComplete="off"
-          />
-          <TextField
-            label="App secret"
-            type="password"
-            value={form.appSecret}
-            onChange={(e) => set('appSecret', e.target.value)}
-            helperText="Verifica que los webhooks vienen de Meta. Se guarda cifrado."
-            autoComplete="off"
-          />
-          {error && <Alert severity="error">{error}</Alert>}
-        </Stack>
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose}>Cancelar</Button>
-        <Button variant="contained" disabled={busy || !form.businessAccountId.trim() || !form.phoneNumberId.trim() || (!account && !form.accessToken.trim())} onClick={save}>
-          Guardar
-        </Button>
-      </DialogActions>
-    </Dialog>
   );
 }

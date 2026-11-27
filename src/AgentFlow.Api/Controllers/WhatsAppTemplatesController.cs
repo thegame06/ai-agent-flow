@@ -17,41 +17,38 @@ public sealed class WhatsAppTemplatesController : ControllerBase
 {
     private readonly IWhatsAppTemplateStore _store;
     private readonly IWhatsAppTemplateService _templates;
-    private readonly IMetaWhatsAppAccounts _accounts;
+    private readonly IWhatsAppChannelMetaService _channels;
     private readonly ITenantContextAccessor _tenantContext;
 
     public WhatsAppTemplatesController(
         IWhatsAppTemplateStore store,
         IWhatsAppTemplateService templates,
-        IMetaWhatsAppAccounts accounts,
+        IWhatsAppChannelMetaService channels,
         ITenantContextAccessor tenantContext)
     {
         _store = store;
         _templates = templates;
-        _accounts = accounts;
+        _channels = channels;
         _tenantContext = tenantContext;
     }
 
+    /// <summary>
+    /// Templates, with the WhatsApp channels that can send them. With <paramref name="channelId"/>
+    /// only the templates of that channel's Meta account (a company may have one account per area).
+    /// </summary>
     [HttpGet]
-    public async Task<IActionResult> List([FromRoute] string tenantId, CancellationToken ct)
+    public async Task<IActionResult> List([FromRoute] string tenantId, [FromQuery] string? channelId, CancellationToken ct)
     {
         if (!CanAccess(tenantId, AgentFlowPermissions.ConnectRead)) return Forbid();
-        var accounts = await _accounts.GetAllAsync(tenantId, ct);
-        return Ok(new
+        // Channel views carry ids and flags only: tokens and secrets never leave the server.
+        var channels = await _channels.ListAsync(tenantId, ct);
+        var items = await _store.ListAsync(tenantId, ct);
+        if (!string.IsNullOrWhiteSpace(channelId))
         {
-            items = await _store.ListAsync(tenantId, ct),
-            // Ids only: tokens and secrets never leave the server.
-            accounts = accounts.Select(a => new
-            {
-                a.ConnectionId,
-                a.Name,
-                a.BusinessAccountId,
-                a.PhoneNumberId,
-                hasToken = !string.IsNullOrWhiteSpace(a.AccessToken),
-                hasAppSecret = !string.IsNullOrWhiteSpace(a.AppSecret)
-            }),
-            fields = WhatsAppTemplateText.Fields
-        });
+            var waba = channels.FirstOrDefault(c => c.ChannelId == channelId)?.BusinessAccountId;
+            items = items.Where(t => waba is not null && t.BusinessAccountId == waba).ToList();
+        }
+        return Ok(new { items, channels, fields = WhatsAppTemplateText.Fields });
     }
 
     [HttpGet("{templateId}")]
@@ -77,10 +74,10 @@ public sealed class WhatsAppTemplatesController : ControllerBase
     }
 
     [HttpPost("sync")]
-    public async Task<IActionResult> Sync([FromRoute] string tenantId, [FromQuery] string? connectionId, CancellationToken ct)
+    public async Task<IActionResult> Sync([FromRoute] string tenantId, [FromQuery] string? channelId, CancellationToken ct)
     {
         if (!CanAccess(tenantId, AgentFlowPermissions.ConnectManage)) return Forbid();
-        return Ok(await _templates.SyncAsync(tenantId, connectionId, _tenantContext.Current!.UserId, ct));
+        return Ok(await _templates.SyncAsync(tenantId, channelId, _tenantContext.Current!.UserId, ct));
     }
 
     [HttpPost]

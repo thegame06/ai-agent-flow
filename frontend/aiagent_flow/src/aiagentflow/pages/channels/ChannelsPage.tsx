@@ -45,6 +45,10 @@ import { BrandPageHeader } from 'src/aiagentflow/components/BrandPageHeader';
 
 import { Iconify } from 'src/components/iconify';
 
+import { emptyMetaForm, saveChannelMeta, MetaAccountFields, WhatsAppMetaDialog } from './WhatsAppMetaDialog';
+
+import type { MetaAccountForm } from './WhatsAppMetaDialog';
+
 
 
 interface Channel {
@@ -126,6 +130,9 @@ export default function ChannelsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // Meta (WhatsApp Business) account: typed when creating a Business channel, edited per channel later.
+  const [metaForm, setMetaForm] = useState<MetaAccountForm>(emptyMetaForm());
+  const [metaChannelId, setMetaChannelId] = useState<string | null>(null);
   const [openCreate, setOpenCreate] = useState(false);
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null);
@@ -250,12 +257,14 @@ export default function ChannelsPage() {
       if (form.connectionId) config.ConnectionId = form.connectionId;
       if (form.provider) config.Provider = form.provider;
 
-      if (form.authMode === 'business') {
-        config.ApiToken = form.apiToken;
-        config.PhoneNumberId = form.phoneNumberId;
+      const business = form.type === 'WhatsApp' && form.authMode === 'business';
+      if (business) {
+        // Sends through Meta with the channel's own encrypted connection (saved right after creating it).
+        config.Provider = 'meta';
+        delete config.ConnectionId;
       }
 
-      await axios.post(endpoints.agentflow.channels.create(TENANT_ID), {
+      const created = await axios.post(endpoints.agentflow.channels.create(TENANT_ID), {
         name: form.name.trim(),
         type: form.type,
         config,
@@ -263,6 +272,14 @@ export default function ChannelsPage() {
         routerAgentId: form.routerAgentId || undefined,
         reopenTemplateName: form.reopenTemplateName || undefined,
       });
+      if (business && created.data?.id) {
+        try {
+          await saveChannelMeta(TENANT_ID, created.data.id, metaForm);
+        } catch (metaErr: any) {
+          alert(`El canal se creó, pero no se pudo guardar la cuenta de Meta: ${metaErr?.response?.data?.message ?? metaErr?.message}. Complétala con «Cuenta de Meta».`);
+        }
+      }
+      setMetaForm(emptyMetaForm());
 
       setOpenCreate(false);
       setForm({ name: '', type: 'WhatsApp', authMode: 'qr', apiToken: '', phoneNumberId: '', defaultAgentId: '', routingAgentIds: [], connectionId: '', provider: 'twilio', sessionWindowHours: '24', routerAgentId: '', reopenTemplateName: '' });
@@ -794,6 +811,11 @@ export default function ChannelsPage() {
                             <IconButton size="small" title="Probar canal" onClick={() => { setTestPanelChannel(c); setTestResult(null); setTestMsg({ content: '', from: '', callbackUrl: '', asyncMode: false }); setOpenTestPanel(true); }}>
                               <Iconify icon="mdi:message-flash-outline" />
                             </IconButton>
+                            {c.type === 'WhatsApp' && (c.config?.AuthMode ?? 'qr') !== 'qr' && (
+                              <IconButton size="small" title="Cuenta de Meta" onClick={() => setMetaChannelId(c.id)}>
+                                <Iconify icon="mdi:whatsapp" />
+                              </IconButton>
+                            )}
                             <IconButton size="small" onClick={() => openRoutingDialog(c)}>
                               <Iconify icon="solar:settings-bold" />
                             </IconButton>
@@ -934,25 +956,7 @@ export default function ChannelsPage() {
                   <MenuItem value="business">WhatsApp Business API</MenuItem>
                 </TextField>
 
-                {form.authMode === 'business' && (
-                  <>
-                    <TextField
-                      label="API Token"
-                      value={form.apiToken}
-                      onChange={(e) => setForm((p) => ({ ...p, apiToken: e.target.value }))}
-                      placeholder="EAAB..."
-                      fullWidth
-                      type="password"
-                    />
-                    <TextField
-                      label="ID de numero telefonico"
-                      value={form.phoneNumberId}
-                      onChange={(e) => setForm((p) => ({ ...p, phoneNumberId: e.target.value }))}
-                      placeholder="123456789"
-                      fullWidth
-                    />
-                  </>
-                )}
+                {form.authMode === 'business' && <MetaAccountFields form={metaForm} onChange={setMetaForm} />}
               </>
             )}
 
@@ -1713,6 +1717,7 @@ export default function ChannelsPage() {
           </Button>
         </DialogActions>
       </Dialog>
+      <WhatsAppMetaDialog tenantId={TENANT_ID} channelId={metaChannelId} onClose={() => setMetaChannelId(null)} onSaved={() => fetchAll()} />
     </>
   );
 }
