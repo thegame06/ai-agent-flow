@@ -9,6 +9,8 @@ import Alert from '@mui/material/Alert';
 import { useTheme } from '@mui/material/styles';
 import { iconButtonClasses } from '@mui/material/IconButton';
 
+import { useTenantApps } from 'src/aiagentflow/hooks/useTenantApps';
+
 import { Logo } from 'src/components/logo';
 import { useSettingsContext } from 'src/components/settings';
 
@@ -19,6 +21,7 @@ import { layoutClasses } from '../core/classes';
 import { NavHorizontal } from './nav-horizontal';
 import { MainSection } from '../core/main-section';
 import { Searchbar } from '../components/searchbar';
+import { filterNavByApps } from '../nav-app-gating';
 import { MenuButton } from '../components/menu-button';
 import { HeaderSection } from '../core/header-section';
 import { LayoutSection } from '../core/layout-section';
@@ -59,7 +62,9 @@ export function DashboardLayout({
 
   const { value: open, onFalse: onClose, onTrue: onOpen } = useBoolean();
 
-  const navData = slotProps?.nav?.data ?? dashboardNavData;
+  // Only show the apps this tenant has; the API enforces the same permissions.
+  const enabledApps = useTenantApps();
+  const navData = slotProps?.nav?.data ?? filterNavByApps(dashboardNavData, enabledApps);
 
   const isNavMini = settings.state.navLayout === 'mini';
   const isNavHorizontal = settings.state.navLayout === 'horizontal';

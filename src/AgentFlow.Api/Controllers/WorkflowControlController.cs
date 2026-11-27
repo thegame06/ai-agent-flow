@@ -1,3 +1,5 @@
+using AgentFlow.Api.Entitlements;
+using AgentFlow.Extensions;
 using AgentFlow.Abstractions.Workflow;
 using AgentFlow.Api.Workflow;
 using AgentFlow.Application.Memory;
@@ -8,6 +10,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace AgentFlow.Api.Controllers;
 
 [ApiController]
+[RequiresAppModule(AppModules.Workflows)]
 [Route("api/v1/tenants/{tenantId}/control/workflows")]
 [Authorize]
 public sealed class WorkflowControlController : ControllerBase

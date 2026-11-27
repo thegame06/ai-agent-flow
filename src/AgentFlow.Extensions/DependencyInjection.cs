@@ -11,9 +11,10 @@ public static class ExtensionDependencyInjection
     {
         // Default is process-local; hosts that sell apps per tenant replace it with a durable store.
         services.TryAddSingleton<ITenantExtensionStateStore, InMemoryTenantExtensionStateStore>();
+        services.TryAddSingleton<IAppEntitlementService, AppEntitlementService>();
         services.TryAddSingleton<IExtensionRegistry, ExtensionRegistry>();
         services.TryAddSingleton<IToolInvoker, ToolInvoker>();
-        
+
         // Register default tools (using Abstractions.IToolPlugin interface)
         // NOTE: We use the direct registration approach to avoid recursion
         services.TryAddSingleton<IToolPlugin, AgentFlow.Extensions.Tools.CalculatorTool>();
