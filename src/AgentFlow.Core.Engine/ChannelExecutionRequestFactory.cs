@@ -71,6 +71,10 @@ public sealed class ChannelExecutionRequestFactory : IChannelExecutionRequestFac
         var requestMetadata = new Dictionary<string, string>
         {
             ["channelMessageId"] = incomingMessage.Id,
+            // Who the conversation is with: tools act on this person only (never on input from the model).
+            ["channel.from"] = incomingMessage.From,
+            ["channel.session_id"] = incomingMessage.SessionId,
+            ["channel.id"] = channel.Id,
             ["permissions"] = string.Join(",", executionContext.Permissions),
             ["mcp.policy.allow_actions"] = "tools.execute",
             ["routing.is_router_agent"] = isRouterAgent ? "true" : "false",

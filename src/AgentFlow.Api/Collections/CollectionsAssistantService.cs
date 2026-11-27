@@ -1,0 +1,211 @@
+using System.Globalization;
+using AgentFlow.Abstractions.Connect;
+using AgentFlow.Api.Campaigns;
+
+namespace AgentFlow.Api.Collections;
+
+/// <summary>What the collections assistant knows about the customer it is talking to.</summary>
+public sealed record CollectionsCustomerContext
+{
+    public bool Found { get; init; }
+    public string? CustomerName { get; init; }
+    public string? FirstName { get; init; }
+    public string Currency { get; init; } = "MXN";
+    public decimal OverdueBalance { get; init; }
+    public decimal TotalBalance { get; init; }
+    public int MaxDaysPastDue { get; init; }
+    public string? Stage { get; init; }
+    public IReadOnlyList<CollectionsLoanBrief> Loans { get; init; } = [];
+    public CollectionsPromiseBrief? PendingPromise { get; init; }
+    /// <summary>The last campaign message sent to this customer, so the assistant knows why it wrote.</summary>
+    public string? LastCampaignMessage { get; init; }
+    public string? LastCampaignName { get; init; }
+    public string? CurrentOutcome { get; init; }
+    /// <summary>Today in the customer's timezone ("2026-11-27 (viernes)"): models don't know the date.</summary>
+    public string Today { get; init; } = string.Empty;
+    public string? Note { get; init; }
+}
+
+public sealed record CollectionsLoanBrief(
+    string LoanId,
+    string? Product,
+    decimal OverdueBalance,
+    decimal TotalBalance,
+    int DaysPastDue,
+    string? NextPaymentDate,
+    decimal? NextPaymentAmount,
+    string Status);
+
+public sealed record CollectionsPromiseBrief(decimal? Amount, string PromisedDate, string Status);
+
+public sealed record CollectionsAssistantActionResult(bool Ok, string Message);
+
+/// <summary>
+/// Backs the collections assistant's tools. Everything is keyed by the customer's phone (the
+/// WhatsApp sender), so the assistant can only see and act on the person it is talking to.
+/// </summary>
+public interface ICollectionsAssistantService
+{
+    Task<CollectionsCustomerContext> GetContextAsync(string tenantId, string phone, CancellationToken ct = default);
+    /// <param name="whenText">What the customer said about the date ("el lunes"); resolved here, preferred over <paramref name="promisedDate"/>.</param>
+    Task<CollectionsAssistantActionResult> RegisterPromiseAsync(string tenantId, string phone, decimal? amount, DateTimeOffset? promisedDate, string? whenText, string? notes, CancellationToken ct = default);
+    Task<CollectionsAssistantActionResult> RecordOutcomeAsync(string tenantId, string phone, string outcome, string? notes, CancellationToken ct = default);
+    Task<CollectionsAssistantActionResult> HandoffAsync(string tenantId, string phone, string reason, CancellationToken ct = default);
+}
+
+public sealed class CollectionsAssistantService : ICollectionsAssistantService
+{
+    private const string Actor = "collections-assistant";
+    private static readonly TimeSpan ContactWindow = TimeSpan.FromDays(30);
+
+    private readonly ICollectionsStore _collections;
+    private readonly ICollectionPromiseService _promises;
+    private readonly ICampaignStore _campaigns;
+    private readonly ICampaignOutcomeService _outcomes;
+
+    public CollectionsAssistantService(
+        ICollectionsStore collections,
+        ICollectionPromiseService promises,
+        ICampaignStore campaigns,
+        ICampaignOutcomeService outcomes)
+    {
+        _collections = collections;
+        _promises = promises;
+        _campaigns = campaigns;
+        _outcomes = outcomes;
+    }
+
+    public async Task<CollectionsCustomerContext> GetContextAsync(string tenantId, string phone, CancellationToken ct = default)
+    {
+        var (partyId, loans) = await FindCustomerAsync(tenantId, phone, ct);
+        var contact = await LatestContactAsync(tenantId, phone, ct);
+        var campaign = contact is null ? null : await _campaigns.GetCampaignAsync(tenantId, contact.CampaignId, ct);
+        var today = Today(campaign?.Timezone);
+        if (partyId is null)
+            return new CollectionsCustomerContext { Found = false, Today = today, Note = "No hay prestamos registrados para este numero." };
+
+        var open = loans.Where(l => l.Status is not CollectionLoanStatus.PaidOff).ToList();
+        var name = loans.Select(l => l.CustomerName).FirstOrDefault(n => !string.IsNullOrWhiteSpace(n));
+        var pending = (await _collections.GetPromisesAsync(tenantId, CollectionPromiseStatus.Pending, partyId, 5, ct)).FirstOrDefault();
+        var maxDpd = open.Count == 0 ? 0 : open.Max(l => l.DaysPastDue);
+        var campaignName = campaign?.Name;
+
+        return new CollectionsCustomerContext
+        {
+            Found = true,
+            CustomerName = name,
+            FirstName = name?.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault(),
+            Currency = loans.Select(l => l.Currency).FirstOrDefault(c => !string.IsNullOrWhiteSpace(c)) ?? "MXN",
+            OverdueBalance = open.Sum(l => l.OverdueBalance),
+            TotalBalance = open.Sum(l => l.TotalBalance),
+            MaxDaysPastDue = maxDpd,
+            Stage = DelinquencyStages.Label(DelinquencyStages.FromDaysPastDue(maxDpd)),
+            Loans = open.Select(l => new CollectionsLoanBrief(
+                l.LoanExternalId, l.Product, l.OverdueBalance, l.TotalBalance, l.DaysPastDue,
+                l.NextPaymentDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), l.NextPaymentAmount,
+                l.Status.ToString())).ToList(),
+            PendingPromise = pending is null
+                ? null
+                : new CollectionsPromiseBrief(pending.Amount, pending.PromisedDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), pending.Status.ToString()),
+            LastCampaignMessage = contact?.FollowUps?.LastOrDefault(f => f.Status == "sent")?.Message ?? contact?.RenderedMessage,
+            LastCampaignName = campaignName,
+            CurrentOutcome = contact?.Outcome,
+            Today = today
+        };
+    }
+
+    public async Task<CollectionsAssistantActionResult> RegisterPromiseAsync(string tenantId, string phone, decimal? amount, DateTimeOffset? promisedDate, string? whenText, string? notes, CancellationToken ct = default)
+    {
+        if (amount is < 0) return new(false, "El monto no puede ser negativo.");
+
+        var contact = await LatestContactAsync(tenantId, phone, ct);
+        var campaign = contact is null ? null : await _campaigns.GetCampaignAsync(tenantId, contact.CampaignId, ct);
+        var localNow = CampaignContactPolicy.ToLocal(DateTimeOffset.UtcNow, campaign?.Timezone ?? "America/Mexico_City");
+
+        // Models get weekday arithmetic wrong; resolve "el lunes" / "manana" deterministically.
+        var resolved = CampaignReplyClassifier.ResolveDate(whenText, localNow);
+        // A vague answer ("en diciembre", "pronto") is not a date: never let the model fill one in.
+        if (resolved is null && !string.IsNullOrWhiteSpace(whenText))
+            return new(false, $"\"{whenText}\" no es una fecha concreta: pregunta al cliente que dia exacto.");
+        resolved ??= promisedDate;
+        if (resolved is null) return new(false, "No entendi la fecha: pide al cliente un dia concreto.");
+        var date = new DateTimeOffset(resolved.Value.Year, resolved.Value.Month, resolved.Value.Day, 0, 0, 0, TimeSpan.Zero);
+        if (date.Date < localNow.Date) return new(false, "La fecha prometida ya paso: pide una fecha a partir de hoy.");
+        var promisedDateValue = date;
+        var confirmation = $"Promesa registrada para el {Weekdays[(int)date.DayOfWeek]} {date:dd/MM/yyyy}" +
+                           (amount is > 0 ? $" por {amount.Value.ToString("#,##0.00", CultureInfo.InvariantCulture)}." : ".");
+
+        if (contact is not null)
+        {
+            // Through the campaign outcome so the campaign results and the promise stay in sync.
+            await _outcomes.RecordAsync(tenantId, contact.Id, new CampaignOutcomeRequest(
+                CampaignOutcomes.PromiseToPay, CampaignOutcomes.Sources.Agent, Actor, notes, amount, promisedDateValue), ct);
+            return new(true, confirmation);
+        }
+
+        var (partyId, _) = await FindCustomerAsync(tenantId, phone, ct);
+        if (partyId is null) return new(false, "No encontre prestamos para este cliente.");
+        await _promises.CreateAsync(tenantId, partyId, amount, promisedDateValue, CampaignOutcomes.Sources.Agent, Actor, notes, ct: ct);
+        return new(true, confirmation);
+    }
+
+    public async Task<CollectionsAssistantActionResult> RecordOutcomeAsync(string tenantId, string phone, string outcome, string? notes, CancellationToken ct = default)
+    {
+        if (CampaignOutcomes.Find(outcome) is null)
+            return new(false, $"Resultado desconocido: {outcome}.");
+        if (outcome == CampaignOutcomes.PromiseToPay)
+            return new(false, "Para una promesa usa la herramienta de promesa de pago con fecha y monto.");
+
+        var contact = await LatestContactAsync(tenantId, phone, ct);
+        if (contact is null) return new(false, "Este cliente no tiene un contacto de campana reciente.");
+        await _outcomes.RecordAsync(tenantId, contact.Id, new CampaignOutcomeRequest(outcome, CampaignOutcomes.Sources.Agent, Actor, notes), ct);
+        return new(true, "Resultado registrado.");
+    }
+
+    public async Task<CollectionsAssistantActionResult> HandoffAsync(string tenantId, string phone, string reason, CancellationToken ct = default)
+    {
+        var contact = await LatestContactAsync(tenantId, phone, ct);
+        if (contact is null) return new(false, "Este cliente no tiene un contacto de campana reciente.");
+        await _campaigns.UpdateContactExecutionAsync(contact with
+        {
+            NeedsAttention = true,
+            AttentionReason = string.IsNullOrWhiteSpace(reason) ? "El asistente pide un asesor" : reason.Trim(),
+            AttentionAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow
+        }, ct);
+        return new(true, "Caso pasado a un asesor.");
+    }
+
+    private static readonly string[] Weekdays = ["domingo", "lunes", "martes", "miercoles", "jueves", "viernes", "sabado"];
+
+    private static string Today(string? timezone)
+    {
+        var local = CampaignContactPolicy.ToLocal(DateTimeOffset.UtcNow, timezone ?? "America/Mexico_City");
+        return $"{local:yyyy-MM-dd} ({Weekdays[(int)local.DayOfWeek]})";
+    }
+
+    private async Task<CampaignContactExecutionContract?> LatestContactAsync(string tenantId, string phone, CancellationToken ct)
+    {
+        var key = RecipientKeys.From(phone);
+        return key is null ? null : await _campaigns.FindLatestContactByRecipientKeyAsync(tenantId, key, DateTimeOffset.UtcNow - ContactWindow, ct);
+    }
+
+    private async Task<(string? PartyId, IReadOnlyList<CollectionLoanDocument> Loans)> FindCustomerAsync(string tenantId, string phone, CancellationToken ct)
+    {
+        var key = RecipientKeys.From(phone);
+        if (key is null) return (null, []);
+
+        // The campaign contact knows the party; otherwise match the phone in the portfolio.
+        var contact = await LatestContactAsync(tenantId, phone, ct);
+        if (!string.IsNullOrWhiteSpace(contact?.PartyId))
+        {
+            var byParty = await _collections.GetLoansByPartyAsync(tenantId, contact.PartyId!, ct);
+            if (byParty.Count > 0) return (contact.PartyId, byParty);
+        }
+
+        var loans = (await _collections.GetLoansAsync(tenantId, ct))
+            .Where(l => RecipientKeys.From(l.CustomerPhone) == key)
+            .ToList();
+        return loans.Count == 0 ? (null, []) : (loans[0].PartyId, loans);
+    }
+}

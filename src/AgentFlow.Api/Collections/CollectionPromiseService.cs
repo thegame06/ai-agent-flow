@@ -54,6 +54,15 @@ public sealed class CollectionPromiseService : ICollectionPromiseService
             : loans.Where(l => l.OverdueBalance > 0 && l.Status != CollectionLoanStatus.PaidOff).ToList();
         if (promised.Count == 0) promised = loans.ToList();
 
+        // A customer has one live promise: a new one replaces any earlier pending promise.
+        foreach (var earlier in await _store.GetPromisesAsync(tenantId, CollectionPromiseStatus.Pending, partyId, 50, ct))
+        {
+            earlier.Status = CollectionPromiseStatus.Cancelled;
+            earlier.ResolvedAt = DateTimeOffset.UtcNow;
+            earlier.Notes = string.Join(" ", new[] { earlier.Notes, "Reemplazada por una nueva promesa." }.Where(x => !string.IsNullOrWhiteSpace(x)));
+            await _store.UpdatePromiseAsync(earlier, ct);
+        }
+
         var promise = new CollectionPromiseDocument
         {
             TenantId = tenantId,

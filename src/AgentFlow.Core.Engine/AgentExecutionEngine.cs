@@ -1397,14 +1397,20 @@ public sealed class AgentExecutionEngine : IAgentExecutor
                 agentDef.Memory.VectorMinRelevanceScore,
                 ct);
 
+            // Give the model each tool's real description and input schema (it used to get only the
+            // name and "{}", so it could not know which arguments to send).
             var availableTools = agentDef.AuthorizedTools
                 .Where(t => t.IsEnabled)
-                .Select(t => new AvailableToolDescriptor
+                .Select(t =>
                 {
-                    ToolId = t.ToolId,
-                    Name = t.ToolName,
-                    Description = t.ToolName,
-                    InputSchemaJson = "{}"
+                    var plugin = _toolRegistry.Resolve(t.ToolName);
+                    return new AvailableToolDescriptor
+                    {
+                        ToolId = t.ToolId,
+                        Name = t.ToolName,
+                        Description = string.IsNullOrWhiteSpace(plugin?.Description) ? t.ToolName : plugin!.Description,
+                        InputSchemaJson = string.IsNullOrWhiteSpace(plugin?.InputSchemaJson) ? "{}" : plugin!.InputSchemaJson
+                    };
                 })
                 .ToList();
 

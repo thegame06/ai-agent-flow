@@ -28,7 +28,8 @@ public sealed class ExtensionToolRegistry : IToolRegistry
         var tool = _registry.GetTool(name);
         
         // If version is specified, check it. (Simple semver match for now)
-        if (tool != null && version != null && tool.Version != version)
+        // "latest" (what the executor asks for) means any version; tools declare "1.0.0".
+        if (tool != null && version != null && !string.Equals(version, "latest", StringComparison.OrdinalIgnoreCase) && tool.Version != version)
         {
             _logger.LogWarning("Tool '{ToolName}' found but version mismatch. Requested: {Requested}, Found: {Found}", 
                 name, version, tool.Version);
