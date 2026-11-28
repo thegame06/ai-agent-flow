@@ -234,7 +234,7 @@ public sealed class CustomerInbox : ICustomerInbox
             m.Id,
             m.Direction == MessageDirection.Incoming ? "in" : "out",
             actor,
-            m.Content,
+            m.Metadata.GetValueOrDefault("agentflow.own_content") ?? m.Content,
             m.CreatedAt,
             m.Status.ToString(),
             m.Metadata.GetValueOrDefault("agentflow.delivery"),
