@@ -187,6 +187,7 @@ public static class DependencyInjection
         services.AddSingleton<IToolPlugin, AgentFlow.Api.Commerce.SalesSearchCatalogTool>();
         services.AddSingleton<IToolPlugin, AgentFlow.Api.Commerce.SalesQuoteTool>();
         services.AddSingleton<IToolPlugin, AgentFlow.Api.Commerce.SalesCreateSaleTool>();
+        services.AddSingleton<IToolPlugin, AgentFlow.Api.Commerce.BusinessInfoTool>();
         services.AddSingleton<AgentFlow.Core.Engine.IChannelReplyTransformer, PaymentInstructionsReplyTransformer>();
         services.AddSingleton<AgentFlow.Core.Engine.IChannelReplyTransformer, AgentFlow.Api.Commerce.SaleReferenceReplyTransformer>();
 

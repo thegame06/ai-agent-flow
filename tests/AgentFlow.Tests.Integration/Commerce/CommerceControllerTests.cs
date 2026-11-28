@@ -460,6 +460,7 @@ public sealed class CommerceControllerTests
             CommerceProductDiscountDocument? discount,
             IReadOnlyList<CommerceProductVariationDocument>? variations,
             IReadOnlyList<CommerceBranchStockDocument>? branchStocks,
+            CommerceServiceSchedulingDocument? scheduling,
             CancellationToken ct)
         {
             var current = _inventory.SingleOrDefault(x => x.TenantId == tenantId && x.Sku == sku);
@@ -486,7 +487,8 @@ public sealed class CommerceControllerTests
                     Attributes = attributes?.ToList() ?? [],
                     Discount = discount,
                     Variations = variations?.ToList() ?? [],
-                    BranchStocks = branchStocks?.ToList() ?? []
+                    BranchStocks = branchStocks?.ToList() ?? [],
+                    Scheduling = scheduling
                 };
                 _inventory.Add(current);
             }

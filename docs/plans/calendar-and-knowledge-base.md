@@ -1,6 +1,6 @@
 # Plan: agenda conectada y base de conocimiento
 
-Estado: propuesta, sin código de producción. Fecha: 2026-11-28.
+Estado (2026-11-28): KB1 y KB2 se implementan juntas en un solo PR, porque tocan los mismos archivos de Commerce y las dos son la base de la etapa 1. Lo demás sigue como propuesta.
 Objetivo: que AgentFlow pueda venderse a negocios que trabajan con citas. Empezamos por clínicas dentales y seguimos con estética, veterinarias y talleres.
 El asistente tiene que:
 - responder con datos reales del negocio (sucursales, horarios, servicios, precios, preguntas frecuentes, políticas);

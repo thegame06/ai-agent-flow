@@ -284,8 +284,12 @@ internal sealed class SalesSearchCatalogTool(IServiceScopeFactory scopeFactory) 
                 description = i.Description,
                 type = i.ItemType == "service" ? "servicio" : "producto",
                 price = i.UnitPrice,
+                priceIsFrom = i.Scheduling?.PriceIsFrom == true ? true : (bool?)null,
                 available = !i.TracksInventory || i.OnHand > 0,
-                stock = i.TracksInventory ? i.OnHand : (int?)null
+                stock = i.TracksInventory ? i.OnHand : (int?)null,
+                durationMinutes = i.Scheduling is { DurationMinutes: > 0 } s ? s.DurationMinutes : (int?)null,
+                bookable = i.Scheduling?.Bookable == true ? true : (bool?)null,
+                preparation = i.Scheduling?.Preparation
             })
         };
     }
@@ -436,7 +440,8 @@ public static class SalesAssistantAgent
         "af_sales_search_catalog",
         "af_sales_quote",
         "af_sales_create_sale",
-        "af_conversation_handoff_to_human"
+        "af_conversation_handoff_to_human",
+        BusinessInfo.ToolName
     ];
 
     public const string SystemPrompt = """
@@ -447,13 +452,14 @@ Herramientas:
 - af_sales_search_catalog: el catalogo real (codigo sku, precio, si es servicio o producto, disponibilidad). Usala SIEMPRE antes de hablar de precios, opciones o disponibilidad. Si el cliente pide algo general ("que venden?"), buscala sin query.
 - af_sales_quote: el total exacto con impuesto y, si lo pide, el plan de cuotas con fechas y montos. Nunca calcules tu los totales ni las cuotas.
 - af_sales_create_sale: registra la venta. Solo cuando el cliente confirmo productos, cantidad, total y forma de pago.
+- af_business_get_info: sucursales, direcciones, telefonos y horario de atencion (si estan abiertas ahora, feriados). Usala cuando pregunte donde estan, a que hora abren o cierran, o como llegar; nunca inventes direcciones ni horarios.
 - af_conversation_handoff_to_human: pasa a un asesor SOLO si el cliente lo pide, si buscaste en el catalogo en este mismo turno y no hay lo que quiere, o si una herramienta fallo.
 
 Lo que ves del historial son solo los mensajes, no los resultados de las herramientas. Para cotizar pasa el sku si lo tienes; si no, llama af_sales_quote sin items (usa el ultimo producto buscado o cotizado en la conversacion) o busca de nuevo. Nunca inventes un sku. Nunca digas que tienes problemas con el catalogo o con una herramienta si no la llamaste en este turno y te devolvio un error. Nunca digas que algo no esta en el catalogo sin haberlo buscado en ese turno.
 
 Como vender:
 1. Entiende que necesita con una sola pregunta por turno, sin repetir preguntas.
-2. Busca en el catalogo y ofrece 1 a 3 opciones con nombre y precio exactos del catalogo. Nunca inventes productos, precios ni stock.
+2. Busca en el catalogo y ofrece 1 a 3 opciones con nombre y precio exactos del catalogo. Nunca inventes productos, precios ni stock. Si el item trae "priceIsFrom", di "desde" antes del precio; si trae "durationMinutes" o "preparation" y el cliente pregunta cuanto dura o que debe hacer antes, usa esos datos.
 3. Cuando elija, pregunta como quiere pagar: de contado o en cuotas.
    - Contado: cotiza con af_sales_quote y confirma el total.
    - Cuotas: pregunta en cuantas cuotas, si semanal, quincenal o mensual, y si dara prima (pago inicial). Cotiza con af_sales_quote incluyendo "installments" y dile el monto de cada cuota y la fecha de la primera.
