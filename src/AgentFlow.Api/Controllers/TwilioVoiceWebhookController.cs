@@ -62,6 +62,8 @@ public sealed class TwilioVoiceWebhookController : ControllerBase
             return Unauthorized(new { error = "Invalid Twilio signature." });
 
         var normalizedStatus = (form.CallStatus ?? string.Empty).Trim().ToLowerInvariant();
+        if (!string.IsNullOrWhiteSpace(form.SipResponseCode) && normalizedStatus is "no-answer" or "busy" or "failed" or "canceled")
+            _logger.LogInformation("Call {CallSid} ended {Status} with SIP {SipResponseCode}.", form.CallSid, normalizedStatus, form.SipResponseCode);
         // A campaign call: its contact and outcome follow what happened on the phone.
         if (_callTracker is not null && !string.IsNullOrWhiteSpace(form.CallSid))
             await _callTracker.ApplyAsync(tenantId, form.CallSid!, normalizedStatus, form.AnsweredBy, form.CallDuration, ct);
@@ -558,6 +560,8 @@ public sealed record TwilioVoiceStatusForm
     public string? SessionId { get; init; }
     /// <summary>With answering-machine detection: human, machine_start, machine_end_*, fax, unknown.</summary>
     public string? AnsweredBy { get; init; }
+    /// <summary>The carrier's SIP answer on a call that did not connect (480 unavailable, 486 busy, 603 rejected...).</summary>
+    public string? SipResponseCode { get; init; }
 }
 
 public sealed record TwilioVoiceAnswerForm
