@@ -34,4 +34,20 @@ public static class CampaignChannels
     /// <summary>True while the customer wrote in the last 24 hours.</summary>
     public static bool WindowOpen(CampaignContactExecutionContract contact, DateTimeOffset now)
         => (contact.LastReplyAt ?? contact.RepliedAt) is { } last && now - last < ConversationWindow;
+
+    /// <summary>True while the customer's last message on that number's session is under 24 hours old.</summary>
+    public static bool WindowOpen(ChannelSession? session, DateTimeOffset now)
+        => session?.Metadata.GetValueOrDefault("last_incoming_at") is { Length: > 0 } raw &&
+           DateTimeOffset.TryParse(raw, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.RoundtripKind, out var last) &&
+           now - last < ConversationWindow;
+
+    /// <summary>How a channel may have stored the customer's number: "+50581143874" (QR, Twilio) or "50581143874" (Meta).</summary>
+    public static IReadOnlyList<string> SessionIdentifiers(string recipient)
+    {
+        var digits = new string(recipient.Where(char.IsDigit).ToArray());
+        return new[] { recipient.Trim(), "+" + digits, digits }
+            .Where(x => x.Trim('+').Length > 0)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+    }
 }

@@ -146,8 +146,10 @@ public sealed class WhatsAppChannelMetaService : IWhatsAppChannelMetaService
         return (await ViewAsync(tenantId, channel, ct), null);
     }
 
+    /// <summary>A channel on Meta's Cloud API: neither QR nor Twilio.</summary>
     public static bool IsBusiness(ChannelDefinition channel)
-        => !string.Equals(channel.Config.GetValueOrDefault("AuthMode", "qr"), "qr", StringComparison.OrdinalIgnoreCase);
+        => !string.Equals(channel.Config.GetValueOrDefault("AuthMode", "qr"), "qr", StringComparison.OrdinalIgnoreCase) &&
+           !AgentFlow.Api.Messaging.TwilioWhatsApp.IsTwilio(channel);
 
     private static string? MetaConnectionOf(ChannelDefinition channel)
         => channel.Config.GetValueOrDefault("ConnectionId") is { Length: > 0 } id &&
