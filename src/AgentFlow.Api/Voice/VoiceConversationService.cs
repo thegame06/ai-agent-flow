@@ -75,10 +75,12 @@ public sealed class VoiceConversationService : IVoiceConversationService
     private const string Unavailable = "Lo siento, esta línea no está disponible en este momento. Por favor escríbenos por WhatsApp.";
     private const string NotUnderstood = "Disculpa, no te escuché bien. ¿Me lo repites, por favor?";
     private const string Failed = "Disculpa, tuve un problema para procesar tu solicitud. Un asesor te contactará pronto.";
+    public const string WithAdvisor = "Tu caso ya está con un asesor, que te contactará pronto. Gracias por tu paciencia. Hasta luego.";
 
     private readonly IChannelDefinitionRepository _channels;
     private readonly IInboundMessageIngest _ingest;
     private readonly IProviderResolver _providers;
+    private readonly IChannelSessionRepository? _sessions;
     private readonly ILogger<VoiceConversationService> _logger;
     private readonly string? _publicBaseUrl;
     private readonly string? _defaultCountryCode;
@@ -88,8 +90,10 @@ public sealed class VoiceConversationService : IVoiceConversationService
         IInboundMessageIngest ingest,
         IProviderResolver providers,
         ILogger<VoiceConversationService> logger,
-        IConfiguration? configuration = null)
+        IConfiguration? configuration = null,
+        IChannelSessionRepository? sessions = null)
     {
+        _sessions = sessions;
         _channels = channels;
         _ingest = ingest;
         _providers = providers;
@@ -147,6 +151,7 @@ public sealed class VoiceConversationService : IVoiceConversationService
 
         var customer = CustomerSide(turn.Direction, turn.From, turn.To);
         string reply;
+        var endCall = false;
         try
         {
             var result = await _ingest.IngestAsync(new InboundMessage
@@ -167,9 +172,18 @@ public sealed class VoiceConversationService : IVoiceConversationService
                 }
             }, inBackground: false, ct);
 
+            // A person has the case: the gateway answers with the customer's own message (left for
+            // that person). Speaking it back would echo the caller; tell them who follows up and end.
+            if (result.Status == InboundStatus.Processed && IsWaitingForPerson(result.Reply))
+                return TwilioVoiceTwiml.Response(TwilioVoiceTwiml.Say(WithAdvisor), TwilioVoiceTwiml.Hangup());
+
             reply = result.Status == InboundStatus.Processed && !string.IsNullOrWhiteSpace(result.Reply?.Content)
                 ? result.Reply!.Content
                 : Failed;
+            // The assistant handed the case to a person in this turn: say its reply, then end the call
+            // instead of listening for words nobody will answer.
+            if (reply != Failed && await HandedOffAsync(turn.TenantId, result.Session, ct))
+                endCall = true;
             if (reply == Failed)
                 _logger.LogWarning("Voice turn without a reply. Tenant={TenantId} CallSid={CallSid} Status={Status} Reason={Reason}",
                     turn.TenantId, turn.CallSid, result.Status, result.Reason);
@@ -180,7 +194,29 @@ public sealed class VoiceConversationService : IVoiceConversationService
             reply = Failed;
         }
 
-        return Listen(turn.TenantId, turn.ChannelKey, reply, silences: 0, turn.Turn + 1);
+        return endCall
+            ? TwilioVoiceTwiml.Response(TwilioVoiceTwiml.Say(reply), TwilioVoiceTwiml.Hangup())
+            : Listen(turn.TenantId, turn.ChannelKey, reply, silences: 0, turn.Turn + 1);
+    }
+
+    /// <summary>The gateway's answer while a person owns the conversation is the customer's message itself.</summary>
+    public static bool IsWaitingForPerson(ChannelMessage? reply)
+        => reply is not null &&
+           (reply.Direction == MessageDirection.Incoming ||
+            string.Equals(reply.Metadata.GetValueOrDefault("agentflow.awaiting_human"), "true", StringComparison.OrdinalIgnoreCase));
+
+    private async Task<bool> HandedOffAsync(string tenantId, ChannelSession? session, CancellationToken ct)
+    {
+        if (_sessions is null || session is null) return false;
+        try
+        {
+            return ConversationHandoff.AssistantPaused(await _sessions.GetByIdAsync(session.Id, tenantId, ct));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not read the handoff state of session {SessionId}", session.Id);
+            return false;
+        }
     }
 
     public async Task<VoiceCallResult> PlaceCallAsync(VoiceCallRequest request, CancellationToken ct)
