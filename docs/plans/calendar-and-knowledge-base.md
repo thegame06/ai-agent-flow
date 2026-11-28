@@ -1,10 +1,10 @@
 # Plan: agenda conectada y base de conocimiento
 
-Estado (2026-11-28): KB1 y KB2 se implementan juntas en un solo PR, porque tocan los mismos archivos de Commerce y las dos son la base de la etapa 1. Lo demás sigue como propuesta.
-Objetivo: que AgentFlow pueda venderse a negocios que trabajan con citas. Empezamos por clínicas dentales y seguimos con estética, veterinarias y talleres.
+Estado (2026-11-28): KB1 y KB2 se implementan juntas en un solo PR, porque tocan los mismos archivos de Commerce y las dos son la base de la etapa 1. KB2 ya usa el modelo genérico de reservas (sección 3.0): cualquier ítem, servicio o tangible, se puede reservar por cita, por horas, por días o por noches. Lo demás sigue como propuesta.
+Objetivo: que AgentFlow pueda venderse a cualquier negocio que vive de reservas. Empezamos por clínicas dentales, pero el modelo es genérico: una cita con un doctor, una bahía de taller, una mesa de restaurante, una habitación de hotel, una casa o una máquina de alquiler. Al final, algo se reserva (un servicio o un bien tangible) durante un tiempo y para cierta cantidad de personas.
 El asistente tiene que:
 - responder con datos reales del negocio (sucursales, horarios, servicios, precios, preguntas frecuentes, políticas);
-- agendar, cancelar y reprogramar citas en el calendario del negocio, con recordatorios y paso a una persona.
+- reservar, cancelar y reprogramar (citas, mesas, habitaciones, alquileres) en la agenda del negocio, con recordatorios y paso a una persona.
 
 **Decisión del usuario (2026-11-28):** el calendario es **de AgentFlow** y es la fuente de verdad. Google Calendar es una sincronización opcional, no la base. Las razones:
 - muchas clínicas no usan Google (papel, Excel, software dental, Outlook);
@@ -111,15 +111,21 @@ MapsUrl, Latitude, Longitude, Notes (texto corto: parqueo, referencias)
 
 **KB1, tienda:** `CommerceStoreSettingsDocument` gana `Timezone` (por defecto "America/Managua") y `BusinessDescription` (texto corto: qué hace el negocio).
 
-**KB2, servicio agendable:** se extiende `CommerceInventoryItemDocument` (solo aplica si `ItemType == "service"`):
+**KB2, ítem reservable:** `CommerceInventoryItemDocument` gana `Booking` (`CommerceBookingDocument`, en `src/AgentFlow.Api/Commerce/BookingRules.cs`). Aplica a **cualquier** ítem, servicio o tangible:
 
 ```text
 Bookable          bool
-DurationMinutes   int
-BufferMinutes     int      (limpieza o preparación entre citas)
+Mode              "appointment" | "hourly" | "daily" | "nightly"   (ver 3.0)
+DurationMinutes   int      (appointment: duración fija)
+MinMinutes/MaxMinutes/StepMinutes   (hourly: rango de largo que elige el cliente)
+MinUnits/MaxUnits int      (daily/nightly: días o noches; 0 = sin máximo)
+StartTime/EndTime "HH:mm"  (daily: entrega/devolución; nightly: entrada/salida, por defecto 15:00/12:00)
+BufferMinutes     int      (bloqueo después de cada reserva: limpieza, mantenimiento, recambio)
+PriceUnit         "booking" | "person" | "hour" | "day" | "night"   (vacío = la del modo)
 PriceIsFrom       bool     ("desde C$ 800")
-Preparation       string?  (instrucciones previas: ayuno, traer estudios)
-ResourceKinds     List<string>  (p. ej. ["dentist","chair"]: qué recursos ocupa; se usa en CAL1)
+MinPartySize/MaxPartySize   (personas por reserva: mesa, habitación; 0 = no aplica)
+ResourceKinds     List<string>  (tipos de recurso que ocupa: "dentist","chair" / "table" / "double-room" / "excavator")
+Instructions      string?  (preparación, qué traer, políticas)
 ```
 
 **KB3, almacén de conocimiento:** colección nueva `kb_entries`:
@@ -148,7 +154,7 @@ Los vectores (KB4) se justifican cuando un tenant carga documentos largos o hay 
 | Herramienta | Entrada | Salida |
 |---|---|---|
 | `af_business_get_info` | `branch?` (nombre o código), `date?` | Nombre y descripción del negocio, sucursales con dirección, teléfono, mapa, horario de la semana, si está abierto ahora y el próximo cierre, en la zona horaria de la sucursal |
-| `af_sales_search_catalog` (se extiende) | igual | Agrega `durationMinutes`, `bookable`, `priceIsFrom` y `preparation` |
+| `af_sales_search_catalog` (se extiende) | igual | Agrega `reservation` (cómo se reserva, en una línea), `priceUnit` ("por noche"), `priceIsFrom` e `instructions`. Un ítem reservable sale disponible: su disponibilidad la decide la agenda, no el stock |
 | `af_kb_search` | `query`, `service?`, `branch?` | Hasta 5 entradas `{id, title, answer}`. El prompt exige responder solo con esto y, si no hay respuesta, decir que no lo sabe y ofrecer un asesor |
 
 Las tres son de solo lectura, de riesgo bajo, y se registran en `DependencyInjection.cs` como las de ventas.
@@ -157,10 +163,39 @@ Las tres son de solo lectura, de riesgo bajo, y se registran en `DependencyInjec
 
 ## 3. Agenda: diseño (calendario propio + sincronización opcional)
 
+### 3.0 Todo es una reserva
+
+La agenda no sabe de doctores ni de hoteles. Sabe de cuatro cosas:
+
+| Concepto | Qué es | Ejemplos |
+|---|---|---|
+| **Oferta** (ítem del catálogo con `Booking`) | Lo que el cliente pide y paga | Limpieza dental, Cena, Habitación doble, Casa de playa, Retroexcavadora por día, Cambio de aceite |
+| **Tipo de recurso** | Qué clase de cosa se ocupa, con su vocabulario | Dentista, Sillón, Mesa, Habitación doble, Casa, Retroexcavadora, Bahía |
+| **Recurso** | Una unidad concreta que se asigna | Dra. Pérez, Sillón 2, Mesa 7, Habitación 101, Casa Las Peñitas, Retro #3, Bahía 1 |
+| **Reserva** | Quién, qué, cuándo, cuántas personas, qué unidades | "Juan, Habitación doble, 3 noches desde el 12/12, 2 personas → Hab. 101" |
+
+Cómo se mide el tiempo depende del **modo** de la oferta:
+
+| Caso | Modo | Unidad de precio | Personas | Recursos que ocupa |
+|---|---|---|---|---|
+| Doctor, estética, veterinaria | `appointment` (duración fija) | por reserva | — | dentista + sillón |
+| Taller | `appointment` | por reserva ("desde") | — | bahía + mecánico |
+| Restaurante | `appointment` (turno de 2 h) | por reserva o por persona | 1-6 | mesa con capacidad suficiente |
+| Maquinaria por horas, cancha, sala | `hourly` (mín/máx) | por hora | — | una unidad del tipo |
+| Maquinaria o vehículo por días | `daily` (entrega y devolución) | por día | — | una unidad del tipo |
+| Hotel, casa | `nightly` (entrada y salida) | por noche | 1-4 | una habitación o la casa |
+
+Decisiones que salen de esto:
+- **El motor de disponibilidad trabaja siempre con intervalos de tiempo**: una cita de 45 min y una estadía de 3 noches (15:00 del día 1 a 12:00 del día 4) son lo mismo para él.
+- **Capacidad**: cada recurso tiene `Capacity` (personas). La reserva pide `partySize` y solo se asignan recursos con capacidad suficiente (mesa para 4, habitación para 3). Juntar mesas queda fuera de la primera versión.
+- **Inventario de unidades iguales**: el cliente reserva el *tipo* ("una habitación doble", "una retroexcavadora") y la agenda asigna la unidad libre. Si el negocio quiere que el cliente elija ("con la doctora Pérez", "la casa del lago"), se puede pedir un recurso concreto.
+- **Vocabulario configurable**: la UI y el asistente dicen "cita", "reserva" o "alquiler", y "doctor", "mesa" o "habitación", según el tipo de recurso y la configuración del tenant. El código siempre dice `booking` y `resource`.
+- **Stock y reservas no se mezclan**: un ítem reservable no descuenta inventario; su disponibilidad la da la agenda.
+
 ### 3.1 Decisiones clave
 
-1. **Calendario propio como fuente de verdad (decisión aprobada).** La cita vive en AgentFlow, en la colección `appointments`. Un proveedor externo solo puede hacer dos cosas, ambas detrás de la interfaz `ICalendarSync`:
-   - recibir una copia de la cita (escribir el evento);
+1. **Calendario propio como fuente de verdad (decisión aprobada).** La reserva vive en AgentFlow, en la colección `bookings`. Un proveedor externo solo puede hacer dos cosas, ambas detrás de la interfaz `ICalendarSync`:
+   - recibir una copia de la reserva (escribir el evento);
    - aportar bloques de "ocupado" (free/busy).
 
    Así:
@@ -179,84 +214,97 @@ Las tres son de solo lectura, de riesgo bajo, y se registran en `DependencyInjec
 ### 3.2 Modelo de datos
 
 ```text
-calendar_resources
-  Id, TenantId, Kind ("staff" | "room" | "equipment"), Name, BranchId,
-  ServiceSkus[] (qué servicios atiende; vacío = todos los del ResourceKind),
-  ResourceKind ("dentist", "chair"...), WorkingHours[] (opcional: si falta, usa el horario de la sucursal),
-  Timezone (heredada de la sucursal), Active,
-  Binding { Provider: "internal" | "google", ConnectionId?, CalendarId?, BusyCalendarIds[] }
+booking_resource_types
+  Id, TenantId, Key ("dentist", "table", "double-room", "excavator"), Name ("Dentista", "Mesa", "Habitación doble"),
+  Noun ("cita" | "reserva" | "alquiler"), SelectableByCustomer (bool: ¿el cliente puede elegir la unidad?), Active
 
-appointments
+booking_resources
+  Id, TenantId, TypeKey, Name ("Dra. Pérez", "Mesa 7", "Habitación 101", "Retro #3"), BranchId,
+  Capacity (personas; 0 = no aplica), Attributes {} (vista al mar, piso, placa...),
+  OfferingSkus[] (qué ofertas atiende; vacío = todas las que piden su tipo),
+  WorkingHours[] (opcional: si falta, usa el horario de la sucursal; un hotel o una casa usa 24 h),
+  Closures[] (vacaciones del doctor, mantenimiento de la máquina), Active,
+  Binding { Provider: "internal" | "google" | ..., ConnectionId?, CalendarId?, BusyCalendarIds[] }
+
+bookings
   Id, TenantId, Reference (8 caracteres, como las ventas), PartyId, CustomerChannel, CustomerIdentifier,
-  PatientName? (si la cita es para otra persona: hijo, mascota), ServiceSku, ServiceName,
-  BranchId, ResourceIds[], StartUtc, EndUtc, Timezone,
-  Status ("confirmed" | "cancelled" | "completed" | "no_show"), CancelReason?,
-  Source ("assistant" | "staff" | "google"), SessionId?, ThreadId?, CreatedBy,
+  GuestName? (para quién es: paciente, huésped, mascota), PartySize,
+  OfferingSku, OfferingName, Mode, BranchId, ResourceIds[] (las unidades asignadas),
+  StartUtc, EndUtc, Timezone, Units (noches, días u horas cobradas),
+  Status ("held" | "confirmed" | "in_use" | "completed" | "cancelled" | "no_show"), HoldExpiresAt?, CancelReason?,
+  Price { UnitPrice, PriceUnit, Units, Total, Currency }, SaleId? (si se cobró por Commerce),
+  Source ("assistant" | "staff" | "google" | ...), SessionId?, ThreadId?, CreatedBy, Notes?,
   External { Provider, ConnectionId, CalendarId, EventId, ETag, SyncedAt, SyncError? }[],
   ReminderState { SentKeys[] }, IdempotencyKey, CreatedAt, UpdatedAt
-  (ServiceSku apunta a un ítem de servicio del catálogo de Commerce y BranchId a CommerceBranchDocument:
-   no se duplican servicios ni sucursales; la duración y el margen salen del catálogo (KB2) y el horario de la sucursal (KB1))
+  (OfferingSku apunta al catálogo de Commerce y BranchId a CommerceBranchDocument: no se duplican ofertas ni sucursales)
   Índices: {TenantId, StartUtc}, {TenantId, PartyId, StartUtc}, {TenantId, ResourceIds, StartUtc}, único {TenantId, IdempotencyKey}
 
-appointment_slot_claims          (evita la doble reserva sin transacciones)
-  { TenantId, ResourceId, SlotKey ("2026-12-03T14:15Z"), AppointmentId }   índice ÚNICO {TenantId, ResourceId, SlotKey}
+booking_claims          (evita la doble reserva sin transacciones)
+  { TenantId, ResourceId, SlotKey, BookingId }   índice ÚNICO {TenantId, ResourceId, SlotKey}
+  SlotKey = unidad de 15 min ("2026-12-03T14:15Z") para appointment/hourly, o la fecha ("2026-12-12") para daily/nightly
 
-calendar_settings (una por tenant)
-  SlotGranularityMinutes (15), MinLeadMinutes (120), MaxHorizonDays (45),
-  CancelMinHours (24: con menos anticipación cancela o reprograma una persona),
-  ReminderOffsetsHours ([24, 2]), EventTitleTemplate ("Cita: {servicio} - {iniciales}"), ShareCustomerPhoneWithGoogle (false)
+booking_settings (una por tenant)
+  SlotGranularityMinutes (15), MinLeadMinutes (120), MaxHorizonDays (45 en citas; 365 en hoteles),
+  CancelMinHours (24), HoldMinutes (15: lo que dura una reserva retenida mientras se paga o confirma),
+  ReminderOffsetsHours ([24, 2]), EventTitleTemplate ("{oferta} - {iniciales}"), ShareCustomerPhoneWithSync (false),
+  Vocabulary { booking: "cita" | "reserva" | "alquiler" }
 ```
 
-**Anti doble reserva.** Al reservar se insertan con `InsertMany(ordered: true)` las claims de cada unidad de 15 minutos que ocupa la cita (duración + buffer) por cada recurso.
-- Si alguna ya existe, el índice único lo rechaza: se borran las claims insertadas y se responde "ese horario se acaba de ocupar", con alternativas.
-- Al cancelar o reprogramar se liberan las claims.
+**Anti doble reserva.** Al reservar se insertan con `InsertMany(ordered: true)` las claims de cada unidad que ocupa la reserva (tiempo + bloqueo después) por cada recurso asignado.
+- En citas y horas la unidad es de 15 minutos; en días y noches es el día, así que una semana de hotel son 7 claims, no 672.
+- Si alguna ya existe, el índice único la rechaza: se borran las claims insertadas y se prueba la siguiente unidad libre del mismo tipo; si no hay, se responde "se acaba de ocupar", con alternativas.
+- Al cancelar, reprogramar o vencer una retención (`held`) se liberan las claims.
 - No depende de que Mongo corra como replica set (las transacciones sí lo exigirían).
 
 ### 3.3 Motor de disponibilidad (`AvailabilityService`)
 
 ```text
-slots(servicio, sucursal?, recurso?, desde, hasta) =
-  para cada recurso apto (ServiceSkus/ResourceKind, sucursal, activo):
-    ventanas = horario del recurso (o de la sucursal) − Closures, en la zona horaria local
-    ocupado  = citas confirmadas (de AgentFlow) ∪ free/busy de Google de BusyCalendarIds (si hay conexión)
-    candidatos = cada SlotGranularity dentro de ventanas donde [inicio, inicio + duración + buffer) no choca con ocupado
-    filtrar: inicio ≥ ahora + MinLeadMinutes, inicio ≤ ahora + MaxHorizonDays
-  ordenar por cercanía y repartir entre recursos; devolver los N primeros
+disponibilidad(oferta, sucursal?, recurso?, desde, hasta, partySize?, largo?) =
+  tipos = oferta.Booking.ResourceKinds; recursos aptos por tipo (sucursal, activo, OfferingSkus, Capacity >= partySize)
+  según el modo:
+    appointment: candidatos = inicios cada SlotGranularity dentro del horario (recurso o sucursal) − cierres,
+                 donde [inicio, inicio + duración + bloqueo) está libre en un recurso de CADA tipo requerido
+    hourly:      igual, con largo = el pedido por el cliente (entre MinMinutes y MaxMinutes)
+    daily:       fechas de inicio donde las N fechas [inicio, inicio + días) están libres; entrega y devolución en horario de sucursal
+    nightly:     fechas de entrada donde las N noches están libres (los recursos 24 h no miran horario; sí cierres)
+  ocupado = reservas confirmadas o retenidas ∪ free/busy de sincronizaciones (Google, etc.)
+  filtrar: inicio ≥ ahora + MinLeadMinutes, inicio ≤ ahora + MaxHorizonDays
+  devolver los N primeros, repartidos entre unidades, con el precio calculado (unidad de precio × unidades)
 ```
 
-- Todo se calcula en UTC y se presenta en la zona horaria de la sucursal (con pruebas de DST, aunque Nicaragua no lo tenga).
-- El free/busy de Google se cachea 60 s en Redis por `(conexión, calendario, rango)`.
+- Todo se calcula en UTC y se presenta en la zona horaria de la sucursal (con pruebas de DST).
+- El free/busy externo se cachea 60 s en Redis por `(conexión, calendario, rango)`.
+- Para hoteles y alquileres por días, la respuesta natural es un calendario de fechas libres, no una lista de horas; la herramienta devuelve ambos formatos según el modo.
 
-### 3.4 Herramientas del asistente (agenda)
+### 3.4 Herramientas del asistente (reservas)
 
-En todas, el cliente sale de la metadata del canal, nunca del modelo. El cliente solo ve y toca **sus** citas.
+En todas, el cliente sale de la metadata del canal, nunca del modelo. El cliente solo ve y toca **sus** reservas.
 
 | Herramienta | Entrada | Comportamiento |
 |---|---|---|
-| `af_calendar_find_slots` | `service` (sku o texto), `branch?`, `resource?` ("con la doctora Pérez"), `date?` (ISO), `partOfDay?` (mañana/tarde), `limit?` | Devuelve `today` local, el servicio resuelto (duración, precio) y hasta 6 slots `{slotId, start local, resource, branch}`. `slotId` es un token opaco firmado (recurso + inicio + sku) para que el modelo no invente horarios. Si no hay nada en el rango, sugiere el primer día con espacio |
-| `af_calendar_book` | `slotId`, `patientName?`, `notes?` | Revalida (incluido el free/busy de Google en vivo), crea la cita con claims, la escribe en Google si aplica, enlaza la party y la sesión. Es idempotente por `(sesión, slotId)` |
-| `af_calendar_my_appointments` | (nada) | Citas futuras del cliente, con referencia |
-| `af_calendar_cancel` | `appointmentId` o `reference`, `reason?` | Respeta `CancelMinHours`. Fuera de plazo devuelve `needsHuman` y el asistente hace handoff |
-| `af_calendar_reschedule` | `appointmentId`, `slotId` | Reserva el nuevo horario y libera el anterior, sin perder la cita si el nuevo falla |
+| `af_booking_find_availability` | `offering` (sku o texto), `branch?`, `resource?` ("con la doctora Pérez", "la casa del lago"), `date?` o `checkIn?` (ISO), `nights?`/`days?`/`hours?`, `partySize?`, `partOfDay?`, `limit?` | Devuelve `today` local, la oferta resuelta (modo, precio y unidad) y hasta 6 opciones `{optionId, inicio y fin locales, unidad asignada, total}`. `optionId` es un token opaco firmado para que el modelo no invente horarios ni precios. Si no hay nada, sugiere la fecha libre más cercana o menos personas |
+| `af_booking_create` | `optionId`, `guestName?`, `partySize?`, `notes?` | Revalida (incluido el free/busy externo en vivo), crea la reserva con claims, la sincroniza si aplica, enlaza la party y la sesión. Idempotente por `(sesión, optionId)`. Si el tenant cobra adelanto, queda `held` hasta el pago |
+| `af_booking_my_bookings` | (nada) | Reservas futuras del cliente, con referencia |
+| `af_booking_cancel` | `bookingId` o `reference`, `reason?` | Respeta `CancelMinHours`. Fuera de plazo devuelve `needsHuman` y el asistente hace handoff |
+| `af_booking_reschedule` | `bookingId`, `optionId` | Reserva la nueva opción y libera la anterior, sin perder la reserva si la nueva falla |
 
 Además:
-- Un nuevo `AppointmentReferenceReplyTransformer`, como `SaleReferenceReplyTransformer`, para que la referencia nunca la escriba el modelo.
-- Un nuevo **"Asistente de citas"** (`AppointmentsAssistantAgent`: prompt + lista de herramientas, sembrado en `SeedData.cs` como el de ventas) con `af_business_get_info`, `af_sales_search_catalog`, `af_kb_search`, las 5 de agenda y `af_conversation_handoff_to_human`. La plantilla "Agendar demos/citas" del builder pasa a usarlo.
+- Un nuevo `BookingReferenceReplyTransformer`, como `SaleReferenceReplyTransformer`, para que la referencia nunca la escriba el modelo.
+- Un nuevo **"Asistente de reservas"** (`BookingAssistantAgent`, sembrado en `SeedData.cs` como el de ventas) con `af_business_get_info`, `af_sales_search_catalog`, `af_kb_search`, las 5 de reservas y `af_conversation_handoff_to_human`. Su prompt usa el vocabulario del tenant ("cita", "reserva", "alquiler"). La plantilla "Agendar demos/citas" del builder pasa a usarlo.
 - Reglas del prompt:
-  - una pregunta por turno;
+  - una pregunta por turno; para hoteles y alquileres pide primero fechas y personas;
   - máximo 3 opciones (en voz, siempre);
-  - confirmación explícita antes de reservar;
-  - urgencias (dolor fuerte, sangrado, trauma) van directo a un humano;
-  - nunca dar diagnósticos.
+  - confirmación explícita con el total antes de reservar;
+  - urgencias médicas (dolor fuerte, sangrado, trauma) van directo a un humano; nunca dar diagnósticos.
 
 ### 3.5 Recordatorios, confirmaciones y handoff
 
 Se reutilizan campañas, sin crear otro motor:
-- Una nueva fuente de audiencia `appointments` en `CampaignAudienceService`: citas `confirmed` que empiezan dentro de la ventana, con variables `{servicio}`, `{fecha}`, `{hora}`, `{sucursal}` y `{referencia}`.
-- Un nuevo trigger de follow-up `appointment_due` (con `BeforeHours`, análogo a `promise_due`).
-- Una campaña de sistema por tenant, "Recordatorios de citas", creada al activar el módulo, con reglas de 24 h y de 2 h. Fuera de la ventana de 24 h de WhatsApp usa una plantilla aprobada (la regla ya existe). Opcional: recordatorio por llamada de voz con las campañas de llamada.
-- La respuesta del cliente ("confirmo", "no puedo", "cámbiala") cae en la misma conversación. El asistente de citas tiene el contexto de la cita (`af_calendar_my_appointments`) y la marca o la reprograma.
-- Nuevos outcomes de campaña: `appointment_confirmed`, `appointment_cancelled` y `appointment_rescheduled`; más adelante, `no_show` desde la UI.
+- Una nueva fuente de audiencia `bookings` en `CampaignAudienceService`: reservas `confirmed` que empiezan dentro de la ventana, con variables `{oferta}`, `{fecha}`, `{hora}`, `{noches}`, `{personas}`, `{sucursal}` y `{referencia}`.
+- Un nuevo trigger de follow-up `booking_due` (con `BeforeHours`, análogo a `promise_due`), y `booking_ended` para pedir reseña o devolver el equipo.
+- Una campaña de sistema por tenant, "Recordatorios de reservas", creada al activar el módulo, con reglas de 24 h y de 2 h (para hoteles, 48 h con las instrucciones de llegada). Fuera de la ventana de 24 h de WhatsApp usa una plantilla aprobada (la regla ya existe). Opcional: recordatorio por llamada de voz con las campañas de llamada.
+- La respuesta del cliente ("confirmo", "no puedo", "cámbiala") cae en la misma conversación. El asistente de reservas tiene el contexto (`af_booking_my_bookings`) y la confirma, cancela o reprograma.
+- Nuevos outcomes de campaña: `booking_confirmed`, `booking_cancelled` y `booking_rescheduled`; más adelante, `no_show` desde la UI.
 - Handoff con `af_conversation_handoff_to_human` ya existente: no hay horario en el horizonte, cancelación fuera de plazo, urgencia, el cliente lo pide o una herramienta falla. El personal ve y gestiona la cita desde la UI (CAL2).
 
 ### 3.6 Google: OAuth, permisos y sincronización
@@ -292,10 +340,10 @@ El callback, el `state` y el almacenamiento del token son los mismos en los dos 
   Sirve para la demo, no para un cliente real.
 
 **Sincronización (CAL6)**
-- **Escritura:** `events.insert`, `patch` o `delete` en el `CalendarId` del recurso, con `extendedProperties.private = {agentflowTenantId, agentflowAppointmentId}`, título según `EventTitleTemplate` y un mínimo de datos personales (sin teléfono ni notas clínicas, salvo que el tenant lo active). Si Google falla, la cita **igual queda confirmada** en AgentFlow con `SyncError`, y un worker reintenta.
+- **Escritura:** `events.insert`, `patch` o `delete` en el `CalendarId` del recurso, con `extendedProperties.private = {agentflowTenantId, agentflowBookingId}`, título según `EventTitleTemplate` y un mínimo de datos personales (sin teléfono ni notas clínicas, salvo que el tenant lo active). Si Google falla, la cita **igual queda confirmada** en AgentFlow con `SyncError`, y un worker reintenta.
 - **Lectura de ocupado:** `freebusy.query` sobre `BusyCalendarIds` al buscar slots (con caché) y otra vez justo antes de reservar.
 - **Cambios hechos en Google por el personal:** un worker cada 2-5 min hace `events.list` con `syncToken` sobre los calendarios escritos por AgentFlow.
-  - Un evento borrado o movido allí marca la cita (`cancelled` o con la nueva hora) y crea un aviso en la bandeja para que una persona avise al cliente. No se notifica al cliente de forma automática en la primera versión.
+  - Un evento borrado o movido allí marca la reserva (`cancelled` o con la nueva hora) y crea un aviso en la bandeja para que una persona avise al cliente. No se notifica al cliente de forma automática en la primera versión.
   - Las push notifications (`events.watch`) quedan para después: requieren HTTPS público estable y renovar el canal.
 
 ### 3.7 Agenda sin Google
@@ -308,14 +356,14 @@ No es un fallback: es el producto de la etapa 1. Un recurso sin sincronización 
 interface ICalendarSync {
   string Provider { get; }                                   // "google", "outlook", "dentalink"...
   Task<IReadOnlyList<BusyBlock>> GetBusyAsync(binding, fromUtc, toUtc, ct);
-  Task<ExternalRef> UpsertEventAsync(binding, appointment, ct);   // crear o mover
+  Task<ExternalRef> UpsertEventAsync(binding, booking, ct);   // crear o mover
   Task DeleteEventAsync(binding, ExternalRef, ct);
   Task<SyncChanges> PullChangesAsync(binding, cursor, ct);       // cambios hechos fuera de AgentFlow
 }
 ```
 
 - `AvailabilityService` suma los `BusyBlock` de todos los bindings del recurso.
-- `AppointmentService` llama `Upsert` o `Delete` después de confirmar en AgentFlow. Una falla de sincronización nunca deshace la cita.
+- `BookingService` llama `Upsert` o `Delete` después de confirmar en AgentFlow. Una falla de sincronización nunca deshace la reserva.
 - Un worker genérico reintenta y ejecuta `PullChangesAsync`.
 - La etapa 1 trae solo `InternalCalendarSync` (no-op); cada etapa siguiente agrega una implementación.
 
@@ -326,9 +374,9 @@ interface ICalendarSync {
 | Bloque | Fases (en orden) | Resultado |
 |---|---|---|
 | Base de conocimiento | KB1 → KB2 → KB3 (KB4 opcional) | El asistente responde con datos reales del negocio. KB1 y KB2 también son la base de la agenda (horario de sucursal, duración del servicio) |
-| **Etapa 1: Calendario propio** | CAL1 → CAL3 → CAL2 → CAL4 | **Vendible por sí sola:** recursos, horarios y feriados, citas en Mongo, reserva, cancelación y reprogramación por todos los canales, recordatorios, handoff y UI de agenda |
-| **Etapa 2: Sincronización con Google** | SEC0 → CAL5 → CAL6 | Conectar Google (por clínica o por doctor), enviar las citas al calendario del doctor y bloquear lo que esté ocupado en Google |
-| **Etapa 3: Otras integraciones** | CAL7 (Outlook), CAL8 (software dental), CAL9 (feed ICS) | Más destinos detrás de `ICalendarSync`, según los pida cada cliente |
+| **Etapa 1: Calendario propio** | CAL1 → CAL3 → CAL2 → CAL4 | **Vendible por sí sola:** tipos de recurso y unidades, horarios y feriados, reservas en Mongo (citas, mesas, habitaciones, alquileres), reserva, cancelación y reprogramación por todos los canales, recordatorios, handoff y UI de agenda |
+| **Etapa 2: Sincronización con Google** | SEC0 → CAL5 → CAL6 | Conectar Google (por clínica o por doctor), enviar las reservas al calendario del recurso (doctor, habitación, máquina) y bloquear lo que esté ocupado en Google |
+| **Etapa 3: Otras integraciones** | CAL7 (Outlook), CAL8 (software del vertical: dental, hotel, restaurante, taller), CAL9 (feed ICS) | Más destinos detrás de `ICalendarSync`, según los pida cada cliente |
 
 Orden recomendado de PRs: KB1, KB2, CAL1, CAL3, CAL2, CAL4, KB3, SEC0, CAL5, CAL6.
 - KB3 puede ir antes o en paralelo con la etapa 1, porque no comparte archivos con ella.
@@ -344,13 +392,14 @@ Orden recomendado de PRs: KB1, KB2, CAL1, CAL3, CAL2, CAL4, KB3, SEC0, CAL5, CAL
 - **Pruebas** (`tests/AgentFlow.Tests.Unit/Knowledge/BusinessHoursTests.cs`): pausa de almuerzo, feriado, cruce de medianoche, zona horaria; prueba de la herramienta con un store fake.
 - **Usuario:** nada.
 
-### KB2: Servicios agendables en el catálogo
+### KB2: Ítems reservables en el catálogo (hecho en el mismo PR que KB1)
 - **Backend:**
-  - campos de 2.3 en `CommerceInventoryItemDocument`, más su validación en el upsert;
-  - `SalesSearchCatalogTool` devuelve `durationMinutes`, `bookable`, `priceIsFrom` y `preparation`;
-  - el prompt de ventas dice "precio desde" cuando corresponde.
-- **UI:** sección "Agenda" en el diálogo de producto cuando el tipo es servicio.
-- **Pruebas:** serialización con documentos viejos sin los campos; salida de la herramienta.
+  - `CommerceBookingDocument` y `BookingRules` (`src/AgentFlow.Api/Commerce/BookingRules.cs`): los cuatro modos, unidad de precio, personas, tipos de recurso, indicaciones; validación y normalización por modo; una línea legible para el asistente;
+  - cualquier ítem (servicio o tangible) puede ser reservable; si el cliente de la API no manda `booking`, se conserva lo guardado;
+  - `SalesSearchCatalogTool` devuelve `reservation`, `priceUnit`, `priceIsFrom` e `instructions`, y trata un ítem reservable como disponible (la agenda decide);
+  - `[BsonIgnoreExtraElements]` en el ítem y la sucursal, para que un campo renombrado no rompa la lectura del catálogo.
+- **UI:** sección "Reservas" en el diálogo de producto: modo, campos de cada modo, bloqueo después, unidad de precio, personas, tipos de recurso e indicaciones.
+- **Pruebas:** reglas de los cuatro casos (doctor, mesa, habitación, maquinaria por hora y por día) en .NET y en el frontend.
 - **Usuario:** nada.
 
 ### KB3: Preguntas frecuentes y políticas
@@ -362,7 +411,7 @@ Orden recomendado de PRs: KB1, KB2, CAL1, CAL3, CAL2, CAL4, KB3, SEC0, CAL5, CAL
 - **UI:**
   - página nueva `pages/knowledge/KnowledgePage.tsx`: lista, editor, importar y una caja "probar pregunta" que muestra qué entradas encontraría el asistente;
   - ruta en `routes/sections/dashboard.tsx`, entrada en `layouts/nav-config-dashboard.tsx` y endpoints en `lib/axios.ts`.
-- **Prompts:** ventas, cobranza y (luego) citas reciben la regla "para dudas del negocio usa `af_kb_search`; si no está, dilo y ofrece un asesor". El markdown global queda para reglas de tono, no para datos.
+- **Prompts:** ventas, cobranza y (luego) reservas reciben la regla "para dudas del negocio usa `af_kb_search`; si no está, dilo y ofrece un asesor". El markdown global queda para reglas de tono, no para datos.
 - **Pruebas:** aislamiento entre tenants (la búsqueda del tenant A nunca devuelve entradas de B), búsqueda en español con acentos, fallback por palabras. Hay una prueba de integración en `tests/AgentFlow.Tests.Integration/Knowledge/` con Mongo.
 - **Usuario:** cargar las FAQ reales de la clínica piloto.
 
@@ -372,63 +421,63 @@ Orden recomendado de PRs: KB1, KB2, CAL1, CAL3, CAL2, CAL4, KB3, SEC0, CAL5, CAL
 
 Depende de KB1 (horario de sucursal) y de KB2 (servicios con duración). Al terminar CAL4 el producto se puede vender sin ninguna integración externa.
 
-### CAL1: Núcleo de agenda propia (sin UI de calendario, sin asistente)
+### CAL1: Núcleo de reservas (sin UI de calendario, sin asistente)
 - **Backend:** carpeta nueva `src/AgentFlow.Api/Scheduling/`:
-  - `SchedulingStore.cs` (las colecciones de 3.2, sus índices y las claims);
-  - `AvailabilityService.cs` (3.3);
-  - `AppointmentService.cs` (book, cancel, reschedule y complete, con claims e idempotencia);
+  - `SchedulingStore.cs` (las colecciones de 3.2: tipos de recurso, recursos, reservas, claims y ajustes, con sus índices);
+  - `AvailabilityService.cs` (3.3, los cuatro modos y la capacidad);
+  - `BookingService.cs` (crear, retener, confirmar, cancelar, reprogramar, completar; claims e idempotencia; precio por unidad);
   - `ICalendarSync.cs` (interfaz de 3.8, con `InternalCalendarSync` no-op);
   - `SchedulingController.cs` en `api/v1/tenants/{t}/scheduling`:
-    - `resources` (CRUD);
-    - `GET availability?service&branch&resource&from&to`;
-    - `appointments` (`GET` por rango, recurso o cliente; `POST`; `POST {id}/cancel`, `{id}/reschedule`, `{id}/status`);
+    - `resource-types` y `resources` (CRUD);
+    - `GET availability?offering&branch&resource&from&to&partySize&units`;
+    - `bookings` (`GET` por rango, recurso o cliente; `POST`; `POST {id}/cancel`, `{id}/reschedule`, `{id}/status`);
     - `settings`.
   - Módulo `AppModules.Scheduling` ("scheduling", "Agenda", DefaultEnabled: false) con `[RequiresAppModule]`.
 - **Pruebas** (`tests/AgentFlow.Tests.Unit/Scheduling/`):
-  - disponibilidad: horario, buffer, lead time, horizonte, cierres, varios recursos, zona horaria;
-  - **concurrencia**: dos reservas simultáneas del mismo slot, exactamente una gana (integración con Mongo real por el índice único);
-  - reprogramar sin perder la cita;
+  - disponibilidad por modo: cita (horario, bloqueo, varios tipos de recurso a la vez), por horas, por días y por noches (fechas, entrada/salida, cierres), capacidad (mesa para 4 no recibe 6), unidades iguales (la tercera habitación doble cuando dos están ocupadas), zona horaria;
+  - **concurrencia**: dos reservas simultáneas de la última unidad, exactamente una gana (integración con Mongo real por el índice único);
+  - reprogramar sin perder la reserva;
   - aislamiento entre tenants.
 - **Usuario:** nada.
 
-### CAL3: Asistente de citas (herramientas y prompt)
+### CAL3: Asistente de reservas (herramientas y prompt)
 - **Backend:**
-  - `src/AgentFlow.Api/Scheduling/AppointmentAssistantTools.cs`, con las 5 herramientas de 3.4 y una base como `SalesAssistantToolBase`, aunque convendría extraer una base común `CustomerToolBase` en `src/AgentFlow.Api/Assistants/`;
-  - firma y verificación de `slotId` con DataProtection (propósito `scheduling-slot-v1`, 30 min de vida);
-  - `AppointmentReferenceReplyTransformer`;
-  - `AppointmentsAssistantAgent` (prompt y herramientas) en `SeedData.cs`;
+  - `src/AgentFlow.Api/Scheduling/BookingAssistantTools.cs`, con las 5 herramientas de 3.4 y una base como `SalesAssistantToolBase`, aunque convendría extraer una base común `CustomerToolBase` en `src/AgentFlow.Api/Assistants/`;
+  - firma y verificación de `optionId` con DataProtection (propósito `booking-option-v1`, 30 min de vida);
+  - `BookingReferenceReplyTransformer`;
+  - `BookingAssistantAgent` (prompt y herramientas, con el vocabulario del tenant) en `SeedData.cs`;
   - la plantilla "Agendar demos/citas" de `AssistantBuilderController.cs` apunta a él.
 - **Paridad:** las herramientas no conocen el canal. Una prueba ejecuta el mismo guion (buscar → reservar → listar → cancelar) con metadata de cada canal (QR, Meta, Twilio, web, API y voz) y exige el mismo resultado.
 - **Pruebas:**
-  - el cliente B no puede cancelar la cita de A aunque el modelo pase su id;
-  - un `slotId` inventado o vencido se rechaza;
+  - el cliente B no puede cancelar la reserva de A aunque el modelo pase su id;
+  - un `optionId` inventado o vencido se rechaza;
   - cancelación fuera de plazo devuelve `needsHuman`;
   - idempotencia ante el doble "sí".
-- **Validación manual:** conversación real por WhatsApp (canal de pruebas) y por voz con el asistente de citas.
-- **Usuario:** decidir qué canal o número usa el asistente de citas en la demo.
+- **Validación manual:** conversación real por WhatsApp (canal de pruebas) y por voz con el asistente de reservas, en al menos dos verticales (clínica y hotel o restaurante).
+- **Usuario:** decidir qué canal o número usa el asistente de reservas en la demo y qué vertical se muestra primero.
 
 ### CAL2: UI de agenda
 - **Frontend:** página nueva `pages/scheduling/`:
   - vista semanal y diaria por recurso o sucursal;
-  - crear una cita manual (buscar cliente en el CRM o crear lead);
+  - crear una reserva manual (buscar cliente en el CRM o crear lead), con vista por horas para citas y por días para hoteles y alquileres;
   - mover o cancelar;
-  - marcar completada o no asistió;
-  - pestaña Recursos (alta de doctores y sillones, servicios que atienden y horario propio);
+  - marcar en uso, completada o no asistió (check-in y check-out en hoteles; entrega y devolución en alquileres);
+  - pestaña Recursos: tipos de recurso con su vocabulario, y unidades (doctor, mesa con capacidad, habitación, casa, máquina) con sucursal, capacidad, atributos, ofertas que atienden y horario propio;
   - pestaña Ajustes (granularidad, anticipación, plazo de cancelación).
   - Ruta, nav y endpoints como en KB3. Librería de calendario: evaluar primero lo que ya traiga el template MUI del proyecto; si no hay, `@fullcalendar/react` (MIT).
-- En la ficha del cliente (CRM) y en el panel de contexto de la bandeja: "Próximas citas".
+- En la ficha del cliente (CRM) y en el panel de contexto de la bandeja: "Próximas reservas".
 - **Pruebas:** las pruebas de componentes que ya use el frontend, más un recorrido manual en el navegador.
 - **Usuario:** revisar la UI con alguien de la clínica piloto.
 
 ### CAL4: Recordatorios y confirmaciones
 - **Backend:**
-  - fuente de audiencia `appointments` en `CampaignAudienceService.cs`;
-  - trigger `appointment_due` en `CampaignFollowUps.cs` y `CampaignFollowUpService.cs`;
+  - fuente de audiencia `bookings` en `CampaignAudienceService.cs`;
+  - triggers `booking_due` y `booking_ended` en `CampaignFollowUps.cs` y `CampaignFollowUpService.cs`;
   - variables de plantilla en `CampaignMessageRenderer.cs`;
   - outcomes nuevos en `CampaignOutcomeService.cs`;
-  - creación de la campaña de sistema "Recordatorios de citas" al habilitar `scheduling`;
+  - creación de la campaña de sistema "Recordatorios de reservas" al habilitar `scheduling`;
   - `ReminderState` evita enviar dos veces.
-- **Pruebas:** la ventana de recordatorio incluye y excluye bien las citas (zona horaria); una cita cancelada no recibe recordatorio; plantilla fuera de 24 h.
+- **Pruebas:** la ventana de recordatorio incluye y excluye bien las reservas (zona horaria; entrada de hotel a las 15:00); una reserva cancelada o retenida sin pagar no recibe recordatorio; plantilla fuera de 24 h.
 - **Usuario:** crear y aprobar en Meta la plantilla de WhatsApp de recordatorio (texto propuesto en el PR).
 
 ---
@@ -486,8 +535,8 @@ Cada una es una implementación de `ICalendarSync` más su pantalla de conexión
 ### CAL7: Outlook / Microsoft 365
 `OutlookCalendarSync` con Microsoft Graph (`Calendars.ReadWrite`, `offline_access`; free/busy con `getSchedule`; cambios con delta query). El usuario registra la app en Microsoft Entra.
 
-### CAL8: Software dental
-- Conector por producto (p. ej. el que use el primer cliente).
+### CAL8: Software del vertical
+- Conector por producto, según el primer cliente de cada vertical: software dental, sistema de hotel (PMS y channel manager como Booking/Airbnb), sistema de reservas de restaurante, sistema de taller o de flota.
 - Si el software tiene API, se usa para empujar citas y leer ocupado.
 - Si no la tiene, la alternativa es importar y exportar CSV desde la UI.
 - Antes de escribir código hay que evaluar cada software (API, costo y términos), y eso lo decide el usuario.

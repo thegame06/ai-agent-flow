@@ -272,9 +272,9 @@ public sealed class CommerceController : ControllerBase
         if (!CanAccess(tenantId)) return Forbid();
         var moduleCheck = await EnsureModuleEnabledAsync(tenantId, CommerceModules.Inventory, ct);
         if (moduleCheck is not null) return moduleCheck;
-        var scheduling = request.Scheduling?.ToDocument();
-        var schedulingError = BusinessHours.ValidateScheduling(scheduling);
-        if (schedulingError is not null) return BadRequest(new { message = schedulingError });
+        var booking = request.Booking?.ToDocument();
+        var bookingError = BookingRules.Validate(booking);
+        if (bookingError is not null) return BadRequest(new { message = bookingError });
         var saved = await _commerce.UpsertInventoryItemAsync(
             tenantId,
             sku,
@@ -317,7 +317,7 @@ public sealed class CommerceController : ControllerBase
                 BranchId = x.BranchId,
                 OnHand = x.OnHand
             }).ToList(),
-            scheduling,
+            booking,
             ct);
         return Ok(ToInventoryDto(saved));
     }
@@ -1153,17 +1153,29 @@ public sealed class CommerceController : ControllerBase
             branchStocks = x.BranchStocks.Select(stock => new { stock.BranchId, stock.OnHand }).ToList()
         }).ToList(),
         branchStocks = item.BranchStocks.Select(x => new { x.BranchId, x.OnHand }).ToList(),
-        scheduling = ToSchedulingDto(item.Scheduling)
+        booking = ToBookingDto(item.Booking)
     };
 
-    private static object? ToSchedulingDto(CommerceServiceSchedulingDocument? scheduling) => scheduling is null ? null : new
+    private static object? ToBookingDto(CommerceBookingDocument? booking) => booking is null ? null : new
     {
-        scheduling.Bookable,
-        scheduling.DurationMinutes,
-        scheduling.BufferMinutes,
-        scheduling.PriceIsFrom,
-        scheduling.Preparation,
-        scheduling.ResourceKinds
+        booking.Bookable,
+        booking.Mode,
+        booking.DurationMinutes,
+        booking.MinMinutes,
+        booking.MaxMinutes,
+        booking.StepMinutes,
+        booking.MinUnits,
+        booking.MaxUnits,
+        booking.StartTime,
+        booking.EndTime,
+        booking.BufferMinutes,
+        booking.PriceUnit,
+        booking.PriceIsFrom,
+        booking.MinPartySize,
+        booking.MaxPartySize,
+        booking.ResourceKinds,
+        booking.Instructions,
+        summary = BookingRules.Describe(booking)
     };
 
     private async Task<object> ToInventorySearchDtoAsync(string tenantId, CommerceInventoryItemDocument item, CancellationToken ct)
@@ -1207,7 +1219,7 @@ public sealed class CommerceController : ControllerBase
                 branchStocks = x.BranchStocks.Select(stock => new { stock.BranchId, stock.OnHand }).ToList()
             }).ToList(),
             branchStocks = item.BranchStocks.Select(x => new { x.BranchId, x.OnHand }).ToList(),
-            scheduling = ToSchedulingDto(item.Scheduling)
+            booking = ToBookingDto(item.Booking)
         };
     }
 
@@ -1413,27 +1425,49 @@ public sealed record UpsertInventoryRequest
     public ProductDiscountRequest? Discount { get; init; }
     public List<ProductVariationRequest>? Variations { get; init; }
     public List<BranchStockRequest>? BranchStocks { get; init; }
-    /// <summary>Booking data for services; omitted keeps what is stored.</summary>
-    public ServiceSchedulingRequest? Scheduling { get; init; }
+    /// <summary>How the item is reserved; omitted keeps what is stored.</summary>
+    public BookingRequest? Booking { get; init; }
 }
 
-public sealed record ServiceSchedulingRequest
+public sealed record BookingRequest
 {
     public bool Bookable { get; init; }
+    public string? Mode { get; init; }
     public int DurationMinutes { get; init; }
+    public int MinMinutes { get; init; }
+    public int MaxMinutes { get; init; }
+    public int StepMinutes { get; init; }
+    public int MinUnits { get; init; }
+    public int MaxUnits { get; init; }
+    public string? StartTime { get; init; }
+    public string? EndTime { get; init; }
     public int BufferMinutes { get; init; }
+    public string? PriceUnit { get; init; }
     public bool PriceIsFrom { get; init; }
-    public string? Preparation { get; init; }
+    public int MinPartySize { get; init; }
+    public int MaxPartySize { get; init; }
     public List<string>? ResourceKinds { get; init; }
+    public string? Instructions { get; init; }
 
-    public CommerceServiceSchedulingDocument ToDocument() => new()
+    public CommerceBookingDocument ToDocument() => new()
     {
         Bookable = Bookable,
+        Mode = Mode ?? BookingModes.Appointment,
         DurationMinutes = DurationMinutes,
+        MinMinutes = MinMinutes,
+        MaxMinutes = MaxMinutes,
+        StepMinutes = StepMinutes,
+        MinUnits = MinUnits,
+        MaxUnits = MaxUnits,
+        StartTime = StartTime,
+        EndTime = EndTime,
         BufferMinutes = BufferMinutes,
+        PriceUnit = PriceUnit ?? string.Empty,
         PriceIsFrom = PriceIsFrom,
-        Preparation = Preparation,
-        ResourceKinds = ResourceKinds ?? []
+        MinPartySize = MinPartySize,
+        MaxPartySize = MaxPartySize,
+        ResourceKinds = ResourceKinds ?? [],
+        Instructions = Instructions
     };
 }
 

@@ -222,31 +222,4 @@ public static class BusinessHours
     /// <summary>"08:00-12:00, 14:00-18:00" or "cerrado".</summary>
     public static string Describe(IReadOnlyList<OpeningSpan> spans)
         => spans.Count == 0 ? "cerrado" : string.Join(", ", spans.Select(s => s.Label));
-
-    /// <summary>Why the booking data cannot be saved, or null.</summary>
-    public static string? ValidateScheduling(CommerceServiceSchedulingDocument? scheduling)
-    {
-        if (scheduling is null) return null;
-        if (scheduling.DurationMinutes < 0 || scheduling.DurationMinutes > 24 * 60)
-            return "La duracion debe estar entre 0 y 1440 minutos.";
-        if (scheduling.Bookable && scheduling.DurationMinutes < 5)
-            return "Un servicio agendable necesita una duracion de al menos 5 minutos.";
-        if (scheduling.BufferMinutes < 0 || scheduling.BufferMinutes > 240)
-            return "El margen entre citas debe estar entre 0 y 240 minutos.";
-        return null;
-    }
-
-    public static CommerceServiceSchedulingDocument NormalizeScheduling(CommerceServiceSchedulingDocument scheduling) => new()
-    {
-        Bookable = scheduling.Bookable,
-        DurationMinutes = Math.Clamp(scheduling.DurationMinutes, 0, 24 * 60),
-        BufferMinutes = Math.Clamp(scheduling.BufferMinutes, 0, 240),
-        PriceIsFrom = scheduling.PriceIsFrom,
-        Preparation = string.IsNullOrWhiteSpace(scheduling.Preparation) ? null : scheduling.Preparation.Trim(),
-        ResourceKinds = (scheduling.ResourceKinds ?? [])
-            .Where(k => !string.IsNullOrWhiteSpace(k))
-            .Select(k => k.Trim().ToLowerInvariant())
-            .Distinct()
-            .ToList()
-    };
 }

@@ -177,35 +177,6 @@ public class BusinessHoursTests
         Assert.Null(status.NextOpening);
     }
 
-    [Theory]
-    [InlineData(true, 3, 0, "al menos 5")]
-    [InlineData(false, -5, 0, "entre 0 y 1440")]
-    [InlineData(true, 30, 500, "margen")]
-    public void BookingDataThatCannotWork_IsRejected(bool bookable, int duration, int buffer, string reason)
-        => Assert.Contains(reason, BusinessHours.ValidateScheduling(new CommerceServiceSchedulingDocument
-        {
-            Bookable = bookable,
-            DurationMinutes = duration,
-            BufferMinutes = buffer
-        }));
-
-    [Fact]
-    public void BookingData_IsNormalized()
-    {
-        var normalized = BusinessHours.NormalizeScheduling(new CommerceServiceSchedulingDocument
-        {
-            Bookable = true,
-            DurationMinutes = 45,
-            BufferMinutes = 10,
-            Preparation = "  Venir sin comer  ",
-            ResourceKinds = ["Dentist", " chair ", "dentist", ""]
-        });
-
-        Assert.Null(BusinessHours.ValidateScheduling(normalized));
-        Assert.Equal("Venir sin comer", normalized.Preparation);
-        Assert.Equal(["dentist", "chair"], normalized.ResourceKinds.ToArray());
-    }
-
     private static JsonElement Info(IReadOnlyList<CommerceBranchDocument> branches, DateTimeOffset nowUtc, string? branch = null, string? date = null)
     {
         var settings = new CommerceStoreSettingsDocument

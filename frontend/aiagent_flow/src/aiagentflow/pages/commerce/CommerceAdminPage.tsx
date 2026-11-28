@@ -32,24 +32,22 @@ import { BrandPageHeader } from 'src/aiagentflow/components/BrandPageHeader';
 import { Iconify } from 'src/components/iconify';
 
 import { NewSaleDialog } from './NewSaleDialog';
+import { BookingFields } from './BookingFields';
 import { BranchHoursEditor } from './BranchHoursEditor';
 import { type Frequency, FREQUENCY_LABEL } from './installments';
-import { ServiceSchedulingFields } from './ServiceSchedulingFields';
+import { bookingToApi, EMPTY_BOOKING, bookingFromApi, validateBooking } from './booking';
 import {
   weekToApi,
   weekFromApi,
   describeWeek,
   closuresToApi,
   closuresFromApi,
-  schedulingToApi,
-  schedulingFromApi,
-  validateScheduling,
   EMPTY_BRANCH_HOURS,
   validateBranchHours,
-  EMPTY_SERVICE_SCHEDULING,
 } from './businessHours';
 
-import type { ApiClosure, BranchHoursDraft, ApiOpeningInterval, ApiServiceScheduling, ServiceSchedulingDraft } from './businessHours';
+import type { ApiBooking, BookingDraft } from './booking';
+import type { ApiClosure, BranchHoursDraft, ApiOpeningInterval } from './businessHours';
 
 type PartyRow = {
   id: string;
@@ -90,7 +88,7 @@ type InventoryRow = {
     branchStocks: Array<{ branchId: string; onHand: number }>;
   }>;
   branchStocks: Array<{ branchId: string; onHand: number }>;
-  scheduling?: ApiServiceScheduling | null;
+  booking?: ApiBooking | null;
 };
 
 type InventoryMovementRow = {
@@ -240,7 +238,7 @@ type InventoryDraft = {
     branchStocks: Array<{ branchId: string; onHand: string }>;
   }>;
   branchStocks: Array<{ branchId: string; onHand: string }>;
-  scheduling: ServiceSchedulingDraft;
+  booking: BookingDraft;
 };
 
 type InventoryAdjustmentDraft = {
@@ -302,7 +300,7 @@ const EMPTY_INVENTORY: InventoryDraft = {
   discountValue: '',
   variations: [],
   branchStocks: [],
-  scheduling: EMPTY_SERVICE_SCHEDULING,
+  booking: EMPTY_BOOKING,
 };
 
 const EMPTY_ADJUSTMENT: InventoryAdjustmentDraft = {
@@ -850,7 +848,7 @@ export default function CommerceAdminPage() {
           branchId: stock.branchId,
           onHand: String(stock.onHand ?? 0),
         })),
-        scheduling: schedulingFromApi(row.scheduling),
+        booking: bookingFromApi(row.booking),
       });
       setInventoryImageUrlInput('');
       setInventoryPreviewImageIndex(0);
@@ -871,10 +869,9 @@ export default function CommerceAdminPage() {
   };
 
   const saveInventory = async () => {
-    const isService = inventoryDraft.itemType === 'service';
-    const schedulingError = isService ? validateScheduling(inventoryDraft.scheduling) : null;
-    if (schedulingError) {
-      setFormError(schedulingError);
+    const bookingError = validateBooking(inventoryDraft.booking);
+    if (bookingError) {
+      setFormError(bookingError);
       return;
     }
     try {
@@ -916,7 +913,7 @@ export default function CommerceAdminPage() {
           branchId: stock.branchId,
           onHand: Number(stock.onHand || 0),
         })),
-        scheduling: isService ? schedulingToApi(inventoryDraft.scheduling) : undefined,
+        booking: bookingToApi(inventoryDraft.booking),
       });
       setActionOk('Producto guardado.');
       setInventoryDialogOpen(false);
@@ -2109,12 +2106,10 @@ export default function CommerceAdminPage() {
                       onChange={(e) => setInventoryDraft((prev) => ({ ...prev, unitPrice: e.target.value }))}
                       InputProps={{ startAdornment: <Box sx={{ mr: 1, color: 'text.secondary' }}>$</Box> }}
                     />
-                    {inventoryDraft.itemType === 'service' && (
-                      <ServiceSchedulingFields
-                        value={inventoryDraft.scheduling}
-                        onChange={(scheduling) => setInventoryDraft((prev) => ({ ...prev, scheduling }))}
-                      />
-                    )}
+                    <BookingFields
+                      value={inventoryDraft.booking}
+                      onChange={(booking) => setInventoryDraft((prev) => ({ ...prev, booking }))}
+                    />
                     <TextField
                       select
                       label="Categorias"

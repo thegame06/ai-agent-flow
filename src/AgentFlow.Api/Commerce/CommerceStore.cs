@@ -43,7 +43,7 @@ public interface ICommerceStore
         CommerceProductDiscountDocument? discount,
         IReadOnlyList<CommerceProductVariationDocument>? variations,
         IReadOnlyList<CommerceBranchStockDocument>? branchStocks,
-        CommerceServiceSchedulingDocument? scheduling,
+        CommerceBookingDocument? booking,
         CancellationToken ct);
     Task<CommerceInventoryItemDocument> AdjustInventoryAsync(string tenantId, string sku, int delta, string reason, string? referenceId, CancellationToken ct);
     Task<IReadOnlyList<CommerceInventoryMovementDocument>> SearchInventoryMovementsAsync(string tenantId, string? sku, int page, int pageSize, CancellationToken ct);
@@ -329,7 +329,7 @@ public sealed class CommerceStore : ICommerceStore
         CommerceProductDiscountDocument? discount,
         IReadOnlyList<CommerceProductVariationDocument>? variations,
         IReadOnlyList<CommerceBranchStockDocument>? branchStocks,
-        CommerceServiceSchedulingDocument? scheduling,
+        CommerceBookingDocument? booking,
         CancellationToken ct)
     {
         var normalizedType = NormalizeInventoryItemType(itemType);
@@ -367,7 +367,7 @@ public sealed class CommerceStore : ICommerceStore
                 Discount = normalizedDiscount,
                 Variations = normalizedVariations,
                 BranchStocks = normalizedBranchStocks,
-                Scheduling = normalizedType == "service" && scheduling is not null ? BusinessHours.NormalizeScheduling(scheduling) : null
+                Booking = booking is null ? null : BookingRules.Normalize(booking)
             };
             await _inventory.InsertOneAsync(created, cancellationToken: ct);
             return created;
@@ -388,9 +388,8 @@ public sealed class CommerceStore : ICommerceStore
         current.Discount = normalizedDiscount;
         current.Variations = normalizedVariations;
         current.BranchStocks = normalizedBranchStocks;
-        // Null keeps what is stored, so a client that does not know about booking data never wipes it.
-        if (normalizedType != "service") current.Scheduling = null;
-        else if (scheduling is not null) current.Scheduling = BusinessHours.NormalizeScheduling(scheduling);
+        // Null keeps what is stored, so a client that does not know about reservations never wipes them.
+        if (booking is not null) current.Booking = BookingRules.Normalize(booking);
         await _inventory.ReplaceOneAsync(x => x.TenantId == tenantId && x.Sku == sku, current, cancellationToken: ct);
         return current;
     }
@@ -1064,6 +1063,8 @@ public sealed class CommerceInvoiceDocument
     public DateTimeOffset CreatedAt { get; set; }
 }
 
+// Unknown fields (renamed or dropped ones) must not break reading the catalog.
+[BsonIgnoreExtraElements]
 public sealed class CommerceInventoryItemDocument
 {
     [BsonId] public string Id { get; set; } = Guid.NewGuid().ToString("N");
@@ -1084,8 +1085,8 @@ public sealed class CommerceInventoryItemDocument
     public CommerceProductDiscountDocument? Discount { get; set; }
     public List<CommerceProductVariationDocument> Variations { get; set; } = [];
     public List<CommerceBranchStockDocument> BranchStocks { get; set; } = [];
-    /// <summary>Booking data when the item is a service; null for products and unbooked services.</summary>
-    public CommerceServiceSchedulingDocument? Scheduling { get; set; }
+    /// <summary>How the item is reserved (a service or a tangible: a table, a room, a machine); null if it is not.</summary>
+    public CommerceBookingDocument? Booking { get; set; }
 }
 
 public sealed class CommerceLineItem
@@ -1122,6 +1123,8 @@ public sealed class CommerceCategoryDocument
     public DateTimeOffset UpdatedAt { get; set; }
 }
 
+// Unknown fields (renamed or dropped ones) must not break reading the catalog.
+[BsonIgnoreExtraElements]
 public sealed class CommerceBranchDocument
 {
     [BsonId] public string Id { get; set; } = Guid.NewGuid().ToString("N");
@@ -1166,21 +1169,6 @@ public sealed class CommerceTimeRange
 {
     public string Open { get; set; } = string.Empty;
     public string Close { get; set; } = string.Empty;
-}
-
-/// <summary>How a service is booked: how long it takes and what it needs. Only for services.</summary>
-public sealed class CommerceServiceSchedulingDocument
-{
-    public bool Bookable { get; set; }
-    public int DurationMinutes { get; set; }
-    /// <summary>Time after the service before the next one (cleaning, preparation).</summary>
-    public int BufferMinutes { get; set; }
-    /// <summary>The price is a starting price ("desde").</summary>
-    public bool PriceIsFrom { get; set; }
-    /// <summary>What the customer must do before coming.</summary>
-    public string? Preparation { get; set; }
-    /// <summary>Kinds of resources the service takes ("dentist", "chair"), used by the calendar.</summary>
-    public List<string> ResourceKinds { get; set; } = [];
 }
 
 public static class CommerceStoreDefaults

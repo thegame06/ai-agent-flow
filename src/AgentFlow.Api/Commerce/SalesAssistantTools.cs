@@ -277,19 +277,24 @@ internal sealed class SalesSearchCatalogTool(IServiceScopeFactory scopeFactory) 
         {
             currency = settings.Currency,
             found = active.Count,
-            items = active.Select(i => new
+            items = active.Select(i =>
             {
-                sku = i.Sku,
-                name = i.Name,
-                description = i.Description,
-                type = i.ItemType == "service" ? "servicio" : "producto",
-                price = i.UnitPrice,
-                priceIsFrom = i.Scheduling?.PriceIsFrom == true ? true : (bool?)null,
-                available = !i.TracksInventory || i.OnHand > 0,
-                stock = i.TracksInventory ? i.OnHand : (int?)null,
-                durationMinutes = i.Scheduling is { DurationMinutes: > 0 } s ? s.DurationMinutes : (int?)null,
-                bookable = i.Scheduling?.Bookable == true ? true : (bool?)null,
-                preparation = i.Scheduling?.Preparation
+                // What is reserved (a room, a table, a machine) is not sold from stock: the calendar says when it is free.
+                var reservable = i.Booking is { Bookable: true };
+                return new
+                {
+                    sku = i.Sku,
+                    name = i.Name,
+                    description = i.Description,
+                    type = i.ItemType == "service" ? "servicio" : "producto",
+                    price = i.UnitPrice,
+                    priceUnit = reservable ? PriceUnits.Spanish(i.Booking!.PriceUnit) : null,
+                    priceIsFrom = i.Booking?.PriceIsFrom == true ? true : (bool?)null,
+                    available = reservable || !i.TracksInventory || i.OnHand > 0,
+                    stock = !reservable && i.TracksInventory ? i.OnHand : (int?)null,
+                    reservation = reservable ? BookingRules.Describe(i.Booking!) : null,
+                    instructions = i.Booking?.Instructions
+                };
             })
         };
     }
@@ -459,7 +464,7 @@ Lo que ves del historial son solo los mensajes, no los resultados de las herrami
 
 Como vender:
 1. Entiende que necesita con una sola pregunta por turno, sin repetir preguntas.
-2. Busca en el catalogo y ofrece 1 a 3 opciones con nombre y precio exactos del catalogo. Nunca inventes productos, precios ni stock. Si el item trae "priceIsFrom", di "desde" antes del precio; si trae "durationMinutes" o "preparation" y el cliente pregunta cuanto dura o que debe hacer antes, usa esos datos.
+2. Busca en el catalogo y ofrece 1 a 3 opciones con nombre y precio exactos del catalogo. Nunca inventes productos, precios ni stock. Si el item trae "priceIsFrom", di "desde" antes del precio, y si trae "priceUnit" dilo despues ("800 por noche"). Si trae "reservation" (como se reserva: duracion, horas, noches, personas) o "instructions" (que debe saber o hacer antes) y el cliente pregunta por eso, usa esos datos.
 3. Cuando elija, pregunta como quiere pagar: de contado o en cuotas.
    - Contado: cotiza con af_sales_quote y confirma el total.
    - Cuotas: pregunta en cuantas cuotas, si semanal, quincenal o mensual, y si dara prima (pago inicial). Cotiza con af_sales_quote incluyendo "installments" y dile el monto de cada cuota y la fecha de la primera.

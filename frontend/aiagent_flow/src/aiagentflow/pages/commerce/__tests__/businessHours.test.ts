@@ -9,9 +9,6 @@ import {
   describeWeek,
   closuresToApi,
   closuresFromApi,
-  schedulingToApi,
-  schedulingFromApi,
-  validateScheduling,
   EMPTY_BRANCH_HOURS,
   validateBranchHours,
 } from '../businessHours';
@@ -85,34 +82,5 @@ describe('branch hours', () => {
     expect(
       validateBranchHours({ ...EMPTY_BRANCH_HOURS, closures: [{ date: '2026-12-24', reason: '', closedAllDay: false, intervals: [] }] })
     ).toContain('horario especial');
-  });
-});
-
-describe('service booking data', () => {
-  it('round-trips through the API shape', () => {
-    const draft = schedulingFromApi({
-      bookable: true,
-      durationMinutes: 45,
-      bufferMinutes: 10,
-      priceIsFrom: true,
-      preparation: 'Venir sin comer',
-      resourceKinds: ['dentist', 'chair'],
-    });
-
-    expect(draft.resourceKinds).toBe('dentist, chair');
-    expect(schedulingToApi({ ...draft, resourceKinds: ' Dentist , chair,, ' })).toEqual({
-      bookable: true,
-      durationMinutes: 45,
-      bufferMinutes: 10,
-      priceIsFrom: true,
-      preparation: 'Venir sin comer',
-      resourceKinds: ['dentist', 'chair'],
-    });
-  });
-
-  it('requires a duration for bookable services', () => {
-    expect(validateScheduling({ ...schedulingFromApi(null), bookable: true })).toContain('al menos 5');
-    expect(validateScheduling({ ...schedulingFromApi(null), bookable: true, durationMinutes: '30' })).toBeNull();
-    expect(validateScheduling({ ...schedulingFromApi(null), bufferMinutes: '500' })).toContain('margen');
   });
 });
