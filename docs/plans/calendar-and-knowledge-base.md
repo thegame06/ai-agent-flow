@@ -6,6 +6,17 @@ El asistente tiene que:
 - responder con datos reales del negocio (sucursales, horarios, servicios, precios, preguntas frecuentes, políticas);
 - agendar, cancelar y reprogramar citas en el calendario del negocio, con recordatorios y paso a una persona.
 
+**Decisión del usuario (2026-11-28):** el calendario es **de AgentFlow** y es la fuente de verdad. Google Calendar es una sincronización opcional, no la base. Las razones:
+- muchas clínicas no usan Google (papel, Excel, software dental, Outlook);
+- la lógica de reserva (duración, doctor/sillón, márgenes, horario de sucursal, feriados) tiene que ser nuestra de todos modos;
+- la verificación de Google para scopes sensibles puede tardar semanas;
+- recordatorios, reprogramación e historial deben vivir donde vive la conversación.
+
+La agenda se construye en tres etapas:
+1. **Calendario propio**, vendible por sí solo.
+2. **Sincronización con Google.**
+3. **Otras integraciones** (Outlook, software dental), detrás de la misma interfaz de sincronización.
+
 Reglas que aplican a todas las fases:
 - **Multitenant desde el inicio.** Toda colección lleva `TenantId` y sus índices empiezan por `TenantId`. Ninguna herramienta acepta un tenant o un cliente que venga del modelo.
 - **Paridad de canales.** WhatsApp (QR, Meta y Twilio), web, API y voz se comportan igual. Las herramientas solo leen la identidad del cliente desde la metadata del canal (`channel.from`, `channel.session_id`), igual que `SalesAssistantToolBase`, así que no hay lógica por canal. Lo único distinto en voz es el formato: máximo 3 opciones y fechas dichas en palabras.
@@ -144,21 +155,25 @@ Las tres son de solo lectura, de riesgo bajo, y se registran en `DependencyInjec
 
 ---
 
-## 3. Agenda conectada: diseño
+## 3. Agenda: diseño (calendario propio + sincronización opcional)
 
 ### 3.1 Decisiones clave
 
-1. **La agenda propia viene primero y Google es un proveedor encima de ella.** La fuente de verdad de una cita es AgentFlow, en la colección `appointments`. Google es un espejo (escribir el evento) más una fuente de "ocupado" (free/busy). Así:
-   - los tenants sin Google tienen agenda igual (el fallback que se pidió);
-   - las herramientas del asistente son las mismas con o sin Google;
-   - después se puede sumar Outlook con la misma interfaz `ICalendarProvider`.
+1. **Calendario propio como fuente de verdad (decisión aprobada).** La cita vive en AgentFlow, en la colección `appointments`. Un proveedor externo solo puede hacer dos cosas, ambas detrás de la interfaz `ICalendarSync`:
+   - recibir una copia de la cita (escribir el evento);
+   - aportar bloques de "ocupado" (free/busy).
+
+   Así:
+   - los tenants sin Google tienen la agenda completa;
+   - las herramientas del asistente son las mismas con o sin sincronización;
+   - Outlook y el software dental se suman en la etapa 3 con la misma interfaz.
 2. **"Conectar Google Calendar" no es "iniciar sesión con Google".** Hoy no hay usuarios (un admin fijo en config), así que el login con Google depende de un módulo IAM que no existe. Mezclar las dos cosas bloquearía la agenda detrás de IAM.
    - El plan hace **OAuth de autorización** (código + refresh token) como una *conexión del tenant*, igual que Twilio o Meta. Su botón es "Conectar Google Calendar" en Canales/Conexiones.
    - "Iniciar sesión con Google" queda para el proyecto IAM. Cuando exista, ese mismo cliente OAuth puede pedir el permiso de calendario después, con consentimiento incremental (`include_granted_scopes=true`).
-3. **Por tenant primero, por doctor después.**
-   - Una conexión es una cuenta de Google. Cada recurso (doctor, sillón) se mapea a un `calendarId` dentro de alguna conexión.
-   - Caso A (fase CAL5): la cuenta de la clínica ve los calendarios de los doctores, que se los compartieron. Basta una conexión.
-   - Caso B (CAL7): cada doctor conecta su propia cuenta con un enlace de un solo uso que el admin le envía. No requiere IAM.
+3. **Conexión por tenant o por recurso, ambas en la etapa 2.**
+   - Una conexión es una cuenta de Google con su refresh token cifrado. Puede ser del tenant o de un recurso (`Config.resourceId`). Cada recurso (doctor, sillón) se mapea a un `calendarId` dentro de alguna conexión.
+   - Caso A (CAL5): la cuenta de la clínica ve los calendarios de los doctores, que se los compartieron. Basta una conexión.
+   - Caso B (también CAL5): cada doctor conecta su propia cuenta con un enlace de un solo uso que el admin le envía. La conexión queda ligada a su recurso. No requiere IAM.
 4. **Permisos mínimos.** Ver 3.6.
 
 ### 3.2 Modelo de datos
@@ -179,6 +194,8 @@ appointments
   Source ("assistant" | "staff" | "google"), SessionId?, ThreadId?, CreatedBy,
   External { Provider, ConnectionId, CalendarId, EventId, ETag, SyncedAt, SyncError? }[],
   ReminderState { SentKeys[] }, IdempotencyKey, CreatedAt, UpdatedAt
+  (ServiceSku apunta a un ítem de servicio del catálogo de Commerce y BranchId a CommerceBranchDocument:
+   no se duplican servicios ni sucursales; la duración y el margen salen del catálogo (KB2) y el horario de la sucursal (KB1))
   Índices: {TenantId, StartUtc}, {TenantId, PartyId, StartUtc}, {TenantId, ResourceIds, StartUtc}, único {TenantId, IdempotencyKey}
 
 appointment_slot_claims          (evita la doble reserva sin transacciones)
@@ -244,6 +261,12 @@ Se reutilizan campañas, sin crear otro motor:
 
 ### 3.6 Google: OAuth, permisos y sincronización
 
+**Iniciar sesión con Google y consentimiento incremental.** Hoy el login es un admin fijo, así que "iniciar sesión con Google" no puede reemplazarlo hasta que exista IAM. El cliente OAuth se diseña para servir a ambos casos:
+- **Ahora:** el botón "Conectar Google" pide `openid email` más los scopes de calendario.
+- **Cuando exista IAM:** el login pide solo `openid email profile`, y la primera vez que alguien conecte la agenda se le pide el permiso de calendario con `include_granted_scopes=true`.
+
+El callback, el `state` y el almacenamiento del token son los mismos en los dos casos.
+
 **Flujo (CAL5)**
 1. El admin hace clic en "Conectar Google Calendar" → `POST /api/v1/tenants/{t}/integrations/google-calendar/connect` (requiere JWT y permiso `TenantManage`).
 2. El backend genera `state` (aleatorio, 10 min de vida, guardado en Redis con tenant, usuario y `code_verifier` PKCE) y devuelve la URL de Google con estos parámetros: `access_type=offline`, `prompt=consent` (garantiza el refresh token), `include_granted_scopes=true`, PKCE S256 y `redirect_uri` fija.
@@ -275,21 +298,41 @@ Se reutilizan campañas, sin crear otro motor:
   - Un evento borrado o movido allí marca la cita (`cancelled` o con la nueva hora) y crea un aviso en la bandeja para que una persona avise al cliente. No se notifica al cliente de forma automática en la primera versión.
   - Las push notifications (`events.watch`) quedan para después: requieren HTTPS público estable y renovar el canal.
 
-### 3.7 Agenda sin Google (fallback)
+### 3.7 Agenda sin Google
 
-Es la misma agenda de CAL1-CAL4 con `Binding.Provider = "internal"`. El personal la ve y la edita en la UI (CAL2). Más adelante se puede ofrecer un feed ICS de solo lectura por recurso (URL con token) para suscribirse desde cualquier calendario. Se anota como mejora, sin fase.
+No es un fallback: es el producto de la etapa 1. Un recurso sin sincronización tiene `Binding.Provider = "internal"`. El personal ve y edita la agenda en la UI (CAL2), y el asistente reserva igual que con Google.
+
+### 3.8 Interfaz de sincronización (`ICalendarSync`)
+
+```csharp
+interface ICalendarSync {
+  string Provider { get; }                                   // "google", "outlook", "dentalink"...
+  Task<IReadOnlyList<BusyBlock>> GetBusyAsync(binding, fromUtc, toUtc, ct);
+  Task<ExternalRef> UpsertEventAsync(binding, appointment, ct);   // crear o mover
+  Task DeleteEventAsync(binding, ExternalRef, ct);
+  Task<SyncChanges> PullChangesAsync(binding, cursor, ct);       // cambios hechos fuera de AgentFlow
+}
+```
+
+- `AvailabilityService` suma los `BusyBlock` de todos los bindings del recurso.
+- `AppointmentService` llama `Upsert` o `Delete` después de confirmar en AgentFlow. Una falla de sincronización nunca deshace la cita.
+- Un worker genérico reintenta y ejecuta `PullChangesAsync`.
+- La etapa 1 trae solo `InternalCalendarSync` (no-op); cada etapa siguiente agrega una implementación.
 
 ---
 
 ## 4. Fases (un PR cada una, contra `main`, en este orden)
 
-Orden sugerido:
-- **Primero KB1 → KB2 → KB3.** Valen solos: la clínica ya puede responder dudas.
-- **Luego CAL1 → CAL3 → CAL2 → CAL4.** Agenda interna completa, demostrable sin Google.
-- **Al final SEC0 → CAL5 → CAL6.** Google.
-- **Quedan opcionales** KB4 y CAL7.
+| Bloque | Fases (en orden) | Resultado |
+|---|---|---|
+| Base de conocimiento | KB1 → KB2 → KB3 (KB4 opcional) | El asistente responde con datos reales del negocio. KB1 y KB2 también son la base de la agenda (horario de sucursal, duración del servicio) |
+| **Etapa 1: Calendario propio** | CAL1 → CAL3 → CAL2 → CAL4 | **Vendible por sí sola:** recursos, horarios y feriados, citas en Mongo, reserva, cancelación y reprogramación por todos los canales, recordatorios, handoff y UI de agenda |
+| **Etapa 2: Sincronización con Google** | SEC0 → CAL5 → CAL6 | Conectar Google (por clínica o por doctor), enviar las citas al calendario del doctor y bloquear lo que esté ocupado en Google |
+| **Etapa 3: Otras integraciones** | CAL7 (Outlook), CAL8 (software dental), CAL9 (feed ICS) | Más destinos detrás de `ICalendarSync`, según los pida cada cliente |
 
-El trámite de Google (sección 6) lo puede empezar el usuario en paralelo desde ya, porque la verificación puede tardar semanas.
+Orden recomendado de PRs: KB1, KB2, CAL1, CAL3, CAL2, CAL4, KB3, SEC0, CAL5, CAL6.
+- KB3 puede ir antes o en paralelo con la etapa 1, porque no comparte archivos con ella.
+- El trámite de Google (sección 6) lo puede empezar el usuario ya, porque la verificación puede tardar semanas y no bloquea la etapa 1.
 
 ### KB1: Sucursales con horario y herramienta de información del negocio
 - **Backend:**
@@ -323,12 +366,18 @@ El trámite de Google (sección 6) lo puede empezar el usuario en paralelo desde
 - **Pruebas:** aislamiento entre tenants (la búsqueda del tenant A nunca devuelve entradas de B), búsqueda en español con acentos, fallback por palabras. Hay una prueba de integración en `tests/AgentFlow.Tests.Integration/Knowledge/` con Mongo.
 - **Usuario:** cargar las FAQ reales de la clínica piloto.
 
-### CAL1: Núcleo de agenda interna (sin UI de calendario, sin asistente)
+---
+
+## Etapa 1: Calendario propio
+
+Depende de KB1 (horario de sucursal) y de KB2 (servicios con duración). Al terminar CAL4 el producto se puede vender sin ninguna integración externa.
+
+### CAL1: Núcleo de agenda propia (sin UI de calendario, sin asistente)
 - **Backend:** carpeta nueva `src/AgentFlow.Api/Scheduling/`:
   - `SchedulingStore.cs` (las colecciones de 3.2, sus índices y las claims);
   - `AvailabilityService.cs` (3.3);
   - `AppointmentService.cs` (book, cancel, reschedule y complete, con claims e idempotencia);
-  - `ICalendarProvider.cs` (interfaz con `InternalCalendarProvider` no-op);
+  - `ICalendarSync.cs` (interfaz de 3.8, con `InternalCalendarSync` no-op);
   - `SchedulingController.cs` en `api/v1/tenants/{t}/scheduling`:
     - `resources` (CRUD);
     - `GET availability?service&branch&resource&from&to`;
@@ -382,6 +431,12 @@ El trámite de Google (sección 6) lo puede empezar el usuario en paralelo desde
 - **Pruebas:** la ventana de recordatorio incluye y excluye bien las citas (zona horaria); una cita cancelada no recibe recordatorio; plantilla fuera de 24 h.
 - **Usuario:** crear y aprobar en Meta la plantilla de WhatsApp de recordatorio (texto propuesto en el PR).
 
+---
+
+## Etapa 2: Sincronización con Google
+
+Opcional por tenant. Si no se conecta nada, la agenda sigue igual que en la etapa 1.
+
 ### SEC0: Llaves de DataProtection persistentes (prerrequisito de Google)
 - **Backend:** `DependencyInjection.cs`:
   - `PersistKeysToFileSystem` sobre un volumen configurable (`DataProtection:KeysPath`), o en Mongo con un `IXmlRepository` propio (colección `dataprotection_keys`), más `ProtectKeysWith…` si hay certificado;
@@ -393,7 +448,7 @@ El trámite de Google (sección 6) lo puede empezar el usuario en paralelo desde
 - **Backend:**
   - `src/AgentFlow.Api/Integrations/Google/`:
     - `GoogleOAuthOptions` (ClientId; ClientSecret desde secretos de configuración, nunca en el repo; RedirectUri);
-    - `GoogleOAuthController` (`connect`, `callback`, `disconnect`, `status`);
+    - `GoogleOAuthController` (`connect`, `callback`, `disconnect`, `status`), más `POST resources/{id}/connect-link`, que genera un enlace de un solo uso (token firmado, 48 h) para que un doctor conecte su propia cuenta; esa conexión queda con `Config.resourceId`;
     - `GoogleTokenService` (refresh, caché, `invalid_grant` → Unhealthy);
     - `GoogleCalendarClient` (HttpClient tipado, sin SDK pesado, o `Google.Apis.Calendar.v3` si se prefiere).
   - `state` y PKCE en Redis.
@@ -412,8 +467,8 @@ El trámite de Google (sección 6) lo puede empezar el usuario en paralelo desde
 
 ### CAL6: Sincronización con Google
 - **Backend:**
-  - `GoogleCalendarProvider : ICalendarProvider`, que en `AvailabilityService` aporta el free/busy (caché Redis 60 s) y en `AppointmentService` escribe, mueve y borra eventos;
-  - `GoogleCalendarSyncWorker` (reintentos de `SyncError` y `events.list` con `syncToken`), con aviso en la bandeja si un evento cambió en Google.
+  - `GoogleCalendarSync : ICalendarSync`, que en `AvailabilityService` aporta el free/busy (caché Redis 60 s) y en `AppointmentService` escribe, mueve y borra eventos;
+  - `CalendarSyncWorker` genérico (reintentos de `SyncError` y `PullChangesAsync`; en Google, `events.list` con `syncToken`), con aviso en la bandeja si un evento cambió fuera de AgentFlow.
 - **Pruebas:**
   - Google caído: la cita se confirma igual y queda pendiente de sincronizar;
   - un evento borrado en Google marca la cita y crea el aviso;
@@ -421,6 +476,28 @@ El trámite de Google (sección 6) lo puede empezar el usuario en paralelo desde
   - otro evento ocupando el horario en Google lo excluye de la disponibilidad.
 - **Validación manual:** con la cuenta de prueba del usuario, reservar por WhatsApp y ver el evento en Google; bloquear una hora en Google y comprobar que el asistente ya no la ofrece.
 - **Usuario:** una cuenta de Google de prueba con 2 calendarios.
+
+---
+
+## Etapa 3: Otras integraciones (según demanda)
+
+Cada una es una implementación de `ICalendarSync` más su pantalla de conexión. No cambian las herramientas del asistente ni el modelo de citas.
+
+### CAL7: Outlook / Microsoft 365
+`OutlookCalendarSync` con Microsoft Graph (`Calendars.ReadWrite`, `offline_access`; free/busy con `getSchedule`; cambios con delta query). El usuario registra la app en Microsoft Entra.
+
+### CAL8: Software dental
+- Conector por producto (p. ej. el que use el primer cliente).
+- Si el software tiene API, se usa para empujar citas y leer ocupado.
+- Si no la tiene, la alternativa es importar y exportar CSV desde la UI.
+- Antes de escribir código hay que evaluar cada software (API, costo y términos), y eso lo decide el usuario.
+
+### CAL9: Feed ICS de solo lectura
+URL secreta por recurso (`/ics/{token}.ics`) para suscribirse desde cualquier calendario (Apple, Outlook, Google) sin OAuth. Es la integración más barata para quien solo quiere ver sus citas en el teléfono.
+
+---
+
+## Base de conocimiento, fase opcional
 
 ### KB4 (opcional): Documentos largos con búsqueda semántica
 Solo si un cliente lo pide.
@@ -431,11 +508,6 @@ Solo si un cliente lo pide.
   - índice en Qdrant (`Enabled: true`, `VectorSize` real) o en Mongo;
   - `af_kb_search` combina el `$text` de las entradas con los vectores de los chunks.
 - Además: reemplazar el stub `RagRetrieverPlugin` y los encoders hash, o borrarlos.
-
-### CAL7 (opcional): Cada doctor conecta su propio calendario, y Outlook
-- Enlace de un solo uso (token firmado, 48 h) que el admin envía al doctor; al conectar, la conexión queda ligada a ese recurso.
-- `MicrosoftCalendarProvider` con Graph (`Calendars.ReadWrite`, `offline_access`) detrás de la misma interfaz.
-
 ---
 
 ## 5. Riesgos y decisiones abiertas
