@@ -257,6 +257,11 @@ export default function ChannelsPage() {
       if (form.connectionId) config.ConnectionId = form.connectionId;
       if (form.provider) config.Provider = form.provider;
 
+      if (form.type === 'WhatsApp' && form.authMode === 'twilio') {
+        // Replies go out through the tenant's Twilio connection; Twilio posts incoming messages to /webhooks/whatsapp/twilio.
+        config.Provider = 'twilio';
+      }
+
       const business = form.type === 'WhatsApp' && form.authMode === 'business';
       if (business) {
         // Sends through Meta with the channel's own encrypted connection (saved right after creating it).
@@ -954,9 +959,36 @@ export default function ChannelsPage() {
                 >
                   <MenuItem value="qr">Codigo QR (tipo OpenClaw)</MenuItem>
                   <MenuItem value="business">WhatsApp Business API</MenuItem>
+                  <MenuItem value="twilio">WhatsApp por Twilio (sandbox o número Twilio)</MenuItem>
                 </TextField>
 
                 {form.authMode === 'business' && <MetaAccountFields form={metaForm} onChange={setMetaForm} />}
+
+                {form.authMode === 'twilio' && (
+                  <>
+                    <Alert severity={twilioConnections.length > 0 ? 'info' : 'warning'}>
+                      {twilioConnections.length > 0
+                        ? 'Las respuestas salen por tu integración Twilio (su número de WhatsApp es el remitente).'
+                        : 'Primero crea la integración Twilio con «Configurar Twilio»: Account SID, Auth Token y el número de WhatsApp.'}{' '}
+                      En Twilio, pega como URL de «When a message comes in» la URL pública de tu API seguida de{' '}
+                      <code>{`/api/v1/tenants/${TENANT_ID}/webhooks/whatsapp/twilio`}</code> (método POST).
+                    </Alert>
+                    <TextField
+                      select
+                      label="Integracion Twilio"
+                      value={form.connectionId}
+                      onChange={(e) => setForm((p) => ({ ...p, connectionId: e.target.value, provider: 'twilio' }))}
+                      fullWidth
+                    >
+                      <MenuItem value="">Detectar por proveedor Twilio</MenuItem>
+                      {twilioConnections.map((connection) => (
+                        <MenuItem key={connection.id} value={connection.id}>
+                          {connection.name}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                  </>
+                )}
               </>
             )}
 

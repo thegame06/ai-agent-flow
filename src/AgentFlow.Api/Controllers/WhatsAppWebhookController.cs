@@ -97,6 +97,7 @@ public sealed class WhatsAppWebhookController : ControllerBase
         var business = channels
             .Where(c => c.Status == ChannelStatus.Active)
             .Where(c => !string.Equals(c.Config.GetValueOrDefault("AuthMode"), "qr", StringComparison.OrdinalIgnoreCase))
+            .Where(c => !AgentFlow.Api.Messaging.TwilioWhatsApp.IsTwilio(c))
             .ToList();
         if (!string.IsNullOrWhiteSpace(phoneNumberId))
         {
@@ -329,6 +330,83 @@ public sealed class WhatsAppWebhookController : ControllerBase
             return StatusCode(500, new { error = ex.Message });
         }
     }
+
+    /// <summary>
+    /// Incoming WhatsApp message forwarded by Twilio (sandbox or a Twilio sender), signed with the
+    /// tenant's Twilio auth token. Answers with empty TwiML: the reply goes out through Twilio's API.
+    /// </summary>
+    [HttpPost("twilio")]
+    public async Task<IActionResult> ReceiveTwilioMessage(
+        string tenantId,
+        [FromForm] AgentFlow.Api.Messaging.TwilioWhatsAppForm form,
+        [FromServices] AgentFlow.Api.Voice.ITwilioWebhookSignatureValidator signatures,
+        CancellationToken requestAborted)
+    {
+        if (!await signatures.IsValidAsync(tenantId, Request, requestAborted))
+            return StatusCode(StatusCodes.Status403Forbidden);
+
+        var from = AgentFlow.Api.Messaging.TwilioWhatsApp.Phone(form.From);
+        var body = form.Body?.Trim();
+        if (string.IsNullOrEmpty(body) && int.TryParse(form.NumMedia, out var media) && media > 0)
+            body = "[archivo adjunto]";
+        if (string.IsNullOrWhiteSpace(from) || string.IsNullOrWhiteSpace(form.MessageSid) || string.IsNullOrEmpty(body))
+            return EmptyTwiml();
+
+        // Twilio stops waiting after 15 s, but the reply goes out through its API: a slow assistant
+        // must not be cancelled together with the request.
+        var ct = CancellationToken.None;
+        try
+        {
+            var channels = await _channelRepo.GetByTypeAsync(ChannelType.WhatsApp, tenantId, ct);
+            var channel = AgentFlow.Api.Messaging.TwilioWhatsApp.ChannelFor(channels, form.To);
+            if (channel is null)
+            {
+                _logger.LogWarning("No active Twilio WhatsApp channel for tenant {TenantId} and number {To}", tenantId, form.To);
+                return EmptyTwiml();
+            }
+
+            var externalEventKey = $"wa-twilio:{form.MessageSid}";
+            if (await _connectStore.GetInboxMessageByExternalKeyAsync(tenantId, externalEventKey, ct) is not null)
+                return EmptyTwiml();
+
+            var waMessage = new WhatsAppIncomingMessage
+            {
+                Id = form.MessageSid!,
+                From = from!,
+                Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                Text = new WhatsAppTextMessage { Body = body! },
+                Profile = new WhatsAppProfile { Name = string.IsNullOrWhiteSpace(form.ProfileName) ? "Unknown" : form.ProfileName }
+            };
+            var channelMessage = await ProcessWhatsAppMessage(waMessage, channel, ct);
+            if (channelMessage is null)
+                return EmptyTwiml();
+
+            await _connectStore.CreateInboxMessageAsync(new ConnectInboxMessageContract
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                TenantId = tenantId,
+                Channel = "whatsapp",
+                Recipient = from!,
+                Content = body!,
+                ExternalEventKey = externalEventKey,
+                Status = ConnectOperationalStatus.Queued,
+                CreatedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow,
+                UpdatedBy = "twilio-webhook"
+            }, ct);
+
+            await AttributeCampaignReplyAsync(tenantId, from, body, HasAssistant(channel), ct);
+            await _gateway.ProcessMessageAsync(channelMessage, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to process Twilio WhatsApp message {MessageSid}", form.MessageSid);
+        }
+        return EmptyTwiml();
+    }
+
+    private ContentResult EmptyTwiml()
+        => Content("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response></Response>", "text/xml");
 
     /// <summary>
     /// Links a reply to the campaign contact that messaged this number and classifies it

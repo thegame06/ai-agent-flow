@@ -18,15 +18,18 @@ public sealed class TwilioWebhookSignatureValidator : ITwilioWebhookSignatureVal
     private readonly ITenantConnectionStore _connectionStore;
     private readonly IDataProtectionProvider _dataProtectionProvider;
     private readonly ILogger<TwilioWebhookSignatureValidator> _logger;
+    private readonly string? _publicBaseUrl;
 
     public TwilioWebhookSignatureValidator(
         ITenantConnectionStore connectionStore,
         IDataProtectionProvider dataProtectionProvider,
-        ILogger<TwilioWebhookSignatureValidator> logger)
+        ILogger<TwilioWebhookSignatureValidator> logger,
+        IConfiguration? configuration = null)
     {
         _connectionStore = connectionStore;
         _dataProtectionProvider = dataProtectionProvider;
         _logger = logger;
+        _publicBaseUrl = configuration?["Webhooks:PublicBaseUrl"];
     }
 
     public async Task<bool> IsValidAsync(
@@ -48,13 +51,12 @@ public sealed class TwilioWebhookSignatureValidator : ITwilioWebhookSignatureVal
             return false;
         }
 
-        var absoluteUrl = $"{request.Scheme}://{request.Host}{request.Path}{request.QueryString}";
         var form = request.HasFormContentType
             ? request.Form.ToDictionary(k => k.Key, v => v.Value.ToString(), StringComparer.Ordinal)
             : new Dictionary<string, string>(StringComparer.Ordinal);
-        var expectedSignature = BuildTwilioSignature(absoluteUrl, form, authToken!);
 
-        var isValid = FixedTimeEquals(expectedSignature, providedSignature!);
+        var isValid = CandidateUrls(request, _publicBaseUrl)
+            .Any(url => FixedTimeEquals(BuildTwilioSignature(url, form, authToken!), providedSignature!));
         if (!isValid)
         {
             _logger.LogWarning("Twilio webhook signature mismatch for tenant {TenantId}.", tenantId);
@@ -62,6 +64,27 @@ public sealed class TwilioWebhookSignatureValidator : ITwilioWebhookSignatureVal
 
         return isValid;
     }
+
+    /// <summary>
+    /// Twilio signs the public URL it called. Behind a tunnel or proxy the API sees another scheme and
+    /// host, so the configured public base URL and the X-Forwarded-* headers are tried before the raw URL.
+    /// </summary>
+    public static IEnumerable<string> CandidateUrls(HttpRequest request, string? publicBaseUrl)
+    {
+        var pathAndQuery = $"{request.PathBase}{request.Path}{request.QueryString}";
+        if (!string.IsNullOrWhiteSpace(publicBaseUrl))
+            yield return publicBaseUrl.TrimEnd('/') + pathAndQuery;
+
+        var proto = FirstHeaderValue(request, "X-Forwarded-Proto");
+        var host = FirstHeaderValue(request, "X-Forwarded-Host");
+        if (proto is not null || host is not null)
+            yield return $"{proto ?? request.Scheme}://{host ?? request.Host.ToString()}{pathAndQuery}";
+
+        yield return $"{request.Scheme}://{request.Host}{pathAndQuery}";
+    }
+
+    private static string? FirstHeaderValue(HttpRequest request, string header)
+        => request.Headers[header].FirstOrDefault()?.Split(',')[0].Trim() is { Length: > 0 } value ? value : null;
 
     private async Task<string?> ResolveTwilioAuthTokenAsync(string tenantId, CancellationToken ct)
     {
@@ -93,7 +116,7 @@ public sealed class TwilioWebhookSignatureValidator : ITwilioWebhookSignatureVal
         return null;
     }
 
-    private static string BuildTwilioSignature(string url, IReadOnlyDictionary<string, string> form, string authToken)
+    public static string BuildTwilioSignature(string url, IReadOnlyDictionary<string, string> form, string authToken)
     {
         var payload = new StringBuilder(url);
         foreach (var kv in form.OrderBy(x => x.Key, StringComparer.Ordinal))
