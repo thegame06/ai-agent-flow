@@ -123,6 +123,37 @@ public sealed class RecoveryReportTests
 
     // ------------------------------------------------------------------
 
+    [Fact]
+    public void PaymentReportedInACampaignConversation_CountsForThatCampaign_EvenIfItsDateLooksEarlier()
+    {
+        // The campaign wrote at 00:51 UTC on the 15th (18:51 on the 14th in Managua); the customer said
+        // "ya pague hoy", stored as the 14th with no time.
+        var contactAt = From.AddDays(14).AddMinutes(51);
+        var payment = Payment("L1", "P1", 400, From.AddDays(13));
+        payment.ContactExecutionId = "c-twilio";
+
+        var report = Build(
+            loans: [Loan("L1", "P1")],
+            contacts: [Contact("c-twilio", "camp-b", "P1", contactAt, overdue: 850)],
+            payments: [payment]);
+
+        Assert.Equal(400m, report.Totals.Attributed);
+        Assert.Equal(400m, Assert.Single(report.ByCampaign, g => g.Key == "camp-b").Recovered);
+    }
+
+    [Fact]
+    public void ARetriedFailedSend_IsNotCountedAsASecondContact()
+    {
+        var failed = Contact("c-failed", "camp-b", "P1", From.AddDays(3), overdue: 850, status: CampaignContactExecutionStatus.Failed)
+            with { RetriedByExecutionId = "c-retry" };
+        var retry = Contact("c-retry", "camp-b", "P1", From.AddDays(3).AddMinutes(5), overdue: 850);
+
+        var report = Build(loans: [Loan("L1", "P1")], contacts: [failed, retry]);
+
+        Assert.Equal(1, report.Funnel.Contacts);
+        Assert.Equal(1, Assert.Single(report.ByCampaign, g => g.Key == "camp-b").Contacts);
+    }
+
     private static RecoveryReport Build(
         CollectionLoanDocument[]? loans = null,
         CampaignContactExecutionContract[]? contacts = null,

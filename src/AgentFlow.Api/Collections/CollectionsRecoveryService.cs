@@ -122,6 +122,8 @@ public static class RecoveryReportBuilder
 
     private sealed record Event(string PartyId, string LoanId, decimal Amount, DateTimeOffset At, string Kind)
     {
+        /// <summary>The campaign contact the customer reported the payment to, if any.</summary>
+        public string? ReportedToContactId { get; init; }
         public CampaignContactExecutionContract? Contact { get; set; }
         public bool WithPromise { get; set; }
     }
@@ -138,17 +140,22 @@ public static class RecoveryReportBuilder
         var promisesByParty = input.Promises.Where(p => p.Status != CollectionPromiseStatus.Cancelled)
             .GroupBy(p => p.PartyId).ToDictionary(g => g.Key, g => g.ToList());
 
+        var contactsById = input.Contacts.GroupBy(c => c.Id).ToDictionary(g => g.Key, g => g.First());
         foreach (var e in events)
         {
-            // Last touch: the most recent contact before the money came back, within the window.
-            e.Contact = reachedByParty.GetValueOrDefault(e.PartyId)?
-                .LastOrDefault(c => c.CreatedAt <= e.At && e.At - c.CreatedAt <= AttributionWindow);
+            // A payment the customer reported in a campaign conversation belongs to that campaign: a
+            // payment "hoy" carries no time and would otherwise look older than the message that got it.
+            // Otherwise, last touch: the most recent contact before the money came back, within the window.
+            e.Contact = (e.ReportedToContactId is { } reportedTo ? contactsById.GetValueOrDefault(reportedTo) : null)
+                ?? reachedByParty.GetValueOrDefault(e.PartyId)?
+                    .LastOrDefault(c => c.CreatedAt <= e.At && e.At - c.CreatedAt <= AttributionWindow);
             e.WithPromise = promisesByParty.GetValueOrDefault(e.PartyId)?
                 .Any(p => p.CreatedAt <= e.At && e.At <= p.PromisedDate + PromiseGrace) ?? false;
         }
 
         var periodContacts = input.Contacts
             .Where(c => !string.IsNullOrWhiteSpace(c.PartyId) && c.CreatedAt >= input.From && c.CreatedAt <= input.To)
+            .Where(c => c.RetriedByExecutionId is null)
             .ToList();
         var promisedContactIds = input.Promises.Where(p => p.ContactExecutionId is not null).Select(p => p.ContactExecutionId!).ToHashSet();
         var attributed = events.Where(e => e.Contact is not null).ToList();
@@ -250,7 +257,7 @@ public static class RecoveryReportBuilder
     {
         var events = input.Payments
             .Where(p => p.PaidAt >= input.From && p.PaidAt <= input.To && p.Amount > 0)
-            .Select(p => new Event(p.PartyId, p.LoanId, p.Amount, p.PaidAt, "payment"))
+            .Select(p => new Event(p.PartyId, p.LoanId, p.Amount, p.PaidAt, "payment") { ReportedToContactId = p.ContactExecutionId })
             .ToList();
 
         var paymentsByLoan = input.Payments.GroupBy(p => p.LoanId).ToDictionary(g => g.Key, g => g.ToList());

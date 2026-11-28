@@ -211,6 +211,11 @@ public sealed record CampaignContactExecutionContract
     public IReadOnlyList<CampaignFollowUpRecord>? FollowUps { get; init; }
     /// <summary>A person should take over (e.g. the customer asked for an advisor).</summary>
     public bool NeedsAttention { get; init; }
+    /// <summary>
+    /// A failed send that a retry sent again: the retry's contact is the one that counts, so this one
+    /// is left out of results, metrics and recovery (the customer was contacted once).
+    /// </summary>
+    public string? RetriedByExecutionId { get; init; }
     public string? AttentionReason { get; init; }
     public DateTimeOffset? AttentionAt { get; init; }
     public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.UtcNow;

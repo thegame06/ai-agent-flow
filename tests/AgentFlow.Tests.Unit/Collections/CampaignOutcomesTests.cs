@@ -10,6 +10,28 @@ namespace AgentFlow.Tests.Unit.Collections;
 
 public sealed class CampaignOutcomesTests
 {
+    [Fact]
+    public async Task Results_CountARetriedFailedSendOnce_AsItsRetry()
+    {
+        var failed = new CampaignContactExecutionContract
+        {
+            Id = "c-failed", TenantId = "tenant-1", CampaignId = "camp", PartyId = "p1",
+            Status = CampaignContactExecutionStatus.Failed, RetriedByExecutionId = "c-retry"
+        };
+        var retry = failed with { Id = "c-retry", Status = CampaignContactExecutionStatus.Sent, RetriedByExecutionId = null, Outcome = CampaignOutcomes.AlreadyPaid };
+        var store = new Mock<ICampaignStore>();
+        store.Setup(s => s.GetContactExecutionsByCampaignAsync("tenant-1", "camp", It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { failed, retry });
+        var service = new CampaignOutcomeService(store.Object, new CollectionPromiseService(new CollectionsImportTests.InMemoryCollectionsStore()));
+
+        var results = await service.GetResultsAsync("tenant-1", "camp");
+
+        Assert.Equal(1, results.Contacts);
+        Assert.Equal(1, results.Sent);
+        Assert.Equal(0, results.Failed);
+        Assert.DoesNotContain(results.Outcomes, o => o.Code == CampaignOutcomes.Unreachable);
+    }
+
     private const string Tenant = "tenant-1";
     // Friday 27 Nov 2026, local time in Mexico City.
     private static readonly DateTimeOffset Now = new(2026, 11, 27, 10, 0, 0, TimeSpan.FromHours(-6));

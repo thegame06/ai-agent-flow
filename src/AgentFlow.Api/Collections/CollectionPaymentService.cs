@@ -7,6 +7,8 @@ public sealed record CollectionPaymentInput
     public decimal Amount { get; init; }
     public DateTimeOffset? PaidAt { get; init; }
     public string? Reference { get; init; }
+    /// <summary>The campaign contact the customer reported this payment to, when it came from a report.</summary>
+    public string? ContactExecutionId { get; init; }
 }
 
 public sealed record CollectionPaymentResult
@@ -93,6 +95,7 @@ public sealed class CollectionPaymentService : ICollectionPaymentService
                 Amount = input.Amount,
                 PaidAt = input.PaidAt ?? DateTimeOffset.UtcNow,
                 Reference = reference,
+                ContactExecutionId = string.IsNullOrWhiteSpace(input.ContactExecutionId) ? null : input.ContactExecutionId,
                 Source = source,
                 OverdueBefore = overdueBefore,
                 OverdueAfter = loan.OverdueBalance,

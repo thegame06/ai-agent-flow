@@ -386,7 +386,8 @@ public sealed class CollectionPaymentReportService : ICollectionPaymentReportSer
                 LoanId = loan.Id,
                 Amount = value.Value,
                 PaidAt = paidAt ?? report.PaidOn ?? DateTimeOffset.UtcNow,
-                Reference = report.Reference
+                Reference = report.Reference,
+                ContactExecutionId = report.ContactExecutionId
             }
         ], "reported", userId, ct);
         if (result.Errors.Count > 0) return new(false, result.Errors[0].Message, report);

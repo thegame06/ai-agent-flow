@@ -552,6 +552,7 @@ public sealed class MongoCampaignStore : ICampaignStore
         PromiseDate = doc.PromiseDate,
         FollowUps = doc.FollowUps,
         NeedsAttention = doc.NeedsAttention,
+        RetriedByExecutionId = doc.RetriedByExecutionId,
         AttentionReason = doc.AttentionReason,
         AttentionAt = doc.AttentionAt,
         CreatedAt = doc.CreatedAt,
@@ -591,6 +592,7 @@ public sealed class MongoCampaignStore : ICampaignStore
         PromiseDate = contact.PromiseDate,
         FollowUps = contact.FollowUps?.ToList(),
         NeedsAttention = contact.NeedsAttention,
+        RetriedByExecutionId = contact.RetriedByExecutionId,
         AttentionReason = contact.AttentionReason,
         AttentionAt = contact.AttentionAt,
         CreatedAt = contact.CreatedAt,
@@ -754,6 +756,7 @@ public sealed class MongoCampaignStore : ICampaignStore
         public DateTimeOffset? PromiseDate { get; set; }
         public List<CampaignFollowUpRecord>? FollowUps { get; set; }
         public bool NeedsAttention { get; set; }
+        public string? RetriedByExecutionId { get; set; }
         public string? AttentionReason { get; set; }
         public DateTimeOffset? AttentionAt { get; set; }
         public DateTimeOffset CreatedAt { get; set; }
