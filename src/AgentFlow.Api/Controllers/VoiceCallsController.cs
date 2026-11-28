@@ -190,8 +190,6 @@ public sealed class VoiceCallsController : ControllerBase
         return Ok(new { phoneNumber = body.PhoneNumber!.Trim(), voiceUrl = incomingUrl, connectionId = twilio.Id });
     }
 
-    /// <summary>The account's Twilio numbers that can take calls, and whether each one's voice webhook points here.</summary>
-    /// <summary>The numbers verified in the Twilio account: the only ones a trial account may call.</summary>
     /// <summary>
     /// What Twilio knows about a call: status, numbers, timing and the errors or warnings it logged.
     /// The answer to "it did not ring": a carrier rejection or a blocked destination shows up here.
@@ -267,6 +265,7 @@ public sealed class VoiceCallsController : ControllerBase
         return NotFound(new { message = "Ninguna cuenta de Twilio del tenant tiene esa llamada." });
     }
 
+    /// <summary>The numbers verified in the Twilio account: the only ones a trial account may call.</summary>
     private async Task<List<string>?> VerifiedCallerIdsAsync(string tenantId, string connectionId, CancellationToken ct)
     {
         try
@@ -292,6 +291,7 @@ public sealed class VoiceCallsController : ControllerBase
         }
     }
 
+    /// <summary>The account's Twilio numbers that can take calls, and whether each one's voice webhook points here.</summary>
     private async Task<List<TwilioVoiceNumber>?> TwilioNumbersAsync(string tenantId, string connectionId, string? incomingUrl, CancellationToken ct)
     {
         try
