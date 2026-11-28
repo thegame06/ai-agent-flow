@@ -27,9 +27,10 @@ import { useTenantApps } from 'src/aiagentflow/hooks/useTenantApps';
 
 import { Iconify } from 'src/components/iconify';
 
+import { useLineNames } from './useLineNames';
 import { CampaignWizard } from './CampaignWizard';
 import { CampaignDetail } from './CampaignDetail';
-import { dateTime, parseFilter, CAMPAIGN_TYPE, SCHEDULE_LABEL, CAMPAIGN_STATUS } from './campaignModel';
+import { dateTime, parseFilter, channelLabel, CAMPAIGN_TYPE, deliveryLabel, SCHEDULE_LABEL, CAMPAIGN_STATUS } from './campaignModel';
 
 import type { Campaign } from './campaignModel';
 import type { WizardPreset } from './CampaignWizard';
@@ -42,6 +43,7 @@ export default function CampaignsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const lineNames = useLineNames(tenantId);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState('');
@@ -227,9 +229,9 @@ export default function CampaignsPage() {
                           )}
                         </TableCell>
                         <TableCell>
-                          {c.channel === 'whatsapp' ? 'WhatsApp' : c.channel}
+                          {channelLabel(c.channel, lineNames)}
                           <Typography variant="caption" color="text.secondary" component="div">
-                            {c.workflowDefinitionId ? 'Automatización' : 'Mensaje directo'}
+                            {deliveryLabel(c)}
                           </Typography>
                         </TableCell>
                         <TableCell>

@@ -32,6 +32,7 @@ import axios, { endpoints } from 'src/lib/axios';
 import { Iconify } from 'src/components/iconify';
 
 import { FollowUpEditor } from './FollowUpEditor';
+import { purposeLabel } from '../channels/LineDialog';
 import { missingFor } from '../templates/templateModel';
 import { TemplateBubble } from '../templates/TemplateBubble';
 import {
@@ -39,6 +40,7 @@ import {
   WEEKDAYS,
   parseFilter,
   TRIGGER_TYPE,
+  lineMismatch,
   CAMPAIGN_TYPE,
   SCHEDULE_TYPE,
   renderMessage,
@@ -70,7 +72,10 @@ const STAGES = [
 ];
 
 type ScheduleMode = 'manual' | 'once' | 'daily' | 'weekly';
-type DeliveryMode = 'message' | 'workflow';
+type DeliveryMode = 'message' | 'workflow' | 'call';
+
+const DEFAULT_COLLECTIONS_CALL =
+  'Hola {{primer_nombre}}, te llamamos de parte de tu financiera. Tu saldo vencido es de {{total_vencido}} {{moneda}}, con {{dias_atraso}} días de atraso. ¿Cuándo podrías realizar tu pago?';
 
 type Form = {
   name: string;
@@ -83,6 +88,8 @@ type Form = {
   messageDraft: string;
   /** Approved WhatsApp (Meta) template for the first message; empty = free text. */
   whatsAppTemplateId: string;
+  /** Calls: conversation (the assistant takes the call) or notify (read twice, then hang up). */
+  callMode: string;
   schedule: ScheduleMode;
   startAt: string;
   time: string;
@@ -123,10 +130,16 @@ function initialForm(campaign: Campaign | null, preset: WizardPreset | null | un
       campaignType: campaign.campaignType,
       filter: parseFilter(campaign.audienceFilterJson),
       channel: campaign.channel || 'whatsapp',
-      delivery: campaign.channelAction === CHANNEL_ACTION.WorkflowStart || campaign.workflowDefinitionId ? 'workflow' : 'message',
+      delivery:
+        campaign.channelAction === CHANNEL_ACTION.Call
+          ? 'call'
+          : campaign.channelAction === CHANNEL_ACTION.WorkflowStart || campaign.workflowDefinitionId
+            ? 'workflow'
+            : 'message',
       workflowDefinitionId: campaign.workflowDefinitionId ?? '',
-      messageDraft: campaign.messageDraft ?? '',
+      messageDraft: (campaign.channelAction === CHANNEL_ACTION.Call ? campaign.callScriptDraft : null) ?? campaign.messageDraft ?? '',
       whatsAppTemplateId: campaign.whatsAppTemplateId ?? '',
+      callMode: campaign.callMode || 'conversation',
       schedule,
       startAt: localDateTime(new Date(campaign.startAt)),
       time: schedule === 'weekly' ? timeParts.join(':') || '09:00' : campaign.scheduleExpression || '09:00',
@@ -150,6 +163,7 @@ function initialForm(campaign: Campaign | null, preset: WizardPreset | null | un
     workflowDefinitionId: '',
     messageDraft: collections ? DEFAULT_COLLECTIONS_MESSAGE : 'Hola {{primer_nombre}}, ',
     whatsAppTemplateId: '',
+    callMode: 'conversation',
     schedule: 'manual',
     startAt: localDateTime(),
     time: '09:00',
@@ -169,8 +183,10 @@ export function CampaignWizard({ open, tenantId, campaign, preset, collectionsEn
   const [waTemplates, setWaTemplates] = useState<WaTemplate[]>([]);
   // WhatsApp numbers: each is a channel, with its own Meta account (collections, sales, marketing...).
   const [waChannels, setWaChannels] = useState<
-    { id: string; name: string; business: boolean; provider: string; businessAccountId?: string; connectionId?: string }[]
+    { id: string; name: string; business: boolean; provider: string; businessAccountId?: string; connectionId?: string; purpose?: string }[]
   >([]);
+  // Voice lines (one per number: collections, sales...), for call campaigns.
+  const [voiceLines, setVoiceLines] = useState<{ id: string; name: string; purpose?: string; phoneNumber?: string }[]>([]);
   const [prompt, setPrompt] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -196,9 +212,10 @@ export function CampaignWizard({ open, tenantId, campaign, preset, collectionsEn
       .catch(() => setWaTemplates([]));
     axios
       .get(endpoints.agentflow.channels.list(tenantId))
-      .then((res) =>
+      .then((res) => {
+        const all = (res.data ?? []) as any[];
         setWaChannels(
-          ((res.data ?? []) as any[])
+          all
             .filter((c) => c?.type === 'WhatsApp')
             .map((c) => ({
               id: c.id,
@@ -207,10 +224,19 @@ export function CampaignWizard({ open, tenantId, campaign, preset, collectionsEn
               provider: c.config?.AuthMode === 'twilio' ? 'twilio' : 'meta',
               businessAccountId: c.config?.BusinessAccountId,
               connectionId: c.config?.ConnectionId,
+              purpose: c.config?.Purpose,
             }))
-        )
-      )
-      .catch(() => setWaChannels([]));
+        );
+        setVoiceLines(
+          all
+            .filter((c) => c?.type === 'Voice' && c?.status === 'Active')
+            .map((c) => ({ id: c.id, name: c.name, purpose: c.config?.Purpose, phoneNumber: c.config?.PhoneNumber }))
+        );
+      })
+      .catch(() => {
+        setWaChannels([]);
+        setVoiceLines([]);
+      });
   }, [open, campaign, preset, collectionsEnabled, tenantId]);
 
   const filterJson = useMemo(() => serializeFilter(form.filter), [form.filter]);
@@ -237,8 +263,11 @@ export function CampaignWizard({ open, tenantId, campaign, preset, collectionsEn
   const variables = isCollections ? COLLECTIONS_VARIABLES : COMMERCE_VARIABLES;
   const sample = preview?.contacts?.[0];
   const rendered = renderMessage(form.messageDraft, sample?.variables);
-  const chosenChannel = waChannels.find((c) => c.id === form.channel) ?? null;
-  const isWhatsApp = form.channel === 'whatsapp' || !!chosenChannel;
+  const isCall = form.delivery === 'call';
+  const chosenChannel = isCall ? null : (waChannels.find((c) => c.id === form.channel) ?? null);
+  const chosenVoiceLine = isCall ? (voiceLines.find((c) => c.id === form.channel) ?? null) : null;
+  const isWhatsApp = !isCall && (form.channel === 'whatsapp' || !!chosenChannel);
+  const lineWarning = lineMismatch((chosenVoiceLine ?? chosenChannel)?.purpose, form.campaignType);
   // Only approved templates the chosen number can send (its Twilio account, or its Meta account);
   // the one already chosen stays listed.
   const fitsChannel = (t: WaTemplate) =>
@@ -258,6 +287,7 @@ export function CampaignWizard({ open, tenantId, campaign, preset, collectionsEn
     if (step === 2 && form.delivery === 'message' && chosenChannel?.business && !form.whatsAppTemplateId)
       return 'Con la API oficial de WhatsApp el primer mensaje debe ser una plantilla aprobada.';
     if (step === 2 && form.delivery === 'workflow' && !form.workflowDefinitionId) return 'Elige la automatización.';
+    if (step === 2 && isCall && !form.messageDraft.trim()) return 'Escribe lo que dirá la llamada al contestar.';
     return null;
   })();
 
@@ -296,10 +326,12 @@ export function CampaignWizard({ open, tenantId, campaign, preset, collectionsEn
       enabled: activate,
       triggerType: form.schedule === 'manual' ? TRIGGER_TYPE.Manual : TRIGGER_TYPE.Schedule,
       channel: form.channel,
-      channelAction: form.delivery === 'workflow' ? CHANNEL_ACTION.WorkflowStart : CHANNEL_ACTION.Message,
+      channelAction: isCall ? CHANNEL_ACTION.Call : form.delivery === 'workflow' ? CHANNEL_ACTION.WorkflowStart : CHANNEL_ACTION.Message,
       executionMode: form.delivery === 'workflow' ? EXECUTION_MODE.Workflow : EXECUTION_MODE.Direct,
       workflowDefinitionId: form.delivery === 'workflow' ? form.workflowDefinitionId : '',
       messageDraft: form.messageDraft,
+      callScriptDraft: isCall ? form.messageDraft : '',
+      callMode: isCall ? form.callMode : '',
       // "" clears it on the server.
       whatsAppTemplateId: form.delivery === 'message' && isWhatsApp ? form.whatsAppTemplateId : '',
       scheduleType,
@@ -518,22 +550,88 @@ export function CampaignWizard({ open, tenantId, campaign, preset, collectionsEn
                 value={form.channel}
                 onChange={(e) => setForm((f) => ({ ...f, channel: e.target.value, whatsAppTemplateId: '' }))}
                 sx={{ minWidth: 220 }}
+                helperText={isCall ? 'La llamada sale con el número de la línea y la atiende su asistente.' : undefined}
               >
-                {waChannels.map((c) => (
-                  <MenuItem key={c.id} value={c.id}>
-                    WhatsApp · {c.name}
-                    {c.business ? '' : ' (QR)'}
-                  </MenuItem>
-                ))}
-                <MenuItem value="whatsapp">WhatsApp (primer número activo)</MenuItem>
-                <MenuItem value="api">API / webhook</MenuItem>
-                <MenuItem value="webchat">Webchat</MenuItem>
+                {isCall
+                  ? [
+                      ...voiceLines.map((c) => (
+                        <MenuItem key={c.id} value={c.id}>
+                          Voz · {c.name} · {purposeLabel(c.purpose)}
+                          {c.phoneNumber ? ` · ${c.phoneNumber}` : ''}
+                        </MenuItem>
+                      )),
+                      <MenuItem key="voice" value="voice">
+                        Voz (línea predeterminada)
+                      </MenuItem>,
+                    ]
+                  : [
+                      ...waChannels.map((c) => (
+                        <MenuItem key={c.id} value={c.id}>
+                          WhatsApp · {c.name} · {purposeLabel(c.purpose)}
+                          {c.business ? '' : ' (QR)'}
+                        </MenuItem>
+                      )),
+                      <MenuItem key="whatsapp" value="whatsapp">
+                        WhatsApp (línea predeterminada)
+                      </MenuItem>,
+                      <MenuItem key="api" value="api">
+                        API / webhook
+                      </MenuItem>,
+                      <MenuItem key="webchat" value="webchat">
+                        Webchat
+                      </MenuItem>,
+                    ]}
               </TextField>
-              <TextField select label="Cómo se envía" value={form.delivery} onChange={(e) => set('delivery', e.target.value as DeliveryMode)} sx={{ flex: 1 }}>
+              <TextField
+                select
+                label="Cómo se envía"
+                value={form.delivery}
+                onChange={(e) => {
+                  const delivery = e.target.value as DeliveryMode;
+                  // Calls go out through a voice line, messages through a messaging channel.
+                  setForm((f) => ({
+                    ...f,
+                    delivery,
+                    whatsAppTemplateId: '',
+                    // The default collections text is written for a chat; a call says it out loud.
+                    messageDraft:
+                      delivery === 'call' && f.messageDraft === DEFAULT_COLLECTIONS_MESSAGE
+                        ? DEFAULT_COLLECTIONS_CALL
+                        : delivery !== 'call' && f.messageDraft === DEFAULT_COLLECTIONS_CALL
+                          ? DEFAULT_COLLECTIONS_MESSAGE
+                          : f.messageDraft,
+                    channel:
+                      delivery === 'call'
+                        ? voiceLines.some((c) => c.id === f.channel) ? f.channel : 'voice'
+                        : f.channel === 'voice' || voiceLines.some((c) => c.id === f.channel) ? 'whatsapp' : f.channel,
+                  }));
+                }}
+                sx={{ flex: 1 }}
+              >
                 <MenuItem value="message">Mensaje directo a cada contacto</MenuItem>
+                <MenuItem value="call">Llamada a cada contacto</MenuItem>
                 <MenuItem value="workflow">Ejecutar una automatización por contacto</MenuItem>
               </TextField>
             </Stack>
+
+            {lineWarning && <Alert severity="warning">{lineWarning}</Alert>}
+
+            {isCall && (
+              <TextField
+                select
+                label="Tipo de llamada"
+                value={form.callMode}
+                onChange={(e) => set('callMode', e.target.value)}
+                helperText={
+                  form.callMode === 'notify'
+                    ? 'Se lee el mensaje dos veces y se cuelga. También se deja en el buzón de voz.'
+                    : 'Al contestar, la llamada abre con el mensaje y el asistente de la línea conversa con el cliente.'
+                }
+              >
+                <MenuItem value="conversation">Conversación con el asistente</MenuItem>
+                <MenuItem value="notify">Aviso (solo se lee el mensaje)</MenuItem>
+              </TextField>
+            )}
 
             {form.delivery === 'workflow' && (
               <TextField
@@ -591,7 +689,13 @@ export function CampaignWizard({ open, tenantId, campaign, preset, collectionsEn
             ) : (
             <>
             <TextField
-              label={form.delivery === 'workflow' ? 'Mensaje (disponible para la automatización como {{message}})' : 'Mensaje'}
+              label={
+                form.delivery === 'workflow'
+                  ? 'Mensaje (disponible para la automatización como {{message}})'
+                  : isCall
+                    ? 'Lo que dice la llamada al contestar'
+                    : 'Mensaje'
+              }
               value={form.messageDraft}
               onChange={(e) => set('messageDraft', e.target.value)}
               multiline
@@ -677,8 +781,24 @@ export function CampaignWizard({ open, tenantId, campaign, preset, collectionsEn
             />
             <Review
               label="Envío"
-              value={`${chosenChannel ? `WhatsApp · ${chosenChannel.name}` : form.channel === 'whatsapp' ? 'WhatsApp' : form.channel} · ${
-                form.delivery === 'workflow' ? `automatización ${workflows.find((w) => w.id === form.workflowDefinitionId)?.name ?? ''}` : 'mensaje directo'
+              value={`${
+                chosenVoiceLine
+                  ? `Voz · ${chosenVoiceLine.name}`
+                  : chosenChannel
+                    ? `WhatsApp · ${chosenChannel.name}`
+                    : form.channel === 'whatsapp'
+                      ? 'WhatsApp'
+                      : form.channel === 'voice'
+                        ? 'Voz'
+                        : form.channel
+              } · ${
+                form.delivery === 'workflow'
+                  ? `automatización ${workflows.find((w) => w.id === form.workflowDefinitionId)?.name ?? ''}`
+                  : isCall
+                    ? form.callMode === 'notify'
+                      ? 'llamada de aviso'
+                      : 'llamada con el asistente'
+                    : 'mensaje directo'
               }`}
             />
             <Review

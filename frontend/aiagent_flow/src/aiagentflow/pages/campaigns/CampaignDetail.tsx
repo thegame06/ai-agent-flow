@@ -28,6 +28,7 @@ import axios, { endpoints } from 'src/lib/axios';
 
 import { Iconify } from 'src/components/iconify';
 
+import { useLineNames } from './useLineNames';
 import {
   day,
   pct,
@@ -36,7 +37,9 @@ import {
   RUN_STATUS,
   RUN_TRIGGER,
   parseFilter,
+  channelLabel,
   CAMPAIGN_TYPE,
+  deliveryLabel,
   CONTACT_STATUS,
   SCHEDULE_LABEL,
   CAMPAIGN_STATUS,
@@ -59,6 +62,7 @@ type Props = {
 type TabKey = 'results' | 'contacts' | 'runs' | 'settings';
 
 export function CampaignDetail({ tenantId, campaign, onClose, onEdit, onChanged }: Props) {
+  const lineNames = useLineNames(tenantId);
   const [tab, setTab] = useState<TabKey>('results');
   const [results, setResults] = useState<CampaignResults | null>(null);
   const [runs, setRuns] = useState<CampaignRun[]>([]);
@@ -167,7 +171,7 @@ export function CampaignDetail({ tenantId, campaign, onClose, onEdit, onChanged 
               <Chip size="small" label={status.label} color={status.color} variant="soft" />
             </Stack>
             <Typography variant="body2" color="text.secondary">
-              {CAMPAIGN_TYPE[campaign.campaignType]} · {campaign.channel === 'whatsapp' ? 'WhatsApp' : campaign.channel} ·{' '}
+              {CAMPAIGN_TYPE[campaign.campaignType]} · {channelLabel(campaign.channel, lineNames)} ·{' '}
               {filter.source === 'collections' ? 'Cartera de cobranza' : 'Clientes y prospectos'}
               {campaign.lastRunAt ? ` · último envío ${dateTime(campaign.lastRunAt)}` : ' · aún sin envíos'}
             </Typography>
@@ -508,6 +512,7 @@ const FOLLOW_UP_STATUS: Record<string, string> = {
 };
 
 function SettingsTab({ tenantId, campaign, onChanged }: { tenantId: string; campaign: Campaign; onChanged: () => void }) {
+  const lineNames = useLineNames(tenantId);
   const [followUpResult, setFollowUpResult] = useState<string | null>(null);
 
   const runFollowUps = async () => {
@@ -588,7 +593,10 @@ function SettingsTab({ tenantId, campaign, onChanged }: { tenantId: string; camp
                 : 'Clientes y prospectos'
             }
           />
-          <Row label="Envío" value={campaign.workflowDefinitionId ? `Automatización ${campaign.workflowDefinitionId}` : 'Mensaje directo'} />
+          <Row
+            label="Envío"
+            value={campaign.workflowDefinitionId ? `Automatización ${campaign.workflowDefinitionId}` : `${deliveryLabel(campaign)} · ${channelLabel(campaign.channel, lineNames)}`}
+          />
           <Row label="Programación" value={campaign.triggerType === 1 ? 'Manual' : `${SCHEDULE_LABEL[campaign.scheduleType]} ${campaign.scheduleExpression}`} />
           <Row label="Próximo envío" value={dateTime(campaign.nextRunAt)} />
           <Row label="Mensaje" value={campaign.messageDraft || '—'} />
