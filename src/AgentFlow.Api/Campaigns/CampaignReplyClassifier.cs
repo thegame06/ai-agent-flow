@@ -22,7 +22,9 @@ public static partial class CampaignReplyClassifier
         (CampaignOutcomes.WrongNumber, R(@"numero equivocado|se equivoc|equivocad[oa]s?\b|no soy (yo|esa persona|el|ella|quien)|no conozco a|aqui no vive|no es (su|el) numero")),
         (CampaignOutcomes.Dispute, R(@"no reconozco|no debo nada|yo no debo|no es mi (deuda|prestamo|credito|cuenta)|nunca (pedi|solicite|saque|tuve)|no tengo ningun (prestamo|credito)|eso no es mio")),
         (CampaignOutcomes.AlreadyPaid, R(@"ya (lo )?(pague|realice el pago|hice el pago|deposite|transferi|liquide|abone|cubri|quede al corriente|esta pagad)|ya (esta|quedo) (pagado|liquidado|cubierto)|ya estoy al corriente")),
-        (CampaignOutcomes.CannotPay, R(@"no (tengo|cuento con) (dinero|para pagar|como pagar|con que pagar|lana|trabajo|empleo)|no puedo pagar|no me alcanza|me quede sin (trabajo|empleo|dinero)|estoy sin (trabajo|empleo|dinero)|no tengo para")),
+        (CampaignOutcomes.CannotPay, R(@"no (tengo|cuento con) (dinero|para pagar|como pagar|con que pagar|lana|plata|trabajo|empleo)|no puedo pagar|no me alcanza|me quede sin (trabajo|empleo|dinero)|estoy sin (trabajo|empleo|dinero)|no tengo para|desemplead|me despidieron|perdi (el|mi) (trabajo|empleo)")),
+        // "No se", "algun dia": the customer answered but committed to nothing. Not a refusal.
+        (CampaignOutcomes.Replied, R(@"^no se\b(?! si)|^ni idea\b|(todavia|aun) no se\b|no sabria|no tengo (fecha|idea)|algun dia|un dia de estos|cuando (pueda|tenga|se pueda)\b|mas adelante|el (proximo|otro) (ano|mes)|el ano que viene")),
         (CampaignOutcomes.NotInterested, R(@"no (voy|pienso) a? ?pagar|no pagare|no me interesa|no quiero|no gracias|^(no|nel|nop|nope|para nada)\b")),
         (CampaignOutcomes.PromiseToPay, R(@"\b(pago|pagare|pagaria|voy a pagar|puedo pagar|podria pagar|te pago|le pago|les pago|deposito|depositare|voy a depositar|abono|abonare|voy a abonar|liquido|liquidare|hago el pago|hare el pago|realizo el pago|realizare el pago|cubro|cubrire)\b")),
         (CampaignOutcomes.NeedsHuman, R(@"\basesor|\bejecutivo|hablar con (alguien|una persona|un humano|un agente)|\bhumano\b|una persona real")),
@@ -36,7 +38,9 @@ public static partial class CampaignReplyClassifier
     private static readonly HashSet<string> ClearEvenWithDoubt =
     [
         CampaignOutcomes.OptOut, CampaignOutcomes.WrongNumber, CampaignOutcomes.Dispute,
-        CampaignOutcomes.NeedsHuman, CampaignOutcomes.CallbackRequested
+        CampaignOutcomes.NeedsHuman, CampaignOutcomes.CallbackRequested,
+        // A situation, not a commitment: "tal vez el proximo ano, estoy desempleado" still says they cannot pay.
+        CampaignOutcomes.CannotPay
     ];
 
     private static readonly string[] Weekdays = ["domingo", "lunes", "martes", "miercoles", "jueves", "viernes", "sabado"];

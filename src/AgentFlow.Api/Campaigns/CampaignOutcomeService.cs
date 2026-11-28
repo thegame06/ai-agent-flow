@@ -111,10 +111,12 @@ public sealed class CampaignOutcomeService : ICampaignOutcomeService
         // "manana" / "el viernes" are relative to the customer's day, not UTC.
         var classification = CampaignReplyClassifier.Classify(text, ToLocal(receivedAt, campaign?.Timezone));
         var outcome = classification.Outcome;
+        // "No se", "algun dia": answered without committing to anything, like an unclear reply.
+        var noCommitment = outcome is null || outcome == CampaignOutcomes.Replied;
 
         // A reply the rules cannot read (a question, a doubt, "hola") is waiting for an answer:
         // never let it sit unseen.
-        if (outcome is null && !answeredByAssistant)
+        if (noCommitment && !answeredByAssistant)
         {
             contact = contact with
             {
@@ -128,7 +130,7 @@ public sealed class CampaignOutcomeService : ICampaignOutcomeService
             return await _campaigns.UpdateContactExecutionAsync(contact, ct) ?? contact;
 
         // Keep a specific earlier outcome ("promesa") when a follow-up reply is just chatter ("gracias").
-        if (outcome is null && contact.Outcome is not null && contact.Outcome != CampaignOutcomes.Replied)
+        if (noCommitment && contact.Outcome is not null && contact.Outcome != CampaignOutcomes.Replied)
             return await _campaigns.UpdateContactExecutionAsync(contact, ct) ?? contact;
 
         // Collections-only outcomes are not offered for e.g. sales campaigns: fall back to "replied".

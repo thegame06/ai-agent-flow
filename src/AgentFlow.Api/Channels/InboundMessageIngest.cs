@@ -47,6 +47,10 @@ public sealed class InboundMessageIngest : IInboundMessageIngest
     private readonly IServiceScopeFactory? _scopes;
     private readonly ILogger<InboundMessageIngest> _logger;
     private readonly string? _defaultCountryCode;
+    private readonly TimeSpan _restartAfter;
+
+    /// <summary>After this long without messages the assistant starts a fresh conversation.</summary>
+    public static readonly TimeSpan DefaultRestartAfter = TimeSpan.FromHours(12);
 
     public InboundMessageIngest(
         IChannelGateway gateway,
@@ -66,6 +70,10 @@ public sealed class InboundMessageIngest : IInboundMessageIngest
         _campaignOutcomes = campaignOutcomes;
         _scopes = scopes;
         _defaultCountryCode = configuration?["Messaging:DefaultCountryCode"];
+        _restartAfter = double.TryParse(configuration?["Messaging:ConversationRestartHours"], System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture, out var hours) && hours > 0
+            ? TimeSpan.FromHours(hours)
+            : DefaultRestartAfter;
     }
 
     public async Task<InboundResult> IngestAsync(InboundMessage message, bool inBackground = false, CancellationToken ct = default)
@@ -96,6 +104,7 @@ public sealed class InboundMessageIngest : IInboundMessageIngest
         var context = ChannelContext.Create(channel.Type, channel.Id, message.CorrelationId ?? Guid.NewGuid().ToString("N"), address.Value, displayName);
         var session = await handler.GetOrCreateSessionAsync(context, channel, ct);
         CarryOverHandoff(prior, session);
+        var restarted = RestartIfIdle(session, _restartAfter, DateTimeOffset.UtcNow);
 
         var provider = message.Provider.Trim().ToLowerInvariant();
         StampSession(session, channel, provider, address, displayName, customer, message.BusinessAddress);
@@ -106,6 +115,7 @@ public sealed class InboundMessageIngest : IInboundMessageIngest
         var incoming = ChannelMessage.CreateIncoming(message.TenantId, channel.Id, session.Id, address.Value, text,
             message.RawPayload, message.ExternalId);
         StampMessage(incoming, channel, provider, address, message, customer);
+        if (restarted) incoming.Metadata["conversation.restarted"] = "true";
 
         var inbox = await _connectStore.CreateInboxMessageAsync(new ConnectInboxMessageContract
         {
@@ -156,10 +166,19 @@ public sealed class InboundMessageIngest : IInboundMessageIngest
         _ => "un archivo"
     };
 
-    private static string ExternalKey(InboundMessage message, CustomerAddress address, string text)
-        => !string.IsNullOrWhiteSpace(message.ExternalId)
-            ? $"{message.Provider.ToLowerInvariant()}:{message.ExternalId}"
-            : $"{message.Provider.ToLowerInvariant()}:{address.Value}:{message.SentAt?.ToUnixTimeSeconds()}:{text}";
+    /// <summary>
+    /// What identifies a delivery for deduplication: the provider's message id, else the caller's
+    /// correlation id, else the send time. Without any of them a message is never treated as a
+    /// duplicate: the same customer writing the same "hola" twice is two messages.
+    /// </summary>
+    public static string ExternalKey(InboundMessage message, CustomerAddress address, string text)
+    {
+        var provider = message.Provider.ToLowerInvariant();
+        if (!string.IsNullOrWhiteSpace(message.ExternalId)) return $"{provider}:{message.ExternalId}";
+        if (!string.IsNullOrWhiteSpace(message.CorrelationId)) return $"{provider}:corr:{message.CorrelationId}";
+        if (message.SentAt is { } sentAt) return $"{provider}:{address.Value}:{sentAt.ToUnixTimeSeconds()}:{text}";
+        return $"{provider}:once:{Guid.NewGuid():N}";
+    }
 
     private async Task<ResolvedCustomer?> TryResolveAsync(string tenantId, CustomerAddress address, CancellationToken ct)
     {
@@ -181,6 +200,22 @@ public sealed class InboundMessageIngest : IInboundMessageIngest
             ConversationHandoff.AssistantPaused(session)) return;
         foreach (var (key, value) in prior.Metadata.Where(kv => kv.Key.StartsWith("handoff.", StringComparison.Ordinal)).ToList())
             session.Metadata[key] = value;
+    }
+
+    /// <summary>
+    /// A customer writing again after many hours starts a fresh conversation for the assistant: the old
+    /// thread made it pick up where it left off and repeat its last action (re-reporting a payment on a
+    /// later "hola"). The customer's state (balance, promise, payments) still comes from its tools.
+    /// A conversation a person owns is left alone.
+    /// </summary>
+    public static bool RestartIfIdle(ChannelSession session, TimeSpan restartAfter, DateTimeOffset now)
+    {
+        if (session.MessageCount == 0 || string.IsNullOrWhiteSpace(session.ThreadId) ||
+            ConversationHandoff.AssistantPaused(session) || now - session.LastActivityAt < restartAfter)
+            return false;
+        session.UnlinkThread();
+        session.Metadata["conversation.restarted_at"] = now.ToString("O");
+        return true;
     }
 
     /// <summary>A conversation opened before addresses were canonical keeps going under the canonical address.</summary>
