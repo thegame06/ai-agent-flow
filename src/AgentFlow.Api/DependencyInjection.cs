@@ -103,6 +103,7 @@ public static class DependencyInjection
             .AddScoped<AgentFlow.Api.Channels.ICustomerInbox, AgentFlow.Api.Channels.CustomerInbox>()
             // Files customers send (receipts): a copy in GridFS, fetched from each provider.
             .AddSingleton<AgentFlow.Api.Channels.IMediaStore, AgentFlow.Api.Channels.MongoMediaStore>()
+            .AddSingleton<AgentFlow.Api.Channels.InboundBatcher>()
             .AddScoped<AgentFlow.Api.Voice.ITwilioCredentials, AgentFlow.Api.Voice.TwilioCredentials>()
             .AddScoped<AgentFlow.Api.Channels.IInboundMediaFetcher, AgentFlow.Api.Channels.TwilioMediaFetcher>()
             .AddScoped<AgentFlow.Api.Channels.IInboundMediaFetcher, AgentFlow.Api.Channels.MetaMediaFetcher>()
