@@ -70,13 +70,20 @@ public sealed class ConversationHandoffService : IConversationHandoffService
     private readonly ICampaignStore _campaigns;
     private readonly IOutboundMessageSender _outbound;
 
+    private readonly IChannelDefinitionRepository? _channels;
+    private readonly AgentFlow.Api.Channels.IConversationWindow _window;
+
     public ConversationHandoffService(
         IChannelSessionRepository sessions,
         IChannelMessageRepository messages,
         IChannelGateway gateway,
         ICampaignStore campaigns,
-        IOutboundMessageSender outbound)
+        IOutboundMessageSender outbound,
+        IChannelDefinitionRepository? channels = null,
+        AgentFlow.Api.Channels.IConversationWindow? window = null)
     {
+        _channels = channels;
+        _window = window ?? new AgentFlow.Api.Channels.ConversationWindow(campaigns, sessions);
         _sessions = sessions;
         _messages = messages;
         _gateway = gateway;
@@ -226,6 +233,11 @@ public sealed class ConversationHandoffService : IConversationHandoffService
         if (string.IsNullOrWhiteSpace(text)) return new(false, "Escribe un mensaje.");
         var session = await _sessions.GetByIdAsync(sessionId, tenantId, ct);
         if (session is null) return new(false, "Conversacion no encontrada.");
+
+        // An advisor is held to the same WhatsApp window as campaigns and follow-ups.
+        var channel = _channels is null ? null : await _channels.GetByIdAsync(session.ChannelId, tenantId, ct);
+        if (!await _window.CanSendFreeTextAsync(tenantId, channel, session.Identifier, DateTimeOffset.UtcNow, ct))
+            return new(false, AgentFlow.Api.Channels.ConversationWindow.ClosedMessage);
 
         // Answering means owning the conversation: the assistant stops until it is given back.
         if (ConversationHandoff.State(session) != ConversationHandoff.WithPerson)

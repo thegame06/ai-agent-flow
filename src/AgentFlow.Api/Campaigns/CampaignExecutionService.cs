@@ -32,6 +32,7 @@ public sealed class CampaignExecutionService : ICampaignExecutionService
     private readonly AgentFlow.Api.Messaging.IWhatsAppTemplateStore? _waTemplates;
     private readonly AgentFlow.Domain.Repositories.IChannelDefinitionRepository? _channels;
     private readonly AgentFlow.Domain.Repositories.IChannelSessionRepository? _sessions;
+    private readonly AgentFlow.Api.Channels.IConversationWindow _window;
 
     public CampaignExecutionService(
         ICampaignStore campaignStore,
@@ -44,9 +45,11 @@ public sealed class CampaignExecutionService : ICampaignExecutionService
         ICampaignFollowUpService? followUps = null,
         AgentFlow.Api.Messaging.IWhatsAppTemplateStore? waTemplates = null,
         AgentFlow.Domain.Repositories.IChannelDefinitionRepository? channels = null,
-        AgentFlow.Domain.Repositories.IChannelSessionRepository? sessions = null)
+        AgentFlow.Domain.Repositories.IChannelSessionRepository? sessions = null,
+        AgentFlow.Api.Channels.IConversationWindow? window = null)
     {
         _sessions = sessions;
+        _window = window ?? new AgentFlow.Api.Channels.ConversationWindow(campaignStore, sessions);
         _followUps = followUps;
         _waTemplates = waTemplates;
         _channels = channels;
@@ -67,23 +70,8 @@ public sealed class CampaignExecutionService : ICampaignExecutionService
     /// The customer wrote to us in the last 24 hours: free text is still allowed. That is a reply to any
     /// campaign, or any message to the campaign's own number (the customer may write first, unprompted).
     /// </summary>
-    private async Task<bool> RecentlyWroteAsync(string tenantId, CampaignContactExecutionContract execution, AgentFlow.Domain.Aggregates.ChannelDefinition? channel, CancellationToken ct)
-    {
-        var now = DateTimeOffset.UtcNow;
-        if (!string.IsNullOrWhiteSpace(execution.RecipientKey))
-        {
-            var latest = await _campaignStore.FindLatestContactByRecipientKeyAsync(tenantId, execution.RecipientKey!, now - TimeSpan.FromDays(30), ct);
-            if (latest is not null && CampaignChannels.WindowOpen(latest, now)) return true;
-        }
-
-        if (_sessions is null || channel is null || string.IsNullOrWhiteSpace(execution.Recipient)) return false;
-        foreach (var identifier in CampaignChannels.SessionIdentifiers(execution.Recipient!))
-        {
-            var session = await _sessions.GetByChannelAndIdentifierAsync(channel.Id, identifier, tenantId, ct);
-            if (CampaignChannels.WindowOpen(session, now)) return true;
-        }
-        return false;
-    }
+    private Task<bool> RecentlyWroteAsync(string tenantId, CampaignContactExecutionContract execution, AgentFlow.Domain.Aggregates.ChannelDefinition? channel, CancellationToken ct)
+        => _window.CanSendFreeTextAsync(tenantId, channel, execution.Recipient ?? string.Empty, DateTimeOffset.UtcNow, ct);
 
     public Task<CampaignAudiencePreviewContract> SimulateAsync(string tenantId, CampaignContract campaign, CancellationToken ct = default)
         => _audienceService.PreviewAsync(tenantId, campaign.AudienceFilterJson, campaign.Id, ct);

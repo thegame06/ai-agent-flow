@@ -43,13 +43,17 @@ public sealed class CampaignFollowUpService : ICampaignFollowUpService
     private readonly AgentFlow.Api.Messaging.IWhatsAppTemplateStore? _templates;
     private readonly AgentFlow.Domain.Repositories.IChannelDefinitionRepository? _channels;
 
+    private readonly AgentFlow.Api.Channels.IConversationWindow _window;
+
     public CampaignFollowUpService(
         ICampaignStore campaigns,
         IOutboundMessageSender outbound,
         ICollectionsStore? collections = null,
         AgentFlow.Api.Messaging.IWhatsAppTemplateStore? templates = null,
-        AgentFlow.Domain.Repositories.IChannelDefinitionRepository? channels = null)
+        AgentFlow.Domain.Repositories.IChannelDefinitionRepository? channels = null,
+        AgentFlow.Api.Channels.IConversationWindow? window = null)
     {
+        _window = window ?? new AgentFlow.Api.Channels.ConversationWindow(campaigns);
         _campaigns = campaigns;
         _outbound = outbound;
         _collections = collections;
@@ -138,8 +142,10 @@ public sealed class CampaignFollowUpService : ICampaignFollowUpService
                 string? templateName = null;
                 IReadOnlyList<string> missing;
                 // Free text only while the customer wrote in the last 24 h; otherwise the step's template.
+                var freeText = !officialWhatsApp || CampaignChannels.WindowOpen(contact, now) ||
+                               await _window.CanSendFreeTextAsync(tenantId, channel, contact.Recipient, now, ct);
                 var useTemplate = !string.IsNullOrWhiteSpace(rule.WhatsAppTemplateId) &&
-                                  (officialWhatsApp && !CampaignChannels.WindowOpen(contact, now) || string.IsNullOrWhiteSpace(rule.Message));
+                                  (!freeText || string.IsNullOrWhiteSpace(rule.Message));
                 if (useTemplate)
                 {
                     var template = await TemplateAsync(tenantId, rule.WhatsAppTemplateId!, templateCache, ct);
@@ -159,7 +165,7 @@ public sealed class CampaignFollowUpService : ICampaignFollowUpService
                     metadata["wa.template_id"] = template.Id;
                     metadata["wa.template_version"] = template.Version.ToString(CultureInfo.InvariantCulture);
                 }
-                else if (officialWhatsApp && !CampaignChannels.WindowOpen(contact, now))
+                else if (!freeText)
                 {
                     // Meta would reject free text: say why instead of a failed send.
                     records.Add(Record(rule, "failed", now, error: "Pasaron mas de 24 h desde el ultimo mensaje del cliente: este seguimiento necesita una plantilla de WhatsApp aprobada."));

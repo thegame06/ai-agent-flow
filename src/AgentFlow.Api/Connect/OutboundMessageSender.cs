@@ -37,12 +37,24 @@ public sealed class OutboundMessageSender : IOutboundMessageSender
     private readonly IChannelDefinitionRepository _channels;
     private readonly IChannelGateway _gateway;
     private readonly IConnectStore _connectStore;
+    private readonly IChannelSessionRepository? _sessions;
+    private readonly AgentFlow.Api.Channels.IConversationWindow? _window;
+    private readonly string? _defaultCountryCode;
 
-    public OutboundMessageSender(IChannelDefinitionRepository channels, IChannelGateway gateway, IConnectStore connectStore)
+    public OutboundMessageSender(
+        IChannelDefinitionRepository channels,
+        IChannelGateway gateway,
+        IConnectStore connectStore,
+        IChannelSessionRepository? sessions = null,
+        AgentFlow.Api.Channels.IConversationWindow? window = null,
+        IConfiguration? configuration = null)
     {
         _channels = channels;
         _gateway = gateway;
         _connectStore = connectStore;
+        _sessions = sessions;
+        _window = window;
+        _defaultCountryCode = configuration?["Messaging:DefaultCountryCode"];
     }
 
     public async Task<OutboundSendResult> SendAsync(
@@ -75,12 +87,22 @@ public sealed class OutboundMessageSender : IOutboundMessageSender
             else
             {
                 channelId = definition.Id;
+                // The same customer address the inbound side uses, so the message lands in the
+                // customer's own conversation (and the inbox shows it there) on every channel.
+                var address = AgentFlow.Api.Channels.CustomerAddress.Normalize(recipient, definition.Type,
+                    definition.Config.GetValueOrDefault("DefaultCountryCode") ?? _defaultCountryCode);
+                var to = address.IsPhone ? address.Value : recipient.Trim();
+                var session = _sessions is null ? null : await _sessions.GetByChannelAndIdentifierAsync(definition.Id, to, tenantId, ct);
                 var outgoing = ChannelMessage.CreateOutgoing(
                     tenantId: tenantId,
                     channelId: definition.Id,
-                    sessionId: $"outbound-{Guid.NewGuid():N}",
-                    to: recipient,
+                    sessionId: session?.Id ?? $"outbound-{Guid.NewGuid():N}",
+                    to: to,
                     content: content);
+                outgoing.Metadata[AgentFlow.Api.Channels.Provenance.ProviderKey] = AgentFlow.Api.Channels.Provenance.ProviderOf(definition);
+                outgoing.Metadata[AgentFlow.Api.Channels.Provenance.ChannelTypeKey] = definition.Type.ToString();
+                outgoing.Metadata[AgentFlow.Api.Channels.Provenance.ChannelNameKey] = definition.Name;
+                outgoing.Metadata[AgentFlow.Api.Channels.Provenance.CustomerAddressKey] = to;
                 outgoing.Metadata["origin"] = campaignId is null ? "workflow" : "campaign";
                 if (campaignId is not null) outgoing.Metadata["campaign_id"] = campaignId;
                 if (templateId is not null) outgoing.Metadata["template_id"] = templateId;
@@ -89,6 +111,15 @@ public sealed class OutboundMessageSender : IOutboundMessageSender
                     foreach (var (key, value) in metadata) outgoing.Metadata[key] = value;
                 }
 
+                // Free text outside WhatsApp's 24-hour window would be rejected by Meta or Twilio:
+                // refuse it here, for every sender, with the reason.
+                var isTemplate = outgoing.Metadata.ContainsKey(AgentFlow.Infrastructure.Channels.WhatsApp.WhatsAppTemplatePayload.MetadataKey);
+                if (!isTemplate && _window is not null &&
+                    !await _window.CanSendFreeTextAsync(tenantId, definition, to, DateTimeOffset.UtcNow, ct))
+                {
+                    error = AgentFlow.Api.Channels.ConversationWindow.ClosedMessage;
+                }
+                else
                 try
                 {
                     var result = await _gateway.SendMessageAsync(definition.Id, outgoing, ct);
