@@ -46,10 +46,11 @@ export const navData: NavSectionProps['data'] = [
     items: [
       {
         title: 'Bandeja',
-        path: paths.dashboard.threads,
+        path: paths.dashboard.conversations,
         icon: ICONS.inbox,
         children: [
-          { title: 'Conversaciones', path: paths.dashboard.threads },
+          { title: 'Conversaciones', path: paths.dashboard.conversations },
+          { title: 'Bandeja comercial', path: paths.dashboard.threads },
           { title: 'Casos sin clasificar', path: paths.dashboard.inbox },
         ],
       },

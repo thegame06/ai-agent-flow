@@ -58,6 +58,7 @@ export const paths = {
     orchestration: `${ROOTS.DASHBOARD}/orchestration`,
     intentMap: `${ROOTS.DASHBOARD}/orchestration`,
     threads: `${ROOTS.DASHBOARD}/threads`,
+    conversations: `${ROOTS.DASHBOARD}/conversations`,
     commerce: `${ROOTS.DASHBOARD}/commerce`,
     campaigns: `${ROOTS.DASHBOARD}/campaigns`,
     whatsappTemplates: `${ROOTS.DASHBOARD}/whatsapp-templates`,
