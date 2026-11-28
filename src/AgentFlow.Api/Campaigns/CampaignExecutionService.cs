@@ -551,14 +551,18 @@ public sealed class CampaignExecutionService : ICampaignExecutionService
                 TenantId = campaign.TenantId,
                 PhoneNumber = execution.Recipient ?? string.Empty,
                 Script = string.IsNullOrWhiteSpace(script) ? null : script,
+                Mode = AgentFlow.Api.Voice.VoiceConversationService.ParseMode(campaign.CallMode),
                 RequestedBy = $"campaign:{campaign.Id}"
             }, ct);
             if (callOutcome is not null)
                 await _campaignStore.UpdateCallOutcomeAsync(callOutcome with
                 {
                     Status = CampaignCallOutcomeStatus.InProgress,
+                    CallId = call.ProviderCallId,
                     Summary = $"Llamada {call.ProviderCallId} ({call.ProviderStatus}).",
-                    NextAction = "conversation_with_assistant",
+                    NextAction = AgentFlow.Api.Voice.VoiceConversationService.ParseMode(campaign.CallMode) == AgentFlow.Api.Voice.VoiceCallMode.Notify
+                        ? "notice"
+                        : "conversation_with_assistant",
                     UpdatedAt = DateTimeOffset.UtcNow
                 }, ct);
             return (await _campaignStore.UpdateContactExecutionAsync(execution with
@@ -566,6 +570,7 @@ public sealed class CampaignExecutionService : ICampaignExecutionService
                 Status = CampaignContactExecutionStatus.Sent,
                 RenderedMessage = script,
                 ChannelMessageId = call.ProviderCallId,
+                CallId = call.ProviderCallId,
                 UpdatedAt = DateTimeOffset.UtcNow
             }, ct))!;
         }

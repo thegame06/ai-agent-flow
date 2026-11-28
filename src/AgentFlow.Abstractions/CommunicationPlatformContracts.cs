@@ -144,6 +144,8 @@ public sealed record ProviderVoiceCallRequest
     public string? AnswerUrl { get; init; }
     /// <summary>Longest a call may last, in seconds.</summary>
     public int? TimeLimitSeconds { get; init; }
+    /// <summary>How long the phone rings before the call counts as not answered, in seconds.</summary>
+    public int? RingTimeoutSeconds { get; init; }
     public IReadOnlyDictionary<string, string> Metadata { get; init; } = new Dictionary<string, string>();
 }
 

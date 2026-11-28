@@ -23,8 +23,12 @@ public sealed record VoiceTurn
     public int Turn { get; init; }
 }
 
+/// <summary>conversation: the assistant takes the call. notify: the script is read twice and the call ends.</summary>
+public enum VoiceCallMode { Conversation, Notify }
+
 public sealed record VoiceCallRequest
 {
+    public VoiceCallMode Mode { get; init; } = VoiceCallMode.Conversation;
     public required string TenantId { get; init; }
     public required string PhoneNumber { get; init; }
     /// <summary>What the call opens with; the voice channel's greeting when empty.</summary>
@@ -65,6 +69,9 @@ public sealed class VoiceConversationService : IVoiceConversationService
     public const int MaxTurns = 20;
     /// <summary>Longest an outbound call may last.</summary>
     public const int MaxCallSeconds = 900;
+    /// <summary>How long the phone rings before the call counts as not answered (the channel's RingTimeoutSeconds overrides it).</summary>
+    public const int DefaultRingSeconds = 20;
+    public const string RingTimeoutKey = "RingTimeoutSeconds";
     private const string Unavailable = "Lo siento, esta línea no está disponible en este momento. Por favor escríbenos por WhatsApp.";
     private const string NotUnderstood = "Disculpa, no te escuché bien. ¿Me lo repites, por favor?";
     private const string Failed = "Disculpa, tuve un problema para procesar tu solicitud. Un asesor te contactará pronto.";
@@ -195,7 +202,9 @@ public sealed class VoiceConversationService : IVoiceConversationService
         }, ct);
 
         var script = string.IsNullOrWhiteSpace(request.Script) ? GreetingOf(channel) : request.Script!.Trim();
-        var rawTwiml = script.StartsWith("<Response", StringComparison.OrdinalIgnoreCase);
+        // A script already in TwiML, or a notice, is played as given: no assistant, no voicemail check
+        // (a reminder left on voicemail still reaches the customer).
+        var rawTwiml = script.StartsWith("<Response", StringComparison.OrdinalIgnoreCase) || request.Mode == VoiceCallMode.Notify;
         var result = await resolved.Adapter.PlaceCallAsync(resolved.Connection, new ProviderVoiceCallRequest
         {
             PhoneNumber = address.Value,
@@ -205,6 +214,7 @@ public sealed class VoiceConversationService : IVoiceConversationService
             AnswerUrl = rawTwiml ? null : WebhookUrl(request.TenantId, "answer",
                 $"channel={Uri.EscapeDataString(request.ChannelKey)}&script={Uri.EscapeDataString(script)}", absolute: true),
             TimeLimitSeconds = MaxCallSeconds,
+            RingTimeoutSeconds = RingSeconds(channel),
             StatusCallbackUrl = WebhookUrl(request.TenantId, "status", $"channel={request.ChannelKey}", absolute: true),
             Metadata = new Dictionary<string, string>
             {
@@ -217,6 +227,18 @@ public sealed class VoiceConversationService : IVoiceConversationService
             request.TenantId, result.ProviderCallId, resolved.Adapter.ProviderId);
         return new VoiceCallResult(result.ProviderCallId, result.ProviderStatus, address.Value, channel.Id);
     }
+
+    public static int RingSeconds(ChannelDefinition channel)
+        => int.TryParse(channel.Config.GetValueOrDefault(RingTimeoutKey), out var seconds) && seconds is >= 5 and <= 600
+            ? seconds
+            : DefaultRingSeconds;
+
+    /// <summary>"notify"/"aviso"/"notice" is a notice; anything else a conversation.</summary>
+    public static VoiceCallMode ParseMode(string? mode) => (mode ?? string.Empty).Trim().ToLowerInvariant() switch
+    {
+        "notify" or "notice" or "aviso" or "notificacion" or "notificación" => VoiceCallMode.Notify,
+        _ => VoiceCallMode.Conversation
+    };
 
     public static string GreetingOf(ChannelDefinition channel)
         => channel.Config.GetValueOrDefault(GreetingKey) is { Length: > 0 } greeting && !string.IsNullOrWhiteSpace(greeting)

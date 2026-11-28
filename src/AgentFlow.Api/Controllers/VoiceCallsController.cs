@@ -53,6 +53,7 @@ public sealed class VoiceCallsController : ControllerBase
                 TenantId = tenantId,
                 PhoneNumber = body.PhoneNumber!,
                 Script = body.Script,
+                Mode = VoiceConversationService.ParseMode(body.Mode),
                 ChannelKey = string.Equals(body.Channel, "callcenter", StringComparison.OrdinalIgnoreCase) ? "callcenter" : "voice",
                 ConnectionId = body.ConnectionId,
                 RequestedBy = _tenantContext.Current?.UserId
@@ -220,6 +221,8 @@ public sealed record ConnectVoiceNumberBody
 
 public sealed record PlaceVoiceCallBody
 {
+    /// <summary>conversation (default): the assistant takes the call. notify: the script is read twice and the call ends.</summary>
+    public string? Mode { get; init; }
     public string? PhoneNumber { get; init; }
     public string? Script { get; init; }
     public string? Channel { get; init; }

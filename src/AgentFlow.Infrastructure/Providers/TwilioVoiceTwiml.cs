@@ -27,8 +27,14 @@ public static class TwilioVoiceTwiml
 
     public static string Response(params string[] verbs) => $"<Response>{string.Concat(verbs)}</Response>";
 
-    public static string Say(string text)
-        => $"<Say language=\"{Language}\" voice=\"{Voice}\">{SecurityElement.Escape(Speakable(text))}</Say>";
+    /// <summary>Speaks <paramref name="text"/>; <paramref name="loop"/> &gt; 1 repeats it (a notice the customer may miss the start of).</summary>
+    public static string Say(string text, int loop = 1)
+        => loop > 1
+            ? $"<Say language=\"{Language}\" voice=\"{Voice}\" loop=\"{loop}\">{SecurityElement.Escape(Speakable(text))}</Say>"
+            : $"<Say language=\"{Language}\" voice=\"{Voice}\">{SecurityElement.Escape(Speakable(text))}</Say>";
+
+    /// <summary>A notice is read this many times before hanging up.</summary>
+    public const int NoticeRepeats = 2;
 
     /// <summary>
     /// Speaks <paramref name="prompt"/> and listens; what the customer said (or nothing, after a

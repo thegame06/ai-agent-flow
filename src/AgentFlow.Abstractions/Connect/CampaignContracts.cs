@@ -117,6 +117,11 @@ public sealed record CampaignContract
     public string? WhatsAppTemplateId { get; init; }
     public string? MessageDraft { get; init; }
     public string? CallScriptDraft { get; init; }
+    /// <summary>
+    /// Call campaigns: "conversation" (default) hands the call to the voice assistant; "notify" reads
+    /// the script twice and hangs up (a reminder, also left on voicemail).
+    /// </summary>
+    public string? CallMode { get; init; }
     public string? PromptOrigin { get; init; }
     public CampaignScheduleType ScheduleType { get; init; } = CampaignScheduleType.Once;
     public string ScheduleExpression { get; init; } = string.Empty;
