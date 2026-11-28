@@ -40,6 +40,7 @@ const AgentContextSettingsPage = lazy(() => import('src/aiagentflow/pages/settin
 const SettingsLayoutPage = lazy(() => import('src/aiagentflow/pages/settings/SettingsLayoutPage'));
 const WorkforcePage = lazy(() => import('src/aiagentflow/pages/system/WorkforcePage'));
 const ThreadsPage = lazy(() => import('src/aiagentflow/pages/threads/ThreadsPage'));
+const CustomerInboxPage = lazy(() => import('src/aiagentflow/pages/inbox/CustomerInboxPage'));
 const CommerceAdminPage = lazy(() => import('src/aiagentflow/pages/commerce/CommerceAdminPage'));
 const CampaignsPage = lazy(() => import('src/aiagentflow/pages/campaigns/CampaignsPage'));
 const CollectionsPage = lazy(() => import('src/aiagentflow/pages/collections/CollectionsPage'));
@@ -95,6 +96,7 @@ export const dashboardRoutes: RouteObject[] = [
       { path: 'marketplace', element: <MarketplacePage /> },
       { path: 'orchestration', element: <Navigate to="/dashboard/intents" replace /> },
       { path: 'threads', element: <ThreadsPage /> },
+      { path: 'conversations', element: <CustomerInboxPage /> },
       { path: 'commerce', element: <CommerceAdminPage /> },
       { path: 'campaigns', element: <CampaignsPage /> },
       { path: 'whatsapp-templates', element: <WhatsAppTemplatesPage /> },
