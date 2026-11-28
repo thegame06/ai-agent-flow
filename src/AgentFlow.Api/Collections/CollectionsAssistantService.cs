@@ -121,7 +121,7 @@ public sealed class CollectionsAssistantService : ICollectionsAssistantService
         {
             Found = true,
             CustomerName = name,
-            FirstName = name?.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault(),
+            FirstName = FirstNameOf(name),
             Currency = loans.Select(l => l.Currency).FirstOrDefault(c => !string.IsNullOrWhiteSpace(c)) ?? "MXN",
             OverdueBalance = open.Sum(l => l.OverdueBalance),
             TotalBalance = open.Sum(l => l.TotalBalance),
@@ -305,6 +305,18 @@ public sealed class CollectionsAssistantService : ICollectionsAssistantService
     {
         var local = CampaignContactPolicy.ToLocal(DateTimeOffset.UtcNow, timezone ?? "America/Mexico_City");
         return $"{local:yyyy-MM-dd} ({Weekdays[(int)local.DayOfWeek]})";
+    }
+
+    private static readonly HashSet<string> GenericNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "cliente", "usuario", "titular", "unknown", "desconocido", "sin", "n/a", "na", "prueba", "test", "sr", "sra", "señor", "señora"
+    };
+
+    /// <summary>The customer's first name for a greeting, or null when the record holds no real name ("Cliente Prueba").</summary>
+    public static string? FirstNameOf(string? fullName)
+    {
+        var first = fullName?.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()?.Trim(',', '.');
+        return string.IsNullOrWhiteSpace(first) || first.Any(char.IsDigit) || GenericNames.Contains(first) ? null : first;
     }
 
     private async Task<CampaignContactExecutionContract?> LatestContactAsync(string tenantId, string phone, CancellationToken ct)

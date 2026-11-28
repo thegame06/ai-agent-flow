@@ -82,6 +82,19 @@ public sealed class InboundParityTests
     }
 
     [Fact]
+    public void TheSameTextTwice_WithoutAProviderId_IsTwoMessages()
+    {
+        var channel = ChannelDefinition.Create(Tenant, "api", ChannelType.Api);
+        var address = CustomerAddress.Normalize("+5215550100002", ChannelType.Api);
+        var hola = new InboundMessage { TenantId = Tenant, Channel = channel, Provider = "api", From = "+5215550100002", Text = "Hola" };
+
+        Assert.NotEqual(InboundMessageIngest.ExternalKey(hola, address, "Hola"), InboundMessageIngest.ExternalKey(hola, address, "Hola"));
+        // A caller retrying with its own correlation id is still one message.
+        var retried = hola with { CorrelationId = "corr-1" };
+        Assert.Equal(InboundMessageIngest.ExternalKey(retried, address, "Hola"), InboundMessageIngest.ExternalKey(retried, address, "Hola"));
+    }
+
+    [Fact]
     public async Task AFileWithoutText_ReachesTheAssistantAsALine_AndKeepsTheAttachment()
     {
         var world = new World(ChannelType.WhatsApp, "twilio");
