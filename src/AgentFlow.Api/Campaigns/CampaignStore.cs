@@ -34,6 +34,13 @@ public interface ICampaignStore
     /// <summary>Most recent contact for a recipient key created after <paramref name="since"/>.</summary>
     /// <summary>Recipient keys of everyone who asked not to be contacted again (any campaign).</summary>
     Task<IReadOnlySet<string>> GetOptedOutRecipientKeysAsync(string tenantId, CancellationToken ct = default);
+    /// <summary>
+    /// Who may not be contacted by a campaign of <paramref name="purpose"/>: a sales or general campaign
+    /// respects every opt-out; a collections campaign respects those given to collections or general
+    /// campaigns (leaving marketing does not stop payment reminders). Null when not supported.
+    /// </summary>
+    Task<IReadOnlySet<string>?> GetOptedOutRecipientKeysForAsync(string tenantId, string purpose, CancellationToken ct = default)
+        => Task.FromResult<IReadOnlySet<string>?>(null);
     /// <summary>Recent contacts to one recipient across campaigns (newest first), for daily send limits.</summary>
     Task<IReadOnlyList<CampaignContactExecutionContract>> GetContactExecutionsByRecipientKeyAsync(string tenantId, string recipientKey, int limit = 50, CancellationToken ct = default);
     /// <summary>Contacts a person must look at (hand-offs, unanswered replies), newest first.</summary>
@@ -332,6 +339,27 @@ public sealed class MongoCampaignStore : ICampaignStore
                 cancellationToken: ct)
             .ToListAsync(ct);
         return keys.Where(k => !string.IsNullOrWhiteSpace(k)).Select(k => k!).ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+
+    public async Task<IReadOnlySet<string>?> GetOptedOutRecipientKeysForAsync(string tenantId, string purpose, CancellationToken ct = default)
+    {
+        if (!string.Equals(purpose, AgentFlow.Domain.Aggregates.ChannelLines.Purposes.Collections, StringComparison.Ordinal))
+            return await GetOptedOutRecipientKeysAsync(tenantId, ct);
+
+        var optOuts = await _contacts.Find(x => x.TenantId == tenantId && x.Outcome == CampaignOutcomes.OptOut)
+            .Project(x => new { x.RecipientKey, x.CampaignId })
+            .ToListAsync(ct);
+        var campaignIds = optOuts.Select(x => x.CampaignId).Distinct().ToList();
+        var salesCampaigns = (await _campaigns.Find(x => x.TenantId == tenantId && campaignIds.Contains(x.Id))
+                .Project(x => new { x.Id, x.CampaignType })
+                .ToListAsync(ct))
+            .Where(x => CampaignChannels.PurposeOf(x.CampaignType) == AgentFlow.Domain.Aggregates.ChannelLines.Purposes.Sales)
+            .Select(x => x.Id)
+            .ToHashSet(StringComparer.Ordinal);
+        return optOuts
+            .Where(x => !string.IsNullOrWhiteSpace(x.RecipientKey) && !salesCampaigns.Contains(x.CampaignId))
+            .Select(x => x.RecipientKey!)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
 
     public async Task<IReadOnlyList<CampaignContactExecutionContract>> GetContactExecutionsByRecipientKeyAsync(string tenantId, string recipientKey, int limit = 50, CancellationToken ct = default)

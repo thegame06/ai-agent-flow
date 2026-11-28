@@ -26,7 +26,7 @@ public sealed class VoiceSessionOrchestrator : IVoiceSessionOrchestrator
         var channelType = string.Equals(request.ChannelKey, "callcenter", StringComparison.OrdinalIgnoreCase)
             ? ChannelType.CallCenter
             : ChannelType.Voice;
-        var channel = await ResolveActiveChannelAsync(request.TenantId, channelType, ct)
+        var channel = await ResolveLineAsync(request, channelType, ct)
             ?? throw new InvalidOperationException($"No active {channelType} channel configured for tenant '{request.TenantId}'.");
 
         var session = await ResolveSessionAsync(request, channel, ct);
@@ -63,14 +63,21 @@ public sealed class VoiceSessionOrchestrator : IVoiceSessionOrchestrator
             CallId = session.Metadata.GetValueOrDefault("voice.call_id") ?? request.CallSid,
             ProviderStatus = session.Metadata.GetValueOrDefault("voice.provider_status") ?? normalizedStatus,
             SessionState = session.Metadata.GetValueOrDefault("voice.session_state") ?? "active",
-            Closed = session.Status == SessionStatus.Closed
+            Closed = session.Status == SessionStatus.Closed || session.Metadata.GetValueOrDefault("voice.session_state") == "ended"
         };
     }
 
-    private async Task<ChannelDefinition?> ResolveActiveChannelAsync(string tenantId, ChannelType type, CancellationToken ct)
+    /// <summary>The line the call belongs to: the one its webhook names, else the one whose number it is.</summary>
+    private async Task<ChannelDefinition?> ResolveLineAsync(VoiceStatusCallbackRequest request, ChannelType type, CancellationToken ct)
     {
-        var channels = await _channelRepo.GetByTypeAsync(type, tenantId, ct);
-        return channels.FirstOrDefault(x => x.Status == ChannelStatus.Active);
+        if (ChannelLines.IsLineKey(request.ChannelKey))
+        {
+            var line = await _channelRepo.GetByIdAsync(request.ChannelKey, request.TenantId, ct);
+            if (line is not null && line.TenantId == request.TenantId && line.Status == ChannelStatus.Active && ChannelLines.IsVoice(line.Type))
+                return line;
+        }
+        var channels = await _channelRepo.GetByTypeAsync(type, request.TenantId, ct);
+        return ChannelLines.Pick(channels, request.BusinessSide());
     }
 
     private async Task<ChannelSession> ResolveSessionAsync(

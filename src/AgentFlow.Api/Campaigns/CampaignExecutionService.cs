@@ -73,6 +73,43 @@ public sealed class CampaignExecutionService : ICampaignExecutionService
     private Task<bool> RecentlyWroteAsync(string tenantId, CampaignContactExecutionContract execution, AgentFlow.Domain.Aggregates.ChannelDefinition? channel, CancellationToken ct)
         => _window.CanSendFreeTextAsync(tenantId, channel, execution.Recipient ?? string.Empty, DateTimeOffset.UtcNow, ct);
 
+    /// <summary>
+    /// A run that may not happen on this line: recorded as cancelled with the reason, nobody is
+    /// contacted. Outside the line's hours a scheduled campaign is moved to when they open.
+    /// </summary>
+    private async Task<CampaignRunContract?> BlockedByLineAsync(CampaignContract campaign, AgentFlow.Domain.Aggregates.ChannelDefinition? line,
+        string requestedBy, CampaignRunTrigger trigger, CancellationToken ct)
+    {
+        if (line is null) return null;
+        var now = DateTimeOffset.UtcNow;
+        var reason = CampaignChannels.LineMismatch(line, campaign);
+        DateTimeOffset? retryAt = null;
+        if (reason is null && !AgentFlow.Domain.Aggregates.ChannelLines.WithinContactHours(line, now))
+        {
+            retryAt = AgentFlow.Domain.Aggregates.ChannelLines.NextContactTime(line, now);
+            reason = $"Fuera del horario de contacto de la línea «{line.Name}» ({line.Config.GetValueOrDefault(AgentFlow.Domain.Aggregates.ChannelLines.ContactHoursKey)})." +
+                     (trigger == CampaignRunTrigger.Manual ? " Vuelve a ejecutarla dentro del horario." : " Se ejecutará cuando abra el horario.");
+        }
+        if (reason is null) return null;
+
+        var run = await _campaignStore.CreateRunAsync(new CampaignRunContract
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            TenantId = campaign.TenantId,
+            CampaignId = campaign.Id,
+            Status = CampaignRunStatus.Cancelled,
+            TriggeredBy = trigger,
+            StartedAt = now,
+            CompletedAt = now,
+            CountersJson = "{}",
+            ErrorSummaryJson = JsonSerializer.Serialize(new[] { reason }),
+            RequestedBy = requestedBy
+        }, ct);
+        if (retryAt is not null && trigger != CampaignRunTrigger.Manual)
+            await _campaignStore.UpsertCampaignAsync(campaign with { NextRunAt = retryAt, UpdatedAt = now }, ct);
+        return run;
+    }
+
     public Task<CampaignAudiencePreviewContract> SimulateAsync(string tenantId, CampaignContract campaign, CancellationToken ct = default)
         => _audienceService.PreviewAsync(tenantId, campaign.AudienceFilterJson, campaign.Id, ct);
 
@@ -81,9 +118,16 @@ public sealed class CampaignExecutionService : ICampaignExecutionService
         var campaign = await _campaignStore.GetCampaignAsync(tenantId, campaignId, ct)
             ?? throw new InvalidOperationException("Campaign not found.");
 
+        // The line's rules come first: its purpose must fit the campaign and customers are only
+        // contacted within its hours (a scheduled campaign comes back when they open).
+        var line = _channels is null ? null : await CampaignChannels.ResolveAsync(_channels, campaign, ct);
+        if (await BlockedByLineAsync(campaign, line, requestedBy, trigger, ct) is { } blocked)
+            return blocked;
+
         // The whole audience (a preview is capped at 50 contacts for display).
         var preview = await _audienceService.ResolveAsync(tenantId, campaign.AudienceFilterJson, campaign.Id, ct);
-        var optedOut = await _campaignStore.GetOptedOutRecipientKeysAsync(tenantId, ct);
+        var optedOut = await _campaignStore.GetOptedOutRecipientKeysForAsync(tenantId, CampaignChannels.PurposeOf(campaign.CampaignType), ct)
+                       ?? await _campaignStore.GetOptedOutRecipientKeysAsync(tenantId, ct);
         var contactPolicy = CampaignContactPolicy.From(campaign);
         var run = await _campaignStore.CreateRunAsync(new CampaignRunContract
         {
@@ -552,6 +596,8 @@ public sealed class CampaignExecutionService : ICampaignExecutionService
                 PhoneNumber = execution.Recipient ?? string.Empty,
                 Script = string.IsNullOrWhiteSpace(script) ? null : script,
                 Mode = AgentFlow.Api.Voice.VoiceConversationService.ParseMode(campaign.CallMode),
+                // A campaign that chose a line calls from it (its number, its assistant).
+                ChannelKey = AgentFlow.Api.Voice.VoiceConversationService.ChannelKeyOf(campaign.Channel),
                 RequestedBy = $"campaign:{campaign.Id}"
             }, ct);
             if (callOutcome is not null)

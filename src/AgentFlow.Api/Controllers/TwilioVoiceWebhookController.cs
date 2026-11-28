@@ -4,6 +4,7 @@ using AgentFlow.Api.Connect;
 using AgentFlow.Api.TestStudio;
 using AgentFlow.Api.Voice;
 using AgentFlow.Api.Workflow;
+using AgentFlow.Infrastructure.Providers;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -52,6 +53,7 @@ public sealed class TwilioVoiceWebhookController : ControllerBase
     [HttpPost("status")]
     public async Task<IActionResult> ReceiveStatus(
         [FromRoute] string tenantId,
+        [FromQuery(Name = "channel")] string? channelKey,
         [FromForm] TwilioVoiceStatusForm form,
         CancellationToken ct)
     {
@@ -63,15 +65,15 @@ public sealed class TwilioVoiceWebhookController : ControllerBase
         // A campaign call: its contact and outcome follow what happened on the phone.
         if (_callTracker is not null && !string.IsNullOrWhiteSpace(form.CallSid))
             await _callTracker.ApplyAsync(tenantId, form.CallSid!, normalizedStatus, form.AnsweredBy, form.CallDuration, ct);
-        var channel = string.Equals(form.Channel, "callcenter", StringComparison.OrdinalIgnoreCase)
-            ? "callcenter"
-            : "voice";
+        // The callback names the call's line (a channel id) or its type; the type keys the events.
+        var line = VoiceConversationService.ChannelKeyOf(channelKey ?? form.Channel);
+        var channel = line == "callcenter" ? "callcenter" : "voice";
         var providerDefaults = await ResolveVoiceProviderDefaultsAsync(tenantId, channel, ct);
         var session = await _voiceSessionOrchestrator.HandleStatusCallbackAsync(
             new VoiceStatusCallbackRequest
             {
                 TenantId = tenantId,
-                ChannelKey = channel,
+                ChannelKey = line,
                 CallSid = form.CallSid ?? Guid.NewGuid().ToString("N"),
                 CallStatus = form.CallStatus ?? "unknown",
                 From = form.From,
@@ -175,9 +177,43 @@ public sealed class TwilioVoiceWebhookController : ControllerBase
         return Ok(new { status = "accepted" });
     }
 
+    /// <summary>
+    /// Incoming call on a webhook shared by every tenant (one Twilio account, or subaccounts, whose
+    /// numbers all point here): the number called says whose line it is, and that tenant's Twilio
+    /// account must have signed the request. A number no line (or more than one tenant) claims is refused.
+    /// </summary>
+    [HttpPost("/api/v1/webhooks/twilio/voice/incoming")]
+    public async Task<IActionResult> ReceiveIncomingForNumber(
+        [FromForm] TwilioVoiceStatusForm form,
+        [FromServices] AgentFlow.Api.Channels.ChannelLineService lines,
+        CancellationToken ct)
+    {
+        var line = await lines.FindOwnerAsync(form.To, null, AgentFlow.Domain.Aggregates.ChannelLines.IsVoice, ct);
+        if (line is null)
+        {
+            _logger.LogWarning("Shared Twilio voice webhook: no line owns {To}.", form.To);
+            return Content(TwilioVoiceTwiml.Response(TwilioVoiceTwiml.Say("Lo siento, este número no está disponible."), TwilioVoiceTwiml.Hangup()), "text/xml");
+        }
+        return await ReceiveIncoming(line.TenantId, line.Id, form, ct);
+    }
+
+    /// <summary>Status of a call on the shared webhook: routed to the tenant whose line the business number is.</summary>
+    [HttpPost("/api/v1/webhooks/twilio/voice/status")]
+    public async Task<IActionResult> ReceiveStatusForNumber(
+        [FromForm] TwilioVoiceStatusForm form,
+        [FromServices] AgentFlow.Api.Channels.ChannelLineService lines,
+        CancellationToken ct)
+    {
+        var business = form.Direction?.StartsWith("outbound", StringComparison.OrdinalIgnoreCase) == true ? form.From : form.To;
+        var line = await lines.FindOwnerAsync(business, null, AgentFlow.Domain.Aggregates.ChannelLines.IsVoice, ct);
+        if (line is null) return NotFound(new { error = "No line owns this number." });
+        return await ReceiveStatus(line.TenantId, line.Id, form, ct);
+    }
+
     [HttpPost("incoming")]
     public async Task<IActionResult> ReceiveIncoming(
         [FromRoute] string tenantId,
+        [FromQuery(Name = "channel")] string? channelKey,
         [FromForm] TwilioVoiceStatusForm form,
         CancellationToken ct)
     {
@@ -185,21 +221,22 @@ public sealed class TwilioVoiceWebhookController : ControllerBase
         if (!signatureValid)
             return Unauthorized(new { error = "Invalid Twilio signature." });
 
-        var channel = string.Equals(form.Channel, "callcenter", StringComparison.OrdinalIgnoreCase)
-            ? "callcenter"
-            : "voice";
+        var requested = VoiceConversationService.ChannelKeyOf(channelKey ?? form.Channel);
+        var channel = requested == "callcenter" ? "callcenter" : "voice";
         var providerDefaults = await ResolveVoiceProviderDefaultsAsync(tenantId, channel, ct);
-        if (await _conversation.ResolveChannelAsync(tenantId, channel, ct) is null)
+        // The line is the number the customer called: each line answers with its own assistant.
+        var line = await _conversation.ResolveLineAsync(tenantId, requested, form.To, ct);
+        if (line is null)
         {
-            _logger.LogWarning("Incoming Twilio call without an active {Channel} channel. Tenant={TenantId}", channel, tenantId);
-            return Content(await _conversation.GreetAsync(tenantId, channel, ct), "text/xml");
+            _logger.LogWarning("Incoming Twilio call without an active {Channel} line. Tenant={TenantId} To={To}", channel, tenantId, form.To);
+            return Content(await _conversation.GreetAsync(tenantId, requested, form.To, ct), "text/xml");
         }
 
         var session = await _voiceSessionOrchestrator.HandleStatusCallbackAsync(
             new VoiceStatusCallbackRequest
             {
                 TenantId = tenantId,
-                ChannelKey = channel,
+                ChannelKey = line.Id,
                 CallSid = form.CallSid ?? Guid.NewGuid().ToString("N"),
                 CallStatus = string.IsNullOrWhiteSpace(form.CallStatus) ? "initiated" : form.CallStatus!,
                 From = form.From,
@@ -285,8 +322,8 @@ public sealed class TwilioVoiceWebhookController : ControllerBase
             "received",
             $"Incoming call from {form.From ?? "unknown"}");
 
-        // The assistant greets and listens; each turn comes back to "gather".
-        return Content(await _conversation.GreetAsync(tenantId, channel, ct), "text/xml");
+        // The line's assistant greets and listens; each turn comes back to "gather".
+        return Content(await _conversation.GreetAsync(tenantId, line.Id, form.To, ct), "text/xml");
     }
 
     /// <summary>
@@ -306,9 +343,7 @@ public sealed class TwilioVoiceWebhookController : ControllerBase
         if (!signatureValid)
             return Unauthorized(new { error = "Invalid Twilio signature." });
 
-        var channel = string.Equals(channelKey ?? form.Channel, "callcenter", StringComparison.OrdinalIgnoreCase)
-            ? "callcenter"
-            : "voice";
+        var channel = VoiceConversationService.ChannelKeyOf(channelKey ?? form.Channel);
         AppendVoiceTestEvent(tenantId, form.CallSid, "transcript", "voice_speech",
             string.IsNullOrWhiteSpace(form.SpeechResult) ? "empty" : "received",
             string.IsNullOrWhiteSpace(form.SpeechResult) ? "No speech" : $"Customer said: {form.SpeechResult}");
@@ -345,7 +380,7 @@ public sealed class TwilioVoiceWebhookController : ControllerBase
         if (!signatureValid)
             return Unauthorized(new { error = "Invalid Twilio signature." });
 
-        var channel = string.Equals(channelKey, "callcenter", StringComparison.OrdinalIgnoreCase) ? "callcenter" : "voice";
+        var channel = VoiceConversationService.ChannelKeyOf(channelKey);
         _logger.LogInformation("Outbound call answered. Tenant={TenantId} CallSid={CallSid} AnsweredBy={AnsweredBy}",
             tenantId, form.CallSid, form.AnsweredBy);
         AppendVoiceTestEvent(tenantId, form.CallSid, "call_answered", "voice_call", form.AnsweredBy ?? "unknown",

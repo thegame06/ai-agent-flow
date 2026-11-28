@@ -84,6 +84,10 @@ public sealed class WhatsAppChannelMetaService : IWhatsAppChannelMetaService
         if (channel is null || channel.Type != ChannelType.WhatsApp) return (null, "Canal de WhatsApp no encontrado.");
         if (string.IsNullOrWhiteSpace(request.BusinessAccountId)) return (null, "Falta el id de la cuenta de WhatsApp Business (WABA).");
         if (string.IsNullOrWhiteSpace(request.PhoneNumberId)) return (null, "Falta el id del numero de telefono.");
+        // A Meta number reaches one line: two channels (or two tenants) with it would split its messages.
+        var conflict = await AgentFlow.Api.Channels.ChannelLineService.NumberConflictAsync(_channels, tenantId, channel.Id, channel.Type,
+            null, request.PhoneNumberId, ct);
+        if (conflict is not null) return (null, conflict);
 
         var connectionId = MetaConnectionOf(channel) ?? $"meta-{channel.Id}";
         var existing = await _connections.GetConnectionAsync(tenantId, connectionId, ct);
