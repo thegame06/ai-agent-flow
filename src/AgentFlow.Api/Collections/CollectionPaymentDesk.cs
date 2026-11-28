@@ -147,6 +147,45 @@ public static class CollectionPaymentDesk
 {
     /// <summary>The assistant writes this; it is replaced by <see cref="RenderForChat"/> right before sending.</summary>
     public const string Placeholder = "[MEDIOS_DE_PAGO]";
+
+    /// <summary>How long a pending report keeps collecting the details the customer sends afterwards.</summary>
+    public static readonly TimeSpan CompletionWindow = TimeSpan.FromHours(24);
+
+    /// <summary>
+    /// The customer's pending report that a new report only completes: same customer, reported in the
+    /// last 24 hours, the same amount (or one of the two without amount), and not a different receipt.
+    /// Two different receipts are two payments.
+    /// </summary>
+    public static CollectionPaymentReportDocument? PendingToComplete(
+        IEnumerable<CollectionPaymentReportDocument> reports, CollectionPaymentReportDocument incoming, DateTimeOffset now)
+        => reports
+            .Where(r => r.Status == CollectionPaymentReportStatus.Pending)
+            .Where(r => r.TenantId == incoming.TenantId && r.PartyId == incoming.PartyId)
+            .Where(r => now - r.CreatedAt < CompletionWindow)
+            .Where(r => r.Amount is null || incoming.Amount is null || r.Amount == incoming.Amount)
+            .Where(r => r.Reference is null || incoming.Reference is null ||
+                        string.Equals(r.Reference, incoming.Reference, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(r => r.CreatedAt)
+            .FirstOrDefault();
+
+    /// <summary>Fills the existing report with what the new one adds; what was already known stays.</summary>
+    public static void Complete(CollectionPaymentReportDocument report, CollectionPaymentReportDocument incoming)
+    {
+        report.Amount ??= incoming.Amount;
+        if (report.PaidOn is null && incoming.PaidOn is not null)
+        {
+            report.PaidOn = incoming.PaidOn;
+            report.PaidOnText = incoming.PaidOnText;
+        }
+        report.PaidOnText ??= incoming.PaidOnText;
+        report.Reference ??= incoming.Reference;
+        report.Method ??= incoming.Method;
+        report.LoanId ??= incoming.LoanId;
+        report.ContactExecutionId ??= incoming.ContactExecutionId;
+        if (!string.IsNullOrWhiteSpace(incoming.Notes) &&
+            (report.Notes is null || !report.Notes.Contains(incoming.Notes, StringComparison.OrdinalIgnoreCase)))
+            report.Notes = report.Notes is null ? incoming.Notes : $"{report.Notes} {incoming.Notes}";
+    }
     private static readonly System.Text.RegularExpressions.Regex PlaceholderPattern =
         new(@"\[\s*MEDIOS[\s_]+DE[\s_]+PAGO\s*\]", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
 
