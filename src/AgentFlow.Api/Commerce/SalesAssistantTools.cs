@@ -127,6 +127,39 @@ internal abstract class SalesAssistantToolBase : IToolPlugin
     }
 
     public const string LastQuoteKey = "sales.last_quote";
+    public const string LastFoundKey = "sales.last_found_sku";
+
+    /// <summary>Remembers the product a search narrowed down to, for a quote that comes without a sku.</summary>
+    protected static async Task RememberFoundAsync(IServiceProvider services, SalesCall call, string sku, CancellationToken ct)
+    {
+        var sessions = services.GetService<IChannelSessionRepository>();
+        if (sessions is null || string.IsNullOrWhiteSpace(call.SessionId)) return;
+        var session = await sessions.GetByIdAsync(call.SessionId!, call.TenantId, ct);
+        if (session is null) return;
+        session.Metadata[LastFoundKey] = sku;
+        await sessions.UpdateAsync(session, ct);
+    }
+
+    /// <summary>
+    /// The lines to price: the ones the model passed when they are all in the catalog; otherwise what
+    /// this conversation last quoted, or the single product its last search found.
+    /// </summary>
+    protected static async Task<List<SaleLine>> LinesOrRememberedAsync(IServiceProvider services, SalesCall call, JsonElement input, CancellationToken ct)
+    {
+        var commerce = services.GetRequiredService<ICommerceStore>();
+        var lines = await ResolveSkusAsync(commerce, call.TenantId, Lines(input), ct);
+        var allKnown = lines.Count > 0;
+        foreach (var line in lines)
+            allKnown &= await commerce.GetInventoryBySkuAsync(call.TenantId, line.Sku, ct) is not null;
+        if (allKnown) return lines;
+
+        var sessions = services.GetService<IChannelSessionRepository>();
+        var session = sessions is null || string.IsNullOrWhiteSpace(call.SessionId) ? null : await sessions.GetByIdAsync(call.SessionId!, call.TenantId, ct);
+        if (LastQuote(session) is { Lines.Count: > 0 } quoted) return quoted.Lines;
+        if (session?.Metadata.GetValueOrDefault(LastFoundKey) is { Length: > 0 } sku)
+            return [new SaleLine { Sku = sku, Quantity = lines.FirstOrDefault()?.Quantity ?? 1 }];
+        return lines;
+    }
 
     /// <summary>What was quoted to the customer in this conversation: what they confirm is what is sold.</summary>
     public sealed record SavedQuote(List<SaleLine> Lines, InstallmentPlanRequest? Plan);
@@ -239,6 +272,7 @@ internal sealed class SalesSearchCatalogTool(IServiceScopeFactory scopeFactory) 
             }
         }
         var active = items.Where(i => i.Active).ToList();
+        if (active.Count == 1) await RememberFoundAsync(services, call, active[0].Sku, ct);
         return new
         {
             currency = settings.Currency,
@@ -264,11 +298,12 @@ internal sealed class SalesQuoteTool(IServiceScopeFactory scopeFactory) : SalesA
     public override string Description =>
         "Calcula el total exacto (con impuesto de la tienda) de los productos elegidos y, si se pide, el plan de cuotas. No vende: usalo para cotizar antes de confirmar.";
     public override string InputSchemaJson =>
-        """{"type":"object","required":["items"],"properties":{"items":{"type":"array","items":{"type":"object","required":["sku"],"properties":{"sku":{"type":"string"},"quantity":{"type":"number"}}}},"installments":{"type":"object","description":"Solo si el cliente quiere pagar en cuotas","properties":{"count":{"type":"integer"},"frequency":{"type":"string","enum":["weekly","biweekly","monthly"]},"downPayment":{"type":"number"}}}}}""";
+        """{"type":"object","properties":{"items":{"type":"array","description":"Omitelo si no tienes el sku: se usa el ultimo producto buscado o cotizado en esta conversacion","items":{"type":"object","required":["sku"],"properties":{"sku":{"type":"string"},"quantity":{"type":"number"}}}},"installments":{"type":"object","description":"Solo si el cliente quiere pagar en cuotas","properties":{"count":{"type":"integer"},"frequency":{"type":"string","enum":["weekly","biweekly","monthly"]},"downPayment":{"type":"number"}}}}}""";
 
     protected override async Task<object> RunAsync(IServiceProvider services, SalesCall call, JsonElement input, CancellationToken ct)
     {
-        var lines = await ResolveSkusAsync(services.GetRequiredService<ICommerceStore>(), call.TenantId, Lines(input), ct);
+        var lines = await LinesOrRememberedAsync(services, call, input, ct);
+        if (lines.Count == 0) return new { ok = false, error = "Busca primero el producto con af_sales_search_catalog." };
         var quote = await services.GetRequiredService<ISalesService>().QuoteAsync(call.TenantId, lines, ct);
         if (quote.Error is not null) return new { ok = false, error = quote.Error };
 
@@ -349,12 +384,8 @@ internal sealed class SalesCreateSaleTool(IServiceScopeFactory scopeFactory) : S
 
         // The model often loses the sku between turns: what it passes is used only when every line
         // is in the catalog; otherwise the sale is what was quoted (and confirmed) in this conversation.
-        var lines = await ResolveSkusAsync(commerce, call.TenantId, Lines(input), ct);
+        var lines = await LinesOrRememberedAsync(services, call, input, ct);
         var quoted = LastQuote(session);
-        var allKnown = lines.Count > 0;
-        foreach (var line in lines)
-            allKnown &= await commerce.GetInventoryBySkuAsync(call.TenantId, line.Sku, ct) is not null;
-        if (!allKnown && quoted is { Lines.Count: > 0 }) lines = quoted.Lines;
         var method = SalesService.NormalizeMethod(Text(input, "paymentMethod"));
         var plan = Plan(input) is { Count: > 0 } given ? given : quoted?.Plan;
 
@@ -418,7 +449,7 @@ Herramientas:
 - af_sales_create_sale: registra la venta. Solo cuando el cliente confirmo productos, cantidad, total y forma de pago.
 - af_conversation_handoff_to_human: pasa a un asesor SOLO si el cliente lo pide, si buscaste en el catalogo en este mismo turno y no hay lo que quiere, o si una herramienta fallo.
 
-Lo que ves del historial son solo los mensajes, no los resultados de las herramientas: para cotizar necesitas el sku exacto, asi que en cada turno en que cotices llama primero af_sales_search_catalog para tenerlo. Nunca inventes un sku. Nunca digas que algo no esta en el catalogo sin haberlo buscado en ese turno.
+Lo que ves del historial son solo los mensajes, no los resultados de las herramientas. Para cotizar pasa el sku si lo tienes; si no, llama af_sales_quote sin items (usa el ultimo producto buscado o cotizado en la conversacion) o busca de nuevo. Nunca inventes un sku. Nunca digas que tienes problemas con el catalogo o con una herramienta si no la llamaste en este turno y te devolvio un error. Nunca digas que algo no esta en el catalogo sin haberlo buscado en ese turno.
 
 Como vender:
 1. Entiende que necesita con una sola pregunta por turno, sin repetir preguntas.
