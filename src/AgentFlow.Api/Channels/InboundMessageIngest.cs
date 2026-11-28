@@ -47,6 +47,12 @@ public sealed class InboundMessageIngest : IInboundMessageIngest
     private readonly IServiceScopeFactory? _scopes;
     private readonly IMediaStore? _media;
     private readonly AgentFlow.Api.Collections.ICollectionsAssistantService? _receipts;
+    private readonly InboundBatcher? _batcher;
+    private readonly IChannelMessageRepository? _messages;
+    private readonly TimeSpan _batchWindow;
+
+    /// <summary>How long to wait for more messages from the customer before answering them together.</summary>
+    public static readonly TimeSpan DefaultBatchWindow = TimeSpan.FromSeconds(2);
     private readonly IReadOnlyList<IInboundMediaFetcher> _fetchers;
     private readonly ILogger<InboundMessageIngest> _logger;
     private readonly string? _defaultCountryCode;
@@ -66,9 +72,16 @@ public sealed class InboundMessageIngest : IInboundMessageIngest
         IServiceScopeFactory? scopes = null,
         IMediaStore? media = null,
         IEnumerable<IInboundMediaFetcher>? fetchers = null,
-        AgentFlow.Api.Collections.ICollectionsAssistantService? receipts = null)
+        AgentFlow.Api.Collections.ICollectionsAssistantService? receipts = null,
+        InboundBatcher? batcher = null,
+        IChannelMessageRepository? messages = null)
     {
         _receipts = receipts;
+        _batcher = batcher;
+        _messages = messages;
+        _batchWindow = int.TryParse(configuration?["Messaging:BatchWindowMs"], out var ms) && ms >= 0
+            ? TimeSpan.FromMilliseconds(ms)
+            : DefaultBatchWindow;
         _media = media;
         _fetchers = fetchers?.ToList() ?? [];
         _gateway = gateway;
@@ -114,6 +127,18 @@ public sealed class InboundMessageIngest : IInboundMessageIngest
         var session = await handler.GetOrCreateSessionAsync(context, channel, ct);
         CarryOverHandoff(prior, session);
         var restarted = RestartIfIdle(session, _restartAfter, DateTimeOffset.UtcNow);
+        if (!address.Unresolved)
+        {
+            // One conversation per customer: if they were just talking on another channel, the
+            // assistant continues that conversation here (same thread, same advisor hand-off).
+            var others = await _sessions.GetActiveByUserAsync(address.Value, message.TenantId, ct) ?? [];
+            if (ConversationToFollow(session, others, _restartAfter, DateTimeOffset.UtcNow) is { } latest)
+            {
+                CarryOverHandoff(latest, session);
+                if (!string.IsNullOrWhiteSpace(latest.ThreadId) && latest.ThreadId != session.ThreadId)
+                    session.LinkThread(latest.ThreadId!);
+            }
+        }
 
         var provider = message.Provider.Trim().ToLowerInvariant();
         message = message with { Attachments = await StoreAttachmentsAsync(message, provider, ct) };
@@ -154,15 +179,37 @@ public sealed class InboundMessageIngest : IInboundMessageIngest
 
         await AttributeAsync(message.TenantId, address.Value, text, channel, ct);
 
+        // The customer's one conversation: bursts are batched and turns serialized per customer, not per channel.
+        var customerKey = address.Unresolved ? session.Id : $"{message.TenantId}:{address.Value}";
+
+        // Messages sent seconds apart are answered once, together.
+        if (!inBackground && _batcher is not null && _batchWindow > TimeSpan.Zero)
+        {
+            var version = _batcher.Add(customerKey, incoming);
+            await Task.Delay(_batchWindow, CancellationToken.None);
+            var batch = _batcher.TakeIfLatest(customerKey, version);
+            if (batch is null)
+            {
+                // A newer message will answer this one too; keep it in the conversation as received.
+                incoming.Status = MessageStatus.Received;
+                incoming.Metadata["agentflow.batched"] = "true";
+                if (_messages is not null) await _messages.InsertAsync(incoming, CancellationToken.None);
+                return new(InboundStatus.Accepted, session, incoming, InboxMessageId: inbox.Id, Reason: "Se responde junto con el siguiente mensaje.");
+            }
+            incoming = InboundBatcher.Combine(batch);
+        }
+
         if (inBackground && _scopes is not null)
         {
-            _ = Task.Run(() => ProcessInScopeAsync(incoming), CancellationToken.None);
+            _ = Task.Run(() => ProcessInScopeAsync(incoming, customerKey), CancellationToken.None);
             return new(InboundStatus.Accepted, session, incoming, InboxMessageId: inbox.Id);
         }
 
         // The reply goes out through the provider; a caller giving up (bridge or Twilio timeouts)
         // must not cancel the assistant halfway.
-        var reply = await _gateway.ProcessMessageAsync(incoming, CancellationToken.None);
+        ChannelMessage reply;
+        using (_batcher is null ? null : await _batcher.TurnAsync(customerKey))
+            reply = await _gateway.ProcessMessageAsync(incoming, CancellationToken.None);
         var failed = reply.Direction == MessageDirection.Incoming && reply.Status == MessageStatus.Failed;
         return new(failed ? InboundStatus.Failed : InboundStatus.Processed, session, incoming, reply, inbox.Id, failed ? reply.ErrorMessage : null);
     }
@@ -282,6 +329,21 @@ public sealed class InboundMessageIngest : IInboundMessageIngest
         return true;
     }
 
+    /// <summary>
+    /// The customer's conversation on another channel that this message continues: their most recent
+    /// session elsewhere, active within the restart window and more recent than this channel's own.
+    /// </summary>
+    public static ChannelSession? ConversationToFollow(ChannelSession session, IEnumerable<ChannelSession> others, TimeSpan restartAfter, DateTimeOffset now)
+    {
+        var latest = others
+            .Where(o => o.Id != session.Id && o.TenantId == session.TenantId && now - o.LastActivityAt < restartAfter)
+            .OrderByDescending(o => o.LastActivityAt)
+            .FirstOrDefault();
+        if (latest is null) return null;
+        var mine = session.MessageCount == 0 ? DateTimeOffset.MinValue : session.LastActivityAt;
+        return latest.LastActivityAt > mine ? latest : null;
+    }
+
     /// <summary>A conversation opened before addresses were canonical keeps going under the canonical address.</summary>
     private async Task AdoptLegacySessionAsync(InboundMessage message, CustomerAddress address, CancellationToken ct)
     {
@@ -349,10 +411,11 @@ public sealed class InboundMessageIngest : IInboundMessageIngest
         }
     }
 
-    private async Task ProcessInScopeAsync(ChannelMessage incoming)
+    private async Task ProcessInScopeAsync(ChannelMessage incoming, string customerKey)
     {
         try
         {
+            using var turn = _batcher is null ? null : await _batcher.TurnAsync(customerKey);
             using var scope = _scopes!.CreateScope();
             var gateway = scope.ServiceProvider.GetRequiredService<IChannelGateway>();
             await gateway.ProcessMessageAsync(incoming, CancellationToken.None);

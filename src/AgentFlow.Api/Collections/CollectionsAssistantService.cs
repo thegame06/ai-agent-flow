@@ -123,7 +123,8 @@ public sealed class CollectionsAssistantService : ICollectionsAssistantService
         return new CollectionsCustomerContext
         {
             Found = true,
-            CustomerName = name,
+            // A placeholder name ("Cliente Prueba") is not shown to the assistant: it would greet with it.
+            CustomerName = FirstNameOf(name) is null ? null : name,
             FirstName = FirstNameOf(name),
             Currency = loans.Select(l => l.Currency).FirstOrDefault(c => !string.IsNullOrWhiteSpace(c)) ?? "MXN",
             OverdueBalance = open.Sum(l => l.OverdueBalance),
