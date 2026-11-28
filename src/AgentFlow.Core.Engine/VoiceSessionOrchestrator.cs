@@ -31,12 +31,13 @@ public sealed class VoiceSessionOrchestrator : IVoiceSessionOrchestrator
 
         var session = await ResolveSessionAsync(request, channel, ct);
         var normalizedStatus = request.CallStatus.Trim().ToLowerInvariant();
-        var phoneNumber = !string.IsNullOrWhiteSpace(request.To) ? request.To : request.From;
+        var phoneNumber = request.CustomerSide();
 
-        if (string.IsNullOrWhiteSpace(session.Metadata.GetValueOrDefault("voice.call_id")))
+        // The customer's session outlives a call: a different call SID is a new call on it.
+        var currentCall = session.Metadata.GetValueOrDefault("voice.call_id");
+        if (string.IsNullOrWhiteSpace(currentCall) || !string.Equals(currentCall, request.CallSid, StringComparison.Ordinal))
             session.StartVoiceCall(request.CallSid, phoneNumber, request.Direction, normalizedStatus);
-        else
-            session.UpdateVoiceCallStatus(normalizedStatus, request.CallDuration);
+        session.UpdateVoiceCallStatus(normalizedStatus, request.CallDuration);
 
         session.Metadata["voice.channel"] = request.ChannelKey;
         session.Metadata["voice.last_callback_at"] = DateTimeOffset.UtcNow.ToString("O");
@@ -84,8 +85,8 @@ public sealed class VoiceSessionOrchestrator : IVoiceSessionOrchestrator
                 return byHint;
         }
 
-        var identifier = !string.IsNullOrWhiteSpace(request.To)
-            ? request.To!
+        var identifier = request.CustomerSide() is { Length: > 0 } customer
+            ? customer
             : request.CallSid;
 
         var existing = await _sessionRepo.GetByChannelAndIdentifierAsync(channel.Id, identifier, request.TenantId, ct);

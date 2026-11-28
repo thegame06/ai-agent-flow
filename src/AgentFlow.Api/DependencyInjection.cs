@@ -107,6 +107,7 @@ public static class DependencyInjection
             .AddSingleton<AgentFlow.Api.Channels.IMediaStore, AgentFlow.Api.Channels.MongoMediaStore>()
             .AddSingleton<AgentFlow.Api.Channels.InboundBatcher>()
             .AddScoped<AgentFlow.Api.Voice.ITwilioCredentials, AgentFlow.Api.Voice.TwilioCredentials>()
+            .AddScoped<AgentFlow.Api.Voice.IVoiceConversationService, AgentFlow.Api.Voice.VoiceConversationService>()
             .AddScoped<AgentFlow.Api.Channels.IInboundMediaFetcher, AgentFlow.Api.Channels.TwilioMediaFetcher>()
             .AddScoped<AgentFlow.Api.Channels.IInboundMediaFetcher, AgentFlow.Api.Channels.MetaMediaFetcher>()
             .AddScoped<AgentFlow.Api.Channels.IConversationWindow>(sp => new AgentFlow.Api.Channels.ConversationWindow(

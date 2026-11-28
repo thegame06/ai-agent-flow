@@ -17,7 +17,7 @@ const nav = [
         ],
       },
       { title: 'Casos por revisar', path: paths.dashboard.checkpoints },
-      { title: 'Ventas y cobros', path: paths.dashboard.commerce },
+      { title: 'Ventas y facturación', path: paths.dashboard.commerce },
       { title: 'Campanas', path: paths.dashboard.campaigns },
     ],
   },
@@ -44,7 +44,7 @@ describe('filterNavByApps', () => {
   it('shows commerce when any commerce module is enabled', () => {
     const result = filterNavByApps(nav, new Set(['inventory']));
 
-    expect(titles(result)).toContain('Ventas y cobros');
+    expect(titles(result)).toContain('Ventas y facturación');
     expect(titles(result)).not.toContain('Campanas');
   });
 

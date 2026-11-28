@@ -174,14 +174,17 @@ public sealed class TwilioVoiceProviderAdapter : IVoiceCallProviderAdapter, IVoi
             ?? throw new InvalidOperationException("Twilio voice provider requires accountSid.");
         var authToken = GetSecret(connection, "authToken", "token", "secret")
             ?? throw new InvalidOperationException("Twilio voice provider requires authToken secret.");
-        var fromPhone = GetValue(connection, "fromPhoneNumber", "senderPhoneNumber", "from")
-            ?? throw new InvalidOperationException("Twilio voice provider requires fromPhoneNumber.");
+        // A Twilio account often has a WhatsApp sender (the sandbox) that cannot place calls, so the
+        // voice number is its own setting and the generic sender is only the fallback.
+        var fromPhone = GetValue(connection, "voicePhoneNumber", "voiceFromPhoneNumber", "fromPhoneNumber", "senderPhoneNumber", "from")
+            ?? throw new InvalidOperationException("Twilio voice provider requires voicePhoneNumber (or fromPhoneNumber).");
         var statusCallback = request.StatusCallbackUrl
             ?? GetValue(connection, "statusCallbackUrl", "statusCallbackURI");
+        // Twilio rejects relative callback URLs.
+        if (statusCallback is not null && !Uri.TryCreate(statusCallback, UriKind.Absolute, out _))
+            statusCallback = null;
 
-        var twiml = request.Script.Contains("<Say", StringComparison.OrdinalIgnoreCase)
-            ? request.Script
-            : $"<Response><Say language='es-MX' loop='1' voice='Polly.Mia'>{System.Security.SecurityElement.Escape(CleanForAudio(request.Script))}</Say></Response>";
+        var twiml = BuildCallTwiml(request);
 
         var form = new Dictionary<string, string>
         {
@@ -258,10 +261,20 @@ public sealed class TwilioVoiceProviderAdapter : IVoiceCallProviderAdapter, IVoi
     private static AuthenticationHeaderValue BuildBasicAuth(string accountSid, string authToken) =>
         new("Basic", Convert.ToBase64String(Encoding.ASCII.GetBytes($"{accountSid}:{authToken}")));
 
-    private static string CleanForAudio(string text)
+    /// <summary>
+    /// The TwiML for an outbound call: the script as given when it is already TwiML; otherwise the
+    /// script spoken, then (with a conversation URL) the customer's answer is heard and sent there.
+    /// </summary>
+    public static string BuildCallTwiml(ProviderVoiceCallRequest request)
     {
-        var firstLine = text.Split('\n')[0];
-        return System.Text.RegularExpressions.Regex.Replace(firstLine, @"\d{3,}", match => string.Join(" ", match.Value.ToCharArray()));
+        if (request.Script.TrimStart().StartsWith("<Response", StringComparison.OrdinalIgnoreCase))
+            return request.Script;
+        return string.IsNullOrWhiteSpace(request.ConversationUrl)
+            ? TwilioVoiceTwiml.Response(TwilioVoiceTwiml.Say(request.Script))
+            : TwilioVoiceTwiml.Response(
+                TwilioVoiceTwiml.Gather(request.ConversationUrl!, request.Script),
+                TwilioVoiceTwiml.Say(TwilioVoiceTwiml.Goodbye),
+                TwilioVoiceTwiml.Hangup());
     }
 
     private static string? GetValue(ProviderConnectionProfile connection, string key, params string[] aliases)

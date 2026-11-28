@@ -60,7 +60,7 @@ export const navData: NavSectionProps['data'] = [
         icon: ICONS.humanReview,
       },
       {
-        title: 'Ventas y cobros',
+        title: 'Ventas y facturación',
         path: paths.dashboard.commerce,
         icon: ICONS.commerce,
       },

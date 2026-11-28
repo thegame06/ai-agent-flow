@@ -132,6 +132,11 @@ public sealed record ProviderVoiceCallRequest
     public required string PhoneNumber { get; init; }
     public required string Script { get; init; }
     public string? StatusCallbackUrl { get; init; }
+    /// <summary>
+    /// Where the provider posts what the customer says after the script. With it the call is a
+    /// conversation with the assistant; without it the script is played and the call ends.
+    /// </summary>
+    public string? ConversationUrl { get; init; }
     public IReadOnlyDictionary<string, string> Metadata { get; init; } = new Dictionary<string, string>();
 }
 

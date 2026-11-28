@@ -11,6 +11,22 @@ public sealed record VoiceStatusCallbackRequest
     public string? Direction { get; init; }
     public string? CallDuration { get; init; }
     public string? SessionIdHint { get; init; }
+    /// <summary>
+    /// The customer's canonical address. The session is the customer's, so it is keyed by them: the
+    /// caller on an inbound call, the number called on an outbound one.
+    /// </summary>
+    public string? CustomerAddress { get; init; }
+
+    /// <summary>The customer's side of the call: <see cref="CustomerAddress"/>, else From (inbound) or To (outbound).</summary>
+    public string? CustomerSide()
+        => !string.IsNullOrWhiteSpace(CustomerAddress) ? CustomerAddress : CustomerOf(Direction, From, To);
+
+    /// <summary>The customer on a call: who called (inbound) or who was called (outbound, "outbound-api"/"outbound-dial").</summary>
+    public static string? CustomerOf(string? direction, string? from, string? to)
+    {
+        var outbound = direction?.StartsWith("outbound", StringComparison.OrdinalIgnoreCase) == true;
+        return outbound ? to : (string.IsNullOrWhiteSpace(from) ? to : from);
+    }
 }
 
 public interface IVoiceSessionOrchestrator

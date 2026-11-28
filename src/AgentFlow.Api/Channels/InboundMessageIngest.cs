@@ -182,8 +182,9 @@ public sealed class InboundMessageIngest : IInboundMessageIngest
         // The customer's one conversation: bursts are batched and turns serialized per customer, not per channel.
         var customerKey = address.Unresolved ? session.Id : $"{message.TenantId}:{address.Value}";
 
-        // Messages sent seconds apart are answered once, together.
-        if (!inBackground && _batcher is not null && _batchWindow > TimeSpan.Zero)
+        // Messages sent seconds apart are answered once, together. A phone turn is already one
+        // utterance and the caller is waiting on the line, so calls are answered at once.
+        if (!inBackground && _batcher is not null && _batchWindow > TimeSpan.Zero && channel.Type != ChannelType.Voice)
         {
             var version = _batcher.Add(customerKey, incoming);
             await Task.Delay(_batchWindow, CancellationToken.None);

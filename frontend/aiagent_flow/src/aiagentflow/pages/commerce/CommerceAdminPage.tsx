@@ -295,7 +295,7 @@ const EMPTY_BRANCH: BranchDraft = {
 };
 
 const DEFAULT_STORE_SETTINGS: StoreSettings = {
-  storeName: 'Ventas y cobros',
+  storeName: 'Ventas y facturación',
   storeId: '',
   apiToken: '',
   currency: 'USD',
@@ -1177,13 +1177,13 @@ export default function CommerceAdminPage() {
   return (
     <>
       <Helmet>
-        <title>Ventas y cobros | {CONFIG.appName}</title>
+        <title>Ventas y facturación | {CONFIG.appName}</title>
       </Helmet>
 
       <DashboardContent maxWidth="xl">
         <BrandPageHeader
           eyebrow="Operacion comercial"
-          title="Ventas y cobros"
+          title="Ventas y facturación"
           description="Centraliza clientes, catalogo, movimientos, ventas y facturacion en una sola superficie de trabajo conectada con conversaciones y automatizaciones."
           icon="mdi:store-cog-outline"
           meta={

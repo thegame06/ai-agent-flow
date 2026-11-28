@@ -17,7 +17,8 @@ public sealed class TwilioVoiceWebhookController : ControllerBase
     private readonly IAgentEventTransport _eventTransport;
     private readonly IWorkflowAuditService _audit;
     private readonly IVoiceSessionOrchestrator _voiceSessionOrchestrator;
-    private readonly IAgentRuntimeRegistry _runtimeRegistry;
+    private readonly IVoiceConversationService _conversation;
+    private readonly string? _defaultCountryCode;
     private readonly ITwilioWebhookSignatureValidator _signatureValidator;
     private readonly ITenantConnectionStore _tenantConnectionStore;
     private readonly ITestStudioSessionStore? _testStudioStore;
@@ -27,16 +28,18 @@ public sealed class TwilioVoiceWebhookController : ControllerBase
         IAgentEventTransport eventTransport,
         IWorkflowAuditService audit,
         IVoiceSessionOrchestrator voiceSessionOrchestrator,
-        IAgentRuntimeRegistry runtimeRegistry,
+        IVoiceConversationService conversation,
         ITwilioWebhookSignatureValidator signatureValidator,
         ITenantConnectionStore tenantConnectionStore,
         ILogger<TwilioVoiceWebhookController> logger,
-        ITestStudioSessionStore? testStudioStore = null)
+        ITestStudioSessionStore? testStudioStore = null,
+        IConfiguration? configuration = null)
     {
         _eventTransport = eventTransport;
         _audit = audit;
         _voiceSessionOrchestrator = voiceSessionOrchestrator;
-        _runtimeRegistry = runtimeRegistry;
+        _conversation = conversation;
+        _defaultCountryCode = configuration?["Messaging:DefaultCountryCode"];
         _signatureValidator = signatureValidator;
         _tenantConnectionStore = tenantConnectionStore;
         _testStudioStore = testStudioStore;
@@ -69,7 +72,8 @@ public sealed class TwilioVoiceWebhookController : ControllerBase
                 To = form.To,
                 Direction = form.Direction,
                 CallDuration = form.CallDuration,
-                SessionIdHint = form.SessionId
+                SessionIdHint = form.SessionId,
+                CustomerAddress = CustomerOf(form)
             },
             ct);
         var sessionId = session.SessionId;
@@ -179,6 +183,11 @@ public sealed class TwilioVoiceWebhookController : ControllerBase
             ? "callcenter"
             : "voice";
         var providerDefaults = await ResolveVoiceProviderDefaultsAsync(tenantId, channel, ct);
+        if (await _conversation.ResolveChannelAsync(tenantId, channel, ct) is null)
+        {
+            _logger.LogWarning("Incoming Twilio call without an active {Channel} channel. Tenant={TenantId}", channel, tenantId);
+            return Content(await _conversation.GreetAsync(tenantId, channel, ct), "text/xml");
+        }
 
         var session = await _voiceSessionOrchestrator.HandleStatusCallbackAsync(
             new VoiceStatusCallbackRequest
@@ -191,7 +200,8 @@ public sealed class TwilioVoiceWebhookController : ControllerBase
                 To = form.To,
                 Direction = form.Direction,
                 CallDuration = form.CallDuration,
-                SessionIdHint = form.SessionId
+                SessionIdHint = form.SessionId,
+                CustomerAddress = CustomerOf(form)
             },
             ct);
 
@@ -269,33 +279,53 @@ public sealed class TwilioVoiceWebhookController : ControllerBase
             "received",
             $"Incoming call from {form.From ?? "unknown"}");
 
-        var runtime = _runtimeRegistry.GetRequired(AgentRuntimeKind.Voice);
-        var runtimeResult = await runtime.ExecuteAsync(new AgentRuntimeRequest
+        // The assistant greets and listens; each turn comes back to "gather".
+        return Content(await _conversation.GreetAsync(tenantId, channel, ct), "text/xml");
+    }
+
+    /// <summary>
+    /// What the customer said on the call (Twilio's speech transcription). It goes through the same
+    /// pipeline as a WhatsApp message and the assistant's reply is spoken back.
+    /// </summary>
+    [HttpPost("gather")]
+    public async Task<IActionResult> ReceiveSpeech(
+        [FromRoute] string tenantId,
+        [FromQuery] int silences,
+        [FromQuery(Name = "channel")] string? channelKey,
+        [FromForm] TwilioVoiceGatherForm form,
+        CancellationToken ct)
+    {
+        var signatureValid = await _signatureValidator.IsValidAsync(tenantId, Request, ct);
+        if (!signatureValid)
+            return Unauthorized(new { error = "Invalid Twilio signature." });
+
+        var channel = string.Equals(channelKey ?? form.Channel, "callcenter", StringComparison.OrdinalIgnoreCase)
+            ? "callcenter"
+            : "voice";
+        AppendVoiceTestEvent(tenantId, form.CallSid, "transcript", "voice_speech",
+            string.IsNullOrWhiteSpace(form.SpeechResult) ? "empty" : "received",
+            string.IsNullOrWhiteSpace(form.SpeechResult) ? "No speech" : $"Customer said: {form.SpeechResult}");
+
+        var twiml = await _conversation.AnswerAsync(new VoiceTurn
         {
             TenantId = tenantId,
-            RuntimeKind = AgentRuntimeKind.Voice,
-            SessionId = session.SessionId,
-            CorrelationId = form.CallSid,
-            ThreadId = session.SessionId,
-            Channel = channel,
-            Metadata = new Dictionary<string, string>
-            {
-                ["eventType"] = "connect.call.received",
-                ["channel"] = channel,
-                ["from"] = form.From ?? string.Empty,
-                ["to"] = form.To ?? string.Empty,
-                ["provider"] = providerDefaults.CallControlPreferredProvider,
-                ["providerCandidates.callControl"] = providerDefaults.CallControlProvidersCsv,
-                ["providerCandidates.stt"] = providerDefaults.SttProvidersCsv,
-                ["providerCandidates.tts"] = providerDefaults.TtsProvidersCsv
-            }
+            ChannelKey = channel,
+            CallSid = form.CallSid,
+            From = form.From,
+            To = form.To,
+            Direction = form.Direction,
+            SpeechResult = form.SpeechResult,
+            Confidence = form.Confidence,
+            Silences = Math.Max(0, silences)
         }, ct);
+        return Content(twiml, "text/xml");
+    }
 
-        var sayText = string.IsNullOrWhiteSpace(runtimeResult.Response)
-            ? "Hola. Esta llamada ha sido recibida por el asistente de voz."
-            : runtimeResult.Response!;
-        var escaped = System.Security.SecurityElement.Escape(sayText) ?? "Hola.";
-        return Content($"<Response><Say language=\"es-MX\" voice=\"Polly.Mia\">{escaped}</Say></Response>", "text/xml");
+    private string? CustomerOf(TwilioVoiceStatusForm form)
+    {
+        var raw = VoiceStatusCallbackRequest.CustomerOf(form.Direction, form.From, form.To);
+        var address = AgentFlow.Api.Channels.CustomerAddress.Normalize(raw, AgentFlow.Domain.Aggregates.ChannelType.Voice, _defaultCountryCode);
+        return address.Value.Length == 0 ? null : address.Value;
     }
 
     [HttpPost("stream/chunk")]
@@ -457,6 +487,17 @@ public sealed record TwilioVoiceStatusForm
     public string? CallDuration { get; init; }
     public string? Channel { get; init; }
     public string? SessionId { get; init; }
+}
+
+public sealed record TwilioVoiceGatherForm
+{
+    public string? CallSid { get; init; }
+    public string? From { get; init; }
+    public string? To { get; init; }
+    public string? Direction { get; init; }
+    public string? SpeechResult { get; init; }
+    public string? Confidence { get; init; }
+    public string? Channel { get; init; }
 }
 
 public sealed record TwilioVoiceMediaForm

@@ -660,12 +660,16 @@ public sealed class CommerceStore : ICommerceStore
     public async Task<CommerceStoreSettingsDocument> GetStoreSettingsAsync(string tenantId, CancellationToken ct)
     {
         var current = await _storeSettings.Find(x => x.TenantId == tenantId).FirstOrDefaultAsync(ct);
-        if (current is not null) return current;
+        if (current is not null)
+        {
+            current.StoreName = CommerceStoreDefaults.NormalizeStoreName(current.StoreName);
+            return current;
+        }
 
         var created = new CommerceStoreSettingsDocument
         {
             TenantId = tenantId,
-            StoreName = "Ventas y cobros",
+            StoreName = CommerceStoreDefaults.StoreName,
             StoreId = $"store-{tenantId[..Math.Min(8, tenantId.Length)]}",
             ApiToken = Guid.NewGuid().ToString("N"),
             Currency = "NIO",
@@ -683,7 +687,7 @@ public sealed class CommerceStore : ICommerceStore
     public async Task<CommerceStoreSettingsDocument> UpsertStoreSettingsAsync(CommerceStoreSettingsDocument settings, CancellationToken ct)
     {
         var current = await _storeSettings.Find(x => x.TenantId == settings.TenantId).FirstOrDefaultAsync(ct);
-        settings.StoreName = string.IsNullOrWhiteSpace(settings.StoreName) ? "Ventas y cobros" : settings.StoreName.Trim();
+        settings.StoreName = CommerceStoreDefaults.NormalizeStoreName(settings.StoreName);
         settings.StoreId = string.IsNullOrWhiteSpace(settings.StoreId) ? $"store-{settings.TenantId[..Math.Min(8, settings.TenantId.Length)]}" : settings.StoreId.Trim();
         settings.ApiToken = string.IsNullOrWhiteSpace(settings.ApiToken) ? Guid.NewGuid().ToString("N") : settings.ApiToken.Trim();
         settings.Currency = string.IsNullOrWhiteSpace(settings.Currency) ? "NIO" : settings.Currency.Trim().ToUpperInvariant();
@@ -1095,11 +1099,27 @@ public sealed class CommerceBranchDocument
     public DateTimeOffset UpdatedAt { get; set; }
 }
 
+public static class CommerceStoreDefaults
+{
+    public const string StoreName = "Ventas y facturación";
+
+    // Module label used before the rename; tenants that never customized the
+    // commercial name still have it stored, so it is read as the new default.
+    public const string LegacyStoreName = "Ventas y cobros";
+
+    public static string NormalizeStoreName(string? storeName)
+    {
+        if (string.IsNullOrWhiteSpace(storeName)) return StoreName;
+        var trimmed = storeName.Trim();
+        return string.Equals(trimmed, LegacyStoreName, StringComparison.OrdinalIgnoreCase) ? StoreName : trimmed;
+    }
+}
+
 public sealed class CommerceStoreSettingsDocument
 {
     [BsonId] public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string TenantId { get; set; } = string.Empty;
-    public string StoreName { get; set; } = "Ventas y cobros";
+    public string StoreName { get; set; } = CommerceStoreDefaults.StoreName;
     public string StoreId { get; set; } = string.Empty;
     public string ApiToken { get; set; } = string.Empty;
     public string Currency { get; set; } = "NIO";
