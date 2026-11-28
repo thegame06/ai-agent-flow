@@ -31,6 +31,27 @@ public static class CampaignChannels
     public static string? MetaAccountOf(ChannelDefinition? channel)
         => channel?.Config.GetValueOrDefault("BusinessAccountId") is { Length: > 0 } waba ? waba : null;
 
+    /// <summary>
+    /// Why a template cannot go out through this channel, or null when it can: a template only exists
+    /// at its provider (a Twilio template through a Twilio channel, a Meta template through Meta) and,
+    /// within Meta, in its own WhatsApp Business account.
+    /// </summary>
+    public static string? TemplateProblem(AgentFlow.Api.Messaging.WhatsAppTemplateDocument template, ChannelDefinition? channel)
+    {
+        if (channel is null) return null;
+        var twilioChannel = AgentFlow.Api.Messaging.TwilioWhatsApp.IsTwilio(channel);
+        var twilioTemplate = template.Provider == AgentFlow.Api.Messaging.WhatsAppTemplateProviders.Twilio;
+        if (twilioTemplate && !twilioChannel)
+            return $"La plantilla {template.Name} es de Twilio y el canal {channel.Name} no es de Twilio.";
+        if (!twilioTemplate && twilioChannel)
+            return $"La plantilla {template.Name} es de Meta: por el canal de Twilio {channel.Name} usa una plantilla de Twilio.";
+        if (twilioTemplate && string.IsNullOrWhiteSpace(template.ContentSid))
+            return $"La plantilla {template.Name} no tiene su Content SID de Twilio: sincroniza las plantillas.";
+        if (!twilioTemplate && MetaAccountOf(channel) is { } waba && template.BusinessAccountId is { } own && waba != own)
+            return $"La plantilla {template.Name} es de otra cuenta de Meta que el canal.";
+        return null;
+    }
+
     /// <summary>True while the customer wrote in the last 24 hours.</summary>
     public static bool WindowOpen(CampaignContactExecutionContract contact, DateTimeOffset now)
         => (contact.LastReplyAt ?? contact.RepliedAt) is { } last && now - last < ConversationWindow;

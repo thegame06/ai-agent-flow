@@ -11,6 +11,8 @@ public sealed record WhatsAppChannelMetaView
     public string ChannelId { get; init; } = string.Empty;
     public string ChannelName { get; init; } = string.Empty;
     public string Status { get; init; } = string.Empty;
+    /// <summary>meta (Cloud API) or twilio: whose templates the channel can send.</summary>
+    public string Provider { get; init; } = "meta";
     public string? ConnectionId { get; init; }
     public string? BusinessAccountId { get; init; }
     public string? PhoneNumberId { get; init; }

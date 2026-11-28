@@ -46,6 +46,8 @@ public interface IWhatsAppTemplateService
 
 public sealed partial class WhatsAppTemplateService : IWhatsAppTemplateService
 {
+    public const string NoMetaAccount = "Ningun canal de WhatsApp tiene una cuenta de Meta (WhatsApp Business) configurada. Configurala en Canales.";
+
     private readonly IWhatsAppTemplateStore _store;
     private readonly IMetaWhatsAppAccounts _accounts;
     private readonly IMetaTemplateApi _meta;
@@ -75,7 +77,7 @@ public sealed partial class WhatsAppTemplateService : IWhatsAppTemplateService
             .Select(g => g.FirstOrDefault(a => !string.IsNullOrWhiteSpace(a.AccessToken)) ?? g.First())
             .ToList();
         if (accounts.Count == 0)
-            return new TemplateSyncResult { Errors = ["Ningun canal de WhatsApp tiene una cuenta de Meta (WhatsApp Business) configurada. Configurala en Canales."] };
+            return new TemplateSyncResult { Errors = [NoMetaAccount] };
 
         var existing = await _store.ListAsync(tenantId, ct);
         int created = 0, updated = 0, statusChanged = 0, unchanged = 0, removed = 0;

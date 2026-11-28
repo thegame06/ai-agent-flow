@@ -21,6 +21,8 @@ export type ChannelMeta = {
   channelId: string;
   channelName: string;
   status: string;
+  /** meta (Cloud API) or twilio: whose templates the channel sends. */
+  provider?: string;
   connectionId?: string | null;
   businessAccountId?: string | null;
   phoneNumberId?: string | null;

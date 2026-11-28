@@ -167,16 +167,20 @@ export function TemplateEditorDialog({ base, open, template, channels, defaultCh
                 />
                 <TextField
                   select
-                  label="Canal (cuenta de Meta)"
+                  label="Canal"
                   value={draft.channelId}
                   onChange={(e) => set('channelId', e.target.value)}
-                  helperText="La plantilla se crea en la cuenta de Meta de este número."
+                  helperText={
+                    channels.find((c) => c.channelId === draft.channelId)?.provider === 'twilio'
+                      ? 'Se crea en Twilio y se envía a revisión de WhatsApp. Encabezado y pie van dentro del texto; solo botones de respuesta rápida.'
+                      : 'La plantilla se crea en la cuenta de Meta de este número.'
+                  }
                   sx={{ minWidth: 240 }}
                 >
                   {channels.map((c) => (
-                    <MenuItem key={c.channelId} value={c.channelId} disabled={!c.hasToken}>
-                      {c.channelName} · WABA {c.businessAccountId ?? '—'}
-                      {!c.hasToken ? ' (sin token)' : ''}
+                    <MenuItem key={c.channelId} value={c.channelId} disabled={c.provider !== 'twilio' && !c.hasToken}>
+                      {c.provider === 'twilio' ? `${c.channelName} · Twilio` : `${c.channelName} · WABA ${c.businessAccountId ?? '—'}`}
+                      {c.provider !== 'twilio' && !c.hasToken ? ' (sin token)' : ''}
                     </MenuItem>
                   ))}
                 </TextField>
@@ -299,8 +303,8 @@ export function TemplateEditorDialog({ base, open, template, channels, defaultCh
             </Typography>
             <TemplateBubble template={{ components: previewComponents, parameters: previewParams }} variables={samples} />
             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-              Con datos de ejemplo. Al guardar, las variables se numeran ({'{{1}}'}, {'{{2}}'}…) como pide Meta y cada número
-              queda ligado a su dato.
+              Con datos de ejemplo. Al guardar, las variables se numeran ({'{{1}}'}, {'{{2}}'}…) como pide WhatsApp y cada
+              número queda ligado a su dato.
             </Typography>
           </Box>
         </Box>
@@ -313,7 +317,7 @@ export function TemplateEditorDialog({ base, open, template, channels, defaultCh
       <DialogActions>
         <Button onClick={onClose}>Cancelar</Button>
         <Button variant="contained" disabled={busy || !draft.body.trim() || (!template && !draft.name)} onClick={save}>
-          {template ? 'Enviar cambios a revisión' : 'Enviar a revisión de Meta'}
+          {template ? 'Enviar cambios a revisión' : 'Enviar a revisión'}
         </Button>
       </DialogActions>
     </Dialog>
