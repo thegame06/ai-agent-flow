@@ -64,6 +64,8 @@ public sealed class CollectionPaymentReportDocument
     public DateTimeOffset? PaidOn { get; set; }
     /// <summary>Receipt or transfer number the customer gave.</summary>
     public string? Reference { get; set; }
+    /// <summary>Photos or PDFs of the receipt the customer sent (media store ids).</summary>
+    public List<string> ReceiptMediaIds { get; set; } = [];
     public string? Method { get; set; }
     public string? Notes { get; set; }
     /// <summary>The loan the payment is for, when the customer has only one open loan or said which.</summary>
@@ -191,6 +193,8 @@ public static class CollectionPaymentDesk
         report.Method ??= incoming.Method;
         report.LoanId ??= incoming.LoanId;
         report.ContactExecutionId ??= incoming.ContactExecutionId;
+        foreach (var id in incoming.ReceiptMediaIds.Where(id => !report.ReceiptMediaIds.Contains(id)))
+            report.ReceiptMediaIds.Add(id);
         if (!string.IsNullOrWhiteSpace(incoming.Notes) &&
             (report.Notes is null || !report.Notes.Contains(incoming.Notes, StringComparison.OrdinalIgnoreCase)))
             report.Notes = report.Notes is null ? incoming.Notes : $"{report.Notes} {incoming.Notes}";

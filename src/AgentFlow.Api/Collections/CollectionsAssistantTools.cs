@@ -186,7 +186,7 @@ internal sealed class CollectionsReportPaymentTool(IServiceScopeFactory scopeFac
         """{"type":"object","properties":{"amount":{"type":"number","description":"Monto pagado; omitelo si no lo dijo"},"whenText":{"type":"string","description":"Cuando pago, en sus palabras"},"reference":{"type":"string","description":"Numero de referencia, transferencia o comprobante"},"method":{"type":"string","description":"Donde pago (banco, agente, app)"},"notes":{"type":"string"}}}""";
 
     protected override async Task<object> RunAsync(ICollectionsAssistantService service, AssistantCall call, JsonElement input, CancellationToken ct)
-        => await service.ReportPaymentAsync(call.TenantId, call.Phone, Dec(input, "amount"), Str(input, "whenText"), Str(input, "reference"), Str(input, "method"), Str(input, "notes"), ct);
+        => await service.ReportPaymentAsync(call.TenantId, call.Phone, Dec(input, "amount"), Str(input, "whenText"), Str(input, "reference"), Str(input, "method"), Str(input, "notes"), ct, call.SessionId);
 }
 
 /// <summary>The collections assistant agent: prompt and tool list, seeded per tenant.</summary>
@@ -228,6 +228,7 @@ Como responder:
   Ejemplo. Cliente: "donde pago?" -> Tu respuesta:
   Claro, Ana. Puedes pagar con cualquiera de estas opciones:
   [MEDIOS_DE_PAGO]
+- Si envia una foto o un documento ("[El cliente envio una imagen]") o dice que te manda su comprobante, es su comprobante de pago: llama af_collections_report_payment para que quede con el reporte, y agradecele. Usa SOLO lo que dijo sobre ESTE pago; si solo mando la foto, llamalo sin monto ni referencia (nunca reutilices referencias o montos de pagos anteriores).
 - Si dice que ya pago: si no lo dijo, pidele en UN solo mensaje el monto, cuando pago y el numero de referencia o comprobante. Con lo que te de (aunque falte algo) llama af_collections_report_payment, agradece y dile que lo verificaremos. No le pidas que repita lo que ya dijo.
 - Si no puede pagar: muestra empatia, llama af_campaign_record_outcome con cannot_pay y af_conversation_handoff_to_human para que un asesor le ofrezca opciones.
 - Si pide un asesor, desconoce la deuda, insulta o se queja claramente, o pregunta algo que no esta en el contexto ni en tus herramientas (por ejemplo condiciones o intereses): llama af_conversation_handoff_to_human con el motivo y dile que un asesor le escribira por este mismo chat. Mientras lo atiende una persona no recibiras sus mensajes. Una pregunta o una duda no es una queja: respondela con el contexto.

@@ -30,8 +30,19 @@ public sealed record InboundMessage
     public string? RawPayload { get; init; }
 }
 
-/// <summary>A file the customer sent: kind (image, document, audio, video, sticker), where to get it, and its caption.</summary>
-public sealed record InboundAttachment(string Kind, string? Url = null, string? MimeType = null, string? ProviderMediaId = null, string? FileName = null);
+/// <summary>
+/// A file the customer sent: kind (image, document, audio, video, sticker), where the provider keeps it,
+/// and once stored, <see cref="MediaId"/> in AgentFlow's media store. <see cref="Data"/> is set when the
+/// provider sends the bytes themselves (the QR bridge); it is never serialized.
+/// </summary>
+public sealed record InboundAttachment(
+    string Kind,
+    string? Url = null,
+    string? MimeType = null,
+    string? ProviderMediaId = null,
+    string? FileName = null,
+    string? MediaId = null,
+    [property: System.Text.Json.Serialization.JsonIgnore] byte[]? Data = null);
 
 /// <summary>Where a message came in or went out. Stored on every incoming message and session.</summary>
 public static class Provenance
@@ -47,6 +58,9 @@ public static class Provenance
     public const string PartyNameKey = "party_name";
     public const string DisplayNameKey = "display_name";
     public const string AttachmentsKey = "attachments";
+    /// <summary>Stored files the customer sent most recently (comma-separated media ids) and when.</summary>
+    public const string LastMediaIdsKey = "last_media_ids";
+    public const string LastMediaAtKey = "last_media_at";
 
     /// <summary>The provider a channel delivers through: qr, meta or twilio for WhatsApp; the type for the rest.</summary>
     public static string ProviderOf(ChannelDefinition channel)

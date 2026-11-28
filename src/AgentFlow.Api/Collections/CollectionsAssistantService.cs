@@ -60,7 +60,8 @@ public interface ICollectionsAssistantService
     /// <summary>How this customer can pay: the lender's payment methods and the customer's own references.</summary>
     Task<PaymentInstructions> GetPaymentInstructionsAsync(string tenantId, string phone, CancellationToken ct = default);
     /// <summary>The customer says they already paid: saved for a person to verify.</summary>
-    Task<CollectionsAssistantActionResult> ReportPaymentAsync(string tenantId, string phone, decimal? amount, string? whenText, string? reference, string? method, string? notes, CancellationToken ct = default);
+    Task<CollectionsAssistantActionResult> ReportPaymentAsync(string tenantId, string phone, decimal? amount, string? whenText, string? reference, string? method, string? notes, CancellationToken ct = default, string? sessionId = null);
+    Task<bool> AttachReceiptsAsync(string tenantId, string partyId, IReadOnlyList<string> mediaIds, CancellationToken ct = default);
     /// <param name="sessionId">The live conversation: it waits for a person and the assistant stops answering.</param>
     Task<CollectionsAssistantActionResult> HandoffAsync(string tenantId, string phone, string reason, CancellationToken ct = default, string? sessionId = null);
 }
@@ -83,8 +84,10 @@ public sealed class CollectionsAssistantService : ICollectionsAssistantService
         ICampaignStore campaigns,
         ICampaignOutcomeService outcomes,
         AgentFlow.Api.Connect.IConversationHandoffService? handoff = null,
-        ICollectionPaymentDeskStore? paymentDesk = null)
+        ICollectionPaymentDeskStore? paymentDesk = null,
+        AgentFlow.Domain.Repositories.IChannelSessionRepository? sessions = null)
     {
+        _sessions = sessions;
         _handoff = handoff;
         _paymentDesk = paymentDesk;
         _collections = collections;
@@ -199,7 +202,7 @@ public sealed class CollectionsAssistantService : ICollectionsAssistantService
             : instructions;
     }
 
-    public async Task<CollectionsAssistantActionResult> ReportPaymentAsync(string tenantId, string phone, decimal? amount, string? whenText, string? reference, string? method, string? notes, CancellationToken ct = default)
+    public async Task<CollectionsAssistantActionResult> ReportPaymentAsync(string tenantId, string phone, decimal? amount, string? whenText, string? reference, string? method, string? notes, CancellationToken ct = default, string? sessionId = null)
     {
         if (amount is <= 0) return new(false, "El monto debe ser mayor a cero; si no lo dijo, omitelo.");
         var (partyId, loans) = await FindCustomerAsync(tenantId, phone, ct);
@@ -227,7 +230,7 @@ public sealed class CollectionsAssistantService : ICollectionsAssistantService
             Notes = Clean(notes),
             LoanId = open.Count == 1 ? open[0].Id : null,
             ContactExecutionId = contact?.Id,
-            Source = CampaignOutcomes.Sources.Agent
+            Source = CampaignOutcomes.Sources.Agent,
         };
         if (_paymentDesk is not null)
         {
@@ -238,11 +241,21 @@ public sealed class CollectionsAssistantService : ICollectionsAssistantService
                 var all = await _paymentDesk.GetReportsAsync(tenantId, null, ct: ct);
                 var confirmed = CollectionPaymentDesk.AlreadyConfirmed(all, saved);
                 if (confirmed is not null)
+                {
+                    // A photo sent now is still evidence of that payment: keep it with the confirmed report.
+                    var late = await TakeRecentReceiptsAsync(tenantId, sessionId, ct);
+                    if (late.Count > 0)
+                    {
+                        CollectionPaymentDesk.Complete(confirmed, new CollectionPaymentReportDocument { TenantId = tenantId, PartyId = confirmed.PartyId, ReceiptMediaIds = late });
+                        await _paymentDesk.UpdateReportAsync(confirmed, ct);
+                    }
                     return new(true, $"Ese pago (comprobante {confirmed.Reference}) ya estaba registrado y confirmado: no lo reportes de nuevo; solo dile al cliente que ya esta aplicado.");
+                }
             }
 
             // The date or receipt the customer sends afterwards belongs to the payment they already
             // reported: complete that report instead of adding a second one for the same money.
+            saved.ReceiptMediaIds = await TakeRecentReceiptsAsync(tenantId, sessionId, ct);
             var pending = await _paymentDesk.GetReportsAsync(tenantId, CollectionPaymentReportStatus.Pending, ct: ct);
             var existing = CollectionPaymentDesk.PendingToComplete(pending, saved, DateTimeOffset.UtcNow);
             if (existing is not null)
@@ -305,6 +318,43 @@ public sealed class CollectionsAssistantService : ICollectionsAssistantService
     {
         var local = CampaignContactPolicy.ToLocal(DateTimeOffset.UtcNow, timezone ?? "America/Mexico_City");
         return $"{local:yyyy-MM-dd} ({Weekdays[(int)local.DayOfWeek]})";
+    }
+
+    private readonly AgentFlow.Domain.Repositories.IChannelSessionRepository? _sessions;
+
+    /// <summary>
+    /// A photo or PDF from a customer who reported a payment in the last day goes straight to that
+    /// pending report, whatever the assistant does with the message. Returns whether it was attached.
+    /// </summary>
+    public async Task<bool> AttachReceiptsAsync(string tenantId, string partyId, IReadOnlyList<string> mediaIds, CancellationToken ct = default)
+    {
+        if (_paymentDesk is null || mediaIds.Count == 0) return false;
+        var now = DateTimeOffset.UtcNow;
+        var report = (await _paymentDesk.GetReportsAsync(tenantId, CollectionPaymentReportStatus.Pending, ct: ct))
+            .Where(r => r.PartyId == partyId && now - r.CreatedAt < ReceiptWindow)
+            .OrderByDescending(r => r.CreatedAt)
+            .FirstOrDefault();
+        if (report is null) return false;
+        CollectionPaymentDesk.Complete(report, new CollectionPaymentReportDocument { TenantId = tenantId, PartyId = partyId, ReceiptMediaIds = mediaIds.ToList() });
+        await _paymentDesk.UpdateReportAsync(report, ct);
+        return true;
+    }
+
+    /// <summary>How long a file the customer sent still counts as the receipt of the payment they report.</summary>
+    public static readonly TimeSpan ReceiptWindow = TimeSpan.FromHours(24);
+
+    /// <summary>The files the customer sent in this conversation in the last day; each is attached to one report only.</summary>
+    private async Task<List<string>> TakeRecentReceiptsAsync(string tenantId, string? sessionId, CancellationToken ct)
+    {
+        if (_sessions is null || string.IsNullOrWhiteSpace(sessionId)) return [];
+        var session = await _sessions.GetByIdAsync(sessionId!, tenantId, ct);
+        if (session?.Metadata.GetValueOrDefault(AgentFlow.Api.Channels.Provenance.LastMediaIdsKey) is not { Length: > 0 } ids) return [];
+        var at = DateTimeOffset.TryParse(session.Metadata.GetValueOrDefault(AgentFlow.Api.Channels.Provenance.LastMediaAtKey),
+            CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var parsed) ? parsed : DateTimeOffset.MinValue;
+        if (DateTimeOffset.UtcNow - at > ReceiptWindow) return [];
+        session.Metadata.Remove(AgentFlow.Api.Channels.Provenance.LastMediaIdsKey);
+        await _sessions.UpdateAsync(session, ct);
+        return ids.Split(',', StringSplitOptions.RemoveEmptyEntries).ToList();
     }
 
     private static readonly HashSet<string> GenericNames = new(StringComparer.OrdinalIgnoreCase)

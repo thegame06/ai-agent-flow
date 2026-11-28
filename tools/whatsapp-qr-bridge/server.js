@@ -180,13 +180,26 @@ async function forwardIncoming(channelId, state, client, msg) {
 
     // A photo of a receipt, a PDF or a voice note: AgentFlow records that the customer sent it
     // (the file itself stays in WhatsApp; the caption, if any, travels as the text).
-    const media = msg.hasMedia
-      ? {
-          type: msg.type === 'ptt' ? 'audio' : msg.type,
-          mimeType: msg._data?.mimetype || null,
-          fileName: msg._data?.filename || null,
+    let media = null;
+    if (msg.hasMedia) {
+      media = {
+        type: msg.type === 'ptt' ? 'audio' : msg.type,
+        mimeType: msg._data?.mimetype || null,
+        fileName: msg._data?.filename || null,
+        data: null,
+      };
+      // AgentFlow keeps a copy (receipts must stay viewable); files over ~12 MB are only recorded.
+      try {
+        const file = await msg.downloadMedia();
+        if (file?.data && file.data.length <= 16 * 1024 * 1024) {
+          media.data = file.data;
+          media.mimeType = file.mimetype || media.mimeType;
+          media.fileName = file.filename || media.fileName;
         }
-      : null;
+      } catch (err) {
+        console.log(`[bridge] ${channelId} could not download media: ${err.message}`);
+      }
+    }
 
     const payload = {
       id: msg.id._serialized,
