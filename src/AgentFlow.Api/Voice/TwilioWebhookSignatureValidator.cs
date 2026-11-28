@@ -44,19 +44,22 @@ public sealed class TwilioWebhookSignatureValidator : ITwilioWebhookSignatureVal
             return false;
         }
 
-        var authToken = await ResolveTwilioAuthTokenAsync(tenantId, ct);
-        if (string.IsNullOrWhiteSpace(authToken))
+        var form = request.HasFormContentType
+            ? request.Form.ToDictionary(k => k.Key, v => v.Value.ToString(), StringComparer.Ordinal)
+            : new Dictionary<string, string>(StringComparer.Ordinal);
+
+        // Only this tenant's Twilio accounts can sign for it. A tenant may have several (one per
+        // line or subaccount): the account that sent the webhook (AccountSid) is tried first.
+        var authTokens = await ResolveTwilioAuthTokensAsync(tenantId, form.GetValueOrDefault("AccountSid"), ct);
+        if (authTokens.Count == 0)
         {
             _logger.LogWarning("No Twilio auth token found for tenant {TenantId}. Rejecting signed webhook validation.", tenantId);
             return false;
         }
 
-        var form = request.HasFormContentType
-            ? request.Form.ToDictionary(k => k.Key, v => v.Value.ToString(), StringComparer.Ordinal)
-            : new Dictionary<string, string>(StringComparer.Ordinal);
-
-        var isValid = CandidateUrls(request, _publicBaseUrl)
-            .Any(url => FixedTimeEquals(BuildTwilioSignature(url, form, authToken!), providedSignature!));
+        var urls = CandidateUrls(request, _publicBaseUrl).ToList();
+        var isValid = authTokens.Any(authToken =>
+            urls.Any(url => FixedTimeEquals(BuildTwilioSignature(url, form, authToken), providedSignature!)));
         if (!isValid)
         {
             _logger.LogWarning("Twilio webhook signature mismatch for tenant {TenantId}.", tenantId);
@@ -86,17 +89,37 @@ public sealed class TwilioWebhookSignatureValidator : ITwilioWebhookSignatureVal
     private static string? FirstHeaderValue(HttpRequest request, string header)
         => request.Headers[header].FirstOrDefault()?.Split(',')[0].Trim() is { Length: > 0 } value ? value : null;
 
-    private async Task<string?> ResolveTwilioAuthTokenAsync(string tenantId, CancellationToken ct)
+    private async Task<IReadOnlyList<string>> ResolveTwilioAuthTokensAsync(string tenantId, string? accountSid, CancellationToken ct)
     {
         var connections = await _connectionStore.GetConnectionsAsync(tenantId, ct);
-        var twilio = connections.FirstOrDefault(x =>
-            string.Equals(x.ConnectorId, "twilio", StringComparison.OrdinalIgnoreCase) ||
-            (x.Config.TryGetValue("provider", out var provider) &&
-             string.Equals(provider, "twilio", StringComparison.OrdinalIgnoreCase)));
-        if (twilio is null)
-            return null;
+        var twilio = connections
+            .Where(x =>
+                string.Equals(x.ConnectorId, "twilio", StringComparison.OrdinalIgnoreCase) ||
+                (x.Config.TryGetValue("provider", out var provider) &&
+                 string.Equals(provider, "twilio", StringComparison.OrdinalIgnoreCase)))
+            .OrderByDescending(x => !string.IsNullOrWhiteSpace(accountSid) &&
+                                    string.Equals(x.Config.GetValueOrDefault("accountSid"), accountSid, StringComparison.Ordinal))
+            .ToList();
 
-        var secret = await _connectionStore.GetSecretAsync(tenantId, twilio.Id, ct);
+        var tokens = new List<string>();
+        foreach (var connection in twilio)
+        {
+            try
+            {
+                if (await ResolveTwilioAuthTokenAsync(tenantId, connection.Id, ct) is { Length: > 0 } token)
+                    tokens.Add(token);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Could not read the Twilio auth token of connection {ConnectionId} for tenant {TenantId}.", connection.Id, tenantId);
+            }
+        }
+        return tokens;
+    }
+
+    private async Task<string?> ResolveTwilioAuthTokenAsync(string tenantId, string connectionId, CancellationToken ct)
+    {
+        var secret = await _connectionStore.GetSecretAsync(tenantId, connectionId, ct);
         if (secret is null)
             return null;
 

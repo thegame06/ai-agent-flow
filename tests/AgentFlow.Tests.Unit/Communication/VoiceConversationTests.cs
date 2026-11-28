@@ -97,7 +97,8 @@ public class VoiceConversationTests
         Assert.Null(received.ExternalId);
         Assert.Equal("CA1", received.Metadata!["voice.call_id"]);
         Assert.Contains("Tu saldo es C$500.</Say></Gather>", twiml);
-        Assert.Contains($"action=\"{PublicBase}/api/v1/tenants/{Tenant}/webhooks/twilio/voice/gather?channel=voice&amp;silences=0&amp;turn=1\"", twiml);
+        // Later turns name the line, so the call stays with its assistant.
+        Assert.Contains($"action=\"{PublicBase}/api/v1/tenants/{Tenant}/webhooks/twilio/voice/gather?channel={channel.Id}&amp;silences=0&amp;turn=1\"", twiml);
     }
 
     [Fact]
@@ -180,11 +181,12 @@ public class VoiceConversationTests
         Assert.Equal("CA9", result.ProviderCallId);
         Assert.Equal("+50581143874", sent!.PhoneNumber);
         Assert.Equal(TwilioVoiceTwiml.DefaultGreeting, sent.Script);
-        Assert.Equal($"{PublicBase}/api/v1/tenants/{Tenant}/webhooks/twilio/voice/gather?channel=voice&silences=0&turn=0", sent.ConversationUrl);
-        Assert.StartsWith($"{PublicBase}/api/v1/tenants/{Tenant}/webhooks/twilio/voice/answer?channel=voice&script=", sent.AnswerUrl);
+        Assert.Equal($"{PublicBase}/api/v1/tenants/{Tenant}/webhooks/twilio/voice/gather?channel={channel.Id}&silences=0&turn=0", sent.ConversationUrl);
+        Assert.StartsWith($"{PublicBase}/api/v1/tenants/{Tenant}/webhooks/twilio/voice/answer?channel={channel.Id}&script=", sent.AnswerUrl);
         Assert.Equal(VoiceConversationService.MaxCallSeconds, sent.TimeLimitSeconds);
         Assert.Equal(VoiceConversationService.DefaultRingSeconds, sent.RingTimeoutSeconds);
-        Assert.Equal($"{PublicBase}/api/v1/tenants/{Tenant}/webhooks/twilio/voice/status?channel=voice", sent.StatusCallbackUrl);
+        Assert.Equal($"{PublicBase}/api/v1/tenants/{Tenant}/webhooks/twilio/voice/status?channel={channel.Id}", sent.StatusCallbackUrl);
+        Assert.Null(sent.FromNumber); // a line without its own number calls from the connection's
     }
 
     [Fact]
@@ -452,6 +454,27 @@ public class VoiceConversationTests
         var twiml = await service.AnswerAsync(new VoiceTurn { TenantId = Tenant, From = "+50581143874", SpeechResult = "¿Qué servicios ofrecen?" }, CancellationToken.None);
 
         Assert.Contains("He pasado tu caso a un asesor.</Say><Hangup/>", twiml);
+        Assert.DoesNotContain("<Gather", twiml);
+    }
+
+    [Fact]
+    public async Task AHandoffWithNothingSafeToSay_TellsTheCallerWhoFollowsUp_AndEnds()
+    {
+        var channel = VoiceChannel();
+        var session = ChannelSession.Create(Tenant, channel.Id, ChannelType.Voice, "+50581143874");
+        var afterTurn = ChannelSession.Create(Tenant, channel.Id, ChannelType.Voice, "+50581143874");
+        ConversationHandoff.Request(afterTurn, "productos", "assistant", DateTimeOffset.UtcNow);
+        var sessions = new Mock<IChannelSessionRepository>();
+        sessions.Setup(x => x.GetByIdAsync(session.Id, Tenant, It.IsAny<CancellationToken>())).ReturnsAsync(afterTurn);
+        var ingest = new Mock<IInboundMessageIngest>();
+        ingest.Setup(x => x.IngestAsync(It.IsAny<InboundMessage>(), false, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new InboundResult(InboundStatus.Failed, session, Reason: "Agent execution produced no customer-safe reply."));
+        var service = Service(channel, ingest.Object, sessions: sessions.Object);
+
+        var twiml = await service.AnswerAsync(new VoiceTurn { TenantId = Tenant, From = "+50581143874", SpeechResult = "Quiero información" }, CancellationToken.None);
+
+        Assert.DoesNotContain("tuve un problema", twiml);
+        Assert.Contains("Tu caso ya está con un asesor", twiml);
         Assert.DoesNotContain("<Gather", twiml);
     }
 

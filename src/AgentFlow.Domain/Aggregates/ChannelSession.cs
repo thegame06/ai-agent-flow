@@ -179,10 +179,11 @@ public sealed class ChannelSession
             Metadata["voice.call_duration"] = duration!;
 
         var normalized = status.Trim().ToLowerInvariant();
+        // The call ends, the conversation does not: the customer's history and a handoff to a person
+        // must still be there on the next call or WhatsApp message (as on every other channel).
         if (normalized is "completed" or "busy" or "failed" or "no-answer" or "canceled")
         {
             Metadata["voice.session_state"] = "ended";
-            Close();
             return;
         }
 

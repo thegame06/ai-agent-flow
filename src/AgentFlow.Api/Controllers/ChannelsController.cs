@@ -35,6 +35,33 @@ public sealed class ChannelsController : ControllerBase
         _intentRoutingStore = intentRoutingStore;
     }
 
+    /// <summary>The tenant's lines: every channel with its number, purpose, default flag and contact hours.</summary>
+    [HttpGet("lines")]
+    public async Task<IActionResult> GetLines(string tenantId, [FromServices] AgentFlow.Api.Channels.ChannelLineService lines, CancellationToken ct)
+    {
+        var context = _tenantContext.Current!;
+        if (context.TenantId != tenantId && !context.IsPlatformAdmin) return Forbid();
+        return Ok(await lines.ListAsync(tenantId, ct));
+    }
+
+    /// <summary>
+    /// Makes a channel a line: its business number (caller id and inbound match), purpose
+    /// (collections, sales, marketing, general), whether it is the default line of its kind and the
+    /// hours customers may be contacted on it.
+    /// </summary>
+    [HttpPut("{channelId}/line")]
+    public async Task<IActionResult> UpdateLine(string tenantId, string channelId, [FromBody] AgentFlow.Api.Channels.ChannelLineSettings request,
+        [FromServices] AgentFlow.Api.Channels.ChannelLineService lines, CancellationToken ct)
+    {
+        var context = _tenantContext.Current!;
+        if (context.TenantId != tenantId && !context.IsPlatformAdmin) return Forbid();
+        var (line, error) = await lines.ApplyAsync(tenantId, channelId, request, ct);
+        if (line is not null) return Ok(line);
+        return error == "Canal no encontrado." ? NotFound(new { message = error })
+            : error!.StartsWith("Ese número ya", StringComparison.Ordinal) ? Conflict(new { message = error })
+            : BadRequest(new { message = error });
+    }
+
     [HttpGet]
     public async Task<IActionResult> GetAll(string tenantId, CancellationToken ct)
     {
@@ -85,6 +112,11 @@ public sealed class ChannelsController : ControllerBase
             return BadRequest(new { message = "Invalid channel type" });
 
         var channel = ChannelDefinition.Create(tenantId, request.Name, channelType, request.Config);
+
+        // A number belongs to one line of a kind, in this tenant and on the whole platform.
+        var conflict = await AgentFlow.Api.Channels.ChannelLineService.NumberConflictAsync(_channelRepo, tenantId, channel.Id, channelType,
+            channel.Config.GetValueOrDefault(ChannelLines.PhoneNumberKey), channel.Config.GetValueOrDefault(ChannelLines.PhoneNumberIdKey), ct);
+        if (conflict is not null) return Conflict(new { message = conflict });
 
         if (request.SessionWindowHours.HasValue)
             channel.SetSessionWindowHours(request.SessionWindowHours.Value);

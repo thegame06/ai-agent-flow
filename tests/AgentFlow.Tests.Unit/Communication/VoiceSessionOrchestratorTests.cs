@@ -45,7 +45,7 @@ public class VoiceSessionOrchestratorTests
     }
 
     [Fact]
-    public async Task HandleStatusCallbackAsync_ClosesSessionOnCompleted()
+    public async Task HandleStatusCallbackAsync_EndsTheCall_ButKeepsTheConversationOpen()
     {
         var channel = CreateActiveVoiceChannel("tenant-a");
         var existing = ChannelSession.Create("tenant-a", channel.Id, ChannelType.Voice, "+15550001111");
@@ -75,6 +75,8 @@ public class VoiceSessionOrchestratorTests
 
         Assert.True(session.Closed);
         Assert.Equal("ended", session.SessionState);
+        // A handoff or the thread must survive to the next call: the conversation is not closed.
+        Assert.Equal(SessionStatus.Active, existing.Status);
         Assert.Equal("completed", session.ProviderStatus);
     }
 

@@ -60,6 +60,7 @@ public class TwilioVoiceWebhookControllerTests
 
         var result = await controller.ReceiveStatus(
             "tenant-a",
+            null,
             new TwilioVoiceStatusForm
             {
                 CallSid = "CA111",
@@ -106,8 +107,8 @@ public class TwilioVoiceWebhookControllerTests
         var voiceChannel = AgentFlow.Domain.Aggregates.ChannelDefinition.Create("tenant-a", "Voz", AgentFlow.Domain.Aggregates.ChannelType.Voice);
         voiceChannel.Activate();
         var conversation = new Mock<IVoiceConversationService>();
-        conversation.Setup(x => x.ResolveChannelAsync("tenant-a", "voice", It.IsAny<CancellationToken>())).ReturnsAsync(voiceChannel);
-        conversation.Setup(x => x.GreetAsync("tenant-a", "voice", It.IsAny<CancellationToken>()))
+        conversation.Setup(x => x.ResolveLineAsync("tenant-a", "voice", It.IsAny<string?>(), It.IsAny<CancellationToken>())).ReturnsAsync(voiceChannel);
+        conversation.Setup(x => x.GreetAsync("tenant-a", voiceChannel.Id, It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync("<Response><Gather input=\"speech\"><Say>Hola</Say></Gather></Response>");
         var signatureValidator = new Mock<ITwilioWebhookSignatureValidator>();
         var tenantConnectionStore = new Mock<ITenantConnectionStore>();
@@ -127,6 +128,7 @@ public class TwilioVoiceWebhookControllerTests
 
         var result = await controller.ReceiveIncoming(
             "tenant-a",
+            null,
             new TwilioVoiceStatusForm
             {
                 CallSid = "CA222",
@@ -213,6 +215,7 @@ public class TwilioVoiceWebhookControllerTests
 
         var result = await controller.ReceiveStatus(
             "tenant-a",
+            null,
             new TwilioVoiceStatusForm
             {
                 CallSid = "CA401",

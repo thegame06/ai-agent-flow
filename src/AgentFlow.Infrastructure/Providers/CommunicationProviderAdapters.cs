@@ -176,7 +176,8 @@ public sealed class TwilioVoiceProviderAdapter : IVoiceCallProviderAdapter, IVoi
             ?? throw new InvalidOperationException("Twilio voice provider requires authToken secret.");
         // A Twilio account often has a WhatsApp sender (the sandbox) that cannot place calls, so the
         // voice number is its own setting and the generic sender is only the fallback.
-        var fromPhone = GetValue(connection, "voicePhoneNumber", "voiceFromPhoneNumber", "fromPhoneNumber", "senderPhoneNumber", "from")
+        var fromPhone = (string.IsNullOrWhiteSpace(request.FromNumber) ? null : request.FromNumber!.Trim())
+            ?? GetValue(connection, "voicePhoneNumber", "voiceFromPhoneNumber", "fromPhoneNumber", "senderPhoneNumber", "from")
             ?? throw new InvalidOperationException("Twilio voice provider requires voicePhoneNumber (or fromPhoneNumber).");
         var statusCallback = request.StatusCallbackUrl
             ?? GetValue(connection, "statusCallbackUrl", "statusCallbackURI");

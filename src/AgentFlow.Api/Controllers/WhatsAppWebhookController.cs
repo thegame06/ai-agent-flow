@@ -137,6 +137,54 @@ public sealed class WhatsAppWebhookController : ControllerBase
                ?? (string.IsNullOrWhiteSpace(phoneNumberId) ? business.FirstOrDefault() : null);
     }
 
+    /// <summary>Verification of the webhook shared by every tenant (one Meta app for the platform).</summary>
+    [HttpGet("/api/v1/webhooks/whatsapp")]
+    public IActionResult VerifyPlatformWebhook(
+        [FromQuery(Name = "hub.mode")] string? mode,
+        [FromQuery(Name = "hub.verify_token")] string? verifyToken,
+        [FromQuery(Name = "hub.challenge")] string? challenge)
+        => VerifyWebhook(mode, verifyToken, challenge);
+
+    /// <summary>
+    /// Webhook shared by every tenant (the platform's Meta app, signed with its app secret): each
+    /// change goes to the tenant whose line has its number id (template events: whose WhatsApp
+    /// Business account it is). A number no tenant, or more than one, claims is dropped, never guessed.
+    /// </summary>
+    [HttpPost("/api/v1/webhooks/whatsapp")]
+    [RequireMetaSignature]
+    public async Task<IActionResult> ReceivePlatformWebhook(
+        [FromBody] WhatsAppWebhookPayload payload,
+        [FromServices] AgentFlow.Api.Messaging.IWhatsAppTemplateService templates,
+        [FromServices] AgentFlow.Api.Channels.IInboundMessageIngest ingest,
+        [FromServices] AgentFlow.Api.Channels.ChannelLineService lines,
+        CancellationToken ct)
+    {
+        var byTenant = new Dictionary<string, List<WhatsAppWebhookEntry>>(StringComparer.Ordinal);
+        var dropped = 0;
+        foreach (var entry in payload.Entry ?? [])
+        {
+            foreach (var change in entry.Changes ?? [])
+            {
+                var phoneNumberId = change.Value is null ? null : PhoneNumberIdOf(change.Value);
+                var owner = phoneNumberId is not null
+                    ? await lines.FindOwnerAsync(null, phoneNumberId, type => type == ChannelType.WhatsApp, ct)
+                    : await lines.FindOwnerOfMetaAccountAsync(entry.Id, ct);
+                if (owner is null)
+                {
+                    dropped++;
+                    _logger.LogWarning("Shared WhatsApp webhook: no tenant owns number {PhoneNumberId} / account {AccountId}.", phoneNumberId, entry.Id);
+                    continue;
+                }
+                if (!byTenant.TryGetValue(owner.TenantId, out var entries)) byTenant[owner.TenantId] = entries = [];
+                entries.Add(new WhatsAppWebhookEntry { Id = entry.Id, Changes = [change] });
+            }
+        }
+
+        foreach (var (tenantId, entries) in byTenant)
+            await ReceiveWebhook(tenantId, new WhatsAppWebhookPayload { Object = payload.Object, Entry = entries }, templates, ingest, ct);
+        return Ok(new { status = "routed", tenants = byTenant.Count, dropped });
+    }
+
     [HttpPost]
     [RequireMetaSignature]
     public async Task<IActionResult> ReceiveWebhook(

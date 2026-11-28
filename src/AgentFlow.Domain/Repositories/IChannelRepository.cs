@@ -12,6 +12,13 @@ public interface IChannelDefinitionRepository
     Task<Result> InsertAsync(ChannelDefinition channel, CancellationToken ct = default);
     Task<Result> UpdateAsync(ChannelDefinition channel, CancellationToken ct = default);
     Task<Result> DeleteAsync(string channelId, string tenantId, CancellationToken ct = default);
+    /// <summary>
+    /// Channels of EVERY tenant whose config has <paramref name="key"/> = <paramref name="value"/>
+    /// (a line's number, a Meta number id or WhatsApp Business account). Only for keeping a number
+    /// with one owner and for routing webhooks shared by all tenants; never to read another tenant's data.
+    /// </summary>
+    Task<IReadOnlyList<ChannelDefinition>> FindAcrossTenantsByConfigAsync(string key, string value, CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyList<ChannelDefinition>>([]);
 }
 
 public interface IChannelSessionRepository

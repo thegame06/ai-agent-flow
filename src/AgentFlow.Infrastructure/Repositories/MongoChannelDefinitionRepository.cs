@@ -35,6 +35,15 @@ public sealed class MongoChannelDefinitionRepository : IChannelDefinitionReposit
             .ToListAsync(ct);
     }
 
+    public async Task<IReadOnlyList<ChannelDefinition>> FindAcrossTenantsByConfigAsync(string key, string value, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(value) || !key.All(char.IsAsciiLetterOrDigit))
+            return [];
+        return await _collection.Find(Builders<ChannelDefinition>.Filter.Eq($"Config.{key}", value))
+            .Limit(20)
+            .ToListAsync(ct);
+    }
+
     public async Task<IReadOnlyList<ChannelDefinition>> GetByTypeAsync(ChannelType type, string tenantId, CancellationToken ct = default)
     {
         return await _collection.Find(x => x.TenantId == tenantId && x.Type == type)

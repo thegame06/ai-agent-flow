@@ -76,7 +76,7 @@ public sealed class CommerceControllerTests
             SessionId = session.Id,
             Items =
             [
-                new CommerceLineItemRequest { Sku = "SKU-1", Name = "Producto A", UnitPrice = 10, Quantity = 2 }
+                new SaleLineRequest { Sku = "SKU-1", Name = "Producto A", UnitPrice = 10, Quantity = 2 }
             ]
         }, CancellationToken.None);
         var saleOk = Assert.IsType<OkObjectResult>(saleResult);
@@ -174,7 +174,7 @@ public sealed class CommerceControllerTests
             SessionId = session.Id,
             Items =
             [
-                new CommerceLineItemRequest { Sku = "SRV-DAY", Name = "Soporte diario", UnitPrice = 40, Quantity = 2 }
+                new SaleLineRequest { Sku = "SRV-DAY", Name = "Soporte diario", UnitPrice = 40, Quantity = 2 }
             ]
         }, CancellationToken.None);
 
@@ -212,7 +212,7 @@ public sealed class CommerceControllerTests
             SessionId = session.Id,
             Items =
             [
-                new CommerceLineItemRequest { Sku = "SKU-EDIT", Name = "Producto Editable", UnitPrice = 12, Quantity = 2 }
+                new SaleLineRequest { Sku = "SKU-EDIT", Name = "Producto Editable", UnitPrice = 12, Quantity = 2 }
             ]
         }, CancellationToken.None);
         var saleId = ToJson(Assert.IsType<OkObjectResult>(saleResult).Value).GetProperty("id").GetString()!;
@@ -263,7 +263,7 @@ public sealed class CommerceControllerTests
             SessionId = session.Id,
             Items =
             [
-                new CommerceLineItemRequest { Sku = "SKU-PDF", Name = "Producto PDF", UnitPrice = 8, Quantity = 1 }
+                new SaleLineRequest { Sku = "SKU-PDF", Name = "Producto PDF", UnitPrice = 8, Quantity = 1 }
             ]
         }, CancellationToken.None);
         var saleId = ToJson(Assert.IsType<OkObjectResult>(saleResult).Value).GetProperty("id").GetString()!;

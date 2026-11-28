@@ -1,5 +1,7 @@
 using AgentFlow.Api.Connect;
 using AgentFlow.Api.Voice;
+using AgentFlow.Domain.Aggregates;
+using AgentFlow.Domain.Repositories;
 using AgentFlow.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -18,6 +20,7 @@ public sealed class VoiceCallsController : ControllerBase
     private readonly ITwilioCredentials _twilio;
     private readonly IHttpClientFactory _http;
     private readonly ILogger<VoiceCallsController> _logger;
+    private readonly IChannelDefinitionRepository? _channels;
     private readonly string? _publicBaseUrl;
 
     public VoiceCallsController(
@@ -27,8 +30,10 @@ public sealed class VoiceCallsController : ControllerBase
         ITwilioCredentials twilio,
         IHttpClientFactory http,
         IConfiguration configuration,
-        ILogger<VoiceCallsController> logger)
+        ILogger<VoiceCallsController> logger,
+        IChannelDefinitionRepository? channels = null)
     {
+        _channels = channels;
         _logger = logger;
         _conversation = conversation;
         _twilio = twilio;
@@ -54,7 +59,8 @@ public sealed class VoiceCallsController : ControllerBase
                 PhoneNumber = body.PhoneNumber!,
                 Script = body.Script,
                 Mode = VoiceConversationService.ParseMode(body.Mode),
-                ChannelKey = string.Equals(body.Channel, "callcenter", StringComparison.OrdinalIgnoreCase) ? "callcenter" : "voice",
+                // The line to call from (its number is the caller id and its assistant takes the call).
+                ChannelKey = VoiceConversationService.ChannelKeyOf(body.ChannelId ?? body.Channel),
                 ConnectionId = body.ConnectionId,
                 RequestedBy = _tenantContext.Current?.UserId
             }, ct);
@@ -95,10 +101,29 @@ public sealed class VoiceCallsController : ControllerBase
             numbers.FirstOrDefault(n => n.PhoneNumber == voiceNumber) is { AnswersHere: false })
             missing.Add($"En Twilio, apunta el webhook de voz de {voiceNumber} a {incomingUrl} para recibir llamadas.");
 
+        // Every voice line of the tenant: its number, purpose and whether it is the default one.
+        var lines = _channels is null
+            ? []
+            : (await _channels.GetByTypeAsync(ChannelType.Voice, tenantId, ct))
+                .Where(x => x.TenantId == tenantId && x.Status == ChannelStatus.Active)
+                .Select(x => new
+                {
+                    channelId = x.Id,
+                    name = x.Name,
+                    phoneNumber = ChannelLines.NumberOf(x) ?? voiceNumber,
+                    ownNumber = ChannelLines.NumberOf(x) is not null,
+                    purpose = ChannelLines.PurposeOf(x),
+                    isDefault = ChannelLines.IsDefault(x),
+                    contactHours = x.Config.GetValueOrDefault(ChannelLines.ContactHoursKey)
+                })
+                .Cast<object>()
+                .ToList();
+
         return Ok(new
         {
             ready = missing.Count == 0,
             missing,
+            lines,
             channelId = channel?.Id,
             channelName = channel?.Name,
             connectionId = twilio?.Id,
@@ -254,6 +279,9 @@ public sealed record PlaceVoiceCallBody
     public string? Mode { get; init; }
     public string? PhoneNumber { get; init; }
     public string? Script { get; init; }
+    /// <summary>"voice" or "callcenter": the default line of that kind.</summary>
     public string? Channel { get; init; }
+    /// <summary>The line (channel id) to call from; wins over <see cref="Channel"/>.</summary>
+    public string? ChannelId { get; init; }
     public string? ConnectionId { get; init; }
 }

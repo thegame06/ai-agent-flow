@@ -33,6 +33,7 @@ public sealed record VoiceCallRequest
     public required string PhoneNumber { get; init; }
     /// <summary>What the call opens with; the voice channel's greeting when empty.</summary>
     public string? Script { get; init; }
+    /// <summary>"voice" (the default line) or the channel id of the line to call from.</summary>
     public string ChannelKey { get; init; } = "voice";
     public string? ConnectionId { get; init; }
     public string? RequestedBy { get; init; }
@@ -43,8 +44,18 @@ public sealed record VoiceCallResult(string ProviderCallId, string ProviderStatu
 public interface IVoiceConversationService
 {
     Task<ChannelDefinition?> ResolveChannelAsync(string tenantId, string channelKey, CancellationToken ct);
+    /// <summary>
+    /// The voice line of a call: the line <paramref name="channelKey"/> names (a channel id), or, for
+    /// "voice"/"callcenter", the line whose number is <paramref name="businessNumber"/> (else the
+    /// default line). A line of another tenant is never returned.
+    /// </summary>
+    Task<ChannelDefinition?> ResolveLineAsync(string tenantId, string? channelKey, string? businessNumber, CancellationToken ct)
+        => ResolveChannelAsync(tenantId, channelKey ?? "voice", ct);
     /// <summary>The TwiML that answers a call: the channel's greeting, then listening.</summary>
     Task<string> GreetAsync(string tenantId, string channelKey, CancellationToken ct);
+    /// <summary>Answers a call made to <paramref name="businessNumber"/> with that line's greeting and assistant.</summary>
+    Task<string> GreetAsync(string tenantId, string channelKey, string? businessNumber, CancellationToken ct)
+        => GreetAsync(tenantId, channelKey, ct);
     /// <summary>The customer's words go through the shared inbound pipeline; the assistant's reply is spoken back.</summary>
     Task<string> AnswerAsync(VoiceTurn turn, CancellationToken ct);
     /// <summary>
@@ -102,19 +113,48 @@ public sealed class VoiceConversationService : IVoiceConversationService
         _defaultCountryCode = configuration?["Messaging:DefaultCountryCode"];
     }
 
-    public async Task<ChannelDefinition?> ResolveChannelAsync(string tenantId, string channelKey, CancellationToken ct)
+    public Task<ChannelDefinition?> ResolveChannelAsync(string tenantId, string channelKey, CancellationToken ct)
+        => ResolveLineAsync(tenantId, channelKey, null, ct);
+
+    public async Task<ChannelDefinition?> ResolveLineAsync(string tenantId, string? channelKey, string? businessNumber, CancellationToken ct)
     {
-        var type = string.Equals(channelKey, "callcenter", StringComparison.OrdinalIgnoreCase) ? ChannelType.CallCenter : ChannelType.Voice;
+        var key = ChannelKeyOf(channelKey);
+        if (IsLineId(key))
+        {
+            // A chosen line is used or none is: calling from another number (or another tenant's
+            // line) would be worse than not calling.
+            var line = await _channels.GetByIdAsync(key, tenantId, ct);
+            return line is not null && line.TenantId == tenantId && line.Status == ChannelStatus.Active && ChannelLines.IsVoice(line.Type)
+                ? line
+                : null;
+        }
+
+        var type = key == "callcenter" ? ChannelType.CallCenter : ChannelType.Voice;
         var channels = await _channels.GetByTypeAsync(type, tenantId, ct);
-        return channels.FirstOrDefault(x => x.Status == ChannelStatus.Active);
+        return ChannelLines.Pick(channels, businessNumber);
     }
 
-    public async Task<string> GreetAsync(string tenantId, string channelKey, CancellationToken ct)
+    /// <summary>"voice", "callcenter" or a line's channel id; anything else is "voice".</summary>
+    public static string ChannelKeyOf(string? raw)
     {
-        var channel = await ResolveChannelAsync(tenantId, channelKey, ct);
+        var key = (raw ?? string.Empty).Trim();
+        if (string.Equals(key, "callcenter", StringComparison.OrdinalIgnoreCase)) return "callcenter";
+        return IsLineId(key) ? key : "voice";
+    }
+
+    /// <summary>A channel id (letters, digits, '-' or '_'), not a channel type.</summary>
+    public static bool IsLineId(string? key) => ChannelLines.IsLineKey(key);
+
+    public Task<string> GreetAsync(string tenantId, string channelKey, CancellationToken ct)
+        => GreetAsync(tenantId, channelKey, null, ct);
+
+    public async Task<string> GreetAsync(string tenantId, string channelKey, string? businessNumber, CancellationToken ct)
+    {
+        var channel = await ResolveLineAsync(tenantId, channelKey, businessNumber, ct);
         if (channel is null)
             return TwilioVoiceTwiml.Response(TwilioVoiceTwiml.Say(Unavailable), TwilioVoiceTwiml.Hangup());
-        return Listen(tenantId, channelKey, GreetingOf(channel), silences: 0, turn: 0);
+        // Every later turn names the line, so the call stays with its assistant.
+        return Listen(tenantId, channel.Id, GreetingOf(channel), silences: 0, turn: 0);
     }
 
     public async Task<string> AnsweredAsync(string tenantId, string channelKey, string? script, string? answeredBy, CancellationToken ct)
@@ -124,7 +164,7 @@ public sealed class VoiceConversationService : IVoiceConversationService
         var channel = await ResolveChannelAsync(tenantId, channelKey, ct);
         if (channel is null)
             return TwilioVoiceTwiml.Response(TwilioVoiceTwiml.Hangup());
-        return Listen(tenantId, channelKey, string.IsNullOrWhiteSpace(script) ? GreetingOf(channel) : script!, silences: 0, turn: 0);
+        return Listen(tenantId, channel.Id, string.IsNullOrWhiteSpace(script) ? GreetingOf(channel) : script!, silences: 0, turn: 0);
     }
 
     /// <summary>Twilio's AnsweredBy: machine_start, machine_end_beep/silence/other, fax; human or unknown is talked to.</summary>
@@ -134,7 +174,7 @@ public sealed class VoiceConversationService : IVoiceConversationService
 
     public async Task<string> AnswerAsync(VoiceTurn turn, CancellationToken ct)
     {
-        var channel = await ResolveChannelAsync(turn.TenantId, turn.ChannelKey, ct);
+        var channel = await ResolveLineAsync(turn.TenantId, turn.ChannelKey, BusinessSide(turn.Direction, turn.From, turn.To), ct);
         if (channel is null)
             return TwilioVoiceTwiml.Response(TwilioVoiceTwiml.Say(Unavailable), TwilioVoiceTwiml.Hangup());
 
@@ -146,7 +186,7 @@ public sealed class VoiceConversationService : IVoiceConversationService
         {
             return turn.Silences + 1 >= MaxSilences
                 ? TwilioVoiceTwiml.Response(TwilioVoiceTwiml.Say(TwilioVoiceTwiml.Goodbye), TwilioVoiceTwiml.Hangup())
-                : Listen(turn.TenantId, turn.ChannelKey, NotUnderstood, turn.Silences + 1, turn.Turn + 1);
+                : Listen(turn.TenantId, channel.Id, NotUnderstood, turn.Silences + 1, turn.Turn + 1);
         }
 
         var customer = CustomerSide(turn.Direction, turn.From, turn.To);
@@ -180,10 +220,14 @@ public sealed class VoiceConversationService : IVoiceConversationService
             reply = result.Status == InboundStatus.Processed && !string.IsNullOrWhiteSpace(result.Reply?.Content)
                 ? result.Reply!.Content
                 : Failed;
-            // The assistant handed the case to a person in this turn: say its reply, then end the call
-            // instead of listening for words nobody will answer.
-            if (reply != Failed && await HandedOffAsync(turn.TenantId, result.Session, ct))
+            // The assistant handed the case to a person in this turn: say its reply (or, when it had
+            // nothing safe to say, who follows up), then end the call instead of listening for words
+            // nobody will answer.
+            if (await HandedOffAsync(turn.TenantId, result.Session, ct))
+            {
+                if (reply == Failed) reply = WithAdvisor;
                 endCall = true;
+            }
             if (reply == Failed)
                 _logger.LogWarning("Voice turn without a reply. Tenant={TenantId} CallSid={CallSid} Status={Status} Reason={Reason}",
                     turn.TenantId, turn.CallSid, result.Status, result.Reason);
@@ -196,7 +240,7 @@ public sealed class VoiceConversationService : IVoiceConversationService
 
         return endCall
             ? TwilioVoiceTwiml.Response(TwilioVoiceTwiml.Say(reply), TwilioVoiceTwiml.Hangup())
-            : Listen(turn.TenantId, turn.ChannelKey, reply, silences: 0, turn.Turn + 1);
+            : Listen(turn.TenantId, channel.Id, reply, silences: 0, turn.Turn + 1);
     }
 
     /// <summary>The gateway's answer while a person owns the conversation is the customer's message itself.</summary>
@@ -221,8 +265,11 @@ public sealed class VoiceConversationService : IVoiceConversationService
 
     public async Task<VoiceCallResult> PlaceCallAsync(VoiceCallRequest request, CancellationToken ct)
     {
-        var channel = await ResolveChannelAsync(request.TenantId, request.ChannelKey, ct)
-            ?? throw new InvalidOperationException("No hay un canal de voz activo. Crea uno en Canales con la conexión de Twilio.");
+        var channel = await ResolveLineAsync(request.TenantId, request.ChannelKey, null, ct)
+            ?? throw new InvalidOperationException(IsLineId(ChannelKeyOf(request.ChannelKey))
+                ? "La línea de voz elegida no existe o no está activa."
+                : "No hay un canal de voz activo. Crea uno en Canales con la conexión de Twilio.");
+        var line = channel.Id;
         var address = CustomerAddress.Normalize(request.PhoneNumber, channel.Type,
             channel.Config.GetValueOrDefault("DefaultCountryCode") ?? _defaultCountryCode);
         if (!address.IsPhone)
@@ -232,7 +279,7 @@ public sealed class VoiceConversationService : IVoiceConversationService
         {
             TenantId = request.TenantId,
             Capability = CommunicationCapabilities.CallOutbound,
-            Channel = request.ChannelKey,
+            Channel = channel.Type == ChannelType.CallCenter ? "callcenter" : "voice",
             ConnectionId = request.ConnectionId ?? channel.Config.GetValueOrDefault("ConnectionId"),
             Metadata = new Dictionary<string, string> { ["channelId"] = channel.Id }
         }, ct);
@@ -246,12 +293,14 @@ public sealed class VoiceConversationService : IVoiceConversationService
             PhoneNumber = address.Value,
             Script = script,
             // A script that is already TwiML is played as written (no assistant, no voicemail check).
-            ConversationUrl = rawTwiml ? null : ConversationUrl(request.TenantId, request.ChannelKey, 0, 0, absolute: true),
+            // The line's own number is the caller id; without one, the connection's voice number.
+            FromNumber = ChannelLines.NumberOf(channel),
+            ConversationUrl = rawTwiml ? null : ConversationUrl(request.TenantId, line, 0, 0, absolute: true),
             AnswerUrl = rawTwiml ? null : WebhookUrl(request.TenantId, "answer",
-                $"channel={Uri.EscapeDataString(request.ChannelKey)}&script={Uri.EscapeDataString(script)}", absolute: true),
+                $"channel={Uri.EscapeDataString(line)}&script={Uri.EscapeDataString(script)}", absolute: true),
             TimeLimitSeconds = MaxCallSeconds,
             RingTimeoutSeconds = RingSeconds(channel),
-            StatusCallbackUrl = WebhookUrl(request.TenantId, "status", $"channel={request.ChannelKey}", absolute: true),
+            StatusCallbackUrl = WebhookUrl(request.TenantId, "status", $"channel={Uri.EscapeDataString(line)}", absolute: true),
             Metadata = new Dictionary<string, string>
             {
                 ["channelId"] = channel.Id,

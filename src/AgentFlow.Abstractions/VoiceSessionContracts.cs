@@ -21,6 +21,10 @@ public sealed record VoiceStatusCallbackRequest
     public string? CustomerSide()
         => !string.IsNullOrWhiteSpace(CustomerAddress) ? CustomerAddress : CustomerOf(Direction, From, To);
 
+    /// <summary>The business number of the call (the line): who was called (inbound) or the caller id (outbound).</summary>
+    public string? BusinessSide()
+        => Direction?.StartsWith("outbound", StringComparison.OrdinalIgnoreCase) == true ? From : To;
+
     /// <summary>The customer on a call: who called (inbound) or who was called (outbound, "outbound-api"/"outbound-dial").</summary>
     public static string? CustomerOf(string? direction, string? from, string? to)
     {
@@ -43,5 +47,6 @@ public sealed record VoiceSessionState
     public required string CallId { get; init; }
     public required string ProviderStatus { get; init; }
     public required string SessionState { get; init; }
+    /// <summary>The call is over (the customer's conversation stays open for the next contact).</summary>
     public bool Closed { get; init; }
 }

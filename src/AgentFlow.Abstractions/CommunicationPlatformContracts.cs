@@ -131,6 +131,8 @@ public sealed record ProviderVoiceCallRequest
 {
     public required string PhoneNumber { get; init; }
     public required string Script { get; init; }
+    /// <summary>Caller id: the line's own number; null uses the connection's voice number.</summary>
+    public string? FromNumber { get; init; }
     public string? StatusCallbackUrl { get; init; }
     /// <summary>
     /// Where the provider posts what the customer says after the script. With it the call is a

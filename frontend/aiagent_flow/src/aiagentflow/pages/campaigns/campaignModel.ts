@@ -80,6 +80,10 @@ export type Campaign = {
   goal: string;
   workflowDefinitionId?: string | null;
   messageDraft?: string | null;
+  /** What a call campaign says when the customer answers (falls back to messageDraft). */
+  callScriptDraft?: string | null;
+  /** conversation (the assistant takes the call) or notify (the message is read and the call ends). */
+  callMode?: string | null;
   whatsAppTemplateId?: string | null;
   scheduleType: number;
   scheduleExpression: string;
@@ -95,6 +99,41 @@ export type Campaign = {
   nextRunAt?: string | null;
   createdAt: string;
   updatedAt: string;
+};
+
+/** The channel a campaign goes out through: its line's name, or the default line of a type. */
+export const channelLabel = (channel: string, lineNames: Record<string, string>) =>
+  lineNames[channel] ??
+  ({ whatsapp: 'WhatsApp', voice: 'Voz', callcenter: 'Centro de llamadas', api: 'API / webhook', webchat: 'Webchat' } as Record<string, string>)[
+    channel
+  ] ??
+  channel;
+
+/** How a campaign reaches each contact: a call (with the assistant or a notice), a message or an automation. */
+export const deliveryLabel = (campaign: Pick<Campaign, 'channelAction' | 'workflowDefinitionId' | 'callMode'>) =>
+  campaign.channelAction === CHANNEL_ACTION.Call
+    ? campaign.callMode === 'notify'
+      ? 'Llamada de aviso'
+      : 'Llamada con el asistente'
+    : campaign.workflowDefinitionId
+      ? 'Automatización'
+      : 'Mensaje directo';
+
+/** A campaign's purpose from its type, as the server reads it: collections, sales or general. */
+export const campaignPurpose = (campaignType: number): 'collections' | 'sales' | 'general' =>
+  campaignType === 1 || campaignType === 2 ? 'collections' : campaignType === 0 || campaignType === 3 ? 'sales' : 'general';
+
+/**
+ * Why a campaign must not go out through a line (mirror of the server's rule), or null: a
+ * collections line does not sell and a sales or marketing line does not collect.
+ */
+export const lineMismatch = (linePurpose: string | undefined, campaignType: number): string | null => {
+  const line = linePurpose || 'general';
+  const campaign = campaignPurpose(campaignType);
+  if (line === 'general' || campaign === 'general') return null;
+  const fits = campaign === 'collections' ? line === 'collections' : line === 'sales' || line === 'marketing';
+  const label: Record<string, string> = { collections: 'cobranza', sales: 'ventas', marketing: 'marketing' };
+  return fits ? null : `Esta línea es de ${label[line]} y la campaña es de ${label[campaign]}: no se ejecutará. Elige una línea de ${label[campaign]} o una general.`;
 };
 
 export type AudienceContact = {

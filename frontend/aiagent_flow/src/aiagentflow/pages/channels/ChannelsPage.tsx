@@ -45,6 +45,7 @@ import { BrandPageHeader } from 'src/aiagentflow/components/BrandPageHeader';
 
 import { Iconify } from 'src/components/iconify';
 
+import { LineChips, LineDialog } from './LineDialog';
 import { emptyMetaForm, saveChannelMeta, MetaAccountFields, WhatsAppMetaDialog } from './WhatsAppMetaDialog';
 
 import type { MetaAccountForm } from './WhatsAppMetaDialog';
@@ -133,6 +134,7 @@ export default function ChannelsPage() {
   // Meta (WhatsApp Business) account: typed when creating a Business channel, edited per channel later.
   const [metaForm, setMetaForm] = useState<MetaAccountForm>(emptyMetaForm());
   const [metaChannelId, setMetaChannelId] = useState<string | null>(null);
+  const [lineChannel, setLineChannel] = useState<Channel | null>(null);
   const [openCreate, setOpenCreate] = useState(false);
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null);
@@ -779,7 +781,10 @@ export default function ChannelsPage() {
                   <TableBody>
                     {channels.map((c) => (
                       <TableRow key={c.id} hover>
-                        <TableCell>{c.name}</TableCell>
+                        <TableCell>
+                          {c.name}
+                          <LineChips channel={c} />
+                        </TableCell>
                         <TableCell>
                           <Chip label={c.type} size="small" variant="outlined" />
                         </TableCell>
@@ -821,6 +826,9 @@ export default function ChannelsPage() {
                                 <Iconify icon="mdi:whatsapp" />
                               </IconButton>
                             )}
+                            <IconButton size="small" title="Línea: número, propósito y horario" onClick={() => setLineChannel(c)}>
+                              <Iconify icon="mdi:phone-settings-outline" />
+                            </IconButton>
                             <IconButton size="small" onClick={() => openRoutingDialog(c)}>
                               <Iconify icon="solar:settings-bold" />
                             </IconButton>
@@ -1750,6 +1758,7 @@ export default function ChannelsPage() {
         </DialogActions>
       </Dialog>
       <WhatsAppMetaDialog tenantId={TENANT_ID} channelId={metaChannelId} onClose={() => setMetaChannelId(null)} onSaved={() => fetchAll()} />
+      <LineDialog tenantId={TENANT_ID} channel={lineChannel} onClose={() => setLineChannel(null)} onSaved={() => fetchAll()} />
     </>
   );
 }

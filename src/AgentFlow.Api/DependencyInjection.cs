@@ -114,6 +114,7 @@ public static class DependencyInjection
             .AddSingleton<AgentFlow.Api.Channels.InboundBatcher>()
             .AddScoped<AgentFlow.Api.Voice.ITwilioCredentials, AgentFlow.Api.Voice.TwilioCredentials>()
             .AddScoped<AgentFlow.Api.Voice.IVoiceConversationService, AgentFlow.Api.Voice.VoiceConversationService>()
+            .AddScoped<AgentFlow.Api.Channels.ChannelLineService>()
             .AddScoped<AgentFlow.Api.Commerce.ISalesService, AgentFlow.Api.Commerce.SalesService>()
             .AddScoped<AgentFlow.Api.Campaigns.ICampaignCallTracker, AgentFlow.Api.Campaigns.CampaignCallTracker>()
             .AddScoped<AgentFlow.Api.Channels.IInboundMediaFetcher, AgentFlow.Api.Channels.TwilioMediaFetcher>()

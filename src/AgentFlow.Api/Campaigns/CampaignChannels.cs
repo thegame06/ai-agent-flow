@@ -18,10 +18,46 @@ public static class CampaignChannels
     {
         if (string.IsNullOrWhiteSpace(campaign.Channel)) return null;
         var channel = await channels.GetByIdAsync(campaign.Channel, campaign.TenantId, ct);
+        if (channel is not null && channel.TenantId != campaign.TenantId) return null; // never another tenant's line
         if (channel is null && Enum.TryParse<ChannelType>(campaign.Channel, true, out var type))
-            channel = (await channels.GetByTypeAsync(type, campaign.TenantId, ct)).FirstOrDefault(c => c.Status == ChannelStatus.Active);
+            channel = ChannelLines.Pick(await channels.GetByTypeAsync(type, campaign.TenantId, ct)); // the default line
         return channel;
     }
+
+    /// <summary>What a campaign is for: collections (and reminders), sales (and reactivation) or general.</summary>
+    public static string PurposeOf(CampaignType type) => type switch
+    {
+        CampaignType.Collections or CampaignType.Reminder => ChannelLines.Purposes.Collections,
+        CampaignType.Sales or CampaignType.Reactivation => ChannelLines.Purposes.Sales,
+        _ => ChannelLines.Purposes.General
+    };
+
+    /// <summary>
+    /// Why the campaign must not go out through this line, or null when it may: a collections line
+    /// does not sell and a sales or marketing line does not collect (separate numbers keep each one's
+    /// reputation, rules and assistant apart). General lines and custom campaigns go anywhere.
+    /// </summary>
+    public static string? LineMismatch(ChannelDefinition? line, CampaignContract campaign)
+    {
+        if (line is null) return null;
+        var linePurpose = ChannelLines.PurposeOf(line);
+        var campaignPurpose = PurposeOf(campaign.CampaignType);
+        if (linePurpose == ChannelLines.Purposes.General || campaignPurpose == ChannelLines.Purposes.General) return null;
+        var fits = campaignPurpose == ChannelLines.Purposes.Collections
+            ? linePurpose == ChannelLines.Purposes.Collections
+            : linePurpose is ChannelLines.Purposes.Sales or ChannelLines.Purposes.Marketing;
+        return fits
+            ? null
+            : $"La línea «{line.Name}» es de {PurposeLabel(linePurpose)} y esta campaña es de {PurposeLabel(campaignPurpose)}. Elige una línea de {PurposeLabel(campaignPurpose)} o una general.";
+    }
+
+    public static string PurposeLabel(string purpose) => purpose switch
+    {
+        ChannelLines.Purposes.Collections => "cobranza",
+        ChannelLines.Purposes.Sales => "ventas",
+        ChannelLines.Purposes.Marketing => "marketing",
+        _ => "uso general"
+    };
 
     /// <summary>WhatsApp through Meta's official API (not the QR bridge): free text only inside the window.</summary>
     public static bool IsOfficialWhatsApp(ChannelDefinition? channel)
