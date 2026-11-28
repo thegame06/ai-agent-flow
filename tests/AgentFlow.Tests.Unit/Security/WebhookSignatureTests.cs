@@ -33,4 +33,17 @@ public sealed class WebhookSignatureTests
     [Fact]
     public void WrongSecret_IsRejected()
         => Assert.False(MetaWebhookSignature.IsValid(Body, MetaWebhookSignature.Sign(Body, "someone-else"), ["app-secret"]));
+
+    [Fact]
+    public void Verification_WithTheConfiguredToken_EchoesTheChallenge()
+        => Assert.Equal("1158201444", MetaWebhookVerification.Check("subscribe", "verify-me", "1158201444", "verify-me"));
+
+    [Theory]
+    [InlineData("subscribe", "wrong", "verify-me")]
+    [InlineData("unsubscribe", "verify-me", "verify-me")]
+    [InlineData(null, "verify-me", "verify-me")]
+    [InlineData("subscribe", null, "verify-me")]
+    [InlineData("subscribe", "", "")]
+    public void Verification_WithoutTheRightModeOrToken_IsRefused(string? mode, string? token, string? expected)
+        => Assert.Null(MetaWebhookVerification.Check(mode, token, "123", expected));
 }

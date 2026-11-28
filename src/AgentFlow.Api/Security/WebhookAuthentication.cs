@@ -8,6 +8,26 @@ using Microsoft.Extensions.Options;
 
 namespace AgentFlow.Api.Security;
 
+/// <summary>Meta's subscription handshake: hub.mode=subscribe plus the configured verify token.</summary>
+public static class MetaWebhookVerification
+{
+    /// <summary>The text to echo back to Meta, or null when the request must be refused.</summary>
+    public static string? Check(string? mode, string? verifyToken, string? challenge, string? expectedToken)
+    {
+        if (!string.Equals(mode, "subscribe", StringComparison.Ordinal)
+            || string.IsNullOrEmpty(verifyToken)
+            || string.IsNullOrEmpty(expectedToken))
+            return null;
+
+        var matches = CryptographicOperations.FixedTimeEquals(
+            Encoding.UTF8.GetBytes(verifyToken), Encoding.UTF8.GetBytes(expectedToken));
+        if (!matches)
+            return null;
+
+        return string.IsNullOrEmpty(challenge) ? "verified" : challenge;
+    }
+}
+
 /// <summary>Checks Meta's X-Hub-Signature-256: HMAC-SHA256 of the raw body with the app secret.</summary>
 public static class MetaWebhookSignature
 {
