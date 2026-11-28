@@ -217,6 +217,63 @@ public sealed class PaymentDeskTests
     }
 
     [Fact]
+    public async Task ReceiptSentAfterwards_CompletesTheSameReport_InsteadOfAddingAnother()
+    {
+        var (service, store, desk, _) = Create(contact: null);
+        store.Loans["PR-1"] = Loan("PR-1", 500, 2000);
+
+        await service.ReportPaymentAsync(Tenant, Phone, 400m, null, null, "transferencia", null);
+        var result = await service.ReportPaymentAsync(Tenant, Phone, 400m, "hoy", "333334433", null, null);
+
+        var report = Assert.Single(desk.Reports);
+        Assert.Equal(400m, report.Amount);
+        Assert.Equal("333334433", report.Reference);
+        Assert.Equal("transferencia", report.Method);
+        Assert.NotNull(report.PaidOn);
+        Assert.Equal("Pago reportado; un asesor lo verificara.", result.Message);
+    }
+
+    [Fact]
+    public async Task AReceiptAlreadyConfirmed_IsNotReportedAgain()
+    {
+        var (service, store, desk, _) = Create(contact: null);
+        store.Loans["PR-1"] = Loan("PR-1", 500, 2000);
+        await service.ReportPaymentAsync(Tenant, Phone, 500m, "ayer", "12345", null, null);
+        desk.Reports[0].Status = CollectionPaymentReportStatus.Confirmed;
+
+        var result = await service.ReportPaymentAsync(Tenant, Phone, 500m, "ayer", "12345", null, null);
+
+        Assert.Single(desk.Reports);
+        Assert.Contains("ya estaba registrado", result.Message);
+    }
+
+    [Fact]
+    public async Task TwoDifferentReceipts_AreTwoPayments()
+    {
+        var (service, store, desk, _) = Create(contact: null);
+        store.Loans["PR-1"] = Loan("PR-1", 500, 2000);
+
+        await service.ReportPaymentAsync(Tenant, Phone, 200m, "hoy", "TRX-1", null, null);
+        await service.ReportPaymentAsync(Tenant, Phone, 200m, "hoy", "TRX-2", null, null);
+
+        Assert.Equal(2, desk.Reports.Count);
+    }
+
+    [Fact]
+    public void ADifferentAmount_OrAnOldOrReviewedReport_IsNotCompleted()
+    {
+        var now = new DateTimeOffset(2026, 11, 27, 18, 0, 0, TimeSpan.Zero);
+        var incoming = new CollectionPaymentReportDocument { TenantId = Tenant, PartyId = "p1", Amount = 400m, Reference = "R-9" };
+        CollectionPaymentReportDocument Report(decimal? amount, DateTimeOffset createdAt, CollectionPaymentReportStatus status = CollectionPaymentReportStatus.Pending)
+            => new() { TenantId = Tenant, PartyId = "p1", Amount = amount, CreatedAt = createdAt, Status = status };
+
+        Assert.Null(CollectionPaymentDesk.PendingToComplete([Report(300m, now.AddHours(-1))], incoming, now));
+        Assert.Null(CollectionPaymentDesk.PendingToComplete([Report(400m, now.AddHours(-30))], incoming, now));
+        Assert.Null(CollectionPaymentDesk.PendingToComplete([Report(400m, now.AddHours(-1), CollectionPaymentReportStatus.Confirmed)], incoming, now));
+        Assert.NotNull(CollectionPaymentDesk.PendingToComplete([Report(null, now.AddHours(-1))], incoming, now));
+    }
+
+    [Fact]
     public async Task ConfirmingAReport_RegistersThePaymentOnTheLoan()
     {
         var store = new CollectionsImportTests.InMemoryCollectionsStore();

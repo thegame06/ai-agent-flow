@@ -154,7 +154,10 @@ public sealed class CampaignOutcomeService : ICampaignOutcomeService
 
     public async Task<CampaignResultsContract> GetResultsAsync(string tenantId, string campaignId, CancellationToken ct = default)
     {
-        var contacts = await _campaigns.GetContactExecutionsByCampaignAsync(tenantId, campaignId, 5000, ct);
+        // A failed attempt that was retried counts once, as its retry.
+        var contacts = (await _campaigns.GetContactExecutionsByCampaignAsync(tenantId, campaignId, 5000, ct))
+            .Where(c => c.RetriedByExecutionId is null)
+            .ToList();
         var now = DateTimeOffset.UtcNow;
 
         var sent = contacts.Count(c => IsReached(c.Status));

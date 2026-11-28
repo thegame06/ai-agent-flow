@@ -246,6 +246,12 @@ public sealed class CampaignExecutionService : ICampaignExecutionService
                 CreatedAt = DateTimeOffset.UtcNow,
                 UpdatedAt = DateTimeOffset.UtcNow
             }, ct);
+            // The retry stands for this customer from now on: the failed attempt stops counting.
+            await _campaignStore.UpdateContactExecutionAsync(failed with
+            {
+                RetriedByExecutionId = cloned.Id,
+                UpdatedAt = DateTimeOffset.UtcNow
+            }, ct);
             cloned = await ExecuteContactAsync(campaign, retryRun, cloned, ct);
             counters.Observe(cloned.Status);
         }
@@ -265,7 +271,7 @@ public sealed class CampaignExecutionService : ICampaignExecutionService
         foreach (var run in runs)
         {
             var contacts = await _campaignStore.GetContactExecutionsAsync(tenantId, run.Id, ct);
-            foreach (var contact in contacts)
+            foreach (var contact in contacts.Where(c => c.RetriedByExecutionId is null))
                 counters.Observe(contact.Status);
         }
 

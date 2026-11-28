@@ -233,6 +233,11 @@ public sealed class CollectionPaymentDocument
     public DateTimeOffset PaidAt { get; set; }
     /// <summary>The lender's payment reference; a repeated reference is ignored.</summary>
     public string? Reference { get; set; }
+    /// <summary>
+    /// The campaign contact the customer told about this payment (a confirmed report). The recovery
+    /// report credits that campaign directly instead of guessing by dates.
+    /// </summary>
+    public string? ContactExecutionId { get; set; }
     /// <summary>api, human or csv.</summary>
     public string Source { get; set; } = "api";
     public decimal OverdueBefore { get; set; }

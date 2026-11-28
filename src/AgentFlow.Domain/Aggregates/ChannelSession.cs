@@ -121,6 +121,23 @@ public sealed class ChannelSession
         ExpiresAt = DateTimeOffset.UtcNow + expiresIn;
     }
 
+    /// <summary>
+    /// The conversation stays open while the customer keeps writing: a session that expires gets its
+    /// window counted again from this (the customer's latest) message. Sessions without expiry keep none.
+    /// </summary>
+    public void ExtendExpiration(TimeSpan window)
+    {
+        if (ExpiresAt.HasValue)
+            ExpiresAt = DateTimeOffset.UtcNow + window;
+    }
+
+    /// <summary>Moves the session to the customer's canonical address (sessions opened before addresses were normalized).</summary>
+    public void UseIdentifier(string identifier)
+    {
+        if (!string.IsNullOrWhiteSpace(identifier))
+            Identifier = identifier;
+    }
+
     public bool IsExpired()
     {
         return ExpiresAt.HasValue && ExpiresAt <= DateTimeOffset.UtcNow;

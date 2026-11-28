@@ -212,25 +212,49 @@ public sealed class CollectionsAssistantService : ICollectionsAssistantService
         var open = loans.Where(l => l.Status is not CollectionLoanStatus.PaidOff).ToList();
         string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
+        var saved = new CollectionPaymentReportDocument
+        {
+            TenantId = tenantId,
+            PartyId = partyId,
+            CustomerName = loans.Select(l => l.CustomerName).FirstOrDefault(n => !string.IsNullOrWhiteSpace(n)),
+            Phone = phone,
+            Amount = amount,
+            Currency = loans.Select(l => l.Currency).FirstOrDefault(c => !string.IsNullOrWhiteSpace(c)) ?? "MXN",
+            PaidOnText = Clean(whenText),
+            PaidOn = paidOn,
+            Reference = Clean(reference),
+            Method = Clean(method),
+            Notes = Clean(notes),
+            LoanId = open.Count == 1 ? open[0].Id : null,
+            ContactExecutionId = contact?.Id,
+            Source = CampaignOutcomes.Sources.Agent
+        };
         if (_paymentDesk is not null)
         {
-            await _paymentDesk.InsertReportAsync(new CollectionPaymentReportDocument
+            // A receipt already confirmed is not a new payment (a customer repeating themselves, or the
+            // assistant repeating its last action on a later "hola").
+            if (saved.Reference is not null)
             {
-                TenantId = tenantId,
-                PartyId = partyId,
-                CustomerName = loans.Select(l => l.CustomerName).FirstOrDefault(n => !string.IsNullOrWhiteSpace(n)),
-                Phone = phone,
-                Amount = amount,
-                Currency = loans.Select(l => l.Currency).FirstOrDefault(c => !string.IsNullOrWhiteSpace(c)) ?? "MXN",
-                PaidOnText = Clean(whenText),
-                PaidOn = paidOn,
-                Reference = Clean(reference),
-                Method = Clean(method),
-                Notes = Clean(notes),
-                LoanId = open.Count == 1 ? open[0].Id : null,
-                ContactExecutionId = contact?.Id,
-                Source = CampaignOutcomes.Sources.Agent
-            }, ct);
+                var all = await _paymentDesk.GetReportsAsync(tenantId, null, ct: ct);
+                var confirmed = CollectionPaymentDesk.AlreadyConfirmed(all, saved);
+                if (confirmed is not null)
+                    return new(true, $"Ese pago (comprobante {confirmed.Reference}) ya estaba registrado y confirmado: no lo reportes de nuevo; solo dile al cliente que ya esta aplicado.");
+            }
+
+            // The date or receipt the customer sends afterwards belongs to the payment they already
+            // reported: complete that report instead of adding a second one for the same money.
+            var pending = await _paymentDesk.GetReportsAsync(tenantId, CollectionPaymentReportStatus.Pending, ct: ct);
+            var existing = CollectionPaymentDesk.PendingToComplete(pending, saved, DateTimeOffset.UtcNow);
+            if (existing is not null)
+            {
+                CollectionPaymentDesk.Complete(existing, saved);
+                await _paymentDesk.UpdateReportAsync(existing, ct);
+                saved = existing;
+            }
+            else
+            {
+                await _paymentDesk.InsertReportAsync(saved, ct);
+            }
         }
 
         // The campaign result is "already paid" right away; the money counts once a person confirms it.
@@ -247,13 +271,13 @@ public sealed class CollectionsAssistantService : ICollectionsAssistantService
 
         var missing = new[]
         {
-            amount is null ? "monto" : null,
-            paidOn is null ? "fecha" : null,
-            Clean(reference) is null ? "numero de referencia o comprobante" : null
+            saved.Amount is null ? "monto" : null,
+            saved.PaidOn is null ? "fecha" : null,
+            saved.Reference is null ? "numero de referencia o comprobante" : null
         }.Where(x => x is not null).ToList();
         return new(true, missing.Count == 0
             ? "Pago reportado; un asesor lo verificara."
-            : $"Pago reportado; un asesor lo verificara. Faltan: {string.Join(", ", missing)}. Si no los dio, pideselos una sola vez; si los da, vuelve a reportarlo.");
+            : $"Pago reportado; un asesor lo verificara. Faltan: {string.Join(", ", missing)}. Si no los dio, pideselos una sola vez; si los da, vuelve a reportarlo (se completa el mismo reporte).");
     }
 
     public async Task<CollectionsAssistantActionResult> HandoffAsync(string tenantId, string phone, string reason, CancellationToken ct = default, string? sessionId = null)

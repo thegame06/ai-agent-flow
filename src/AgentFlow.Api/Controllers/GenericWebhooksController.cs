@@ -19,6 +19,7 @@ public sealed class GenericWebhooksController : ControllerBase
     private readonly IChannelMessageRepository _messageRepo;
     private readonly IWorkflowAuditService _audit;
     private readonly ILogger<GenericWebhooksController> _logger;
+    private readonly AgentFlow.Api.Channels.IInboundMessageIngest? _ingest;
 
     public GenericWebhooksController(
         IConnectStore connectStore,
@@ -27,8 +28,10 @@ public sealed class GenericWebhooksController : ControllerBase
         IChannelSessionRepository sessionRepo,
         IChannelMessageRepository messageRepo,
         IWorkflowAuditService audit,
-        ILogger<GenericWebhooksController> logger)
+        ILogger<GenericWebhooksController> logger,
+        AgentFlow.Api.Channels.IInboundMessageIngest? ingest = null)
     {
+        _ingest = ingest;
         _connectStore = connectStore;
         _gateway = gateway;
         _channelRepo = channelRepo;
@@ -69,82 +72,71 @@ public sealed class GenericWebhooksController : ControllerBase
         var content = ReadString(payload, "message")
             ?? ReadString(payload, "content")
             ?? ReadString(payload, "text")
-            ?? "(empty)";
+            ?? string.Empty;
 
-        var channelSession = await ResolveOrCreateSessionAsync(tenantId, channel, recipient, ct);
-        var assignedTo = channelSession?.AgentId;
-        ChannelMessage? incomingMessage = null;
-        if (channelSession is not null)
+        var target = await ResolveChannelAsync(tenantId, channel, ct);
+        if (target is null)
         {
-            incomingMessage = ChannelMessage.CreateIncoming(
-                tenantId,
-                channelSession.ChannelId,
-                channelSession.Id,
-                recipient,
-                content,
-                externalMessageId: externalEventKey);
-            incomingMessage.Metadata["actor"] = "customer";
-            incomingMessage.Metadata["source"] = "generic-webhook";
-            channelSession.RecordIncomingMessage(content);
-            await _sessionRepo.UpdateAsync(channelSession, ct);
+            // No channel to answer through: keep the message for traceability only.
+            var orphan = await _connectStore.CreateInboxMessageAsync(new ConnectInboxMessageContract
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                TenantId = tenantId,
+                Channel = channel,
+                Recipient = recipient,
+                Content = content.Length == 0 ? "(empty)" : content,
+                ExternalEventKey = externalEventKey,
+                Status = ConnectOperationalStatus.Queued,
+                CreatedAt = now,
+                UpdatedAt = now,
+                UpdatedBy = "webhook"
+            }, ct);
+            return Ok(new { status = "accepted", tenantId, channel, inboxMessageId = orphan.Id, sessionId = (string?)null });
         }
 
-        var inboxMessage = await _connectStore.CreateInboxMessageAsync(new ConnectInboxMessageContract
+        // The same pipeline as every other channel: customer, session, inbox, campaign attribution, assistant.
+        var ingest = _ingest ?? HttpContext.RequestServices.GetRequiredService<AgentFlow.Api.Channels.IInboundMessageIngest>();
+        var result = await ingest.IngestAsync(new AgentFlow.Api.Channels.InboundMessage
         {
-            Id = Guid.NewGuid().ToString("N"),
             TenantId = tenantId,
-            Channel = channel,
-            Recipient = recipient,
-            Content = content,
-            ExternalEventKey = externalEventKey,
-            Status = ConnectOperationalStatus.Queued,
-            CreatedAt = now,
-            UpdatedAt = now,
-            UpdatedBy = "webhook"
-        }, ct);
+            Channel = target,
+            Provider = channel.Trim().ToLowerInvariant(),
+            ExternalId = externalEventKey,
+            From = recipient,
+            DisplayName = ReadString(payload, "displayName") ?? ReadString(payload, "name"),
+            Text = content,
+            Metadata = new Dictionary<string, string> { ["source"] = "generic-webhook" }
+        }, ct: ct);
+
         await _audit.RecordStudioActionAsync(
             tenantId,
             "webhook",
             "workflow.webhook.received",
             "connect.message.received",
-            new { channel, recipient, inboxMessageId = inboxMessage.Id },
+            new { channel, recipient, inboxMessageId = result.InboxMessageId },
             HttpContext.TraceIdentifier,
             ct);
 
-                // Route by channel gateway (router/intents) instead of auto-triggering
-        // the latest published workflow by event name.
-        string? agentResponse = null;
-        string? agentExecutionId = null;
-        if (incomingMessage is not null)
-        {
-            var gatewayResponse = await _gateway.ProcessMessageAsync(incomingMessage, ct);
-            agentResponse = gatewayResponse.Content;
-            agentExecutionId = gatewayResponse.AgentExecutionId;
-        }
-
+        if (result.Status == AgentFlow.Api.Channels.InboundStatus.Duplicate)
+            return Ok(new { status = "duplicate_accepted", tenantId, channel, inboxMessageId = result.InboxMessageId });
 
         return Ok(new
         {
-            status = "accepted",
+            status = result.Status == AgentFlow.Api.Channels.InboundStatus.Ignored ? "ignored" : "accepted",
             tenantId,
             channel,
-            inboxMessageId = inboxMessage.Id,
+            inboxMessageId = result.InboxMessageId,
             workflowExecutionId = (string?)null,
-            sessionId = channelSession?.Id,
-            assignedTo,
-            agentExecutionId,
-            agentResponse
+            sessionId = result.Session?.Id,
+            assignedTo = result.Session?.AgentId,
+            agentExecutionId = result.Reply?.AgentExecutionId,
+            agentResponse = result.Reply?.Content
         });
     }
 
-    private async Task<ChannelSession?> ResolveOrCreateSessionAsync(
-        string tenantId,
-        string channelSlug,
-        string recipient,
-        CancellationToken ct)
+    private async Task<ChannelDefinition?> ResolveChannelAsync(string tenantId, string channelSlug, CancellationToken ct)
     {
-        var normalized = channelSlug.Trim().ToLowerInvariant();
-        var type = normalized switch
+        var type = channelSlug.Trim().ToLowerInvariant() switch
         {
             "whatsapp" => ChannelType.WhatsApp,
             "email" => ChannelType.Email,
@@ -153,70 +145,8 @@ public sealed class GenericWebhooksController : ControllerBase
             "slack" => ChannelType.Slack,
             _ => ChannelType.Custom
         };
-
-        var channel = (await _channelRepo.GetByTypeAsync(type, tenantId, ct))
+        return (await _channelRepo.GetByTypeAsync(type, tenantId, ct))
             .FirstOrDefault(c => c.Status == ChannelStatus.Active);
-
-        if (channel is null)
-            return null;
-
-        var existing = await _sessionRepo.GetByChannelAndIdentifierAsync(channel.Id, recipient, tenantId, ct);
-        if (existing != null && !existing.IsExpired())
-        {
-            if (string.IsNullOrWhiteSpace(existing.AgentId))
-            {
-                var selectedAgent = await SelectAgentForSessionAsync(channel, ct);
-                if (!string.IsNullOrWhiteSpace(selectedAgent))
-                {
-                    existing.LinkAgent(selectedAgent);
-                    await _sessionRepo.UpdateAsync(existing, ct);
-                }
-            }
-            return existing;
-        }
-
-        var session = ChannelSession.Create(tenantId, channel.Id, channel.Type, recipient);
-        var assigned = await SelectAgentForSessionAsync(channel, ct);
-        if (!string.IsNullOrWhiteSpace(assigned))
-            session.LinkAgent(assigned);
-        await _sessionRepo.InsertAsync(session, ct);
-        return session;
-    }
-
-    private async Task<string?> SelectAgentForSessionAsync(ChannelDefinition channel, CancellationToken ct)
-    {
-        var routingAgentsRaw = channel.Config.GetValueOrDefault("IntentAgents")
-            ?? channel.Config.GetValueOrDefault("RoutingAgents");
-        if (!string.IsNullOrWhiteSpace(channel.RouterAgentId))
-            return channel.RouterAgentId;
-
-        if (string.IsNullOrWhiteSpace(routingAgentsRaw))
-            return channel.Config.GetValueOrDefault("DefaultAgentId");
-
-        var candidates = routingAgentsRaw
-            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Where(x => !string.IsNullOrWhiteSpace(x))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        if (candidates.Count == 0)
-            return channel.Config.GetValueOrDefault("DefaultAgentId");
-
-        var active = await _sessionRepo.GetActiveByChannelAsync(channel.Id, channel.TenantId, ct);
-        var loadByAgent = active
-            .Where(s => !string.IsNullOrWhiteSpace(s.AgentId))
-            .GroupBy(s => s.AgentId!, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
-        var capacities = ParseRoutingCapacities(channel.Config.GetValueOrDefault("RoutingCapacities"));
-        var withinCapacity = candidates
-            .Where(agentId => !capacities.TryGetValue(agentId, out var max) || (loadByAgent.TryGetValue(agentId, out var current) ? current : 0) < max)
-            .ToList();
-        var pool = withinCapacity.Count > 0 ? withinCapacity : candidates;
-
-        return pool
-            .OrderBy(a => loadByAgent.TryGetValue(a, out var count) ? count : 0)
-            .ThenBy(a => a, StringComparer.OrdinalIgnoreCase)
-            .FirstOrDefault();
     }
 
     private static Dictionary<string, int> ParseRoutingCapacities(string? raw)
