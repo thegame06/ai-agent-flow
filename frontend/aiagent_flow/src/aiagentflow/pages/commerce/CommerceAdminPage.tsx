@@ -32,7 +32,22 @@ import { BrandPageHeader } from 'src/aiagentflow/components/BrandPageHeader';
 import { Iconify } from 'src/components/iconify';
 
 import { NewSaleDialog } from './NewSaleDialog';
+import { BookingFields } from './BookingFields';
+import { BranchHoursEditor } from './BranchHoursEditor';
 import { type Frequency, FREQUENCY_LABEL } from './installments';
+import { bookingToApi, EMPTY_BOOKING, bookingFromApi, validateBooking } from './booking';
+import {
+  weekToApi,
+  weekFromApi,
+  describeWeek,
+  closuresToApi,
+  closuresFromApi,
+  EMPTY_BRANCH_HOURS,
+  validateBranchHours,
+} from './businessHours';
+
+import type { ApiBooking, BookingDraft } from './booking';
+import type { ApiClosure, BranchHoursDraft, ApiOpeningInterval } from './businessHours';
 
 type PartyRow = {
   id: string;
@@ -73,6 +88,7 @@ type InventoryRow = {
     branchStocks: Array<{ branchId: string; onHand: number }>;
   }>;
   branchStocks: Array<{ branchId: string; onHand: number }>;
+  booking?: ApiBooking | null;
 };
 
 type InventoryMovementRow = {
@@ -141,6 +157,11 @@ type BranchRow = {
   phone?: string;
   active: boolean;
   properties?: Record<string, string>;
+  timezone?: string | null;
+  openingHours?: ApiOpeningInterval[];
+  closures?: ApiClosure[];
+  mapsUrl?: string | null;
+  notes?: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -176,6 +197,8 @@ type StoreSettings = {
   taxRate: number;
   usePerProductTax: boolean;
   hideOutOfStockProducts: boolean;
+  timezone: string;
+  businessDescription: string;
 };
 
 type CustomerDraft = {
@@ -215,6 +238,7 @@ type InventoryDraft = {
     branchStocks: Array<{ branchId: string; onHand: string }>;
   }>;
   branchStocks: Array<{ branchId: string; onHand: string }>;
+  booking: BookingDraft;
 };
 
 type InventoryAdjustmentDraft = {
@@ -246,6 +270,7 @@ type BranchDraft = {
   address: string;
   phone: string;
   active: boolean;
+  hours: BranchHoursDraft;
 };
 
 const EMPTY_CUSTOMER: CustomerDraft = {
@@ -275,6 +300,7 @@ const EMPTY_INVENTORY: InventoryDraft = {
   discountValue: '',
   variations: [],
   branchStocks: [],
+  booking: EMPTY_BOOKING,
 };
 
 const EMPTY_ADJUSTMENT: InventoryAdjustmentDraft = {
@@ -306,6 +332,7 @@ const EMPTY_BRANCH: BranchDraft = {
   address: '',
   phone: '',
   active: true,
+  hours: EMPTY_BRANCH_HOURS,
 };
 
 const DEFAULT_STORE_SETTINGS: StoreSettings = {
@@ -317,6 +344,8 @@ const DEFAULT_STORE_SETTINGS: StoreSettings = {
   taxRate: 0,
   usePerProductTax: false,
   hideOutOfStockProducts: false,
+  timezone: 'America/Managua',
+  businessDescription: '',
 };
 
 const MODULE_IDS = {
@@ -380,6 +409,8 @@ export default function CommerceAdminPage() {
 
   const [tab, setTab] = useState<CommerceTab>('customers');
   const [actionError, setActionError] = useState('');
+  // Errors of the branch and product forms, shown inside them (the page alert is hidden behind).
+  const [formError, setFormError] = useState('');
   const [actionOk, setActionOk] = useState('');
 
   const [customerQuery, setCustomerQuery] = useState('');
@@ -656,6 +687,8 @@ export default function CommerceAdminPage() {
         taxRate: Number(res.data?.taxRate ?? 0),
         usePerProductTax: Boolean(res.data?.usePerProductTax),
         hideOutOfStockProducts: Boolean(res.data?.hideOutOfStockProducts),
+        timezone: res.data?.timezone ?? DEFAULT_STORE_SETTINGS.timezone,
+        businessDescription: res.data?.businessDescription ?? '',
       });
     } catch (e: any) {
       setActionError(e?.message ?? 'No se pudo cargar la configuracion de tienda.');
@@ -815,6 +848,7 @@ export default function CommerceAdminPage() {
           branchId: stock.branchId,
           onHand: String(stock.onHand ?? 0),
         })),
+        booking: bookingFromApi(row.booking),
       });
       setInventoryImageUrlInput('');
       setInventoryPreviewImageIndex(0);
@@ -830,10 +864,16 @@ export default function CommerceAdminPage() {
       setInventoryVariationImageInputs({});
       setInventoryPreviewVariationImageIndex(0);
     }
+    setFormError('');
     setInventoryDialogOpen(true);
   };
 
   const saveInventory = async () => {
+    const bookingError = validateBooking(inventoryDraft.booking);
+    if (bookingError) {
+      setFormError(bookingError);
+      return;
+    }
     try {
       await axios.put(endpoints.agentflow.commerce.inventoryItemBySku(tenantId, inventoryDraft.sku), {
         name: inventoryDraft.name,
@@ -873,6 +913,7 @@ export default function CommerceAdminPage() {
           branchId: stock.branchId,
           onHand: Number(stock.onHand || 0),
         })),
+        booking: bookingToApi(inventoryDraft.booking),
       });
       setActionOk('Producto guardado.');
       setInventoryDialogOpen(false);
@@ -880,7 +921,7 @@ export default function CommerceAdminPage() {
       await loadInventory();
       await Promise.all([loadCategories(), loadBranches()]);
     } catch (e: any) {
-      setActionError(e?.message ?? 'No se pudo guardar el producto.');
+      setFormError(e?.message ?? 'No se pudo guardar el producto.');
     }
   };
 
@@ -937,11 +978,24 @@ export default function CommerceAdminPage() {
       address: row.address ?? '',
       phone: row.phone ?? '',
       active: row.active,
+      hours: {
+        timezone: row.timezone ?? '',
+        week: weekFromApi(row.openingHours),
+        closures: closuresFromApi(row.closures),
+        mapsUrl: row.mapsUrl ?? '',
+        notes: row.notes ?? '',
+      },
     } : EMPTY_BRANCH);
+    setFormError('');
     setBranchDialogOpen(true);
   };
 
   const saveBranch = async () => {
+    const hoursError = validateBranchHours(branchDraft.hours);
+    if (hoursError) {
+      setFormError(hoursError);
+      return;
+    }
     try {
       const payload = {
         code: branchDraft.code,
@@ -949,7 +1003,12 @@ export default function CommerceAdminPage() {
         address: branchDraft.address || undefined,
         phone: branchDraft.phone || undefined,
         active: branchDraft.active,
-        properties: {},
+        properties: selectedBranch?.properties ?? {},
+        timezone: branchDraft.hours.timezone.trim(),
+        openingHours: weekToApi(branchDraft.hours.week),
+        closures: closuresToApi(branchDraft.hours.closures),
+        mapsUrl: branchDraft.hours.mapsUrl.trim(),
+        notes: branchDraft.hours.notes.trim(),
       };
       if (selectedBranch) {
         await axios.put(endpoints.agentflow.commerce.branchById(tenantId, selectedBranch.id), payload);
@@ -961,7 +1020,7 @@ export default function CommerceAdminPage() {
       setSelectedBranch(null);
       await Promise.all([loadBranches(), loadInventory()]);
     } catch (e: any) {
-      setActionError(e?.message ?? 'No se pudo guardar la sucursal.');
+      setFormError(e?.message ?? 'No se pudo guardar la sucursal.');
     }
   };
 
@@ -984,6 +1043,8 @@ export default function CommerceAdminPage() {
         taxRate: Number(storeSettings.taxRate || 0),
         usePerProductTax: storeSettings.usePerProductTax,
         hideOutOfStockProducts: storeSettings.hideOutOfStockProducts,
+        timezone: storeSettings.timezone.trim(),
+        businessDescription: storeSettings.businessDescription,
       });
       setActionOk('Configuracion de tienda actualizada.');
       await loadStoreSettings();
@@ -1535,6 +1596,7 @@ export default function CommerceAdminPage() {
                     { field: 'name', headerName: 'Sucursal', flex: 1, minWidth: 220 },
                     { field: 'address', headerName: 'Direccion', flex: 1, minWidth: 240, valueGetter: (_, row) => row.address || '-' },
                     { field: 'phone', headerName: 'Telefono', width: 150, valueGetter: (_, row) => row.phone || '-' },
+                    { field: 'openingHours', headerName: 'Horario', flex: 1, minWidth: 240, sortable: false, valueGetter: (_, row) => describeWeek(weekFromApi(row.openingHours)) },
                     { field: 'active', headerName: 'Activa', width: 110, renderCell: (params) => <Chip size="small" label={params.value ? 'Si' : 'No'} color={params.value ? 'success' : 'default'} /> },
                     {
                       field: 'actions',
@@ -1828,6 +1890,21 @@ export default function CommerceAdminPage() {
                           </TextField>
                         </Grid>
                       </Grid>
+                      <TextField
+                        label="Zona horaria"
+                        value={storeSettings.timezone}
+                        onChange={(e) => setStoreSettings((prev) => ({ ...prev, timezone: e.target.value }))}
+                        helperText="Nombre IANA, por ejemplo America/Managua. Las sucursales sin zona propia usan esta."
+                      />
+                      <TextField
+                        label="Que hace el negocio"
+                        placeholder="Clinica dental familiar: limpiezas, ortodoncia y urgencias."
+                        multiline
+                        minRows={2}
+                        value={storeSettings.businessDescription}
+                        onChange={(e) => setStoreSettings((prev) => ({ ...prev, businessDescription: e.target.value }))}
+                        helperText="Una o dos frases. El asistente la usa cuando le preguntan quienes son."
+                      />
                     </Stack>
                   </Card>
                 </Grid>
@@ -1938,6 +2015,7 @@ export default function CommerceAdminPage() {
                 <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>
                   Configura lo que hoy soporta el catalogo comercial: nombre, SKU, tipo, unidad, precio y control de inventario.
                 </Typography>
+                {formError && <Alert severity="error" sx={{ mt: 1.5 }}>{formError}</Alert>}
               </Box>
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
                 <Button
@@ -2027,6 +2105,10 @@ export default function CommerceAdminPage() {
                       value={inventoryDraft.unitPrice}
                       onChange={(e) => setInventoryDraft((prev) => ({ ...prev, unitPrice: e.target.value }))}
                       InputProps={{ startAdornment: <Box sx={{ mr: 1, color: 'text.secondary' }}>$</Box> }}
+                    />
+                    <BookingFields
+                      value={inventoryDraft.booking}
+                      onChange={(booking) => setInventoryDraft((prev) => ({ ...prev, booking }))}
                     />
                     <TextField
                       select
@@ -2812,12 +2894,13 @@ export default function CommerceAdminPage() {
         </DialogActions>
       </Dialog>
 
-      <Dialog open={branchDialogOpen} onClose={() => setBranchDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>
+      <Dialog open={branchDialogOpen} onClose={() => setBranchDialogOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle component="div">
           <Typography variant="h6">{selectedBranch ? 'Editar sucursal' : 'Nueva sucursal'}</Typography>
           <Typography variant="body2" color="text.secondary">
-            Registra un punto de operacion para el catalogo y la venta.
+            Registra un punto de operacion, su horario y sus feriados. El asistente los usa para responder donde estan y cuando abren.
           </Typography>
+          {formError && <Alert severity="error" sx={{ mt: 1.5 }}>{formError}</Alert>}
         </DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
@@ -2831,6 +2914,11 @@ export default function CommerceAdminPage() {
                 <Switch checked={branchDraft.active} onChange={() => setBranchDraft((prev) => ({ ...prev, active: !prev.active }))} />
               </Stack>
             </Card>
+            <BranchHoursEditor
+              value={branchDraft.hours}
+              storeTimezone={storeSettings.timezone}
+              onChange={(hours) => setBranchDraft((prev) => ({ ...prev, hours }))}
+            />
           </Stack>
         </DialogContent>
         <DialogActions>

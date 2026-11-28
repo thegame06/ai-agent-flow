@@ -272,6 +272,9 @@ public sealed class CommerceController : ControllerBase
         if (!CanAccess(tenantId)) return Forbid();
         var moduleCheck = await EnsureModuleEnabledAsync(tenantId, CommerceModules.Inventory, ct);
         if (moduleCheck is not null) return moduleCheck;
+        var booking = request.Booking?.ToDocument();
+        var bookingError = BookingRules.Validate(booking);
+        if (bookingError is not null) return BadRequest(new { message = bookingError });
         var saved = await _commerce.UpsertInventoryItemAsync(
             tenantId,
             sku,
@@ -314,6 +317,7 @@ public sealed class CommerceController : ControllerBase
                 BranchId = x.BranchId,
                 OnHand = x.OnHand
             }).ToList(),
+            booking,
             ct);
         return Ok(ToInventoryDto(saved));
     }
@@ -441,8 +445,10 @@ public sealed class CommerceController : ControllerBase
         if (moduleCheck is not null) return moduleCheck;
         if (string.IsNullOrWhiteSpace(request.Code) || string.IsNullOrWhiteSpace(request.Name))
             return BadRequest("code and name are required.");
+        var hoursError = request.ValidateHours();
+        if (hoursError is not null) return BadRequest(new { message = hoursError });
 
-        var saved = await _commerce.UpsertBranchAsync(new CommerceBranchDocument
+        var branch = new CommerceBranchDocument
         {
             TenantId = tenantId,
             Code = request.Code,
@@ -451,7 +457,9 @@ public sealed class CommerceController : ControllerBase
             Phone = request.Phone,
             Active = request.Active,
             Properties = request.Properties ?? []
-        }, ct);
+        };
+        request.ApplyHoursTo(branch);
+        var saved = await _commerce.UpsertBranchAsync(branch, ct);
         return Ok(ToBranchDto(saved));
     }
 
@@ -465,6 +473,8 @@ public sealed class CommerceController : ControllerBase
         if (existing is null) return NotFound();
         if (string.IsNullOrWhiteSpace(request.Code) || string.IsNullOrWhiteSpace(request.Name))
             return BadRequest("code and name are required.");
+        var hoursError = request.ValidateHours();
+        if (hoursError is not null) return BadRequest(new { message = hoursError });
 
         existing.Code = request.Code;
         existing.Name = request.Name;
@@ -472,6 +482,7 @@ public sealed class CommerceController : ControllerBase
         existing.Phone = request.Phone;
         existing.Active = request.Active;
         existing.Properties = request.Properties ?? [];
+        request.ApplyHoursTo(existing);
 
         var saved = await _commerce.UpsertBranchAsync(existing, ct);
         return Ok(ToBranchDto(saved));
@@ -836,6 +847,9 @@ public sealed class CommerceController : ControllerBase
         var moduleCheck = await EnsureModuleEnabledAsync(tenantId, CommerceModules.Inventory, ct);
         if (moduleCheck is not null) return moduleCheck;
 
+        if (!string.IsNullOrWhiteSpace(request.Timezone) && BusinessHours.FindTimeZone(request.Timezone) is null)
+            return BadRequest(new { message = $"La zona horaria '{request.Timezone}' no existe. Usa un nombre IANA, por ejemplo America/Managua." });
+
         var current = await _commerce.GetStoreSettingsAsync(tenantId, ct);
         current.StoreName = string.IsNullOrWhiteSpace(request.StoreName) ? current.StoreName : request.StoreName.Trim();
         current.Currency = string.IsNullOrWhiteSpace(request.Currency) ? current.Currency : request.Currency.Trim();
@@ -843,6 +857,8 @@ public sealed class CommerceController : ControllerBase
         current.TaxRate = request.TaxRate ?? current.TaxRate;
         current.UsePerProductTax = request.UsePerProductTax ?? current.UsePerProductTax;
         current.HideOutOfStockProducts = request.HideOutOfStockProducts ?? current.HideOutOfStockProducts;
+        if (request.Timezone is not null) current.Timezone = request.Timezone;
+        if (request.BusinessDescription is not null) current.BusinessDescription = request.BusinessDescription;
         if (request.RegenerateApiToken == true)
             current.ApiToken = Guid.NewGuid().ToString("N");
 
@@ -1136,7 +1152,30 @@ public sealed class CommerceController : ControllerBase
             x.ImageUrls,
             branchStocks = x.BranchStocks.Select(stock => new { stock.BranchId, stock.OnHand }).ToList()
         }).ToList(),
-        branchStocks = item.BranchStocks.Select(x => new { x.BranchId, x.OnHand }).ToList()
+        branchStocks = item.BranchStocks.Select(x => new { x.BranchId, x.OnHand }).ToList(),
+        booking = ToBookingDto(item.Booking)
+    };
+
+    private static object? ToBookingDto(CommerceBookingDocument? booking) => booking is null ? null : new
+    {
+        booking.Bookable,
+        booking.Mode,
+        booking.DurationMinutes,
+        booking.MinMinutes,
+        booking.MaxMinutes,
+        booking.StepMinutes,
+        booking.MinUnits,
+        booking.MaxUnits,
+        booking.StartTime,
+        booking.EndTime,
+        booking.BufferMinutes,
+        booking.PriceUnit,
+        booking.PriceIsFrom,
+        booking.MinPartySize,
+        booking.MaxPartySize,
+        booking.ResourceKinds,
+        booking.Instructions,
+        summary = BookingRules.Describe(booking)
     };
 
     private async Task<object> ToInventorySearchDtoAsync(string tenantId, CommerceInventoryItemDocument item, CancellationToken ct)
@@ -1179,7 +1218,8 @@ public sealed class CommerceController : ControllerBase
                 x.ImageUrls,
                 branchStocks = x.BranchStocks.Select(stock => new { stock.BranchId, stock.OnHand }).ToList()
             }).ToList(),
-            branchStocks = item.BranchStocks.Select(x => new { x.BranchId, x.OnHand }).ToList()
+            branchStocks = item.BranchStocks.Select(x => new { x.BranchId, x.OnHand }).ToList(),
+            booking = ToBookingDto(item.Booking)
         };
     }
 
@@ -1204,6 +1244,16 @@ public sealed class CommerceController : ControllerBase
         branch.Phone,
         branch.Active,
         branch.Properties,
+        branch.Timezone,
+        openingHours = branch.OpeningHours.Select(h => new { h.Day, h.Open, h.Close }).ToList(),
+        closures = branch.Closures.Select(c => new
+        {
+            c.Date,
+            c.Reason,
+            intervals = c.Intervals.Select(r => new { r.Open, r.Close }).ToList()
+        }).ToList(),
+        branch.MapsUrl,
+        branch.Notes,
         branch.CreatedAt,
         branch.UpdatedAt
     };
@@ -1232,6 +1282,8 @@ public sealed class CommerceController : ControllerBase
         settings.TaxRate,
         settings.UsePerProductTax,
         settings.HideOutOfStockProducts,
+        timezone = settings.Timezone ?? CommerceStoreDefaults.Timezone,
+        settings.BusinessDescription,
         settings.CreatedAt,
         settings.UpdatedAt
     };
@@ -1373,6 +1425,50 @@ public sealed record UpsertInventoryRequest
     public ProductDiscountRequest? Discount { get; init; }
     public List<ProductVariationRequest>? Variations { get; init; }
     public List<BranchStockRequest>? BranchStocks { get; init; }
+    /// <summary>How the item is reserved; omitted keeps what is stored.</summary>
+    public BookingRequest? Booking { get; init; }
+}
+
+public sealed record BookingRequest
+{
+    public bool Bookable { get; init; }
+    public string? Mode { get; init; }
+    public int DurationMinutes { get; init; }
+    public int MinMinutes { get; init; }
+    public int MaxMinutes { get; init; }
+    public int StepMinutes { get; init; }
+    public int MinUnits { get; init; }
+    public int MaxUnits { get; init; }
+    public string? StartTime { get; init; }
+    public string? EndTime { get; init; }
+    public int BufferMinutes { get; init; }
+    public string? PriceUnit { get; init; }
+    public bool PriceIsFrom { get; init; }
+    public int MinPartySize { get; init; }
+    public int MaxPartySize { get; init; }
+    public List<string>? ResourceKinds { get; init; }
+    public string? Instructions { get; init; }
+
+    public CommerceBookingDocument ToDocument() => new()
+    {
+        Bookable = Bookable,
+        Mode = Mode ?? BookingModes.Appointment,
+        DurationMinutes = DurationMinutes,
+        MinMinutes = MinMinutes,
+        MaxMinutes = MaxMinutes,
+        StepMinutes = StepMinutes,
+        MinUnits = MinUnits,
+        MaxUnits = MaxUnits,
+        StartTime = StartTime,
+        EndTime = EndTime,
+        BufferMinutes = BufferMinutes,
+        PriceUnit = PriceUnit ?? string.Empty,
+        PriceIsFrom = PriceIsFrom,
+        MinPartySize = MinPartySize,
+        MaxPartySize = MaxPartySize,
+        ResourceKinds = ResourceKinds ?? [],
+        Instructions = Instructions
+    };
 }
 
 public sealed record ProductAttributeRequest
@@ -1424,6 +1520,55 @@ public sealed record UpsertBranchRequest
     public string? Phone { get; init; }
     public bool Active { get; init; } = true;
     public Dictionary<string, string>? Properties { get; init; }
+    /// <summary>The fields below are optional: omitted (null) keeps what is stored.</summary>
+    public string? Timezone { get; init; }
+    public List<OpeningIntervalRequest>? OpeningHours { get; init; }
+    public List<BranchClosureRequest>? Closures { get; init; }
+    public string? MapsUrl { get; init; }
+    public string? Notes { get; init; }
+
+    public string? ValidateHours() => BusinessHours.Validate(
+        OpeningHours?.Select(h => h.ToDocument()),
+        Closures?.Select(c => c.ToDocument()),
+        Timezone);
+
+    public void ApplyHoursTo(CommerceBranchDocument branch)
+    {
+        if (Timezone is not null) branch.Timezone = Timezone;
+        if (OpeningHours is not null) branch.OpeningHours = OpeningHours.Select(h => h.ToDocument()).ToList();
+        if (Closures is not null) branch.Closures = Closures.Select(c => c.ToDocument()).ToList();
+        if (MapsUrl is not null) branch.MapsUrl = MapsUrl;
+        if (Notes is not null) branch.Notes = Notes;
+    }
+}
+
+public sealed record OpeningIntervalRequest
+{
+    public required string Day { get; init; }
+    public required string Open { get; init; }
+    public required string Close { get; init; }
+
+    public CommerceOpeningInterval ToDocument() => new() { Day = Day, Open = Open, Close = Close };
+}
+
+public sealed record BranchClosureRequest
+{
+    public required string Date { get; init; }
+    public string? Reason { get; init; }
+    public List<TimeRangeRequest>? Intervals { get; init; }
+
+    public CommerceBranchClosure ToDocument() => new()
+    {
+        Date = Date,
+        Reason = Reason,
+        Intervals = Intervals?.Select(r => new CommerceTimeRange { Open = r.Open, Close = r.Close }).ToList() ?? []
+    };
+}
+
+public sealed record TimeRangeRequest
+{
+    public required string Open { get; init; }
+    public required string Close { get; init; }
 }
 
 public sealed record AdjustInventoryRequest
@@ -1472,4 +1617,7 @@ public sealed record UpsertStoreSettingsRequest
     public bool? UsePerProductTax { get; init; }
     public bool? HideOutOfStockProducts { get; init; }
     public bool? RegenerateApiToken { get; init; }
+    /// <summary>IANA time zone; omitted keeps it, empty clears it (the default applies).</summary>
+    public string? Timezone { get; init; }
+    public string? BusinessDescription { get; init; }
 }

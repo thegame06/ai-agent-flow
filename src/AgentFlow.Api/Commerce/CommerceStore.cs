@@ -43,6 +43,7 @@ public interface ICommerceStore
         CommerceProductDiscountDocument? discount,
         IReadOnlyList<CommerceProductVariationDocument>? variations,
         IReadOnlyList<CommerceBranchStockDocument>? branchStocks,
+        CommerceBookingDocument? booking,
         CancellationToken ct);
     Task<CommerceInventoryItemDocument> AdjustInventoryAsync(string tenantId, string sku, int delta, string reason, string? referenceId, CancellationToken ct);
     Task<IReadOnlyList<CommerceInventoryMovementDocument>> SearchInventoryMovementsAsync(string tenantId, string? sku, int page, int pageSize, CancellationToken ct);
@@ -328,6 +329,7 @@ public sealed class CommerceStore : ICommerceStore
         CommerceProductDiscountDocument? discount,
         IReadOnlyList<CommerceProductVariationDocument>? variations,
         IReadOnlyList<CommerceBranchStockDocument>? branchStocks,
+        CommerceBookingDocument? booking,
         CancellationToken ct)
     {
         var normalizedType = NormalizeInventoryItemType(itemType);
@@ -364,7 +366,8 @@ public sealed class CommerceStore : ICommerceStore
                 Attributes = normalizedAttributes,
                 Discount = normalizedDiscount,
                 Variations = normalizedVariations,
-                BranchStocks = normalizedBranchStocks
+                BranchStocks = normalizedBranchStocks,
+                Booking = booking is null ? null : BookingRules.Normalize(booking)
             };
             await _inventory.InsertOneAsync(created, cancellationToken: ct);
             return created;
@@ -385,6 +388,8 @@ public sealed class CommerceStore : ICommerceStore
         current.Discount = normalizedDiscount;
         current.Variations = normalizedVariations;
         current.BranchStocks = normalizedBranchStocks;
+        // Null keeps what is stored, so a client that does not know about reservations never wipes them.
+        if (booking is not null) current.Booking = BookingRules.Normalize(booking);
         await _inventory.ReplaceOneAsync(x => x.TenantId == tenantId && x.Sku == sku, current, cancellationToken: ct);
         return current;
     }
@@ -509,6 +514,11 @@ public sealed class CommerceStore : ICommerceStore
         branch.Address = string.IsNullOrWhiteSpace(branch.Address) ? null : branch.Address.Trim();
         branch.Phone = string.IsNullOrWhiteSpace(branch.Phone) ? null : NormalizePhone(branch.Phone);
         branch.Properties = NormalizeProperties(branch.Properties);
+        branch.Timezone = string.IsNullOrWhiteSpace(branch.Timezone) ? null : branch.Timezone.Trim();
+        branch.OpeningHours = BusinessHours.NormalizeOpeningHours(branch.OpeningHours);
+        branch.Closures = BusinessHours.NormalizeClosures(branch.Closures);
+        branch.MapsUrl = string.IsNullOrWhiteSpace(branch.MapsUrl) ? null : branch.MapsUrl.Trim();
+        branch.Notes = string.IsNullOrWhiteSpace(branch.Notes) ? null : branch.Notes.Trim();
         branch.UpdatedAt = DateTimeOffset.UtcNow;
 
         var existing = await _branches.Find(x => x.TenantId == branch.TenantId && x.Id == branch.Id).FirstOrDefaultAsync(ct);
@@ -700,6 +710,8 @@ public sealed class CommerceStore : ICommerceStore
         settings.ApiToken = string.IsNullOrWhiteSpace(settings.ApiToken) ? Guid.NewGuid().ToString("N") : settings.ApiToken.Trim();
         settings.Currency = string.IsNullOrWhiteSpace(settings.Currency) ? "NIO" : settings.Currency.Trim().ToUpperInvariant();
         settings.Language = string.IsNullOrWhiteSpace(settings.Language) ? "es" : settings.Language.Trim().ToLowerInvariant();
+        settings.Timezone = string.IsNullOrWhiteSpace(settings.Timezone) ? null : settings.Timezone.Trim();
+        settings.BusinessDescription = string.IsNullOrWhiteSpace(settings.BusinessDescription) ? null : settings.BusinessDescription.Trim();
         settings.UpdatedAt = DateTimeOffset.UtcNow;
 
         if (current is null)
@@ -1051,6 +1063,8 @@ public sealed class CommerceInvoiceDocument
     public DateTimeOffset CreatedAt { get; set; }
 }
 
+// Unknown fields (renamed or dropped ones) must not break reading the catalog.
+[BsonIgnoreExtraElements]
 public sealed class CommerceInventoryItemDocument
 {
     [BsonId] public string Id { get; set; } = Guid.NewGuid().ToString("N");
@@ -1071,6 +1085,8 @@ public sealed class CommerceInventoryItemDocument
     public CommerceProductDiscountDocument? Discount { get; set; }
     public List<CommerceProductVariationDocument> Variations { get; set; } = [];
     public List<CommerceBranchStockDocument> BranchStocks { get; set; } = [];
+    /// <summary>How the item is reserved (a service or a tangible: a table, a room, a machine); null if it is not.</summary>
+    public CommerceBookingDocument? Booking { get; set; }
 }
 
 public sealed class CommerceLineItem
@@ -1107,6 +1123,8 @@ public sealed class CommerceCategoryDocument
     public DateTimeOffset UpdatedAt { get; set; }
 }
 
+// Unknown fields (renamed or dropped ones) must not break reading the catalog.
+[BsonIgnoreExtraElements]
 public sealed class CommerceBranchDocument
 {
     [BsonId] public string Id { get; set; } = Guid.NewGuid().ToString("N");
@@ -1117,12 +1135,46 @@ public sealed class CommerceBranchDocument
     public string? Phone { get; set; }
     public bool Active { get; set; } = true;
     public Dictionary<string, string> Properties { get; set; } = [];
+    /// <summary>IANA time zone of the branch; empty uses the store's.</summary>
+    public string? Timezone { get; set; }
+    /// <summary>Weekly opening hours: several intervals per day are a lunch break. No interval for a day = closed.</summary>
+    public List<CommerceOpeningInterval> OpeningHours { get; set; } = [];
+    /// <summary>Dates that override the weekly hours: holidays (no intervals = closed all day) or special hours.</summary>
+    public List<CommerceBranchClosure> Closures { get; set; } = [];
+    public string? MapsUrl { get; set; }
+    /// <summary>Short notes for customers: parking, landmarks.</summary>
+    public string? Notes { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
 }
 
+/// <summary>One opening interval on a weekday, local time "HH:mm"; Close may be "24:00".</summary>
+public sealed class CommerceOpeningInterval
+{
+    /// <summary>"monday" ... "sunday".</summary>
+    public string Day { get; set; } = string.Empty;
+    public string Open { get; set; } = string.Empty;
+    public string Close { get; set; } = string.Empty;
+}
+
+/// <summary>A date (yyyy-MM-dd, local) with its own hours; no intervals means closed all day.</summary>
+public sealed class CommerceBranchClosure
+{
+    public string Date { get; set; } = string.Empty;
+    public string? Reason { get; set; }
+    public List<CommerceTimeRange> Intervals { get; set; } = [];
+}
+
+public sealed class CommerceTimeRange
+{
+    public string Open { get; set; } = string.Empty;
+    public string Close { get; set; } = string.Empty;
+}
+
 public static class CommerceStoreDefaults
 {
+    public const string Timezone = "America/Managua";
+
     public const string StoreName = "Ventas y facturación";
 
     // Module label used before the rename; tenants that never customized the
@@ -1149,6 +1201,10 @@ public sealed class CommerceStoreSettingsDocument
     public decimal TaxRate { get; set; }
     public bool UsePerProductTax { get; set; }
     public bool HideOutOfStockProducts { get; set; }
+    /// <summary>IANA time zone of the business; branches without their own use it.</summary>
+    public string? Timezone { get; set; }
+    /// <summary>One or two sentences on what the business does, for the assistant.</summary>
+    public string? BusinessDescription { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
 }
