@@ -43,6 +43,9 @@ public interface ICampaignStore
     /// <summary>Enabled campaigns (all tenants) that have a follow-up policy.</summary>
     Task<IReadOnlyList<CampaignContract>> GetCampaignsWithFollowUpsAsync(CancellationToken ct = default);
     Task<CampaignContactExecutionContract?> FindLatestContactByRecipientKeyAsync(string tenantId, string recipientKey, DateTimeOffset since, CancellationToken ct = default);
+    /// <summary>The contact a campaign call was placed for, by the provider's call id.</summary>
+    Task<CampaignContactExecutionContract?> FindContactByCallIdAsync(string tenantId, string callId, CancellationToken ct = default)
+        => Task.FromResult<CampaignContactExecutionContract?>(null);
 
     Task<IReadOnlyList<CampaignCallOutcomeContract>> GetCallOutcomesByRunAsync(string tenantId, string runId, CancellationToken ct = default);
     Task<CampaignCallOutcomeContract?> GetCallOutcomeByContactAsync(string tenantId, string contactExecutionId, CancellationToken ct = default);
@@ -87,6 +90,9 @@ public sealed class MongoCampaignStore : ICampaignStore
             Builders<CampaignContactExecutionDocument>.IndexKeys.Ascending(x => x.TenantId).Ascending(x => x.RecipientKey).Descending(x => x.CreatedAt)));
         _contacts.Indexes.CreateOne(new CreateIndexModel<CampaignContactExecutionDocument>(
             Builders<CampaignContactExecutionDocument>.IndexKeys.Ascending(x => x.TenantId).Descending(x => x.CreatedAt)));
+        // Twilio's status callbacks find the campaign contact of a call by its CallSid.
+        _contacts.Indexes.CreateOne(new CreateIndexModel<CampaignContactExecutionDocument>(
+            Builders<CampaignContactExecutionDocument>.IndexKeys.Ascending(x => x.TenantId).Ascending(x => x.CallId)));
         _contacts.Indexes.CreateOne(new CreateIndexModel<CampaignContactExecutionDocument>(
             Builders<CampaignContactExecutionDocument>.IndexKeys.Ascending(x => x.TenantId).Ascending(x => x.PartyId).Descending(x => x.CreatedAt)));
         _outcomes.Indexes.CreateOne(new CreateIndexModel<CampaignCallOutcomeDocument>(
@@ -138,6 +144,7 @@ public sealed class MongoCampaignStore : ICampaignStore
             WhatsAppTemplateId = campaign.WhatsAppTemplateId,
             MessageDraft = campaign.MessageDraft,
             CallScriptDraft = campaign.CallScriptDraft,
+            CallMode = campaign.CallMode,
             PromptOrigin = campaign.PromptOrigin,
             ScheduleType = campaign.ScheduleType,
             ScheduleExpression = campaign.ScheduleExpression,
@@ -347,6 +354,12 @@ public sealed class MongoCampaignStore : ICampaignStore
                 .ToListAsync(ct))
             .Select(ToContract).ToList();
 
+    public async Task<CampaignContactExecutionContract?> FindContactByCallIdAsync(string tenantId, string callId, CancellationToken ct = default)
+    {
+        var doc = await _contacts.Find(x => x.TenantId == tenantId && x.CallId == callId).FirstOrDefaultAsync(ct);
+        return doc is null ? null : ToContract(doc);
+    }
+
     public async Task<CampaignContactExecutionContract?> FindLatestContactByRecipientKeyAsync(string tenantId, string recipientKey, DateTimeOffset since, CancellationToken ct = default)
     {
         var doc = await _contacts.Find(x => x.TenantId == tenantId && x.RecipientKey == recipientKey && x.CreatedAt >= since)
@@ -450,6 +463,7 @@ public sealed class MongoCampaignStore : ICampaignStore
         WhatsAppTemplateId = doc.WhatsAppTemplateId,
         MessageDraft = doc.MessageDraft,
         CallScriptDraft = doc.CallScriptDraft,
+        CallMode = doc.CallMode,
         PromptOrigin = doc.PromptOrigin,
         ScheduleType = doc.ScheduleType,
         ScheduleExpression = doc.ScheduleExpression,
@@ -647,6 +661,7 @@ public sealed class MongoCampaignStore : ICampaignStore
         public string? WhatsAppTemplateId { get; set; }
         public string? MessageDraft { get; set; }
         public string? CallScriptDraft { get; set; }
+        public string? CallMode { get; set; }
         public string? PromptOrigin { get; set; }
         public CampaignScheduleType ScheduleType { get; set; }
         public string ScheduleExpression { get; set; } = string.Empty;

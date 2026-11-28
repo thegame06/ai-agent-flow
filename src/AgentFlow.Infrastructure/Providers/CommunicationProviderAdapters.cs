@@ -271,6 +271,8 @@ public sealed class TwilioVoiceProviderAdapter : IVoiceCallProviderAdapter, IVoi
         }
         if (request.TimeLimitSeconds is > 0)
             form.Add(new("TimeLimit", request.TimeLimitSeconds.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+        if (request.RingTimeoutSeconds is > 0)
+            form.Add(new("Timeout", request.RingTimeoutSeconds.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)));
         if (!string.IsNullOrWhiteSpace(statusCallback))
         {
             form.Add(new("StatusCallback", statusCallback!));
@@ -286,8 +288,9 @@ public sealed class TwilioVoiceProviderAdapter : IVoiceCallProviderAdapter, IVoi
     {
         if (request.Script.TrimStart().StartsWith("<Response", StringComparison.OrdinalIgnoreCase))
             return request.Script;
+        // Without a conversation the call is a notice: read twice, then the call ends.
         return string.IsNullOrWhiteSpace(request.ConversationUrl)
-            ? TwilioVoiceTwiml.Response(TwilioVoiceTwiml.Say(request.Script))
+            ? TwilioVoiceTwiml.Response(TwilioVoiceTwiml.Say(request.Script, TwilioVoiceTwiml.NoticeRepeats))
             : TwilioVoiceTwiml.Response(
                 TwilioVoiceTwiml.Gather(request.ConversationUrl!, request.Script),
                 TwilioVoiceTwiml.Say(TwilioVoiceTwiml.Goodbye),

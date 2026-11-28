@@ -115,6 +115,7 @@ public static class DependencyInjection
             .AddScoped<AgentFlow.Api.Voice.ITwilioCredentials, AgentFlow.Api.Voice.TwilioCredentials>()
             .AddScoped<AgentFlow.Api.Voice.IVoiceConversationService, AgentFlow.Api.Voice.VoiceConversationService>()
             .AddScoped<AgentFlow.Api.Commerce.ISalesService, AgentFlow.Api.Commerce.SalesService>()
+            .AddScoped<AgentFlow.Api.Campaigns.ICampaignCallTracker, AgentFlow.Api.Campaigns.CampaignCallTracker>()
             .AddScoped<AgentFlow.Api.Channels.IInboundMediaFetcher, AgentFlow.Api.Channels.TwilioMediaFetcher>()
             .AddScoped<AgentFlow.Api.Channels.IInboundMediaFetcher, AgentFlow.Api.Channels.MetaMediaFetcher>()
             .AddScoped<AgentFlow.Api.Channels.IConversationWindow>(sp => new AgentFlow.Api.Channels.ConversationWindow(

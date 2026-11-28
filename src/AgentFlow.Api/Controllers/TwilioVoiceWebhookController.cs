@@ -18,6 +18,7 @@ public sealed class TwilioVoiceWebhookController : ControllerBase
     private readonly IWorkflowAuditService _audit;
     private readonly IVoiceSessionOrchestrator _voiceSessionOrchestrator;
     private readonly IVoiceConversationService _conversation;
+    private readonly AgentFlow.Api.Campaigns.ICampaignCallTracker? _callTracker;
     private readonly string? _defaultCountryCode;
     private readonly ITwilioWebhookSignatureValidator _signatureValidator;
     private readonly ITenantConnectionStore _tenantConnectionStore;
@@ -33,8 +34,10 @@ public sealed class TwilioVoiceWebhookController : ControllerBase
         ITenantConnectionStore tenantConnectionStore,
         ILogger<TwilioVoiceWebhookController> logger,
         ITestStudioSessionStore? testStudioStore = null,
-        IConfiguration? configuration = null)
+        IConfiguration? configuration = null,
+        AgentFlow.Api.Campaigns.ICampaignCallTracker? callTracker = null)
     {
+        _callTracker = callTracker;
         _eventTransport = eventTransport;
         _audit = audit;
         _voiceSessionOrchestrator = voiceSessionOrchestrator;
@@ -57,6 +60,9 @@ public sealed class TwilioVoiceWebhookController : ControllerBase
             return Unauthorized(new { error = "Invalid Twilio signature." });
 
         var normalizedStatus = (form.CallStatus ?? string.Empty).Trim().ToLowerInvariant();
+        // A campaign call: its contact and outcome follow what happened on the phone.
+        if (_callTracker is not null && !string.IsNullOrWhiteSpace(form.CallSid))
+            await _callTracker.ApplyAsync(tenantId, form.CallSid!, normalizedStatus, form.AnsweredBy, form.CallDuration, ct);
         var channel = string.Equals(form.Channel, "callcenter", StringComparison.OrdinalIgnoreCase)
             ? "callcenter"
             : "voice";
@@ -344,6 +350,8 @@ public sealed class TwilioVoiceWebhookController : ControllerBase
             tenantId, form.CallSid, form.AnsweredBy);
         AppendVoiceTestEvent(tenantId, form.CallSid, "call_answered", "voice_call", form.AnsweredBy ?? "unknown",
             $"Answered by {form.AnsweredBy ?? "unknown"}");
+        if (_callTracker is not null && !string.IsNullOrWhiteSpace(form.CallSid))
+            await _callTracker.ApplyAsync(tenantId, form.CallSid!, "answered", form.AnsweredBy, null, ct);
         return Content(await _conversation.AnsweredAsync(tenantId, channel, script, form.AnsweredBy, ct), "text/xml");
     }
 
@@ -513,6 +521,8 @@ public sealed record TwilioVoiceStatusForm
     public string? CallDuration { get; init; }
     public string? Channel { get; init; }
     public string? SessionId { get; init; }
+    /// <summary>With answering-machine detection: human, machine_start, machine_end_*, fax, unknown.</summary>
+    public string? AnsweredBy { get; init; }
 }
 
 public sealed record TwilioVoiceAnswerForm

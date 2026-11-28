@@ -32,7 +32,26 @@ public class CampaignCallTests
         var contact = contacts.Last();
         Assert.Equal(CampaignContactExecutionStatus.Sent, contact.Status);
         Assert.Equal("CA1", contact.ChannelMessageId);
+        Assert.Equal("CA1", contact.CallId);
+        Assert.Equal(VoiceCallMode.Conversation, placed.Mode);
         Assert.Equal(CampaignCallOutcomeStatus.InProgress, outcomes.Last().Status);
+        Assert.Equal("CA1", outcomes.Last().CallId);
+    }
+
+    [Fact]
+    public async Task ANoticeCampaign_PlacesNoticeCalls()
+    {
+        VoiceCallRequest? placed = null;
+        var voice = new Mock<IVoiceConversationService>();
+        voice.Setup(x => x.PlaceCallAsync(It.IsAny<VoiceCallRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<VoiceCallRequest, CancellationToken>((r, _) => placed = r)
+            .ReturnsAsync(new VoiceCallResult("CA2", "queued", "+50581143874", "voice-1"));
+        var (service, _, outcomes) = Create(voice.Object, callMode: "notify");
+
+        await service.RunNowAsync(Tenant, "camp-1", "admin", CampaignRunTrigger.Manual);
+
+        Assert.Equal(VoiceCallMode.Notify, placed!.Mode);
+        Assert.Equal("notice", outcomes.Last().NextAction);
     }
 
     [Fact]
@@ -51,7 +70,7 @@ public class CampaignCallTests
         Assert.Equal(CampaignCallOutcomeStatus.Failed, outcomes.Last().Status);
     }
 
-    private static (CampaignExecutionService Service, List<CampaignContactExecutionContract> Contacts, List<CampaignCallOutcomeContract> Outcomes) Create(IVoiceConversationService voice)
+    private static (CampaignExecutionService Service, List<CampaignContactExecutionContract> Contacts, List<CampaignCallOutcomeContract> Outcomes) Create(IVoiceConversationService voice, string? callMode = null)
     {
         var contacts = new List<CampaignContactExecutionContract>();
         var outcomes = new List<CampaignCallOutcomeContract>();
@@ -64,6 +83,7 @@ public class CampaignCallTests
             ExecutionMode = CampaignExecutionMode.Direct,
             ChannelAction = CampaignChannelAction.Call,
             CallScriptDraft = "Hola {{primer_nombre}}, te llamamos por tu cuenta.",
+            CallMode = callMode,
             AudienceFilterJson = "{}"
         };
         var store = new Mock<ICampaignStore>();

@@ -51,11 +51,11 @@ public class VoiceConversationTests
     }
 
     [Fact]
-    public void AnOutboundCall_WithoutAConversationUrl_OnlySpeaksTheScript()
+    public void AnOutboundCall_WithoutAConversationUrl_IsANoticeReadTwice()
     {
         var twiml = TwilioVoiceProviderAdapter.BuildCallTwiml(new ProviderVoiceCallRequest { PhoneNumber = "+1", Script = "Aviso." });
 
-        Assert.Equal("<Response><Say language=\"es-MX\" voice=\"Polly.Mia\">Aviso.</Say></Response>", twiml);
+        Assert.Equal("<Response><Say language=\"es-MX\" voice=\"Polly.Mia\" loop=\"2\">Aviso.</Say></Response>", twiml);
     }
 
     [Theory]
@@ -183,6 +183,7 @@ public class VoiceConversationTests
         Assert.Equal($"{PublicBase}/api/v1/tenants/{Tenant}/webhooks/twilio/voice/gather?channel=voice&silences=0&turn=0", sent.ConversationUrl);
         Assert.StartsWith($"{PublicBase}/api/v1/tenants/{Tenant}/webhooks/twilio/voice/answer?channel=voice&script=", sent.AnswerUrl);
         Assert.Equal(VoiceConversationService.MaxCallSeconds, sent.TimeLimitSeconds);
+        Assert.Equal(VoiceConversationService.DefaultRingSeconds, sent.RingTimeoutSeconds);
         Assert.Equal($"{PublicBase}/api/v1/tenants/{Tenant}/webhooks/twilio/voice/status?channel=voice", sent.StatusCallbackUrl);
     }
 
@@ -337,6 +338,65 @@ public class VoiceConversationTests
         Assert.Contains(form, kv => kv is { Key: "TimeLimit", Value: "900" });
         Assert.Equal(["initiated", "ringing", "answered", "completed"],
             form.Where(kv => kv.Key == "StatusCallbackEvent").Select(kv => kv.Value).ToArray());
+    }
+
+    [Fact]
+    public async Task ANotice_IsReadTwiceAndHangsUp_EvenOnVoicemail()
+    {
+        var channel = VoiceChannel();
+        channel.Config[VoiceConversationService.RingTimeoutKey] = "30";
+        var (service, sent) = WithAdapter(channel);
+
+        await service.PlaceCallAsync(new VoiceCallRequest
+        {
+            TenantId = Tenant, PhoneNumber = "+50581143874", Script = "Tu cuota vence mañana.", Mode = VoiceCallMode.Notify
+        }, CancellationToken.None);
+
+        var request = sent();
+        Assert.Null(request.AnswerUrl);
+        Assert.Null(request.ConversationUrl);
+        Assert.Equal(30, request.RingTimeoutSeconds);
+        var form = TwilioVoiceProviderAdapter.BuildCallForm(request, "+19016608125");
+        Assert.DoesNotContain(form, kv => kv.Key == "MachineDetection");
+        Assert.Contains(form, kv => kv is { Key: "Timeout", Value: "30" });
+        Assert.Contains(form, kv => kv.Key == "Twiml" && kv.Value.Contains("loop=\"2\"") && kv.Value.Contains("Tu cuota vence mañana."));
+    }
+
+    [Theory]
+    [InlineData("notify", VoiceCallMode.Notify)]
+    [InlineData("Aviso", VoiceCallMode.Notify)]
+    [InlineData("conversation", VoiceCallMode.Conversation)]
+    [InlineData(null, VoiceCallMode.Conversation)]
+    public void TheCallMode_IsReadFromWords(string? mode, VoiceCallMode expected)
+        => Assert.Equal(expected, VoiceConversationService.ParseMode(mode));
+
+    [Theory]
+    [InlineData(null, 20)]
+    [InlineData("45", 45)]
+    [InlineData("2", 20)]
+    [InlineData("nope", 20)]
+    public void ThePhoneRings20Seconds_UnlessTheChannelSaysOtherwise(string? configured, int expected)
+    {
+        var channel = VoiceChannel();
+        if (configured is not null) channel.Config[VoiceConversationService.RingTimeoutKey] = configured;
+        Assert.Equal(expected, VoiceConversationService.RingSeconds(channel));
+    }
+
+    private static (VoiceConversationService Service, Func<ProviderVoiceCallRequest> Sent) WithAdapter(ChannelDefinition channel)
+    {
+        ProviderVoiceCallRequest? sent = null;
+        var adapter = new Mock<IVoiceCallProviderAdapter>();
+        adapter.SetupGet(x => x.ProviderId).Returns("twilio");
+        adapter.Setup(x => x.PlaceCallAsync(It.IsAny<ProviderConnectionProfile>(), It.IsAny<ProviderVoiceCallRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<ProviderConnectionProfile, ProviderVoiceCallRequest, CancellationToken>((_, r, _) => sent = r)
+            .ReturnsAsync(new ProviderVoiceCallResult { ProviderCallId = "CA1", ProviderStatus = "queued" });
+        var providers = new Mock<IProviderResolver>();
+        providers.Setup(x => x.ResolveRequiredAsync<IVoiceCallProviderAdapter>(It.IsAny<ProviderResolutionContext>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ResolvedProviderAdapter<IVoiceCallProviderAdapter>(adapter.Object, new ProviderConnectionProfile
+            {
+                ConnectionId = "twilio-main", TenantId = Tenant, ProviderId = "twilio", ConnectorId = "twilio"
+            }));
+        return (Service(channel, Mock.Of<IInboundMessageIngest>(), providers.Object), () => sent!);
     }
 
     private static ChannelDefinition VoiceChannel()

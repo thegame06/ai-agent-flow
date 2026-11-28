@@ -278,6 +278,7 @@ public sealed class CampaignsController : ControllerBase
                 : request.WhatsAppTemplateId.Length == 0 ? null : request.WhatsAppTemplateId,
             MessageDraft = request.MessageDraft ?? existing?.MessageDraft,
             CallScriptDraft = request.CallScriptDraft ?? existing?.CallScriptDraft,
+            CallMode = request.CallMode ?? existing?.CallMode,
             PromptOrigin = request.PromptOrigin ?? existing?.PromptOrigin,
             ScheduleType = request.ScheduleType ?? existing?.ScheduleType ?? CampaignScheduleType.Once,
             ScheduleExpression = request.ScheduleExpression ?? existing?.ScheduleExpression ?? string.Empty,
@@ -325,6 +326,8 @@ public sealed record UpsertCampaignRequest
     public string? WhatsAppTemplateId { get; init; }
     public string? MessageDraft { get; init; }
     public string? CallScriptDraft { get; init; }
+    /// <summary>conversation (default) or notify.</summary>
+    public string? CallMode { get; init; }
     public string? PromptOrigin { get; init; }
     public CampaignScheduleType? ScheduleType { get; init; }
     public string? ScheduleExpression { get; init; }
