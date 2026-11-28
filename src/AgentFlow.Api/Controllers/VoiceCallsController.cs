@@ -192,6 +192,81 @@ public sealed class VoiceCallsController : ControllerBase
 
     /// <summary>The account's Twilio numbers that can take calls, and whether each one's voice webhook points here.</summary>
     /// <summary>The numbers verified in the Twilio account: the only ones a trial account may call.</summary>
+    /// <summary>
+    /// What Twilio knows about a call: status, numbers, timing and the errors or warnings it logged.
+    /// The answer to "it did not ring": a carrier rejection or a blocked destination shows up here.
+    /// </summary>
+    [HttpGet("calls/{callSid}")]
+    public async Task<IActionResult> GetCall([FromRoute] string tenantId, [FromRoute] string callSid, [FromQuery] string? connectionId, CancellationToken ct)
+    {
+        if (!CanAccess(tenantId)) return Forbid();
+        if (string.IsNullOrWhiteSpace(callSid) || !callSid.StartsWith("CA", StringComparison.Ordinal) || !callSid.All(char.IsAsciiLetterOrDigit))
+            return BadRequest(new { message = "El id de la llamada no es válido (empieza con CA)." });
+
+        var connections = await _connections.GetConnectionsAsync(tenantId, ct);
+        var twilioConnections = connections
+            .Where(x => string.Equals(x.ConnectorId, "twilio", StringComparison.OrdinalIgnoreCase) && (connectionId is null || x.Id == connectionId))
+            .ToList();
+        // A call belongs to one of the tenant's Twilio accounts: ask each until one knows it.
+        foreach (var connection in twilioConnections)
+        {
+            var account = await _twilio.GetAsync(tenantId, connection.Id, ct);
+            if (account is null) continue;
+            var client = _http.CreateClient();
+            var auth = new System.Net.Http.Headers.AuthenticationHeaderValue("Basic",
+                Convert.ToBase64String(System.Text.Encoding.ASCII.GetBytes($"{account.AccountSid}:{account.AuthToken}")));
+
+            using var callRequest = new HttpRequestMessage(HttpMethod.Get,
+                $"https://api.twilio.com/2010-04-01/Accounts/{account.AccountSid}/Calls/{callSid}.json");
+            callRequest.Headers.Authorization = auth;
+            using var callResponse = await client.SendAsync(callRequest, ct);
+            if (callResponse.StatusCode == System.Net.HttpStatusCode.NotFound) continue;
+            if (!callResponse.IsSuccessStatusCode)
+                return StatusCode(502, new { message = $"Twilio respondió {(int)callResponse.StatusCode} al consultar la llamada." });
+            using var call = System.Text.Json.JsonDocument.Parse(await callResponse.Content.ReadAsStringAsync(ct));
+            string? Field(string name) => call.RootElement.TryGetProperty(name, out var v) && v.ValueKind != System.Text.Json.JsonValueKind.Null ? v.ToString() : null;
+
+            var notices = new List<object>();
+            using (var noticeRequest = new HttpRequestMessage(HttpMethod.Get,
+                       $"https://api.twilio.com/2010-04-01/Accounts/{account.AccountSid}/Calls/{callSid}/Notifications.json"))
+            {
+                noticeRequest.Headers.Authorization = auth;
+                using var noticeResponse = await client.SendAsync(noticeRequest, ct);
+                if (noticeResponse.IsSuccessStatusCode)
+                {
+                    using var doc = System.Text.Json.JsonDocument.Parse(await noticeResponse.Content.ReadAsStringAsync(ct));
+                    if (doc.RootElement.TryGetProperty("notifications", out var list))
+                        foreach (var n in list.EnumerateArray())
+                            notices.Add(new
+                            {
+                                errorCode = n.TryGetProperty("error_code", out var code) ? code.ToString() : null,
+                                level = n.TryGetProperty("log", out var log) ? (log.ToString() == "0" ? "error" : "warning") : null,
+                                message = n.TryGetProperty("message_text", out var text) ? Uri.UnescapeDataString(text.ToString().Replace('+', ' ')) : null,
+                                moreInfo = n.TryGetProperty("more_info", out var info) ? info.ToString() : null
+                            });
+                }
+            }
+
+            return Ok(new
+            {
+                callSid,
+                connectionId = connection.Id,
+                status = Field("status"),
+                direction = Field("direction"),
+                from = Field("from_formatted") ?? Field("from"),
+                to = Field("to_formatted") ?? Field("to"),
+                startTime = Field("start_time"),
+                endTime = Field("end_time"),
+                durationSeconds = Field("duration"),
+                answeredBy = Field("answered_by"),
+                price = Field("price"),
+                priceUnit = Field("price_unit"),
+                notifications = notices
+            });
+        }
+        return NotFound(new { message = "Ninguna cuenta de Twilio del tenant tiene esa llamada." });
+    }
+
     private async Task<List<string>?> VerifiedCallerIdsAsync(string tenantId, string connectionId, CancellationToken ct)
     {
         try
