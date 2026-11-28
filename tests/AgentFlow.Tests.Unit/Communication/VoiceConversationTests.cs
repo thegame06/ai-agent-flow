@@ -187,6 +187,29 @@ public class VoiceConversationTests
     }
 
     [Fact]
+    public async Task AScriptThatIsAlreadyTwiml_IsPlayedAsWritten()
+    {
+        var adapter = new Mock<IVoiceCallProviderAdapter>();
+        ProviderVoiceCallRequest? sent = null;
+        adapter.Setup(x => x.PlaceCallAsync(It.IsAny<ProviderConnectionProfile>(), It.IsAny<ProviderVoiceCallRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<ProviderConnectionProfile, ProviderVoiceCallRequest, CancellationToken>((_, r, _) => sent = r)
+            .ReturnsAsync(new ProviderVoiceCallResult { ProviderCallId = "CA1", ProviderStatus = "queued" });
+        var providers = new Mock<IProviderResolver>();
+        providers.Setup(x => x.ResolveRequiredAsync<IVoiceCallProviderAdapter>(It.IsAny<ProviderResolutionContext>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ResolvedProviderAdapter<IVoiceCallProviderAdapter>(adapter.Object, new ProviderConnectionProfile
+            {
+                ConnectionId = "twilio-main", TenantId = Tenant, ProviderId = "twilio", ConnectorId = "twilio"
+            }));
+        var service = Service(VoiceChannel(), Mock.Of<IInboundMessageIngest>(), providers.Object);
+
+        await service.PlaceCallAsync(new VoiceCallRequest { TenantId = Tenant, PhoneNumber = "+50581143874", Script = "<Response><Say>Aviso</Say></Response>" }, CancellationToken.None);
+
+        Assert.Null(sent!.AnswerUrl);
+        Assert.Null(sent.ConversationUrl);
+        Assert.Equal("<Response><Say>Aviso</Say></Response>", TwilioVoiceProviderAdapter.BuildCallTwiml(sent));
+    }
+
+    [Fact]
     public async Task CallingAnInvalidNumber_IsRejectedBeforeTwilio()
     {
         var providers = new Mock<IProviderResolver>(MockBehavior.Strict);

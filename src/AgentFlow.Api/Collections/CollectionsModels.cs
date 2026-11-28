@@ -124,6 +124,14 @@ public sealed class CollectionLoanDocument
     public decimal? LastPaymentAmount { get; set; }
     public List<CollectionInstallment> Installments { get; set; } = [];
 
+    /// <summary>
+    /// Where the account came from: "import" (the lender's portfolio) or "sale" (a sale on
+    /// installments in AgentFlow, whose lateness AgentFlow computes from the schedule).
+    /// </summary>
+    public string? Origin { get; set; }
+    /// <summary>The sale an installment account finances.</summary>
+    public string? SaleId { get; set; }
+
     /// <summary>Cut-off date of the data (the lender's portfolio snapshot).</summary>
     public DateTimeOffset SnapshotDate { get; set; }
     public string? LastImportBatchId { get; set; }

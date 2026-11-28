@@ -147,6 +147,14 @@ public sealed class CollectionPaymentService : ICollectionPaymentService
         loan.LastPaymentDate = paidAt;
         loan.LastPaymentAmount = amount;
         loan.UpdatedAt = DateTimeOffset.UtcNow;
+
+        if (loan.Installments.Count > 0)
+        {
+            AgentFlow.Api.Commerce.InstallmentSchedule.ApplyPayment(loan, amount);
+            // A sale's account is derived from its schedule (no lender snapshot will correct it).
+            if (loan.Origin == "sale")
+                AgentFlow.Api.Commerce.InstallmentSchedule.Age(loan, paidAt > DateTimeOffset.UtcNow ? paidAt : DateTimeOffset.UtcNow);
+        }
     }
 
     private static decimal Take(decimal bucket, ref decimal remaining)

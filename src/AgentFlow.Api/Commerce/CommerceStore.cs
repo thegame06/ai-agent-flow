@@ -62,6 +62,9 @@ public interface ICommerceStore
     Task<IReadOnlyList<CommerceSaleDocument>> SearchSalesAsync(string tenantId, string? partyId, string? state, int page, int pageSize, CancellationToken ct);
     Task<long> CountSalesAsync(string tenantId, string? partyId, string? state, CancellationToken ct);
     Task<CommerceSaleDocument> UpdateSaleAsync(CommerceSaleDocument sale, CancellationToken ct);
+    /// <summary>The most recent sale made in a conversation.</summary>
+    Task<CommerceSaleDocument?> GetLatestSaleBySessionAsync(string tenantId, string sessionId, CancellationToken ct)
+        => Task.FromResult<CommerceSaleDocument?>(null);
     Task<SaleCalculationResult> CalculateSaleAsync(string tenantId, IReadOnlyList<CommerceLineItem> items, decimal? discountAmount, decimal? discountPercent, bool applyTax, decimal taxRate, CancellationToken ct);
     Task<CommerceOrderDocument> CreateOrderAsync(CommerceOrderDocument order, CancellationToken ct);
     Task<CommerceOrderDocument?> GetOrderByIdAsync(string tenantId, string orderId, CancellationToken ct);
@@ -267,7 +270,9 @@ public sealed class CommerceStore : ICommerceStore
 
         if (!string.IsNullOrWhiteSpace(query))
         {
-            var q = query.Trim();
+            // What the customer (or the model) typed is text, not a pattern: "(4 cámaras)" or "C++"
+            // must match literally, and a crafted pattern must not run against the catalog.
+            var q = System.Text.RegularExpressions.Regex.Escape(query.Trim());
             var categoryIds = await _categories.Find(
                     Builders<CommerceCategoryDocument>.Filter.And(
                         Builders<CommerceCategoryDocument>.Filter.Eq(x => x.TenantId, tenantId),
@@ -560,6 +565,9 @@ public sealed class CommerceStore : ICommerceStore
         return await _sales.CountDocumentsAsync(filter, cancellationToken: ct);
     }
 
+    public async Task<CommerceSaleDocument?> GetLatestSaleBySessionAsync(string tenantId, string sessionId, CancellationToken ct)
+        => await _sales.Find(x => x.TenantId == tenantId && x.SessionId == sessionId).SortByDescending(x => x.CreatedAt).FirstOrDefaultAsync(ct);
+
     public async Task<CommerceSaleDocument> UpdateSaleAsync(CommerceSaleDocument sale, CancellationToken ct)
     {
         await _sales.ReplaceOneAsync(x => x.TenantId == sale.TenantId && x.Id == sale.Id, sale, cancellationToken: ct);
@@ -711,7 +719,7 @@ public sealed class CommerceStore : ICommerceStore
     {
         var filter = Builders<CommercePartyDocument>.Filter.Eq(x => x.TenantId, tenantId);
         if (string.IsNullOrWhiteSpace(query)) return filter;
-        var q = query.Trim();
+        var q = System.Text.RegularExpressions.Regex.Escape(query.Trim());
         return Builders<CommercePartyDocument>.Filter.And(
             filter,
             Builders<CommercePartyDocument>.Filter.Or(
@@ -756,7 +764,7 @@ public sealed class CommerceStore : ICommerceStore
     {
         var filter = Builders<CommerceCategoryDocument>.Filter.Eq(x => x.TenantId, tenantId);
         if (string.IsNullOrWhiteSpace(query)) return filter;
-        var q = query.Trim();
+        var q = System.Text.RegularExpressions.Regex.Escape(query.Trim());
         return Builders<CommerceCategoryDocument>.Filter.And(
             filter,
             Builders<CommerceCategoryDocument>.Filter.Or(
@@ -768,7 +776,7 @@ public sealed class CommerceStore : ICommerceStore
     {
         var filter = Builders<CommerceBranchDocument>.Filter.Eq(x => x.TenantId, tenantId);
         if (string.IsNullOrWhiteSpace(query)) return filter;
-        var q = query.Trim();
+        var q = System.Text.RegularExpressions.Regex.Escape(query.Trim());
         return Builders<CommerceBranchDocument>.Filter.And(
             filter,
             Builders<CommerceBranchDocument>.Filter.Or(
@@ -994,7 +1002,21 @@ public sealed class CommerceSaleDocument
     public string? SessionId { get; set; }
     public string? ThreadId { get; set; }
     public List<CommerceLineItem> Items { get; set; } = [];
+    /// <summary>Set when the sale is paid in installments.</summary>
+    public SaleFinancingDocument? Financing { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
+}
+
+/// <summary>A sale on installments: down payment, the schedule, and the collections account that follows it.</summary>
+public sealed class SaleFinancingDocument
+{
+    public decimal DownPayment { get; set; }
+    public decimal FinancedAmount { get; set; }
+    public int Count { get; set; }
+    public string Frequency { get; set; } = "monthly";
+    public List<AgentFlow.Api.Collections.CollectionInstallment> Installments { get; set; } = [];
+    public string? CollectionLoanId { get; set; }
+    public string? LoanExternalId { get; set; }
 }
 
 public sealed class CommerceOrderDocument

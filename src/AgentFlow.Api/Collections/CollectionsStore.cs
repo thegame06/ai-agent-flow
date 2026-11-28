@@ -26,6 +26,10 @@ public interface ICollectionsStore
     Task UpdatePromiseAsync(CollectionPromiseDocument promise, CancellationToken ct = default);
     Task<CollectionPromiseDocument?> GetPromiseAsync(string tenantId, string promiseId, CancellationToken ct = default);
     Task<IReadOnlyList<CollectionPromiseDocument>> GetPromisesAsync(string tenantId, CollectionPromiseStatus? status = null, string? partyId = null, int limit = 500, CancellationToken ct = default);
+
+    /// <summary>Active accounts born from sales on installments, in every tenant (their lateness is computed here).</summary>
+    Task<IReadOnlyList<CollectionLoanDocument>> GetActiveSaleLoansAsync(CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyList<CollectionLoanDocument>>([]);
 }
 
 public sealed class MongoCollectionsStore : ICollectionsStore
@@ -84,6 +88,9 @@ public sealed class MongoCollectionsStore : ICollectionsStore
 
     public async Task<IReadOnlyList<CollectionLoanDocument>> GetLoansAsync(string tenantId, CancellationToken ct = default)
         => await _loans.Find(x => x.TenantId == tenantId).ToListAsync(ct);
+
+    public async Task<IReadOnlyList<CollectionLoanDocument>> GetActiveSaleLoansAsync(CancellationToken ct = default)
+        => await _loans.Find(x => x.Origin == "sale" && x.Status == CollectionLoanStatus.Active).ToListAsync(ct);
 
     public async Task<IReadOnlyList<CollectionLoanDocument>> GetLoansByPartyAsync(string tenantId, string partyId, CancellationToken ct = default)
         => await _loans.Find(x => x.TenantId == tenantId && x.PartyId == partyId).SortByDescending(x => x.DaysPastDue).ToListAsync(ct);

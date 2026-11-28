@@ -114,6 +114,7 @@ public static class DependencyInjection
             .AddSingleton<AgentFlow.Api.Channels.InboundBatcher>()
             .AddScoped<AgentFlow.Api.Voice.ITwilioCredentials, AgentFlow.Api.Voice.TwilioCredentials>()
             .AddScoped<AgentFlow.Api.Voice.IVoiceConversationService, AgentFlow.Api.Voice.VoiceConversationService>()
+            .AddScoped<AgentFlow.Api.Commerce.ISalesService, AgentFlow.Api.Commerce.SalesService>()
             .AddScoped<AgentFlow.Api.Channels.IInboundMediaFetcher, AgentFlow.Api.Channels.TwilioMediaFetcher>()
             .AddScoped<AgentFlow.Api.Channels.IInboundMediaFetcher, AgentFlow.Api.Channels.MetaMediaFetcher>()
             .AddScoped<AgentFlow.Api.Channels.IConversationWindow>(sp => new AgentFlow.Api.Channels.ConversationWindow(
@@ -148,6 +149,7 @@ public static class DependencyInjection
         services.AddHostedService<WorkflowRuntimeWorker>();
         services.AddHostedService<CampaignSchedulerService>();
         services.AddHostedService<CampaignFollowUpWorker>();
+        services.AddHostedService<AgentFlow.Api.Commerce.InstallmentAgingWorker>();
         services.AddHostedService<AgentFlow.Api.Messaging.WhatsAppTemplateSyncWorker>();
         services.AddHostedService<WorkflowCatalogSeeder>();
         services.AddHostedService<ModelRoutingBootstrapService>();
@@ -179,7 +181,12 @@ public static class DependencyInjection
         services.AddSingleton<IToolPlugin, CollectionsHandoffTool>();
         services.AddSingleton<IToolPlugin, CollectionsPaymentInstructionsTool>();
         services.AddSingleton<IToolPlugin, CollectionsReportPaymentTool>();
+        services.AddSingleton<IToolPlugin, AgentFlow.Api.Commerce.SalesCustomerContextTool>();
+        services.AddSingleton<IToolPlugin, AgentFlow.Api.Commerce.SalesSearchCatalogTool>();
+        services.AddSingleton<IToolPlugin, AgentFlow.Api.Commerce.SalesQuoteTool>();
+        services.AddSingleton<IToolPlugin, AgentFlow.Api.Commerce.SalesCreateSaleTool>();
         services.AddSingleton<AgentFlow.Core.Engine.IChannelReplyTransformer, PaymentInstructionsReplyTransformer>();
+        services.AddSingleton<AgentFlow.Core.Engine.IChannelReplyTransformer, AgentFlow.Api.Commerce.SaleReferenceReplyTransformer>();
 
         return services;
     }

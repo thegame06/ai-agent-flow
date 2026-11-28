@@ -195,12 +195,14 @@ public sealed class VoiceConversationService : IVoiceConversationService
         }, ct);
 
         var script = string.IsNullOrWhiteSpace(request.Script) ? GreetingOf(channel) : request.Script!.Trim();
+        var rawTwiml = script.StartsWith("<Response", StringComparison.OrdinalIgnoreCase);
         var result = await resolved.Adapter.PlaceCallAsync(resolved.Connection, new ProviderVoiceCallRequest
         {
             PhoneNumber = address.Value,
             Script = script,
-            ConversationUrl = ConversationUrl(request.TenantId, request.ChannelKey, 0, 0, absolute: true),
-            AnswerUrl = WebhookUrl(request.TenantId, "answer",
+            // A script that is already TwiML is played as written (no assistant, no voicemail check).
+            ConversationUrl = rawTwiml ? null : ConversationUrl(request.TenantId, request.ChannelKey, 0, 0, absolute: true),
+            AnswerUrl = rawTwiml ? null : WebhookUrl(request.TenantId, "answer",
                 $"channel={Uri.EscapeDataString(request.ChannelKey)}&script={Uri.EscapeDataString(script)}", absolute: true),
             TimeLimitSeconds = MaxCallSeconds,
             StatusCallbackUrl = WebhookUrl(request.TenantId, "status", $"channel={request.ChannelKey}", absolute: true),
