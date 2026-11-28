@@ -92,8 +92,10 @@ public sealed class InboundMessageIngest : IInboundMessageIngest
         var handler = _gateway.GetHandler(channel.Type)
             ?? throw new InvalidOperationException($"No handler for channel type {channel.Type}.");
         await AdoptLegacySessionAsync(message, address, ct);
+        var prior = await _sessions.GetByChannelAndIdentifierAsync(channel.Id, address.Value, message.TenantId, ct);
         var context = ChannelContext.Create(channel.Type, channel.Id, message.CorrelationId ?? Guid.NewGuid().ToString("N"), address.Value, displayName);
         var session = await handler.GetOrCreateSessionAsync(context, channel, ct);
+        CarryOverHandoff(prior, session);
 
         var provider = message.Provider.Trim().ToLowerInvariant();
         StampSession(session, channel, provider, address, displayName, customer, message.BusinessAddress);
@@ -167,6 +169,18 @@ public sealed class InboundMessageIngest : IInboundMessageIngest
             _logger.LogWarning(ex, "Could not look up the registered customer for {Address}", address.Value);
             return null;
         }
+    }
+
+    /// <summary>
+    /// A person who owns the customer's conversation keeps it when a new session opens (the old one
+    /// expired): the assistant must not start answering a customer an advisor still has.
+    /// </summary>
+    public static void CarryOverHandoff(ChannelSession? prior, ChannelSession session)
+    {
+        if (prior is null || prior.Id == session.Id || !ConversationHandoff.AssistantPaused(prior) ||
+            ConversationHandoff.AssistantPaused(session)) return;
+        foreach (var (key, value) in prior.Metadata.Where(kv => kv.Key.StartsWith("handoff.", StringComparison.Ordinal)).ToList())
+            session.Metadata[key] = value;
     }
 
     /// <summary>A conversation opened before addresses were canonical keeps going under the canonical address.</summary>

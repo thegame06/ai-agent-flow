@@ -123,10 +123,10 @@ public sealed class WhatsAppWebhookController : ControllerBase
     /// </summary>
     public static ChannelDefinition? ChannelForNumber(IReadOnlyList<ChannelDefinition> channels, string? phoneNumberId)
     {
+        // One reading of a channel's mode everywhere (a channel without AuthMode is QR, as for sending).
         var business = channels
             .Where(c => c.Status == ChannelStatus.Active)
-            .Where(c => !string.Equals(c.Config.GetValueOrDefault("AuthMode"), "qr", StringComparison.OrdinalIgnoreCase))
-            .Where(c => !AgentFlow.Api.Messaging.TwilioWhatsApp.IsTwilio(c))
+            .Where(c => AgentFlow.Api.Channels.Provenance.ProviderOf(c) == "meta")
             .ToList();
         if (!string.IsNullOrWhiteSpace(phoneNumberId))
         {

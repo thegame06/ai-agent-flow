@@ -32,12 +32,7 @@ public sealed class TwilioWhatsAppProviderAdapter : IMessageSendProviderAdapter
             HttpMethod.Post,
             $"https://api.twilio.com/2010-04-01/Accounts/{accountSid}/Messages.json");
 
-        var form = new Dictionary<string, string>
-        {
-            ["To"] = $"whatsapp:{request.Recipient}",
-            ["From"] = $"whatsapp:{fromPhone}",
-            ["Body"] = request.Content
-        };
+        var form = BuildForm(request, fromPhone);
 
         if (!string.IsNullOrWhiteSpace(request.StatusCallbackUrl))
             form["StatusCallback"] = request.StatusCallbackUrl!;
@@ -57,6 +52,69 @@ public sealed class TwilioWhatsAppProviderAdapter : IMessageSendProviderAdapter
             ProviderStatus = doc.RootElement.TryGetProperty("status", out var statusEl) ? statusEl.GetString() ?? "queued" : "queued",
             RawResponse = body
         };
+    }
+
+    /// <summary>
+    /// Twilio's form: E.164 addresses ("whatsapp:+505…"), and a template as its Content SID ("HX…")
+    /// with numbered variables. A Meta template name cannot be sent through Twilio, so it is refused
+    /// rather than silently sent as free text (which WhatsApp rejects outside the 24-hour window).
+    /// </summary>
+    public static Dictionary<string, string> BuildForm(ProviderMessageSendRequest request, string fromPhone)
+    {
+        var form = new Dictionary<string, string>
+        {
+            ["To"] = "whatsapp:" + E164(request.Recipient),
+            ["From"] = "whatsapp:" + E164(fromPhone)
+        };
+
+        if (string.IsNullOrWhiteSpace(request.TemplateName))
+        {
+            form["Body"] = request.Content;
+            return form;
+        }
+
+        if (!request.TemplateName!.StartsWith("HX", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException(
+                $"Twilio solo envia plantillas aprobadas en Twilio (Content SID HX…); \"{request.TemplateName}\" es una plantilla de Meta.");
+
+        form["ContentSid"] = request.TemplateName!;
+        var variables = BodyParameters(request.TemplateComponentsJson);
+        if (variables.Count > 0)
+            form["ContentVariables"] = JsonSerializer.Serialize(
+                variables.Select((v, i) => (Key: (i + 1).ToString(System.Globalization.CultureInfo.InvariantCulture), Value: v))
+                    .ToDictionary(x => x.Key, x => x.Value));
+        return form;
+    }
+
+    /// <summary>"whatsapp:+505…", "505…", "+505 8114-3874" → "+50581143874".</summary>
+    public static string E164(string? value)
+    {
+        var raw = (value ?? string.Empty).Trim();
+        if (raw.StartsWith("whatsapp:", StringComparison.OrdinalIgnoreCase)) raw = raw[9..];
+        var digits = new string(raw.Where(char.IsDigit).ToArray());
+        return digits.Length == 0 ? raw : "+" + digits;
+    }
+
+    /// <summary>The text parameters of a template's body component, in order.</summary>
+    private static List<string> BodyParameters(string? componentsJson)
+    {
+        var values = new List<string>();
+        if (string.IsNullOrWhiteSpace(componentsJson)) return values;
+        try
+        {
+            using var doc = JsonDocument.Parse(componentsJson);
+            if (doc.RootElement.ValueKind != JsonValueKind.Array) return values;
+            foreach (var component in doc.RootElement.EnumerateArray())
+            {
+                if (!component.TryGetProperty("type", out var type) ||
+                    !string.Equals(type.GetString(), "body", StringComparison.OrdinalIgnoreCase) ||
+                    !component.TryGetProperty("parameters", out var parameters)) continue;
+                foreach (var parameter in parameters.EnumerateArray())
+                    if (parameter.TryGetProperty("text", out var text)) values.Add(text.GetString() ?? string.Empty);
+            }
+        }
+        catch (JsonException) { }
+        return values;
     }
 
     private static AuthenticationHeaderValue BuildBasicAuth(string accountSid, string authToken) =>
@@ -235,6 +293,13 @@ public sealed class MetaWhatsAppProviderAdapter : IMessageSendProviderAdapter
 {
     public string ProviderId => "meta";
 
+    /// <summary>Meta's "to": the number with its country code, digits only ("+505 8114-3874" → "50581143874").</summary>
+    public static string MetaRecipient(string? value)
+    {
+        var digits = new string((value ?? string.Empty).Where(char.IsDigit).ToArray());
+        return digits.Length == 0 ? (value ?? string.Empty).Trim() : digits;
+    }
+
     public IReadOnlyList<ProviderCapabilityDescriptor> Capabilities =>
     [
         new() { Name = CommunicationCapabilities.TextSend, Channel = "whatsapp", Description = "Send WhatsApp free-form text using Meta Cloud API." },
@@ -258,7 +323,7 @@ public sealed class MetaWhatsAppProviderAdapter : IMessageSendProviderAdapter
             {
                 messaging_product = "whatsapp",
                 recipient_type = "individual",
-                to = request.Recipient,
+                to = MetaRecipient(request.Recipient),
                 type = "text",
                 text = new { body = request.Content }
             }
@@ -266,7 +331,7 @@ public sealed class MetaWhatsAppProviderAdapter : IMessageSendProviderAdapter
             {
                 messaging_product = "whatsapp",
                 recipient_type = "individual",
-                to = request.Recipient,
+                to = MetaRecipient(request.Recipient),
                 type = "template",
                 template = BuildTemplate(request)
             };

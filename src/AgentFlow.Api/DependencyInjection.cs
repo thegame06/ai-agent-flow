@@ -99,6 +99,8 @@ public static class DependencyInjection
             .AddScoped<ICampaignExecutionService, CampaignExecutionService>()
             // One inbound pipeline for every channel (WhatsApp QR/Meta/Twilio, API, WebChat, webhooks).
             .AddScoped<AgentFlow.Api.Channels.ICustomerResolver, AgentFlow.Api.Channels.CustomerResolver>()
+            .AddScoped<AgentFlow.Api.Channels.IConversationWindow>(sp => new AgentFlow.Api.Channels.ConversationWindow(
+                sp.GetService<ICampaignStore>(), sp.GetService<AgentFlow.Domain.Repositories.IChannelSessionRepository>()))
             .AddScoped<AgentFlow.Api.Channels.IInboundMessageIngest, AgentFlow.Api.Channels.InboundMessageIngest>()
             .AddScoped<ITenantRuntimeSettingsService, TenantRuntimeSettingsService>()
             .AddScoped<ITenantRuntimeSettingsReader>(sp => sp.GetRequiredService<ITenantRuntimeSettingsService>())
