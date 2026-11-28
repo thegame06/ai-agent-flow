@@ -31,6 +31,7 @@ public sealed class CampaignExecutionService : ICampaignExecutionService
     private readonly ICampaignFollowUpService? _followUps;
     private readonly AgentFlow.Api.Messaging.IWhatsAppTemplateStore? _waTemplates;
     private readonly AgentFlow.Domain.Repositories.IChannelDefinitionRepository? _channels;
+    private readonly AgentFlow.Domain.Repositories.IChannelSessionRepository? _sessions;
 
     public CampaignExecutionService(
         ICampaignStore campaignStore,
@@ -42,8 +43,10 @@ public sealed class CampaignExecutionService : ICampaignExecutionService
         IOutboundMessageSender outbound,
         ICampaignFollowUpService? followUps = null,
         AgentFlow.Api.Messaging.IWhatsAppTemplateStore? waTemplates = null,
-        AgentFlow.Domain.Repositories.IChannelDefinitionRepository? channels = null)
+        AgentFlow.Domain.Repositories.IChannelDefinitionRepository? channels = null,
+        AgentFlow.Domain.Repositories.IChannelSessionRepository? sessions = null)
     {
+        _sessions = sessions;
         _followUps = followUps;
         _waTemplates = waTemplates;
         _channels = channels;
@@ -60,13 +63,26 @@ public sealed class CampaignExecutionService : ICampaignExecutionService
     private async Task<string?> CampaignChannelWabaAsync(CampaignContract campaign, CancellationToken ct)
         => _channels is null ? null : CampaignChannels.MetaAccountOf(await CampaignChannels.ResolveAsync(_channels, campaign, ct));
 
-    /// <summary>The customer wrote to us in the last 24 hours (any campaign): free text is still allowed.</summary>
-    private async Task<bool> RecentlyWroteAsync(string tenantId, CampaignContactExecutionContract execution, CancellationToken ct)
+    /// <summary>
+    /// The customer wrote to us in the last 24 hours: free text is still allowed. That is a reply to any
+    /// campaign, or any message to the campaign's own number (the customer may write first, unprompted).
+    /// </summary>
+    private async Task<bool> RecentlyWroteAsync(string tenantId, CampaignContactExecutionContract execution, AgentFlow.Domain.Aggregates.ChannelDefinition? channel, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(execution.RecipientKey)) return false;
         var now = DateTimeOffset.UtcNow;
-        var latest = await _campaignStore.FindLatestContactByRecipientKeyAsync(tenantId, execution.RecipientKey!, now - TimeSpan.FromDays(30), ct);
-        return latest is not null && CampaignChannels.WindowOpen(latest, now);
+        if (!string.IsNullOrWhiteSpace(execution.RecipientKey))
+        {
+            var latest = await _campaignStore.FindLatestContactByRecipientKeyAsync(tenantId, execution.RecipientKey!, now - TimeSpan.FromDays(30), ct);
+            if (latest is not null && CampaignChannels.WindowOpen(latest, now)) return true;
+        }
+
+        if (_sessions is null || channel is null || string.IsNullOrWhiteSpace(execution.Recipient)) return false;
+        foreach (var identifier in CampaignChannels.SessionIdentifiers(execution.Recipient!))
+        {
+            var session = await _sessions.GetByChannelAndIdentifierAsync(channel.Id, identifier, tenantId, ct);
+            if (CampaignChannels.WindowOpen(session, now)) return true;
+        }
+        return false;
     }
 
     public Task<CampaignAudiencePreviewContract> SimulateAsync(string tenantId, CampaignContract campaign, CancellationToken ct = default)
@@ -456,7 +472,7 @@ public sealed class CampaignExecutionService : ICampaignExecutionService
             {
                 // The official WhatsApp API only lets a business start a conversation with a template.
                 var channel = _channels is null ? null : await CampaignChannels.ResolveAsync(_channels, campaign, ct);
-                if (CampaignChannels.IsOfficialWhatsApp(channel) && !await RecentlyWroteAsync(campaign.TenantId, execution, ct))
+                if (CampaignChannels.IsOfficialWhatsApp(channel) && !await RecentlyWroteAsync(campaign.TenantId, execution, channel, ct))
                 {
                     return (await _campaignStore.UpdateContactExecutionAsync(execution with
                     {
