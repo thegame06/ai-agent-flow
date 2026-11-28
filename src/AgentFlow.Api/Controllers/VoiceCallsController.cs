@@ -90,6 +90,7 @@ public sealed class VoiceCallsController : ControllerBase
 
         var incomingUrl = baseUrl is null ? null : $"{baseUrl}/api/v1/tenants/{tenantId}/webhooks/twilio/voice/incoming";
         var numbers = twilio is null ? null : await TwilioNumbersAsync(tenantId, twilio.Id, incomingUrl, ct);
+        var verified = twilio is null ? null : await VerifiedCallerIdsAsync(tenantId, twilio.Id, ct);
         if (numbers is { Count: > 0 } && !string.IsNullOrWhiteSpace(voiceNumber) &&
             numbers.FirstOrDefault(n => n.PhoneNumber == voiceNumber) is { AnswersHere: false })
             missing.Add($"En Twilio, apunta el webhook de voz de {voiceNumber} a {incomingUrl} para recibir llamadas.");
@@ -104,6 +105,8 @@ public sealed class VoiceCallsController : ControllerBase
             voicePhoneNumber = voiceNumber,
             incomingWebhookUrl = incomingUrl,
             twilioNumbers = numbers,
+            // A Twilio trial account can only call these numbers (verified in Twilio's console).
+            verifiedCallerIds = verified,
             statusCallbackUrl = baseUrl is null ? null : $"{baseUrl}/api/v1/tenants/{tenantId}/webhooks/twilio/voice/status"
         });
     }
@@ -163,6 +166,32 @@ public sealed class VoiceCallsController : ControllerBase
     }
 
     /// <summary>The account's Twilio numbers that can take calls, and whether each one's voice webhook points here.</summary>
+    /// <summary>The numbers verified in the Twilio account: the only ones a trial account may call.</summary>
+    private async Task<List<string>?> VerifiedCallerIdsAsync(string tenantId, string connectionId, CancellationToken ct)
+    {
+        try
+        {
+            var account = await _twilio.GetAsync(tenantId, connectionId, ct);
+            if (account is null) return null;
+            using var request = new HttpRequestMessage(HttpMethod.Get,
+                $"https://api.twilio.com/2010-04-01/Accounts/{account.AccountSid}/OutgoingCallerIds.json?PageSize=50");
+            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Basic",
+                Convert.ToBase64String(System.Text.Encoding.ASCII.GetBytes($"{account.AccountSid}:{account.AuthToken}")));
+            using var response = await _http.CreateClient().SendAsync(request, ct);
+            if (!response.IsSuccessStatusCode) return null;
+            using var doc = System.Text.Json.JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
+            return doc.RootElement.GetProperty("outgoing_caller_ids").EnumerateArray()
+                .Select(n => n.GetProperty("phone_number").GetString() ?? string.Empty)
+                .Where(n => n.Length > 0)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not list the Twilio account's verified caller ids.");
+            return null;
+        }
+    }
+
     private async Task<List<TwilioVoiceNumber>?> TwilioNumbersAsync(string tenantId, string connectionId, string? incomingUrl, CancellationToken ct)
     {
         try

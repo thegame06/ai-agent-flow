@@ -415,11 +415,70 @@ public class VoiceConversationTests
         })
         .Build();
 
-    private static VoiceConversationService Service(ChannelDefinition channel, IInboundMessageIngest ingest, IProviderResolver? providers = null)
+    [Fact]
+    public async Task OnceAPersonHasTheCase_TheCallerIsToldAndTheCallEnds_InsteadOfHearingTheirOwnWords()
+    {
+        var channel = VoiceChannel();
+        var ingest = new Mock<IInboundMessageIngest>();
+        // While a person owns the conversation, the gateway hands back the customer's own message.
+        ingest.Setup(x => x.IngestAsync(It.IsAny<InboundMessage>(), false, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new InboundResult(InboundStatus.Processed,
+                Reply: ChannelMessage.CreateIncoming(Tenant, channel.Id, "s1", "+50581143874", "Okay, gracias, buenas noches.")));
+        var service = Service(channel, ingest.Object);
+
+        var twiml = await service.AnswerAsync(new VoiceTurn { TenantId = Tenant, From = "+50581143874", SpeechResult = "Okay, gracias, buenas noches." }, CancellationToken.None);
+
+        Assert.DoesNotContain("buenas noches", twiml);
+        Assert.Contains("Tu caso ya está con un asesor", twiml);
+        Assert.EndsWith("<Hangup/></Response>", twiml);
+        Assert.DoesNotContain("<Gather", twiml);
+    }
+
+    [Fact]
+    public async Task WhenTheAssistantHandsTheCaseToAPerson_ItsReplyIsSpokenAndTheCallEnds()
+    {
+        var channel = VoiceChannel();
+        var session = ChannelSession.Create(Tenant, channel.Id, ChannelType.Voice, "+50581143874");
+        var afterTurn = ChannelSession.Create(Tenant, channel.Id, ChannelType.Voice, "+50581143874");
+        ConversationHandoff.Request(afterTurn, "no es el titular", "assistant", DateTimeOffset.UtcNow);
+        var sessions = new Mock<IChannelSessionRepository>();
+        sessions.Setup(x => x.GetByIdAsync(session.Id, Tenant, It.IsAny<CancellationToken>())).ReturnsAsync(afterTurn);
+        var ingest = new Mock<IInboundMessageIngest>();
+        ingest.Setup(x => x.IngestAsync(It.IsAny<InboundMessage>(), false, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new InboundResult(InboundStatus.Processed, session,
+                Reply: ChannelMessage.CreateOutgoing(Tenant, channel.Id, session.Id, "+50581143874", "He pasado tu caso a un asesor.")));
+        var service = Service(channel, ingest.Object, sessions: sessions.Object);
+
+        var twiml = await service.AnswerAsync(new VoiceTurn { TenantId = Tenant, From = "+50581143874", SpeechResult = "¿Qué servicios ofrecen?" }, CancellationToken.None);
+
+        Assert.Contains("He pasado tu caso a un asesor.</Say><Hangup/>", twiml);
+        Assert.DoesNotContain("<Gather", twiml);
+    }
+
+    [Fact]
+    public async Task WhileTheAssistantKeepsTheCase_TheCallKeepsListening()
+    {
+        var channel = VoiceChannel();
+        var session = ChannelSession.Create(Tenant, channel.Id, ChannelType.Voice, "+50581143874");
+        var sessions = new Mock<IChannelSessionRepository>();
+        sessions.Setup(x => x.GetByIdAsync(session.Id, Tenant, It.IsAny<CancellationToken>())).ReturnsAsync(session);
+        var ingest = new Mock<IInboundMessageIngest>();
+        ingest.Setup(x => x.IngestAsync(It.IsAny<InboundMessage>(), false, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new InboundResult(InboundStatus.Processed, session,
+                Reply: ChannelMessage.CreateOutgoing(Tenant, channel.Id, session.Id, "+50581143874", "Claro, ¿qué te interesa?")));
+        var service = Service(channel, ingest.Object, sessions: sessions.Object);
+
+        var twiml = await service.AnswerAsync(new VoiceTurn { TenantId = Tenant, From = "+50581143874", SpeechResult = "Hola" }, CancellationToken.None);
+
+        Assert.Contains("Claro, ¿qué te interesa?</Say></Gather>", twiml);
+    }
+
+    private static VoiceConversationService Service(ChannelDefinition channel, IInboundMessageIngest ingest, IProviderResolver? providers = null,
+        IChannelSessionRepository? sessions = null)
     {
         var channels = new Mock<IChannelDefinitionRepository>();
         channels.Setup(x => x.GetByTypeAsync(ChannelType.Voice, Tenant, It.IsAny<CancellationToken>())).ReturnsAsync([channel]);
         return new VoiceConversationService(channels.Object, ingest, providers ?? Mock.Of<IProviderResolver>(),
-            NullLogger<VoiceConversationService>.Instance, Config());
+            NullLogger<VoiceConversationService>.Instance, Config(), sessions);
     }
 }
