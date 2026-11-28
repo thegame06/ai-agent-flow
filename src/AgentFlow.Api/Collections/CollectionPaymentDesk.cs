@@ -168,6 +168,15 @@ public static class CollectionPaymentDesk
             .OrderByDescending(r => r.CreatedAt)
             .FirstOrDefault();
 
+    /// <summary>The customer's confirmed report with the same receipt, if this one only repeats it.</summary>
+    public static CollectionPaymentReportDocument? AlreadyConfirmed(
+        IEnumerable<CollectionPaymentReportDocument> reports, CollectionPaymentReportDocument incoming)
+        => string.IsNullOrWhiteSpace(incoming.Reference)
+            ? null
+            : reports.FirstOrDefault(r => r.Status == CollectionPaymentReportStatus.Confirmed &&
+                                          r.TenantId == incoming.TenantId && r.PartyId == incoming.PartyId &&
+                                          string.Equals(r.Reference, incoming.Reference, StringComparison.OrdinalIgnoreCase));
+
     /// <summary>Fills the existing report with what the new one adds; what was already known stays.</summary>
     public static void Complete(CollectionPaymentReportDocument report, CollectionPaymentReportDocument incoming)
     {

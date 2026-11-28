@@ -167,71 +167,38 @@ public sealed class ChannelsController : ControllerBase
         var correlationId = request.CorrelationId ?? Guid.NewGuid().ToString("N");
         var from = request.From ?? context.UserId;
 
-        // Build a synthetic session for this message — reuse existing or create new
-        var handler = _gateway.GetHandler(channel.Type);
-        if (handler is null)
-            return BadRequest(new { message = $"No handler registered for channel type {channel.Type}." });
-
-        var channelCtx = Domain.Common.ChannelContext.Create(
-            channel.Type, channel.Id, correlationId, from, request.DisplayName);
-        var session = await handler.GetOrCreateSessionAsync(channelCtx, channel, ct);
-
         var externalMessageId = request.Metadata?.GetValueOrDefault("externalMessageId")
             ?? request.Metadata?.GetValueOrDefault("channelMessageId")
             ?? request.Metadata?.GetValueOrDefault("messageId")
             ?? request.Metadata?.GetValueOrDefault("eventId");
 
-        var incoming = AgentFlow.Domain.Aggregates.ChannelMessage.CreateIncoming(
-            tenantId:   tenantId,
-            channelId:  channelId,
-            sessionId:  session.Id,
-            from:       from,
-            content:    request.Content,
-            externalMessageId: externalMessageId);
-
-        incoming.Metadata["correlation_id"] = correlationId;
-        if (request.Metadata is not null)
+        // The same pipeline as every other channel: customer, session, inbox, campaign attribution, assistant.
+        var ingest = HttpContext.RequestServices.GetRequiredService<AgentFlow.Api.Channels.IInboundMessageIngest>();
+        var asyncMode = !string.IsNullOrWhiteSpace(request.CallbackUrl);
+        var result = await ingest.IngestAsync(new AgentFlow.Api.Channels.InboundMessage
         {
-            foreach (var kv in request.Metadata)
-                incoming.Metadata.TryAdd(kv.Key, kv.Value);
-        }
+            TenantId = tenantId,
+            Channel = channel,
+            Provider = AgentFlow.Api.Channels.Provenance.ProviderOf(channel),
+            ExternalId = externalMessageId,
+            From = from,
+            DisplayName = request.DisplayName,
+            Text = request.Content,
+            CorrelationId = correlationId,
+            Metadata = request.Metadata
+        }, inBackground: asyncMode, ct: ct);
 
-        // A reply to a campaign message gets its business result (promesa, no interesa, ...)
-        // whatever channel it arrives on. Never blocks the conversation.
-        var campaignOutcomes = HttpContext.RequestServices.GetService<AgentFlow.Api.Campaigns.ICampaignOutcomeService>();
-        if (campaignOutcomes is not null && !string.IsNullOrWhiteSpace(request.Content))
+        if (result.Status == AgentFlow.Api.Channels.InboundStatus.Duplicate)
+            return Ok(new { correlationId, channelId, mode = asyncMode ? "async" : "sync", duplicate = true, inboxMessageId = result.InboxMessageId });
+        if (result.Status == AgentFlow.Api.Channels.InboundStatus.Ignored)
+            return BadRequest(new { message = result.Reason });
+
+        if (asyncMode)
         {
-            var answeredByAssistant = !string.IsNullOrWhiteSpace(channel.RouterAgentId) || !string.IsNullOrWhiteSpace(channel.Config.GetValueOrDefault("DefaultAgentId"));
-            try { await campaignOutcomes.AttributeReplyAsync(tenantId, from, request.Content, DateTimeOffset.UtcNow, ct, answeredByAssistant); }
-            catch (Exception ex)
-            {
-                HttpContext.RequestServices.GetRequiredService<Microsoft.Extensions.Logging.ILogger<ChannelsController>>()
-                    .LogWarning(ex, "Could not attribute inbound message to a campaign contact");
-            }
-        }
-
-        // ASYNC mode: accept immediately, process in background
-        if (!string.IsNullOrWhiteSpace(request.CallbackUrl))
-        {
-            _ = Task.Run(async () =>
-            {
-                try { await _gateway.ProcessMessageAsync(incoming, CancellationToken.None); }
-                catch (Exception ex)
-                {
-                    // Errors in async mode are delivered to CallbackUrl by the channel handler.
-                    // If even that fails, they are only observable in the logs + OpenTelemetry.
-                    var logger = HttpContext.RequestServices
-                        .GetRequiredService<Microsoft.Extensions.Logging.ILogger<ChannelsController>>();
-                    logger.LogError(ex,
-                        "Async message processing failed for channel {ChannelId} correlation {CorrelationId}",
-                        channelId, correlationId);
-                }
-            }, CancellationToken.None);
-
             return Accepted(new
             {
                 correlationId,
-                sessionId  = session.Id,
+                sessionId  = result.Session?.Id,
                 channelId,
                 mode       = "async",
                 callbackUrl = request.CallbackUrl,
@@ -239,14 +206,13 @@ public sealed class ChannelsController : ControllerBase
             });
         }
 
-        // SYNC mode: block until agent responds, return inline
-        var outgoing = await _gateway.ProcessMessageAsync(incoming, ct);
-        if (outgoing.Direction == MessageDirection.Incoming && outgoing.Status == MessageStatus.Failed)
+        var outgoing = result.Reply!;
+        if (result.Status == AgentFlow.Api.Channels.InboundStatus.Failed)
         {
             return StatusCode(StatusCodes.Status502BadGateway, new
             {
                 correlationId,
-                sessionId = session.Id,
+                sessionId = result.Session?.Id,
                 channelId,
                 mode = "sync",
                 delivered = false,
@@ -261,7 +227,7 @@ public sealed class ChannelsController : ControllerBase
         return Ok(new
         {
             correlationId,
-            sessionId     = session.Id,
+            sessionId     = result.Session?.Id,
             channelId,
             mode          = "sync",
             delivered     = true,

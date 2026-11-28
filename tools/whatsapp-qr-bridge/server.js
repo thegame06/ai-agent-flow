@@ -178,12 +178,25 @@ async function forwardIncoming(channelId, state, client, msg) {
       return false;
     }
 
+    // A photo of a receipt, a PDF or a voice note: AgentFlow records that the customer sent it
+    // (the file itself stays in WhatsApp; the caption, if any, travels as the text).
+    const media = msg.hasMedia
+      ? {
+          type: msg.type === 'ptt' ? 'audio' : msg.type,
+          mimeType: msg._data?.mimetype || null,
+          fileName: msg._data?.filename || null,
+        }
+      : null;
+
     const payload = {
       id: msg.id._serialized,
       from,
-      content: msg.body,
+      to: client.info?.wid?.user ? `+${client.info.wid.user}` : null,
+      channelId,
+      content: msg.hasMedia ? msg._data?.caption || msg.body || '' : msg.body,
       pushName: msg._data?.notifyName || null,
       timestamp: msg.timestamp,
+      media,
     };
 
     await postToAgentFlowWithRetry(

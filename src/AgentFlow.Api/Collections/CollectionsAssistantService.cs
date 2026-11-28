@@ -231,6 +231,16 @@ public sealed class CollectionsAssistantService : ICollectionsAssistantService
         };
         if (_paymentDesk is not null)
         {
+            // A receipt already confirmed is not a new payment (a customer repeating themselves, or the
+            // assistant repeating its last action on a later "hola").
+            if (saved.Reference is not null)
+            {
+                var all = await _paymentDesk.GetReportsAsync(tenantId, null, ct: ct);
+                var confirmed = CollectionPaymentDesk.AlreadyConfirmed(all, saved);
+                if (confirmed is not null)
+                    return new(true, $"Ese pago (comprobante {confirmed.Reference}) ya estaba registrado y confirmado: no lo reportes de nuevo; solo dile al cliente que ya esta aplicado.");
+            }
+
             // The date or receipt the customer sends afterwards belongs to the payment they already
             // reported: complete that report instead of adding a second one for the same money.
             var pending = await _paymentDesk.GetReportsAsync(tenantId, CollectionPaymentReportStatus.Pending, ct: ct);

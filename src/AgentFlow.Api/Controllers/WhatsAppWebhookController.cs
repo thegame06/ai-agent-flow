@@ -87,6 +87,35 @@ public sealed class WhatsAppWebhookController : ControllerBase
             ? id.ValueKind == System.Text.Json.JsonValueKind.String ? id.GetString() : id.GetRawText()
             : null;
 
+    private static string? DisplayPhoneOf(WhatsAppWebhookValue value)
+        => value.Metadata is { ValueKind: System.Text.Json.JsonValueKind.Object } metadata &&
+           metadata.TryGetProperty("display_phone_number", out var number) && number.ValueKind == System.Text.Json.JsonValueKind.String
+            ? number.GetString()
+            : null;
+
+    /// <summary>What the customer wrote: the text, or the caption of the file they sent.</summary>
+    private static string MetaText(WhatsAppIncomingMessage m)
+        => m.Text?.Body
+           ?? m.Image?.Caption ?? m.Document?.Caption ?? m.Video?.Caption
+           ?? m.Caption
+           ?? string.Empty;
+
+    private static IReadOnlyList<AgentFlow.Api.Channels.InboundAttachment> MetaAttachments(WhatsAppIncomingMessage m)
+    {
+        var list = new List<AgentFlow.Api.Channels.InboundAttachment>();
+        void Add(string kind, WhatsAppMedia? media)
+        {
+            if (media is null) return;
+            list.Add(new(kind, null, media.MimeType, media.Id, media.Filename));
+        }
+        Add("image", m.Image);
+        Add("document", m.Document);
+        Add("audio", m.Audio);
+        Add("video", m.Video);
+        Add("sticker", m.Sticker);
+        return list;
+    }
+
     /// <summary>
     /// The active Business API channel of the number Meta delivered to. A number bound to no channel finds
     /// only a channel with no number set (single-number setups); never another number's channel, and never a
@@ -114,6 +143,7 @@ public sealed class WhatsAppWebhookController : ControllerBase
         string tenantId,
         [FromBody] WhatsAppWebhookPayload payload,
         [FromServices] AgentFlow.Api.Messaging.IWhatsAppTemplateService templates,
+        [FromServices] AgentFlow.Api.Channels.IInboundMessageIngest ingest,
         CancellationToken ct)
     {
         try
@@ -144,13 +174,11 @@ public sealed class WhatsAppWebhookController : ControllerBase
             if (templateChanges.Count > 0 && templateChanges.Count == payload.Entry!.Sum(e => e.Changes?.Count ?? 0))
                 return Ok(new { status = "template_updates", count = templateChanges.Count });
 
-            // Extract messages from payload
-            var messages = payload.Entry?
+            var changes = payload.Entry?
                 .SelectMany(e => e.Changes ?? new List<WhatsAppWebhookChange>())
-                .SelectMany(c => c.Value?.Messages ?? new List<WhatsAppIncomingMessage>())
-                .ToList();
-
-            if (messages == null || messages.Count == 0)
+                .Where(c => c.Value?.Messages is { Count: > 0 })
+                .ToList() ?? [];
+            if (changes.Count == 0)
             {
                 _logger.LogDebug("No messages in webhook payload");
                 return Ok(new { status = "no_messages" });
@@ -159,79 +187,47 @@ public sealed class WhatsAppWebhookController : ControllerBase
             // Each message goes to the channel of the number it was sent to: a company can have several
             // numbers (collections, sales, marketing), each with its own assistant.
             var channels = await _channelRepo.GetByTypeAsync(ChannelType.WhatsApp, tenantId, ct);
-            var byMessageId = payload.Entry!
-                .SelectMany(e => e.Changes ?? new List<WhatsAppWebhookChange>())
-                .SelectMany(c => (c.Value?.Messages ?? new List<WhatsAppIncomingMessage>()).Select(m => (m.Id, Phone: PhoneNumberIdOf(c.Value!))))
-                .GroupBy(x => x.Id)
-                .ToDictionary(g => g.Key, g => g.First().Phone);
-
-            // Process each message
             var results = new List<object>();
-            foreach (var waMessage in messages)
+            foreach (var change in changes)
             {
-                var activeChannel = ChannelForNumber(channels, byMessageId.GetValueOrDefault(waMessage.Id));
-                if (activeChannel == null)
+                var value = change.Value!;
+                var phoneNumberId = PhoneNumberIdOf(value);
+                var names = (value.Contacts ?? [])
+                    .Where(c => !string.IsNullOrWhiteSpace(c.WaId))
+                    .GroupBy(c => c.WaId!)
+                    .ToDictionary(g => g.Key, g => g.First().Profile?.Name);
+                foreach (var waMessage in value.Messages!)
                 {
-                    _logger.LogWarning("No active WhatsApp channel for tenant {TenantId} and number {PhoneNumberId}", tenantId, byMessageId.GetValueOrDefault(waMessage.Id));
-                    results.Add(new { from = waMessage.From, status = "no_channel" });
-                    continue;
-                }
-                try
-                {
-                    var externalEventKey = BuildExternalEventKey("wa-meta", waMessage);
-                    if (!string.IsNullOrWhiteSpace(externalEventKey))
+                    var activeChannel = ChannelForNumber(channels, phoneNumberId);
+                    if (activeChannel == null)
                     {
-                        var existing = await _connectStore.GetInboxMessageByExternalKeyAsync(tenantId, externalEventKey, ct);
-                        if (existing is not null)
-                        {
-                            results.Add(new
-                            {
-                                from = waMessage.From,
-                                status = "duplicate_accepted",
-                                inboxMessageId = existing.Id
-                            });
-                            continue;
-                        }
+                        _logger.LogWarning("No active WhatsApp channel for tenant {TenantId} and number {PhoneNumberId}", tenantId, phoneNumberId);
+                        results.Add(new { from = waMessage.From, status = "no_channel" });
+                        continue;
                     }
-
-                    var channelMessage = await ProcessWhatsAppMessage(waMessage, activeChannel, ct);
-                    if (channelMessage != null)
+                    try
                     {
-                        var inboxMessage = await _connectStore.CreateInboxMessageAsync(new ConnectInboxMessageContract
+                        var result = await ingest.IngestAsync(new AgentFlow.Api.Channels.InboundMessage
                         {
-                            Id = Guid.NewGuid().ToString("N"),
                             TenantId = tenantId,
-                            Channel = "whatsapp",
-                            Recipient = waMessage.From,
-                            Content = waMessage.Text?.Body ?? waMessage.Caption ?? string.Empty,
-                            ExternalEventKey = externalEventKey,
-                            Status = ConnectOperationalStatus.Queued,
-                            CreatedAt = DateTimeOffset.UtcNow,
-                            UpdatedAt = DateTimeOffset.UtcNow,
-                            UpdatedBy = "meta-webhook"
-                        }, ct);
-
-                        await AttributeCampaignReplyAsync(tenantId, waMessage.From, waMessage.Text?.Body ?? waMessage.Caption, HasAssistant(activeChannel), ct);
-
-                        var response = await _gateway.ProcessMessageAsync(channelMessage, ct);
-                        results.Add(new
-                        {
-                            from = waMessage.From,
-                            status = "processed",
-                            response_id = response.Id,
-                            inboxMessageId = inboxMessage.Id
-                        });
+                            Channel = activeChannel,
+                            Provider = "meta",
+                            ExternalId = waMessage.Id,
+                            From = waMessage.From,
+                            DisplayName = names.GetValueOrDefault(waMessage.From) ?? waMessage.Profile?.Name,
+                            Text = MetaText(waMessage),
+                            Attachments = MetaAttachments(waMessage),
+                            BusinessAddress = DisplayPhoneOf(value) ?? phoneNumberId,
+                            SentAt = waMessage.Timestamp > 0 ? DateTimeOffset.FromUnixTimeSeconds(waMessage.Timestamp) : null,
+                            RawPayload = System.Text.Json.JsonSerializer.Serialize(waMessage)
+                        }, ct: ct);
+                        results.Add(new { from = waMessage.From, status = result.Status.ToString().ToLowerInvariant(), inboxMessageId = result.InboxMessageId });
                     }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Failed to process WhatsApp message from {From}", waMessage.From);
-                    results.Add(new
+                    catch (Exception ex)
                     {
-                        from = waMessage.From,
-                        status = "error",
-                        error = ex.Message
-                    });
+                        _logger.LogError(ex, "Failed to process WhatsApp message from {From}", waMessage.From);
+                        results.Add(new { from = waMessage.From, status = "error", error = ex.Message });
+                    }
                 }
             }
 
@@ -245,90 +241,71 @@ public sealed class WhatsAppWebhookController : ControllerBase
     }
 
     /// <summary>
-    /// Receive message from QR-based WhatsApp gateway (OpenClaw-style).
-    /// Dispatches to the agent via ChannelGateway AND triggers any published
-    /// workflow listening on the "connect.message.received" event.
+    /// Message from the QR bridge (whatsapp-web.js). Answers once the message is recorded and the
+    /// assistant has replied through the bridge; a bridge retry after a timeout is a duplicate.
     /// </summary>
     [HttpPost("qr")]
     [RequireQrBridgeKey]
-    public async Task<IActionResult> ReceiveQrMessage(string tenantId, [FromBody] QrWhatsAppMessage message, CancellationToken ct)
+    public async Task<IActionResult> ReceiveQrMessage(
+        string tenantId,
+        [FromBody] QrWhatsAppMessage message,
+        [FromServices] AgentFlow.Api.Channels.IInboundMessageIngest ingest,
+        CancellationToken ct)
     {
         try
         {
             _logger.LogInformation("Received QR WhatsApp message from {From}", message.From);
-            var externalEventKey = BuildExternalEventKey("wa-qr", message.Id, message.From, message.Timestamp, message.Content);
-            if (!string.IsNullOrWhiteSpace(externalEventKey))
-            {
-                var existing = await _connectStore.GetInboxMessageByExternalKeyAsync(tenantId, externalEventKey, ct);
-                if (existing is not null)
-                {
-                    return Ok(new
-                    {
-                        status = "duplicate_accepted",
-                        inboxMessageId = existing.Id
-                    });
-                }
-            }
-
             var channels = await _channelRepo.GetByTypeAsync(ChannelType.WhatsApp, tenantId, ct);
-            var activeChannel = channels.FirstOrDefault(c => c.Status == ChannelStatus.Active && c.Config.GetValueOrDefault("AuthMode") == "qr");
-
+            var activeChannel = QrChannelFor(channels, message.ChannelId);
             if (activeChannel == null)
                 return BadRequest(new { error = "No active QR WhatsApp channel" });
 
-            var waMessage = new WhatsAppIncomingMessage
+            var attachments = message.Media is null
+                ? Array.Empty<AgentFlow.Api.Channels.InboundAttachment>()
+                : new[] { new AgentFlow.Api.Channels.InboundAttachment(message.Media.Type ?? "file", null, message.Media.MimeType, null, message.Media.FileName) };
+            var result = await ingest.IngestAsync(new AgentFlow.Api.Channels.InboundMessage
             {
-                Id = message.Id,
-                From = message.From,
-                Timestamp = message.Timestamp,
-                Text = new WhatsAppTextMessage { Body = message.Content },
-                Profile = new WhatsAppProfile { Name = message.PushName ?? "Unknown" }
-            };
-            var channelMessage = await ProcessWhatsAppMessage(waMessage, activeChannel, ct);
-            if (channelMessage is null)
-                return BadRequest(new { error = "Could not normalize incoming WhatsApp message." });
-
-            var session = await _sessionRepo.GetByIdAsync(channelMessage.SessionId, tenantId, ct);
-            if (session is null)
-                return BadRequest(new { error = "Could not resolve WhatsApp session." });
-
-            // --- Store inbox message for traceability ---
-            var inboxMessage = await _connectStore.CreateInboxMessageAsync(new ConnectInboxMessageContract
-            {
-                Id = Guid.NewGuid().ToString("N"),
                 TenantId = tenantId,
-                Channel = "whatsapp",
-                Recipient = message.From,
-                Content = message.Content,
-                ExternalEventKey = externalEventKey,
-                Status = ConnectOperationalStatus.Queued,
-                CreatedAt = DateTimeOffset.UtcNow,
-                UpdatedAt = DateTimeOffset.UtcNow,
-                UpdatedBy = "qr-webhook"
-            }, ct);
+                Channel = activeChannel,
+                Provider = "qr",
+                ExternalId = string.IsNullOrWhiteSpace(message.Id) ? null : message.Id,
+                From = message.From,
+                DisplayName = message.PushName,
+                Text = message.Content ?? string.Empty,
+                Attachments = attachments,
+                BusinessAddress = message.To,
+                SentAt = message.Timestamp > 0 ? DateTimeOffset.FromUnixTimeSeconds(message.Timestamp) : null
+            }, ct: ct);
 
-            await AttributeCampaignReplyAsync(tenantId, message.From, message.Content, HasAssistant(activeChannel), ct);
-
-            // --- Route through channel gateway as primary path ---
-            // Router + intent rules decide whether to trigger a workflow.
-            var response = await _gateway.ProcessMessageAsync(channelMessage, ct);
-            var agentResponse = response.Content;
-            var agentExecutionId = response.AgentExecutionId;
-
-            return Ok(new
+            return result.Status switch
             {
-                status = "success",
-                inboxMessageId = inboxMessage.Id,
-                workflowExecutionId = (string?)null,
-                agentResponse,
-                agentExecutionId
-            });
+                AgentFlow.Api.Channels.InboundStatus.Duplicate => Ok(new { status = "duplicate_accepted", inboxMessageId = result.InboxMessageId }),
+                AgentFlow.Api.Channels.InboundStatus.Ignored => Ok(new { status = "ignored", reason = result.Reason }),
+                _ => Ok(new
+                {
+                    status = result.Status == AgentFlow.Api.Channels.InboundStatus.Failed ? "failed" : "success",
+                    inboxMessageId = result.InboxMessageId,
+                    workflowExecutionId = (string?)null,
+                    agentResponse = result.Reply?.Content,
+                    agentExecutionId = result.Reply?.AgentExecutionId
+                })
+            };
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error processing QR WhatsApp message");
             return StatusCode(500, new { error = ex.Message });
         }
+    }
+
+    /// <summary>The QR channel the bridge session belongs to; the only active one when the bridge does not say.</summary>
+    public static ChannelDefinition? QrChannelFor(IReadOnlyList<ChannelDefinition> channels, string? channelId)
+    {
+        var qr = channels
+            .Where(c => c.Status == ChannelStatus.Active)
+            .Where(c => string.Equals(c.Config.GetValueOrDefault("AuthMode", "qr"), "qr", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        return (string.IsNullOrWhiteSpace(channelId) ? null : qr.FirstOrDefault(c => c.Id == channelId)) ?? qr.FirstOrDefault();
     }
 
     /// <summary>
@@ -340,24 +317,17 @@ public sealed class WhatsAppWebhookController : ControllerBase
         string tenantId,
         [FromForm] AgentFlow.Api.Messaging.TwilioWhatsAppForm form,
         [FromServices] AgentFlow.Api.Voice.ITwilioWebhookSignatureValidator signatures,
+        [FromServices] AgentFlow.Api.Channels.IInboundMessageIngest ingest,
         CancellationToken requestAborted)
     {
         if (!await signatures.IsValidAsync(tenantId, Request, requestAborted))
             return StatusCode(StatusCodes.Status403Forbidden);
-
-        var from = AgentFlow.Api.Messaging.TwilioWhatsApp.Phone(form.From);
-        var body = form.Body?.Trim();
-        if (string.IsNullOrEmpty(body) && int.TryParse(form.NumMedia, out var media) && media > 0)
-            body = "[archivo adjunto]";
-        if (string.IsNullOrWhiteSpace(from) || string.IsNullOrWhiteSpace(form.MessageSid) || string.IsNullOrEmpty(body))
+        if (string.IsNullOrWhiteSpace(form.From) || string.IsNullOrWhiteSpace(form.MessageSid))
             return EmptyTwiml();
 
-        // Twilio stops waiting after 15 s, but the reply goes out through its API: a slow assistant
-        // must not be cancelled together with the request.
-        var ct = CancellationToken.None;
         try
         {
-            var channels = await _channelRepo.GetByTypeAsync(ChannelType.WhatsApp, tenantId, ct);
+            var channels = await _channelRepo.GetByTypeAsync(ChannelType.WhatsApp, tenantId, requestAborted);
             var channel = AgentFlow.Api.Messaging.TwilioWhatsApp.ChannelFor(channels, form.To);
             if (channel is null)
             {
@@ -365,38 +335,18 @@ public sealed class WhatsAppWebhookController : ControllerBase
                 return EmptyTwiml();
             }
 
-            var externalEventKey = $"wa-twilio:{form.MessageSid}";
-            if (await _connectStore.GetInboxMessageByExternalKeyAsync(tenantId, externalEventKey, ct) is not null)
-                return EmptyTwiml();
-
-            var waMessage = new WhatsAppIncomingMessage
+            await ingest.IngestAsync(new AgentFlow.Api.Channels.InboundMessage
             {
-                Id = form.MessageSid!,
-                From = from!,
-                Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
-                Text = new WhatsAppTextMessage { Body = body! },
-                Profile = new WhatsAppProfile { Name = string.IsNullOrWhiteSpace(form.ProfileName) ? "Unknown" : form.ProfileName }
-            };
-            var channelMessage = await ProcessWhatsAppMessage(waMessage, channel, ct);
-            if (channelMessage is null)
-                return EmptyTwiml();
-
-            await _connectStore.CreateInboxMessageAsync(new ConnectInboxMessageContract
-            {
-                Id = Guid.NewGuid().ToString("N"),
                 TenantId = tenantId,
-                Channel = "whatsapp",
-                Recipient = from!,
-                Content = body!,
-                ExternalEventKey = externalEventKey,
-                Status = ConnectOperationalStatus.Queued,
-                CreatedAt = DateTimeOffset.UtcNow,
-                UpdatedAt = DateTimeOffset.UtcNow,
-                UpdatedBy = "twilio-webhook"
-            }, ct);
-
-            await AttributeCampaignReplyAsync(tenantId, from, body, HasAssistant(channel), ct);
-            await _gateway.ProcessMessageAsync(channelMessage, ct);
+                Channel = channel,
+                Provider = "twilio",
+                ExternalId = form.MessageSid,
+                From = form.From,
+                DisplayName = form.ProfileName,
+                Text = form.Body ?? string.Empty,
+                Attachments = TwilioAttachments(Request.HasFormContentType ? Request.Form : null),
+                BusinessAddress = AgentFlow.Api.Messaging.TwilioWhatsApp.Phone(form.To)
+            }, ct: CancellationToken.None);
         }
         catch (Exception ex)
         {
@@ -405,55 +355,26 @@ public sealed class WhatsAppWebhookController : ControllerBase
         return EmptyTwiml();
     }
 
+    /// <summary>MediaUrl0..N / MediaContentType0..N of a Twilio message.</summary>
+    public static IReadOnlyList<AgentFlow.Api.Channels.InboundAttachment> TwilioAttachments(IFormCollection? form)
+    {
+        if (form is null || !int.TryParse(form["NumMedia"], out var count) || count <= 0) return [];
+        var list = new List<AgentFlow.Api.Channels.InboundAttachment>();
+        for (var i = 0; i < count && i < 10; i++)
+        {
+            var mime = form[$"MediaContentType{i}"].ToString();
+            var kind = mime.StartsWith("image/", StringComparison.OrdinalIgnoreCase) ? "image"
+                : mime.StartsWith("audio/", StringComparison.OrdinalIgnoreCase) ? "audio"
+                : mime.StartsWith("video/", StringComparison.OrdinalIgnoreCase) ? "video"
+                : "document";
+            list.Add(new(kind, form[$"MediaUrl{i}"].ToString(), string.IsNullOrWhiteSpace(mime) ? null : mime));
+        }
+        return list;
+    }
+
     private ContentResult EmptyTwiml()
         => Content("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response></Response>", "text/xml");
 
-    /// <summary>
-    /// Links a reply to the campaign contact that messaged this number and classifies it
-    /// (promesa de pago, ya pague, no me interesa...). Never blocks the conversation flow.
-    /// </summary>
-    private static bool HasAssistant(ChannelDefinition channel) =>
-        !string.IsNullOrWhiteSpace(channel.RouterAgentId) || !string.IsNullOrWhiteSpace(channel.Config.GetValueOrDefault("DefaultAgentId"));
-
-    private async Task AttributeCampaignReplyAsync(string tenantId, string? from, string? text, bool answeredByAssistant, CancellationToken ct)
-    {
-        if (_campaignOutcomes is null || string.IsNullOrWhiteSpace(from) || string.IsNullOrWhiteSpace(text)) return;
-        try
-        {
-            var contact = await _campaignOutcomes.AttributeReplyAsync(tenantId, from, text, DateTimeOffset.UtcNow, ct, answeredByAssistant);
-            if (contact is not null)
-                _logger.LogInformation("Reply attributed to campaign {CampaignId} contact {ContactId}: {Outcome}", contact.CampaignId, contact.Id, contact.Outcome);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Could not attribute WhatsApp reply to a campaign contact");
-        }
-    }
-
-    private async Task<ChannelMessage?> ProcessWhatsAppMessage(WhatsAppIncomingMessage waMessage, ChannelDefinition channel, CancellationToken ct)
-    {
-        var handler = _gateway.GetHandler(ChannelType.WhatsApp) as WhatsAppChannelHandler;
-        if (handler == null) return null;
-
-        return await handler.ProcessIncomingMessageAsync(waMessage, channel, ct);
-    }
-
-    private static string? BuildExternalEventKey(string prefix, WhatsAppIncomingMessage message)
-    {
-        var content = message.Text?.Body ?? message.Caption ?? string.Empty;
-        return BuildExternalEventKey(prefix, message.Id, message.From, message.Timestamp, content);
-    }
-
-    private static string? BuildExternalEventKey(string prefix, string? nativeId, string? from, long? timestamp, string? content)
-    {
-        if (!string.IsNullOrWhiteSpace(nativeId))
-            return $"{prefix}:{nativeId}";
-
-        if (string.IsNullOrWhiteSpace(from) && timestamp is null && string.IsNullOrWhiteSpace(content))
-            return null;
-
-        return $"{prefix}:{from}:{timestamp}:{content}".Trim();
-    }
 }
 
 // Webhook payload models
@@ -481,6 +402,8 @@ public sealed record WhatsAppWebhookValue
     public string? MessagingProduct { get; init; }
     /// <summary>{display_phone_number, phone_number_id}: an object, not a string.</summary>
     public System.Text.Json.JsonElement? Metadata { get; init; }
+    /// <summary>The senders' WhatsApp profiles (name), keyed by wa_id.</summary>
+    public List<WhatsAppWebhookContact>? Contacts { get; init; }
     public List<WhatsAppIncomingMessage>? Messages { get; init; }
     public List<WhatsAppWebhookStatus>? Statuses { get; init; }
 
@@ -495,6 +418,13 @@ public sealed record WhatsAppWebhookValue
     public string? NewQualityScore { get; init; }
     [System.Text.Json.Serialization.JsonPropertyName("new_category")]
     public string? NewCategory { get; init; }
+}
+
+public sealed record WhatsAppWebhookContact
+{
+    [System.Text.Json.Serialization.JsonPropertyName("wa_id")]
+    public string? WaId { get; init; }
+    public WhatsAppProfile? Profile { get; init; }
 }
 
 public sealed record WhatsAppWebhookStatus
@@ -512,5 +442,18 @@ public sealed record QrWhatsAppMessage
     public string Content { get; init; } = string.Empty;
     public string? PushName { get; init; }
     public long Timestamp { get; init; }
+    /// <summary>The AgentFlow channel of the bridge session that received it.</summary>
+    public string? ChannelId { get; init; }
+    /// <summary>The linked WhatsApp number that received it, when the bridge knows it.</summary>
+    public string? To { get; init; }
+    /// <summary>The file the customer sent, if any (the bridge does not upload it).</summary>
+    public QrWhatsAppMedia? Media { get; init; }
+}
+
+public sealed record QrWhatsAppMedia
+{
+    public string? Type { get; init; }
+    public string? MimeType { get; init; }
+    public string? FileName { get; init; }
 }
 

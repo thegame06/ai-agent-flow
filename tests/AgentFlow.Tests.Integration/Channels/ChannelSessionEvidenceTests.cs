@@ -229,7 +229,11 @@ public class ChannelSessionEvidenceTests
         var channelRepo = new InMemoryChannelDefinitionRepository(channel);
         var connectStore = new InMemoryConnectStore();
         var messageRepo = new InMemoryWebhookMessageRepository();
-        var gateway = new SuppressingGateway();
+        var gateway = new SuppressingGateway(new AgentFlow.Infrastructure.Channels.Api.ApiChannelHandler(
+            sessionRepo, new NoHttpClientFactory(),
+            NullLogger<AgentFlow.Infrastructure.Channels.Api.ApiChannelHandler>.Instance));
+        var ingest = new AgentFlow.Api.Channels.InboundMessageIngest(gateway, sessionRepo, connectStore,
+            new AgentFlow.Api.Channels.CustomerResolver(), NullLogger<AgentFlow.Api.Channels.InboundMessageIngest>.Instance);
 
         var controller = new GenericWebhooksController(
             connectStore,
@@ -238,7 +242,8 @@ public class ChannelSessionEvidenceTests
             sessionRepo,
             messageRepo,
             new NoopWorkflowAuditService(),
-            NullLogger<GenericWebhooksController>.Instance)
+            NullLogger<GenericWebhooksController>.Instance,
+            ingest)
         {
             ControllerContext = new ControllerContext
             {
@@ -571,10 +576,15 @@ public class ChannelSessionEvidenceTests
             => Task.FromResult(BroadcastResult.Ok(0));
     }
 
-    private sealed class SuppressingGateway : IChannelGateway
+    private sealed class NoHttpClientFactory : System.Net.Http.IHttpClientFactory
+    {
+        public System.Net.Http.HttpClient CreateClient(string name) => new();
+    }
+
+    private sealed class SuppressingGateway(IChannelHandler? handler = null) : IChannelGateway
     {
         public void RegisterHandler(IChannelHandler handler) { }
-        public IChannelHandler? GetHandler(ChannelType channelType) => null;
+        public IChannelHandler? GetHandler(ChannelType channelType) => handler;
         public Task<ChannelMessage> ProcessMessageAsync(ChannelMessage incomingMessage, CancellationToken ct = default)
         {
             incomingMessage.Metadata["agentflow.delivery"] = "suppressed";

@@ -234,6 +234,20 @@ public sealed class PaymentDeskTests
     }
 
     [Fact]
+    public async Task AReceiptAlreadyConfirmed_IsNotReportedAgain()
+    {
+        var (service, store, desk, _) = Create(contact: null);
+        store.Loans["PR-1"] = Loan("PR-1", 500, 2000);
+        await service.ReportPaymentAsync(Tenant, Phone, 500m, "ayer", "12345", null, null);
+        desk.Reports[0].Status = CollectionPaymentReportStatus.Confirmed;
+
+        var result = await service.ReportPaymentAsync(Tenant, Phone, 500m, "ayer", "12345", null, null);
+
+        Assert.Single(desk.Reports);
+        Assert.Contains("ya estaba registrado", result.Message);
+    }
+
+    [Fact]
     public async Task TwoDifferentReceipts_AreTwoPayments()
     {
         var (service, store, desk, _) = Create(contact: null);

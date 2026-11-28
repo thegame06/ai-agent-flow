@@ -22,6 +22,23 @@ public sealed record WhatsAppIncomingMessage
     public WhatsAppTextMessage? Text { get; init; }
     public string? Caption { get; init; }
     public WhatsAppProfile? Profile { get; init; }
+    /// <summary>Meta's message type: text, image, document, audio, video, sticker…</summary>
+    public string? Type { get; init; }
+    public WhatsAppMedia? Image { get; init; }
+    public WhatsAppMedia? Document { get; init; }
+    public WhatsAppMedia? Audio { get; init; }
+    public WhatsAppMedia? Video { get; init; }
+    public WhatsAppMedia? Sticker { get; init; }
+}
+
+/// <summary>A media object in Meta's webhook: fetched later through the Graph API by its id.</summary>
+public sealed record WhatsAppMedia
+{
+    public string? Id { get; init; }
+    [System.Text.Json.Serialization.JsonPropertyName("mime_type")]
+    public string? MimeType { get; init; }
+    public string? Caption { get; init; }
+    public string? Filename { get; init; }
 }
 
 public sealed record WhatsAppTextMessage
