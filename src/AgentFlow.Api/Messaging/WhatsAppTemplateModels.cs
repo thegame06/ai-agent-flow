@@ -13,6 +13,15 @@ public static class WhatsAppTemplateStatuses
     public const string Disabled = "DISABLED";
     /// <summary>No longer returned by Meta (deleted there).</summary>
     public const string Deleted = "DELETED";
+    /// <summary>Twilio: created but never sent to WhatsApp for review (cannot be sent to customers).</summary>
+    public const string Unsubmitted = "UNSUBMITTED";
+}
+
+/// <summary>Who holds a template and approves it with WhatsApp: Meta's own API, or Twilio.</summary>
+public static class WhatsAppTemplateProviders
+{
+    public const string Meta = "meta";
+    public const string Twilio = "twilio";
 }
 
 public sealed class WhatsAppTemplateButton
@@ -66,6 +75,10 @@ public sealed class WhatsAppTemplateDocument
     public string ConnectionId { get; set; } = string.Empty;
     public string? BusinessAccountId { get; set; }
     public string? MetaTemplateId { get; set; }
+    /// <summary>meta or twilio. A template can only go out through a channel of the same provider.</summary>
+    public string Provider { get; set; } = WhatsAppTemplateProviders.Meta;
+    /// <summary>Twilio's Content SID (HX…): what is sent instead of the name.</summary>
+    public string? ContentSid { get; set; }
     public string Name { get; set; } = string.Empty;
     public string Language { get; set; } = "es";
     /// <summary>UTILITY, MARKETING or AUTHENTICATION.</summary>

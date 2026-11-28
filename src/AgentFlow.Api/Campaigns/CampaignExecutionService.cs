@@ -63,9 +63,6 @@ public sealed class CampaignExecutionService : ICampaignExecutionService
     }
 
     /// <summary>The Meta account (WABA) of the channel the campaign sends through, when it is a Business API channel.</summary>
-    private async Task<string?> CampaignChannelWabaAsync(CampaignContract campaign, CancellationToken ct)
-        => _channels is null ? null : CampaignChannels.MetaAccountOf(await CampaignChannels.ResolveAsync(_channels, campaign, ct));
-
     /// <summary>
     /// The customer wrote to us in the last 24 hours: free text is still allowed. That is a reply to any
     /// campaign, or any message to the campaign's own number (the customer may write first, unprompted).
@@ -444,14 +441,14 @@ public sealed class CampaignExecutionService : ICampaignExecutionService
                         UpdatedAt = DateTimeOffset.UtcNow
                     }, ct))!;
                 }
-                // A template only exists in its own Meta account: the campaign's number must belong to it.
-                var channelWaba = await CampaignChannelWabaAsync(campaign, ct);
-                if (channelWaba is not null && template.BusinessAccountId is not null && channelWaba != template.BusinessAccountId)
+                // A template only exists at its provider (Meta or Twilio) and, in Meta, in its own account.
+                var templateChannel = _channels is null ? null : await CampaignChannels.ResolveAsync(_channels, campaign, ct);
+                if (CampaignChannels.TemplateProblem(template, templateChannel) is { } problem)
                 {
                     return (await _campaignStore.UpdateContactExecutionAsync(execution with
                     {
                         Status = CampaignContactExecutionStatus.Failed,
-                        SkipReason = $"La plantilla {template.Name} es de otra cuenta de Meta que el canal de la campana.",
+                        SkipReason = problem,
                         UpdatedAt = DateTimeOffset.UtcNow
                     }, ct))!;
                 }

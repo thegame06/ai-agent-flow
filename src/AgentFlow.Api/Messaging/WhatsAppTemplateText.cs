@@ -132,6 +132,7 @@ public static partial class WhatsAppTemplateText
         var lookup = new Dictionary<string, string>(variables ?? new Dictionary<string, string>(), StringComparer.OrdinalIgnoreCase);
         var parameters = MergeParameters(template.Components, template.Parameters).ToDictionary(p => (p.Component, p.Key));
         var named = template.ParameterFormat.Equals("NAMED", StringComparison.OrdinalIgnoreCase);
+        var twilio = template.Provider == WhatsAppTemplateProviders.Twilio;
         var missing = new List<string>();
 
         string? Value(string component, string key)
@@ -154,7 +155,8 @@ public static partial class WhatsAppTemplateText
         JsonObject TextParam(string component, string key)
         {
             var param = new JsonObject { ["type"] = "text", ["text"] = Value(component, key) ?? string.Empty };
-            if (named) param["parameter_name"] = key;
+            // Twilio fills variables by their number ({{2}} may come before {{1}}), so it gets the key too.
+            if (named || twilio) param["parameter_name"] = key;
             return param;
         }
 
@@ -218,7 +220,9 @@ public static partial class WhatsAppTemplateText
         }
 
         var text = string.Join("\n\n", lines.Where(l => !string.IsNullOrWhiteSpace(l)));
-        return new WhatsAppTemplateMessage(template.Name, template.Language, payload, text, missing.Distinct().ToList());
+        // Twilio sends a template by its Content SID, not by name.
+        var sendName = twilio && !string.IsNullOrWhiteSpace(template.ContentSid) ? template.ContentSid! : template.Name;
+        return new WhatsAppTemplateMessage(sendName, template.Language, payload, text, missing.Distinct().ToList());
     }
 
     /// <summary>

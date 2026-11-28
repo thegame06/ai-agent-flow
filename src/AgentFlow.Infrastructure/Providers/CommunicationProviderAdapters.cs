@@ -81,8 +81,8 @@ public sealed class TwilioWhatsAppProviderAdapter : IMessageSendProviderAdapter
         var variables = BodyParameters(request.TemplateComponentsJson);
         if (variables.Count > 0)
             form["ContentVariables"] = JsonSerializer.Serialize(
-                variables.Select((v, i) => (Key: (i + 1).ToString(System.Globalization.CultureInfo.InvariantCulture), Value: v))
-                    .ToDictionary(x => x.Key, x => x.Value));
+                variables.Select((v, i) => (Key: v.Key ?? (i + 1).ToString(System.Globalization.CultureInfo.InvariantCulture), v.Value))
+                    .GroupBy(x => x.Key).ToDictionary(g => g.Key, g => g.First().Value));
         return form;
     }
 
@@ -95,10 +95,13 @@ public sealed class TwilioWhatsAppProviderAdapter : IMessageSendProviderAdapter
         return digits.Length == 0 ? raw : "+" + digits;
     }
 
-    /// <summary>The text parameters of a template's body component, in order.</summary>
-    private static List<string> BodyParameters(string? componentsJson)
+    /// <summary>
+    /// The text parameters of a template's body component, in order, with their variable number
+    /// ("parameter_name") when the template gave it; otherwise the position is the number.
+    /// </summary>
+    private static List<(string? Key, string Value)> BodyParameters(string? componentsJson)
     {
-        var values = new List<string>();
+        var values = new List<(string?, string)>();
         if (string.IsNullOrWhiteSpace(componentsJson)) return values;
         try
         {
@@ -110,7 +113,8 @@ public sealed class TwilioWhatsAppProviderAdapter : IMessageSendProviderAdapter
                     !string.Equals(type.GetString(), "body", StringComparison.OrdinalIgnoreCase) ||
                     !component.TryGetProperty("parameters", out var parameters)) continue;
                 foreach (var parameter in parameters.EnumerateArray())
-                    if (parameter.TryGetProperty("text", out var text)) values.Add(text.GetString() ?? string.Empty);
+                    if (parameter.TryGetProperty("text", out var text))
+                        values.Add((parameter.TryGetProperty("parameter_name", out var key) ? key.GetString() : null, text.GetString() ?? string.Empty));
             }
         }
         catch (JsonException) { }

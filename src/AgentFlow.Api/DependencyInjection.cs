@@ -85,6 +85,8 @@ public static class DependencyInjection
             .AddSingleton<AgentFlow.Api.Messaging.IWhatsAppTemplateStore, AgentFlow.Api.Messaging.MongoWhatsAppTemplateStore>()
             .AddScoped<AgentFlow.Api.Messaging.IMetaTemplateApi, AgentFlow.Api.Messaging.MetaTemplateApi>()
             .AddScoped<AgentFlow.Api.Messaging.IWhatsAppTemplateService, AgentFlow.Api.Messaging.WhatsAppTemplateService>()
+            .AddScoped<AgentFlow.Api.Messaging.ITwilioContentApi, AgentFlow.Api.Messaging.TwilioContentApi>()
+            .AddScoped<AgentFlow.Api.Messaging.ITwilioTemplateService, AgentFlow.Api.Messaging.TwilioTemplateService>()
             .AddScoped<ICollectionsImportService, CollectionsImportService>()
             .AddScoped<ICollectionPromiseService, CollectionPromiseService>()
             .AddScoped<ICollectionPaymentService, CollectionPaymentService>()

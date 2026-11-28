@@ -73,7 +73,9 @@ export function TemplateDrawer({ base, templateId, fields, onClose, onEdit, onCh
 
   const t = detail?.template;
   const st = t ? statusOf(t.status) : null;
-  const editable = t && ['APPROVED', 'REJECTED', 'PAUSED'].includes(t.status);
+  // Twilio does not let a template be edited once it was sent for review: a new one is created instead.
+  const editable = t && t.provider !== 'twilio' && ['APPROVED', 'REJECTED', 'PAUSED'].includes(t.status);
+  const holder = t?.provider === 'twilio' ? 'Twilio' : 'Meta';
 
   const updateParam = (i: number, patch: Partial<TemplateParameter>) => setParams((ps) => ps.map((p, j) => (j === i ? { ...p, ...patch } : p)));
 
@@ -94,7 +96,7 @@ export function TemplateDrawer({ base, templateId, fields, onClose, onEdit, onCh
   };
 
   const remove = async () => {
-    if (!t || !window.confirm(`¿Eliminar ${t.name} (${t.language}) en Meta? No se puede deshacer.`)) return;
+    if (!t || !window.confirm(`¿Eliminar ${t.name} (${t.language}) en ${holder}? No se puede deshacer.`)) return;
     setBusy(true);
     setError(null);
     try {
@@ -126,6 +128,8 @@ export function TemplateDrawer({ base, templateId, fields, onClose, onEdit, onCh
               <Typography variant="body2" color="text.secondary">
                 {t.language} · {CATEGORY_LABEL[t.category] ?? t.category} · versión {t.version}
                 {t.lastSyncedAt ? ` · sincronizada ${new Date(t.lastSyncedAt).toLocaleString('es-MX')}` : ''}
+                {` · ${holder}`}
+                {t.contentSid ? ` · ${t.contentSid}` : ''}
               </Typography>
             </Box>
             <Stack direction="row" spacing={1}>
@@ -136,12 +140,19 @@ export function TemplateDrawer({ base, templateId, fields, onClose, onEdit, onCh
 
           {t.status === 'REJECTED' && (
             <Alert severity="error" sx={{ mt: 2 }}>
-              Meta la rechazó{t.rejectedReason ? `: ${t.rejectedReason}` : ''}. Puedes editarla y volver a enviarla.
+              WhatsApp la rechazó{t.rejectedReason ? `: ${t.rejectedReason}` : ''}.{' '}
+              {t.provider === 'twilio' ? 'Crea una nueva con el texto corregido.' : 'Puedes editarla y volver a enviarla.'}
             </Alert>
           )}
           {t.status === 'PENDING' && (
             <Alert severity="warning" sx={{ mt: 2 }}>
-              Meta la está revisando (suele tardar minutos, a veces hasta 24 h). Las campañas solo pueden usar plantillas aprobadas.
+              WhatsApp la está revisando (suele tardar minutos, a veces hasta 24 h). Las campañas solo pueden usar plantillas aprobadas.
+            </Alert>
+          )}
+          {t.status === 'UNSUBMITTED' && (
+            <Alert severity="info" sx={{ mt: 2 }}>
+              Está creada en Twilio pero no se envió a revisión de WhatsApp{t.rejectedReason ? ` (${t.rejectedReason})` : ''}. Un número de
+              prueba (sandbox) no puede tener plantillas propias: hace falta un número de WhatsApp registrado en Twilio.
             </Alert>
           )}
 

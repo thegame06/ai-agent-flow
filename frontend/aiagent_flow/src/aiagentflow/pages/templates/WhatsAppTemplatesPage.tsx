@@ -30,7 +30,7 @@ import { Iconify } from 'src/components/iconify';
 import { TemplateDrawer } from './TemplateDrawer';
 import { TemplateEditorDialog } from './TemplateEditorDialog';
 import { WhatsAppMetaDialog } from '../channels/WhatsAppMetaDialog';
-import { slots, QUALITY, statusOf, CATEGORY_LABEL } from './templateModel';
+import { slots, QUALITY, isTwilio, statusOf, providerLabel, CATEGORY_LABEL, templateFitsChannel } from './templateModel';
 
 import type { WaTemplate, ChannelMeta, TemplateField } from './templateModel';
 
@@ -40,8 +40,9 @@ type ListResponse = { items: WaTemplate[]; channels: ChannelMeta[]; fields: Temp
 type SyncResult = { accounts: number; created: number; updated: number; statusChanged: number; unchanged: number; removed: number; errors: string[] };
 
 /**
- * Templates live in Meta accounts (WABA); numbers are WhatsApp channels configured in Channels. A
- * company can have one account per area (collections, sales, marketing), or several numbers in one.
+ * Templates live in Meta accounts (WABA) or Twilio accounts; numbers are WhatsApp channels configured
+ * in Channels. A company can have one account per area (collections, sales, marketing), or several
+ * numbers in one.
  */
 export default function WhatsAppTemplatesPage() {
   const tenantId = useTenantId();
@@ -76,12 +77,12 @@ export default function WhatsAppTemplatesPage() {
   const channels = data?.channels ?? [];
   const fields = data?.fields ?? [];
   const selected = channels.find((c) => c.channelId === channelId) ?? null;
-  const ready = channels.filter((c) => c.hasToken && c.businessAccountId);
+  const ready = channels.filter((c) => isTwilio(c) || (c.hasToken && c.businessAccountId));
 
-  // Channels grouped by Meta account, to show which numbers share templates.
+  // Channels grouped by account (Meta or Twilio), to show which numbers share templates.
   const accounts = Array.from(
     channels.reduce((map, c) => {
-      const key = c.businessAccountId || `sin-cuenta-${c.channelId}`;
+      const key = isTwilio(c) ? `twilio-${c.connectionId ?? ''}` : c.businessAccountId || `sin-cuenta-${c.channelId}`;
       map.set(key, [...(map.get(key) ?? []), c]);
       return map;
     }, new Map<string, ChannelMeta[]>())
@@ -89,7 +90,7 @@ export default function WhatsAppTemplatesPage() {
 
   const items = (data?.items ?? []).filter(
     (t) =>
-      (!selected || t.businessAccountId === selected.businessAccountId) &&
+      (!selected || templateFitsChannel(t, selected)) &&
       (!status || t.status === status) &&
       (!query || t.name.includes(query.toLowerCase()))
   );
@@ -103,14 +104,13 @@ export default function WhatsAppTemplatesPage() {
       setSyncResult(res.data);
       load();
     } catch (err: any) {
-      setError(err?.response?.data?.message ?? 'No se pudo sincronizar con Meta.');
+      setError(err?.response?.data?.message ?? 'No se pudieron sincronizar las plantillas.');
     } finally {
       setSyncing(false);
     }
   };
 
-  const channelNames = (t: WaTemplate) =>
-    channels.filter((c) => c.businessAccountId && c.businessAccountId === t.businessAccountId).map((c) => c.channelName);
+  const channelNames = (t: WaTemplate) => channels.filter((c) => templateFitsChannel(t, c)).map((c) => c.channelName);
 
   return (
     <>
@@ -123,13 +123,13 @@ export default function WhatsAppTemplatesPage() {
           <Box>
             <Typography variant="h4">Plantillas de WhatsApp</Typography>
             <Typography variant="body2" color="text.secondary">
-              Mensajes aprobados por Meta. Son obligatorios para escribirle primero a un cliente o pasadas 24 h de su último
-              mensaje. Cada cuenta de Meta tiene sus plantillas; los números se configuran en Canales.
+              Mensajes aprobados por WhatsApp. Son obligatorios para escribirle primero a un cliente o pasadas 24 h de su
+              último mensaje. Cada cuenta (Meta o Twilio) tiene sus plantillas; los números se configuran en Canales.
             </Typography>
           </Box>
           <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
             <Button variant="outlined" startIcon={<Iconify icon="mdi:sync" />} disabled={!ready.length || syncing} onClick={sync}>
-              {syncing ? 'Sincronizando…' : selected ? `Sincronizar ${selected.channelName}` : 'Sincronizar con Meta'}
+              {syncing ? 'Sincronizando…' : selected ? `Sincronizar ${selected.channelName}` : 'Sincronizar'}
             </Button>
             <Button variant="contained" startIcon={<Iconify icon="mdi:plus" />} disabled={!ready.length} onClick={() => setEditor({ open: true, template: null })}>
               Nueva plantilla
@@ -147,8 +147,8 @@ export default function WhatsAppTemplatesPage() {
               </Button>
             }
           >
-            Crea un canal de WhatsApp con la API de WhatsApp Business (Meta) en Canales. Cada número es un canal (por ejemplo
-            Cobranza, Ventas y Marketing) y puede tener su propia cuenta de Meta.
+            Crea un canal de WhatsApp con la API de WhatsApp Business (Meta) o con Twilio en Canales. Cada número es un canal
+            (por ejemplo Cobranza, Ventas y Marketing) y puede tener su propia cuenta.
           </Alert>
         )}
 
@@ -157,22 +157,30 @@ export default function WhatsAppTemplatesPage() {
             {accounts.map(([key, group]) => (
               <Card key={key} variant="outlined" sx={{ p: 2 }}>
                 <Typography variant="overline" color="text.secondary">
-                  Cuenta de Meta
+                  {isTwilio(group[0]) ? 'Cuenta de Twilio' : 'Cuenta de Meta'}
                 </Typography>
-                <Typography variant="subtitle2">{group[0].businessAccountId ? `WABA ${group[0].businessAccountId}` : 'Sin cuenta configurada'}</Typography>
+                <Typography variant="subtitle2">
+                  {isTwilio(group[0])
+                    ? `Conexión ${group[0].connectionId || 'predeterminada'}`
+                    : group[0].businessAccountId
+                      ? `WABA ${group[0].businessAccountId}`
+                      : 'Sin cuenta configurada'}
+                </Typography>
                 <Stack spacing={0.75} sx={{ mt: 1 }}>
                   {group.map((c) => (
                     <Stack key={c.channelId} direction="row" spacing={1} alignItems="center" justifyContent="space-between">
                       <Stack direction="row" spacing={1} alignItems="center">
                         <Iconify icon="mdi:whatsapp" />
                         <Typography variant="body2">{c.channelName}</Typography>
-                        {!c.hasToken && <Chip size="small" color="error" label="Sin token" />}
-                        {c.hasToken && !c.hasAppSecret && <Chip size="small" color="warning" label="Sin app secret" />}
+                        {!isTwilio(c) && !c.hasToken && <Chip size="small" color="error" label="Sin token" />}
+                        {!isTwilio(c) && c.hasToken && !c.hasAppSecret && <Chip size="small" color="warning" label="Sin app secret" />}
                         {c.tokenInPlainConfig && <Chip size="small" color="warning" label="Token sin cifrar" />}
                       </Stack>
-                      <Button size="small" onClick={() => setMetaChannelId(c.channelId)}>
-                        Cuenta de Meta
-                      </Button>
+                      {!isTwilio(c) && (
+                        <Button size="small" onClick={() => setMetaChannelId(c.channelId)}>
+                          Cuenta de Meta
+                        </Button>
+                      )}
                     </Stack>
                   ))}
                 </Stack>
@@ -185,7 +193,7 @@ export default function WhatsAppTemplatesPage() {
           <Alert severity={syncResult.errors.length ? 'warning' : 'success'} sx={{ mb: 2 }} onClose={() => setSyncResult(null)}>
             {syncResult.errors.length
               ? syncResult.errors.join(' · ')
-              : `Sincronizado (${syncResult.accounts} cuenta${syncResult.accounts === 1 ? '' : 's'}): ${syncResult.created} nuevas, ${syncResult.updated} con cambios (nueva versión), ${syncResult.statusChanged} cambiaron de estado, ${syncResult.removed} eliminadas en Meta, ${syncResult.unchanged} sin cambios.`}
+              : `Sincronizado (${syncResult.accounts} cuenta${syncResult.accounts === 1 ? '' : 's'}): ${syncResult.created} nuevas, ${syncResult.updated} con cambios (nueva versión), ${syncResult.statusChanged} cambiaron de estado, ${syncResult.removed} eliminadas, ${syncResult.unchanged} sin cambios.`}
           </Alert>
         )}
         {error && (
@@ -207,7 +215,7 @@ export default function WhatsAppTemplatesPage() {
             <TextField size="small" placeholder="Buscar por nombre" value={query} onChange={(e) => setQuery(e.target.value)} sx={{ minWidth: 220 }} />
             <TextField select size="small" label="Estado" value={status} onChange={(e) => setStatus(e.target.value)} sx={{ minWidth: 180 }}>
               <MenuItem value="">Todos</MenuItem>
-              {['APPROVED', 'PENDING', 'REJECTED', 'PAUSED', 'DISABLED', 'DELETED'].map((s) => (
+              {['APPROVED', 'PENDING', 'UNSUBMITTED', 'REJECTED', 'PAUSED', 'DISABLED', 'DELETED'].map((s) => (
                 <MenuItem key={s} value={s}>
                   {statusOf(s).label}
                 </MenuItem>
@@ -240,8 +248,8 @@ export default function WhatsAppTemplatesPage() {
                   <TableRow>
                     <TableCell colSpan={8} align="center" sx={{ py: 4, color: 'text.secondary' }}>
                       {ready.length
-                        ? 'No hay plantillas. Sincroniza con Meta para traer las que ya tienes, o crea una nueva.'
-                        : 'Configura la cuenta de Meta de un canal de WhatsApp para empezar.'}
+                        ? 'No hay plantillas. Sincroniza para traer las que ya tienes en Meta o Twilio, o crea una nueva.'
+                        : 'Configura un canal de WhatsApp (Meta o Twilio) para empezar.'}
                     </TableCell>
                   </TableRow>
                 )}
@@ -254,8 +262,11 @@ export default function WhatsAppTemplatesPage() {
                     return (
                       <TableRow key={t.id} hover sx={{ cursor: 'pointer', opacity: t.status === 'DELETED' ? 0.5 : 1 }} onClick={() => setOpenId(t.id)}>
                         <TableCell>
-                          <Typography variant="subtitle2">{t.name}</Typography>
-                          {t.status === 'REJECTED' && t.rejectedReason && (
+                          <Stack direction="row" spacing={1} alignItems="center">
+                            <Typography variant="subtitle2">{t.name}</Typography>
+                            <Chip size="small" variant="outlined" label={providerLabel(t)} />
+                          </Stack>
+                          {(t.status === 'REJECTED' || t.status === 'UNSUBMITTED') && t.rejectedReason && (
                             <Typography variant="caption" color="error.main">
                               {t.rejectedReason}
                             </Typography>

@@ -151,8 +151,7 @@ public sealed class CampaignFollowUpService : ICampaignFollowUpService
                     var template = await TemplateAsync(tenantId, rule.WhatsAppTemplateId!, templateCache, ct);
                     var problem = template is null ? "La plantilla del seguimiento ya no existe."
                         : template.Status != AgentFlow.Api.Messaging.WhatsAppTemplateStatuses.Approved ? $"La plantilla {template.Name} no esta aprobada (estado {template.Status})."
-                        : CampaignChannels.MetaAccountOf(channel) is { } waba && template.BusinessAccountId is { } own && waba != own ? $"La plantilla {template.Name} es de otra cuenta de Meta que el canal."
-                        : null;
+                        : CampaignChannels.TemplateProblem(template, channel);
                     if (problem is not null)
                     {
                         records.Add(Record(rule, "failed", now, error: problem));

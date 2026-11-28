@@ -1,4 +1,4 @@
-// WhatsApp (Meta) message templates: types and client-side rendering shared by the
+// WhatsApp message templates (Meta and Twilio): types and client-side rendering shared by the
 // templates page and the campaign wizard.
 
 export type TemplateButton = { type: string; text: string; url?: string | null; phoneNumber?: string | null };
@@ -26,6 +26,10 @@ export type WaTemplate = {
   connectionId: string;
   businessAccountId?: string | null;
   metaTemplateId?: string | null;
+  /** meta or twilio: a template only goes out through a channel of its provider. */
+  provider?: string;
+  /** Twilio's Content SID (HX…). */
+  contentSid?: string | null;
   name: string;
   language: string;
   category: string;
@@ -54,7 +58,21 @@ export const TEMPLATE_STATUS: Record<string, { label: string; color: 'success' |
   PAUSED: { label: 'Pausada', color: 'default' },
   DISABLED: { label: 'Deshabilitada', color: 'default' },
   DELETED: { label: 'Eliminada', color: 'default' },
+  UNSUBMITTED: { label: 'Sin enviar a revisión', color: 'default' },
 };
+
+export const isTwilio = (t: { provider?: string | null }) => t.provider === 'twilio';
+
+export const providerLabel = (t: { provider?: string | null }) => (isTwilio(t) ? 'Twilio' : 'Meta');
+
+/** A Twilio template belongs to its Twilio connection; a Meta one to its WhatsApp Business account. */
+export function templateFitsChannel(
+  t: Pick<WaTemplate, 'provider' | 'connectionId' | 'businessAccountId'>,
+  channel: { provider?: string | null; connectionId?: string | null; businessAccountId?: string | null }
+) {
+  if (isTwilio(channel)) return isTwilio(t) && (t.connectionId ?? '') === (channel.connectionId ?? '');
+  return !isTwilio(t) && !!channel.businessAccountId && t.businessAccountId === channel.businessAccountId;
+}
 
 export const CATEGORY_LABEL: Record<string, string> = {
   UTILITY: 'Utilidad',

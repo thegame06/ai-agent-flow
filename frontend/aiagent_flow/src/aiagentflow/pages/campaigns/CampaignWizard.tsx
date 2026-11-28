@@ -168,7 +168,9 @@ export function CampaignWizard({ open, tenantId, campaign, preset, collectionsEn
   const [segments, setSegments] = useState<{ id: string; name: string; filterJson: string }[]>([]);
   const [waTemplates, setWaTemplates] = useState<WaTemplate[]>([]);
   // WhatsApp numbers: each is a channel, with its own Meta account (collections, sales, marketing...).
-  const [waChannels, setWaChannels] = useState<{ id: string; name: string; business: boolean; businessAccountId?: string }[]>([]);
+  const [waChannels, setWaChannels] = useState<
+    { id: string; name: string; business: boolean; provider: string; businessAccountId?: string; connectionId?: string }[]
+  >([]);
   const [prompt, setPrompt] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -202,7 +204,9 @@ export function CampaignWizard({ open, tenantId, campaign, preset, collectionsEn
               id: c.id,
               name: c.name,
               business: (c.config?.AuthMode ?? 'qr') !== 'qr',
+              provider: c.config?.AuthMode === 'twilio' ? 'twilio' : 'meta',
               businessAccountId: c.config?.BusinessAccountId,
+              connectionId: c.config?.ConnectionId,
             }))
         )
       )
@@ -235,12 +239,14 @@ export function CampaignWizard({ open, tenantId, campaign, preset, collectionsEn
   const rendered = renderMessage(form.messageDraft, sample?.variables);
   const chosenChannel = waChannels.find((c) => c.id === form.channel) ?? null;
   const isWhatsApp = form.channel === 'whatsapp' || !!chosenChannel;
-  // Only approved templates of the chosen number's Meta account; the one already chosen stays listed.
-  const templateOptions = waTemplates.filter(
-    (t) =>
-      (t.status === 'APPROVED' && (!chosenChannel?.businessAccountId || t.businessAccountId === chosenChannel.businessAccountId)) ||
-      t.id === form.whatsAppTemplateId
-  );
+  // Only approved templates the chosen number can send (its Twilio account, or its Meta account);
+  // the one already chosen stays listed.
+  const fitsChannel = (t: WaTemplate) =>
+    !chosenChannel ||
+    (chosenChannel.provider === 'twilio'
+      ? t.provider === 'twilio' && (t.connectionId ?? '') === (chosenChannel.connectionId ?? '')
+      : t.provider !== 'twilio' && (!chosenChannel.businessAccountId || t.businessAccountId === chosenChannel.businessAccountId));
+  const templateOptions = waTemplates.filter((t) => (t.status === 'APPROVED' && fitsChannel(t)) || t.id === form.whatsAppTemplateId);
   const chosenTemplate = waTemplates.find((t) => t.id === form.whatsAppTemplateId) ?? null;
   const templateMissing = chosenTemplate && sample ? missingFor(chosenTemplate, sample.variables) : [];
   const missing = Array.from(rendered.matchAll(/\{\{\s*([\w.]+)\s*\}\}/g)).map((m) => m[1]);
@@ -248,7 +254,7 @@ export function CampaignWizard({ open, tenantId, campaign, preset, collectionsEn
   const stepError = (() => {
     if (step === 0 && !form.name.trim()) return 'Ponle un nombre a la campaña.';
     if (step === 2 && form.delivery === 'message' && !form.whatsAppTemplateId && !form.messageDraft.trim()) return 'Escribe el mensaje.';
-    if (step === 2 && chosenTemplate && chosenTemplate.status !== 'APPROVED') return `La plantilla ${chosenTemplate.name} no está aprobada por Meta.`;
+    if (step === 2 && chosenTemplate && chosenTemplate.status !== 'APPROVED') return `La plantilla ${chosenTemplate.name} no está aprobada por WhatsApp.`;
     if (step === 2 && form.delivery === 'message' && chosenChannel?.business && !form.whatsAppTemplateId)
       return 'Con la API oficial de WhatsApp el primer mensaje debe ser una plantilla aprobada.';
     if (step === 2 && form.delivery === 'workflow' && !form.workflowDefinitionId) return 'Elige la automatización.';
@@ -549,13 +555,13 @@ export function CampaignWizard({ open, tenantId, campaign, preset, collectionsEn
             {form.delivery === 'message' && isWhatsApp && (
               <TextField
                 select
-                label="Plantilla de WhatsApp (Meta)"
+                label="Plantilla de WhatsApp"
                 value={form.whatsAppTemplateId}
                 onChange={(e) => set('whatsAppTemplateId', e.target.value)}
                 helperText={
                   waTemplates.length === 0
-                    ? 'No hay plantillas. Con la API oficial de WhatsApp, Meta solo permite iniciar la conversación con una plantilla aprobada (créalas o sincronízalas en Plantillas WhatsApp).'
-                    : 'Con la API oficial de WhatsApp, el primer mensaje al cliente debe ser una plantilla aprobada.'
+                    ? 'No hay plantillas. Con la API oficial de WhatsApp (Meta o Twilio) solo se puede iniciar la conversación con una plantilla aprobada (créalas o sincronízalas en Plantillas WhatsApp).'
+                    : 'Con la API oficial de WhatsApp (Meta o Twilio), el primer mensaje al cliente debe ser una plantilla aprobada.'
                 }
               >
                 <MenuItem value="">Sin plantilla: mensaje de texto (WhatsApp por QR, o dentro de 24 h)</MenuItem>
