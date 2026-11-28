@@ -262,7 +262,8 @@ public sealed class WhatsAppWebhookController : ControllerBase
 
             var attachments = message.Media is null
                 ? Array.Empty<AgentFlow.Api.Channels.InboundAttachment>()
-                : new[] { new AgentFlow.Api.Channels.InboundAttachment(message.Media.Type ?? "file", null, message.Media.MimeType, null, message.Media.FileName) };
+                : new[] { new AgentFlow.Api.Channels.InboundAttachment(message.Media.Type ?? "file", null, message.Media.MimeType, null, message.Media.FileName,
+                    Data: QrMediaBytes(message.Media.Data)) };
             var result = await ingest.IngestAsync(new AgentFlow.Api.Channels.InboundMessage
             {
                 TenantId = tenantId,
@@ -296,6 +297,13 @@ public sealed class WhatsAppWebhookController : ControllerBase
             _logger.LogError(ex, "Error processing QR WhatsApp message");
             return StatusCode(500, new { error = ex.Message });
         }
+    }
+
+    private static byte[]? QrMediaBytes(string? base64)
+    {
+        if (string.IsNullOrWhiteSpace(base64)) return null;
+        try { return Convert.FromBase64String(base64); }
+        catch (FormatException) { return null; }
     }
 
     /// <summary>The QR channel the bridge session belongs to; the only active one when the bridge does not say.</summary>
@@ -455,5 +463,7 @@ public sealed record QrWhatsAppMedia
     public string? Type { get; init; }
     public string? MimeType { get; init; }
     public string? FileName { get; init; }
+    /// <summary>The file itself, base64 (the bridge downloads it from WhatsApp).</summary>
+    public string? Data { get; init; }
 }
 

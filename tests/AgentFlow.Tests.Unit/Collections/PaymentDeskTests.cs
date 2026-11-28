@@ -248,6 +248,19 @@ public sealed class PaymentDeskTests
     }
 
     [Fact]
+    public async Task APhotoFromACustomerWithAPendingReport_GoesStraightToIt()
+    {
+        var (service, store, desk, _) = Create(contact: null);
+        store.Loans["PR-1"] = Loan("PR-1", 500, 2000);
+        await service.ReportPaymentAsync(Tenant, Phone, 400m, "hoy", null, null, null);
+        var partyId = desk.Reports[0].PartyId;
+
+        Assert.True(await service.AttachReceiptsAsync(Tenant, partyId, ["media-1"]));
+        Assert.Equal(new[] { "media-1" }, desk.Reports[0].ReceiptMediaIds);
+        Assert.False(await service.AttachReceiptsAsync(Tenant, "someone-else", ["media-2"]));
+    }
+
+    [Fact]
     public async Task TwoDifferentReceipts_AreTwoPayments()
     {
         var (service, store, desk, _) = Create(contact: null);

@@ -27,6 +27,7 @@ import { useTenantId } from 'src/aiagentflow/hooks/useTenantId';
 
 import { Iconify } from 'src/components/iconify';
 
+import { MediaPreview } from '../../components/MediaPreview';
 import { initials, fullTime, shortTime, providerOf, ACTOR_LABEL, attachmentsOf } from './inboxModel';
 
 import type { InboxCustomer, InboxChannelRef, InboxTimelineItem } from './inboxModel';
@@ -360,7 +361,12 @@ export default function CustomerInboxPage() {
                               <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
                                 {m.content}
                               </Typography>
-                              {files.map((f, j) => (
+                              {files.map((f, j) =>
+                                f.mediaId ? (
+                                  <Box key={j} sx={{ mt: 0.75 }}>
+                                    <MediaPreview tenantId={tenantId} mediaId={f.mediaId} kind={f.kind} fileName={f.fileName} size={180} />
+                                  </Box>
+                                ) : (
                                 <Chip
                                   key={j}
                                   size="small"
@@ -372,7 +378,8 @@ export default function CustomerInboxPage() {
                                   clickable={!!f.url}
                                   sx={{ mt: 0.5, mr: 0.5 }}
                                 />
-                              ))}
+                                )
+                              )}
                               {failed && (
                                 <Typography variant="caption" color="error" component="div" sx={{ mt: 0.5 }}>
                                   No se entregó{m.error ? `: ${m.error}` : ''}

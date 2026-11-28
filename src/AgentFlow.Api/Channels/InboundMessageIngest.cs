@@ -45,6 +45,9 @@ public sealed class InboundMessageIngest : IInboundMessageIngest
     private readonly ICustomerResolver _customers;
     private readonly ICampaignOutcomeService? _campaignOutcomes;
     private readonly IServiceScopeFactory? _scopes;
+    private readonly IMediaStore? _media;
+    private readonly AgentFlow.Api.Collections.ICollectionsAssistantService? _receipts;
+    private readonly IReadOnlyList<IInboundMediaFetcher> _fetchers;
     private readonly ILogger<InboundMessageIngest> _logger;
     private readonly string? _defaultCountryCode;
     private readonly TimeSpan _restartAfter;
@@ -60,8 +63,14 @@ public sealed class InboundMessageIngest : IInboundMessageIngest
         ILogger<InboundMessageIngest> logger,
         IConfiguration? configuration = null,
         ICampaignOutcomeService? campaignOutcomes = null,
-        IServiceScopeFactory? scopes = null)
+        IServiceScopeFactory? scopes = null,
+        IMediaStore? media = null,
+        IEnumerable<IInboundMediaFetcher>? fetchers = null,
+        AgentFlow.Api.Collections.ICollectionsAssistantService? receipts = null)
     {
+        _receipts = receipts;
+        _media = media;
+        _fetchers = fetchers?.ToList() ?? [];
         _gateway = gateway;
         _sessions = sessions;
         _connectStore = connectStore;
@@ -107,7 +116,19 @@ public sealed class InboundMessageIngest : IInboundMessageIngest
         var restarted = RestartIfIdle(session, _restartAfter, DateTimeOffset.UtcNow);
 
         var provider = message.Provider.Trim().ToLowerInvariant();
+        message = message with { Attachments = await StoreAttachmentsAsync(message, provider, ct) };
         StampSession(session, channel, provider, address, displayName, customer, message.BusinessAddress);
+        var stored = message.Attachments
+            .Where(a => a.MediaId is not null && a.Kind is "image" or "document")
+            .Select(a => a.MediaId!).ToList();
+        var attached = stored.Count > 0 && customer is not null && _receipts is not null &&
+                       await TryAttachReceiptsAsync(message.TenantId, customer.PartyId, stored, ct);
+        if (stored.Count > 0 && !attached)
+        {
+            // The receipt the customer just sent, for the payment report that usually follows.
+            session.Metadata[Provenance.LastMediaIdsKey] = string.Join(',', stored);
+            session.Metadata[Provenance.LastMediaAtKey] = DateTimeOffset.UtcNow.ToString("O");
+        }
         session.RecordIncomingMessage(text);
         session.ExtendExpiration(TimeSpan.FromHours(channel.SessionWindowHours));
         await _sessions.UpdateAsync(session, ct);
@@ -144,6 +165,49 @@ public sealed class InboundMessageIngest : IInboundMessageIngest
         var reply = await _gateway.ProcessMessageAsync(incoming, CancellationToken.None);
         var failed = reply.Direction == MessageDirection.Incoming && reply.Status == MessageStatus.Failed;
         return new(failed ? InboundStatus.Failed : InboundStatus.Processed, session, incoming, reply, inbox.Id, failed ? reply.ErrorMessage : null);
+    }
+
+    /// <summary>
+    /// Keeps a copy of every file the customer sent (the provider's own copy expires or needs its
+    /// credentials). A file that cannot be fetched is still recorded as sent, without a copy.
+    /// </summary>
+    private async Task<IReadOnlyList<InboundAttachment>> StoreAttachmentsAsync(InboundMessage message, string provider, CancellationToken ct)
+    {
+        if (_media is null || message.Attachments.Count == 0) return message.Attachments;
+        var result = new List<InboundAttachment>(message.Attachments.Count);
+        foreach (var attachment in message.Attachments)
+        {
+            try
+            {
+                var file = attachment.Data is { Length: > 0 } data
+                    ? (data, attachment.MimeType ?? "application/octet-stream")
+                    : _fetchers.FirstOrDefault(f => f.Handles(provider)) is { } fetcher
+                        ? await fetcher.FetchAsync(message.TenantId, message.Channel, attachment, ct)
+                        : null;
+                if (file is { } f && f.Item1.Length > 0)
+                {
+                    var saved = await _media.SaveAsync(message.TenantId, f.Item1, f.Item2, attachment.FileName, provider, ct);
+                    result.Add(attachment with { MediaId = saved.Id, MimeType = saved.ContentType, FileName = saved.FileName, Data = null });
+                    continue;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Could not keep a copy of a file sent through {Provider}", provider);
+            }
+            result.Add(attachment with { Data = null });
+        }
+        return result;
+    }
+
+    private async Task<bool> TryAttachReceiptsAsync(string tenantId, string partyId, IReadOnlyList<string> mediaIds, CancellationToken ct)
+    {
+        try { return await _receipts!.AttachReceiptsAsync(tenantId, partyId, mediaIds, ct); }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not attach the customer's file to a pending payment report");
+            return false;
+        }
     }
 
     /// <summary>The text the assistant reads: what the customer wrote, plus a line per file they sent.</summary>

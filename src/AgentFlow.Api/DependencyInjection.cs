@@ -56,6 +56,7 @@ public static class DependencyInjection
         services.AddDataProtection();
         services.AddHttpClient("workflow-runtime");
         services.AddHttpClient("meta-graph", c => c.Timeout = TimeSpan.FromSeconds(30));
+        services.AddHttpClient("inbound-media", c => c.Timeout = TimeSpan.FromSeconds(30));
 
         services
             .AddDslEngine()
@@ -100,6 +101,11 @@ public static class DependencyInjection
             // One inbound pipeline for every channel (WhatsApp QR/Meta/Twilio, API, WebChat, webhooks).
             .AddScoped<AgentFlow.Api.Channels.ICustomerResolver, AgentFlow.Api.Channels.CustomerResolver>()
             .AddScoped<AgentFlow.Api.Channels.ICustomerInbox, AgentFlow.Api.Channels.CustomerInbox>()
+            // Files customers send (receipts): a copy in GridFS, fetched from each provider.
+            .AddSingleton<AgentFlow.Api.Channels.IMediaStore, AgentFlow.Api.Channels.MongoMediaStore>()
+            .AddScoped<AgentFlow.Api.Voice.ITwilioCredentials, AgentFlow.Api.Voice.TwilioCredentials>()
+            .AddScoped<AgentFlow.Api.Channels.IInboundMediaFetcher, AgentFlow.Api.Channels.TwilioMediaFetcher>()
+            .AddScoped<AgentFlow.Api.Channels.IInboundMediaFetcher, AgentFlow.Api.Channels.MetaMediaFetcher>()
             .AddScoped<AgentFlow.Api.Channels.IConversationWindow>(sp => new AgentFlow.Api.Channels.ConversationWindow(
                 sp.GetService<ICampaignStore>(), sp.GetService<AgentFlow.Domain.Repositories.IChannelSessionRepository>()))
             .AddScoped<AgentFlow.Api.Channels.IInboundMessageIngest, AgentFlow.Api.Channels.InboundMessageIngest>()

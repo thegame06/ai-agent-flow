@@ -90,13 +90,20 @@ export const shortTime = (iso: string) => {
 export const fullTime = (iso: string) =>
   new Date(iso).toLocaleString('es-MX', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
 
-export const attachmentsOf = (raw?: string | null): { kind: string; fileName?: string | null; url?: string | null }[] => {
+export const attachmentsOf = (
+  raw?: string | null
+): { kind: string; fileName?: string | null; url?: string | null; mediaId?: string | null }[] => {
   if (!raw) return [];
   try {
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
     // Stored by the API as PascalCase (Kind, FileName, Url).
-    return parsed.map((a: any) => ({ kind: a.kind ?? a.Kind ?? 'file', fileName: a.fileName ?? a.FileName, url: a.url ?? a.Url }));
+    return parsed.map((a: any) => ({
+      kind: a.kind ?? a.Kind ?? 'file',
+      fileName: a.fileName ?? a.FileName,
+      url: a.url ?? a.Url,
+      mediaId: a.mediaId ?? a.MediaId,
+    }));
   } catch {
     return [];
   }

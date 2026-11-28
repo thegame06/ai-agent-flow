@@ -22,6 +22,7 @@ import CircularProgress from '@mui/material/CircularProgress';
 import axios from 'src/lib/axios';
 
 import { day, money, todayIso, dateTime } from './shared';
+import { MediaPreview } from '../../components/MediaPreview';
 
 // ----------------------------------------------------------------------
 
@@ -35,6 +36,8 @@ export type PaymentReport = {
   paidOnText?: string | null;
   paidOn?: string | null;
   reference?: string | null;
+  /** Photos or PDFs of the receipt the customer sent. */
+  receiptMediaIds?: string[] | null;
   method?: string | null;
   notes?: string | null;
   loanId?: string | null;
@@ -55,6 +58,8 @@ type CustomerLoan = { id: string; loanExternalId: string; overdueBalance: number
 type Props = { base: string; reloadKey: number; onOpenCustomer: (partyId: string) => void; onCount?: (pending: number) => void };
 
 /** Payments customers told the assistant they made. A person confirms them (registers the payment) or rejects them. */
+const tenantOf = (base: string) => base.match(/tenants\/([^/]+)/)?.[1] ?? '';
+
 export function PaymentReportsTab({ base, reloadKey, onOpenCustomer, onCount }: Props) {
   const [status, setStatus] = useState('Pending');
   const [items, setItems] = useState<PaymentReport[]>([]);
@@ -140,12 +145,19 @@ export function PaymentReportsTab({ base, reloadKey, onOpenCustomer, onCount }: 
                         </Typography>
                       )}
                     </TableCell>
-                    <TableCell>
+                    <TableCell onClick={(e) => (r.receiptMediaIds?.length ? e.stopPropagation() : undefined)}>
                       {r.reference || '—'}
                       {r.method && (
                         <Typography variant="caption" color="text.secondary" display="block">
                           {r.method}
                         </Typography>
+                      )}
+                      {!!r.receiptMediaIds?.length && (
+                        <Stack direction="row" spacing={0.5} sx={{ mt: 0.75 }}>
+                          {r.receiptMediaIds.map((id) => (
+                            <MediaPreview key={id} tenantId={tenantOf(base)} mediaId={id} kind="image" size={56} />
+                          ))}
+                        </Stack>
                       )}
                     </TableCell>
                     <TableCell>
@@ -254,6 +266,16 @@ function ConfirmDialog({
       <DialogTitle>Confirmar pago recibido</DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ pt: 1 }}>
+          {!!report?.receiptMediaIds?.length && (
+            <Stack spacing={1}>
+              <Typography variant="subtitle2">Comprobante que envió el cliente</Typography>
+              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                {report.receiptMediaIds.map((id) => (
+                  <MediaPreview key={id} tenantId={tenantOf(base)} mediaId={id} kind="image" size={240} />
+                ))}
+              </Stack>
+            </Stack>
+          )}
           <Typography variant="body2" color="text.secondary">
             Verifica que el dinero llegó. Se registrará el pago en el préstamo
             {report?.reference ? ` con la referencia ${report.reference}` : ''}.
