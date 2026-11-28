@@ -92,9 +92,12 @@ public class VoiceConversationTests
         Assert.Equal("twilio", received.Provider);
         Assert.Same(channel, received.Channel);
         Assert.Equal("¿Cuánto debo?", received.Text);
-        Assert.Equal("CA1", received.CorrelationId);
+        // Every turn of a call shares the CallSid: it must not be the dedupe key.
+        Assert.Null(received.CorrelationId);
+        Assert.Null(received.ExternalId);
+        Assert.Equal("CA1", received.Metadata!["voice.call_id"]);
         Assert.Contains("Tu saldo es C$500.</Say></Gather>", twiml);
-        Assert.Contains($"action=\"{PublicBase}/api/v1/tenants/{Tenant}/webhooks/twilio/voice/gather?channel=voice&amp;silences=0\"", twiml);
+        Assert.Contains($"action=\"{PublicBase}/api/v1/tenants/{Tenant}/webhooks/twilio/voice/gather?channel=voice&amp;silences=0&amp;turn=1\"", twiml);
     }
 
     [Fact]
@@ -177,7 +180,9 @@ public class VoiceConversationTests
         Assert.Equal("CA9", result.ProviderCallId);
         Assert.Equal("+50581143874", sent!.PhoneNumber);
         Assert.Equal(TwilioVoiceTwiml.DefaultGreeting, sent.Script);
-        Assert.Equal($"{PublicBase}/api/v1/tenants/{Tenant}/webhooks/twilio/voice/gather?channel=voice&silences=0", sent.ConversationUrl);
+        Assert.Equal($"{PublicBase}/api/v1/tenants/{Tenant}/webhooks/twilio/voice/gather?channel=voice&silences=0&turn=0", sent.ConversationUrl);
+        Assert.StartsWith($"{PublicBase}/api/v1/tenants/{Tenant}/webhooks/twilio/voice/answer?channel=voice&script=", sent.AnswerUrl);
+        Assert.Equal(VoiceConversationService.MaxCallSeconds, sent.TimeLimitSeconds);
         Assert.Equal($"{PublicBase}/api/v1/tenants/{Tenant}/webhooks/twilio/voice/status?channel=voice", sent.StatusCallbackUrl);
     }
 
@@ -256,6 +261,59 @@ public class VoiceConversationTests
         Assert.Equal("agent-sales", session.AgentId);
         Assert.Equal("+50581143874", session.Identifier);
         sessions.Verify(x => x.InsertAsync(session, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Theory]
+    [InlineData("machine_start", true)]
+    [InlineData("machine_end_beep", true)]
+    [InlineData("fax", true)]
+    [InlineData("human", false)]
+    [InlineData("unknown", false)]
+    [InlineData(null, false)]
+    public async Task AVoicemail_IsHungUpOn_AndAPersonHearsTheOpening(string? answeredBy, bool hangsUp)
+    {
+        var service = Service(VoiceChannel(), Mock.Of<IInboundMessageIngest>());
+
+        var twiml = await service.AnsweredAsync(Tenant, "voice", "Hola, te llamamos de la tienda.", answeredBy, CancellationToken.None);
+
+        if (hangsUp)
+            Assert.Equal("<Response><Hangup/></Response>", twiml);
+        else
+            Assert.Contains("Hola, te llamamos de la tienda.</Say></Gather>", twiml);
+    }
+
+    [Fact]
+    public async Task ACallThatGoesOnForever_IsClosed()
+    {
+        var ingest = new Mock<IInboundMessageIngest>(MockBehavior.Strict);
+        var service = Service(VoiceChannel(), ingest.Object);
+
+        var twiml = await service.AnswerAsync(new VoiceTurn
+        {
+            TenantId = Tenant, From = "+50581143874", SpeechResult = "deja un mensaje después de la señal", Turn = VoiceConversationService.MaxTurns
+        }, CancellationToken.None);
+
+        Assert.DoesNotContain("<Gather", twiml);
+        Assert.Contains("<Hangup/>", twiml);
+    }
+
+    [Fact]
+    public void TheCallForm_AsksTwilioToDetectVoicemail_AndReportsEveryStatus()
+    {
+        var form = TwilioVoiceProviderAdapter.BuildCallForm(new ProviderVoiceCallRequest
+        {
+            PhoneNumber = "+50581143874",
+            Script = "Hola",
+            AnswerUrl = $"{PublicBase}/answer",
+            TimeLimitSeconds = 900
+        }, "+19016608125", $"{PublicBase}/status");
+
+        Assert.Contains(form, kv => kv is { Key: "Url", Value: PublicBase + "/answer" });
+        Assert.Contains(form, kv => kv is { Key: "MachineDetection", Value: "Enable" });
+        Assert.DoesNotContain(form, kv => kv.Key == "Twiml");
+        Assert.Contains(form, kv => kv is { Key: "TimeLimit", Value: "900" });
+        Assert.Equal(["initiated", "ringing", "answered", "completed"],
+            form.Where(kv => kv.Key == "StatusCallbackEvent").Select(kv => kv.Value).ToArray());
     }
 
     private static ChannelDefinition VoiceChannel()

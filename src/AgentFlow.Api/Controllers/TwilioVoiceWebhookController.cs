@@ -291,6 +291,7 @@ public sealed class TwilioVoiceWebhookController : ControllerBase
     public async Task<IActionResult> ReceiveSpeech(
         [FromRoute] string tenantId,
         [FromQuery] int silences,
+        [FromQuery] int turn,
         [FromQuery(Name = "channel")] string? channelKey,
         [FromForm] TwilioVoiceGatherForm form,
         CancellationToken ct)
@@ -316,9 +317,34 @@ public sealed class TwilioVoiceWebhookController : ControllerBase
             Direction = form.Direction,
             SpeechResult = form.SpeechResult,
             Confidence = form.Confidence,
-            Silences = Math.Max(0, silences)
+            Silences = Math.Max(0, silences),
+            Turn = Math.Max(0, turn)
         }, ct);
         return Content(twiml, "text/xml");
+    }
+
+    /// <summary>
+    /// An outbound call was answered (Twilio's answering-machine detection says by whom): a person
+    /// hears the opening and talks with the assistant; a voicemail is hung up on.
+    /// </summary>
+    [HttpPost("answer")]
+    public async Task<IActionResult> ReceiveAnswer(
+        [FromRoute] string tenantId,
+        [FromQuery(Name = "channel")] string? channelKey,
+        [FromQuery] string? script,
+        [FromForm] TwilioVoiceAnswerForm form,
+        CancellationToken ct)
+    {
+        var signatureValid = await _signatureValidator.IsValidAsync(tenantId, Request, ct);
+        if (!signatureValid)
+            return Unauthorized(new { error = "Invalid Twilio signature." });
+
+        var channel = string.Equals(channelKey, "callcenter", StringComparison.OrdinalIgnoreCase) ? "callcenter" : "voice";
+        _logger.LogInformation("Outbound call answered. Tenant={TenantId} CallSid={CallSid} AnsweredBy={AnsweredBy}",
+            tenantId, form.CallSid, form.AnsweredBy);
+        AppendVoiceTestEvent(tenantId, form.CallSid, "call_answered", "voice_call", form.AnsweredBy ?? "unknown",
+            $"Answered by {form.AnsweredBy ?? "unknown"}");
+        return Content(await _conversation.AnsweredAsync(tenantId, channel, script, form.AnsweredBy, ct), "text/xml");
     }
 
     private string? CustomerOf(TwilioVoiceStatusForm form)
@@ -487,6 +513,14 @@ public sealed record TwilioVoiceStatusForm
     public string? CallDuration { get; init; }
     public string? Channel { get; init; }
     public string? SessionId { get; init; }
+}
+
+public sealed record TwilioVoiceAnswerForm
+{
+    public string? CallSid { get; init; }
+    public string? From { get; init; }
+    public string? To { get; init; }
+    public string? AnsweredBy { get; init; }
 }
 
 public sealed record TwilioVoiceGatherForm

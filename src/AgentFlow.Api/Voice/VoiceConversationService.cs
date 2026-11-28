@@ -19,6 +19,8 @@ public sealed record VoiceTurn
     public string? Confidence { get; init; }
     /// <summary>How many silent turns in a row came before this one.</summary>
     public int Silences { get; init; }
+    /// <summary>How many turns the call has had before this one.</summary>
+    public int Turn { get; init; }
 }
 
 public sealed record VoiceCallRequest
@@ -41,6 +43,11 @@ public interface IVoiceConversationService
     Task<string> GreetAsync(string tenantId, string channelKey, CancellationToken ct);
     /// <summary>The customer's words go through the shared inbound pipeline; the assistant's reply is spoken back.</summary>
     Task<string> AnswerAsync(VoiceTurn turn, CancellationToken ct);
+    /// <summary>
+    /// An outbound call was answered: a person hears the opening and talks with the assistant; a
+    /// voicemail or fax is hung up on (the assistant must not talk to a recording).
+    /// </summary>
+    Task<string> AnsweredAsync(string tenantId, string channelKey, string? script, string? answeredBy, CancellationToken ct);
     /// <summary>Calls a customer; when they answer, the call is a conversation with the assistant.</summary>
     Task<VoiceCallResult> PlaceCallAsync(VoiceCallRequest request, CancellationToken ct);
 }
@@ -54,6 +61,10 @@ public sealed class VoiceConversationService : IVoiceConversationService
 {
     public const string GreetingKey = "Greeting";
     public const int MaxSilences = 2;
+    /// <summary>Turns per call before it is closed; a loop (a recording talking back) must end.</summary>
+    public const int MaxTurns = 20;
+    /// <summary>Longest an outbound call may last.</summary>
+    public const int MaxCallSeconds = 900;
     private const string Unavailable = "Lo siento, esta línea no está disponible en este momento. Por favor escríbenos por WhatsApp.";
     private const string NotUnderstood = "Disculpa, no te escuché bien. ¿Me lo repites, por favor?";
     private const string Failed = "Disculpa, tuve un problema para procesar tu solicitud. Un asesor te contactará pronto.";
@@ -92,8 +103,23 @@ public sealed class VoiceConversationService : IVoiceConversationService
         var channel = await ResolveChannelAsync(tenantId, channelKey, ct);
         if (channel is null)
             return TwilioVoiceTwiml.Response(TwilioVoiceTwiml.Say(Unavailable), TwilioVoiceTwiml.Hangup());
-        return Listen(tenantId, channelKey, GreetingOf(channel), silences: 0);
+        return Listen(tenantId, channelKey, GreetingOf(channel), silences: 0, turn: 0);
     }
+
+    public async Task<string> AnsweredAsync(string tenantId, string channelKey, string? script, string? answeredBy, CancellationToken ct)
+    {
+        if (IsMachine(answeredBy))
+            return TwilioVoiceTwiml.Response(TwilioVoiceTwiml.Hangup());
+        var channel = await ResolveChannelAsync(tenantId, channelKey, ct);
+        if (channel is null)
+            return TwilioVoiceTwiml.Response(TwilioVoiceTwiml.Hangup());
+        return Listen(tenantId, channelKey, string.IsNullOrWhiteSpace(script) ? GreetingOf(channel) : script!, silences: 0, turn: 0);
+    }
+
+    /// <summary>Twilio's AnsweredBy: machine_start, machine_end_beep/silence/other, fax; human or unknown is talked to.</summary>
+    public static bool IsMachine(string? answeredBy)
+        => answeredBy is not null &&
+           (answeredBy.StartsWith("machine", StringComparison.OrdinalIgnoreCase) || string.Equals(answeredBy, "fax", StringComparison.OrdinalIgnoreCase));
 
     public async Task<string> AnswerAsync(VoiceTurn turn, CancellationToken ct)
     {
@@ -101,12 +127,15 @@ public sealed class VoiceConversationService : IVoiceConversationService
         if (channel is null)
             return TwilioVoiceTwiml.Response(TwilioVoiceTwiml.Say(Unavailable), TwilioVoiceTwiml.Hangup());
 
+        if (turn.Turn >= MaxTurns)
+            return TwilioVoiceTwiml.Response(TwilioVoiceTwiml.Say(TwilioVoiceTwiml.Goodbye), TwilioVoiceTwiml.Hangup());
+
         var speech = turn.SpeechResult?.Trim();
         if (string.IsNullOrEmpty(speech))
         {
             return turn.Silences + 1 >= MaxSilences
                 ? TwilioVoiceTwiml.Response(TwilioVoiceTwiml.Say(TwilioVoiceTwiml.Goodbye), TwilioVoiceTwiml.Hangup())
-                : Listen(turn.TenantId, turn.ChannelKey, NotUnderstood, turn.Silences + 1);
+                : Listen(turn.TenantId, turn.ChannelKey, NotUnderstood, turn.Silences + 1, turn.Turn + 1);
         }
 
         var customer = CustomerSide(turn.Direction, turn.From, turn.To);
@@ -121,7 +150,8 @@ public sealed class VoiceConversationService : IVoiceConversationService
                 From = customer ?? string.Empty,
                 Text = speech,
                 BusinessAddress = BusinessSide(turn.Direction, turn.From, turn.To),
-                CorrelationId = turn.CallSid,
+                // No CorrelationId/ExternalId: the pipeline dedupes on them, and every turn of a
+                // call shares the CallSid. Twilio has no per-turn id; the call id goes in metadata.
                 Metadata = new Dictionary<string, string>
                 {
                     ["voice.call_id"] = turn.CallSid ?? string.Empty,
@@ -143,7 +173,7 @@ public sealed class VoiceConversationService : IVoiceConversationService
             reply = Failed;
         }
 
-        return Listen(turn.TenantId, turn.ChannelKey, reply, silences: 0);
+        return Listen(turn.TenantId, turn.ChannelKey, reply, silences: 0, turn.Turn + 1);
     }
 
     public async Task<VoiceCallResult> PlaceCallAsync(VoiceCallRequest request, CancellationToken ct)
@@ -169,7 +199,10 @@ public sealed class VoiceConversationService : IVoiceConversationService
         {
             PhoneNumber = address.Value,
             Script = script,
-            ConversationUrl = ConversationUrl(request.TenantId, request.ChannelKey, 0, absolute: true),
+            ConversationUrl = ConversationUrl(request.TenantId, request.ChannelKey, 0, 0, absolute: true),
+            AnswerUrl = WebhookUrl(request.TenantId, "answer",
+                $"channel={Uri.EscapeDataString(request.ChannelKey)}&script={Uri.EscapeDataString(script)}", absolute: true),
+            TimeLimitSeconds = MaxCallSeconds,
             StatusCallbackUrl = WebhookUrl(request.TenantId, "status", $"channel={request.ChannelKey}", absolute: true),
             Metadata = new Dictionary<string, string>
             {
@@ -195,9 +228,9 @@ public sealed class VoiceConversationService : IVoiceConversationService
     private static string? BusinessSide(string? direction, string? from, string? to)
         => direction?.StartsWith("outbound", StringComparison.OrdinalIgnoreCase) == true ? from : to;
 
-    private string Listen(string tenantId, string channelKey, string prompt, int silences)
+    private string Listen(string tenantId, string channelKey, string prompt, int silences, int turn)
         => TwilioVoiceTwiml.Response(
-            TwilioVoiceTwiml.Gather(ConversationUrl(tenantId, channelKey, silences, absolute: false), prompt),
+            TwilioVoiceTwiml.Gather(ConversationUrl(tenantId, channelKey, silences, turn, absolute: false), prompt),
             TwilioVoiceTwiml.Say(TwilioVoiceTwiml.Goodbye),
             TwilioVoiceTwiml.Hangup());
 
@@ -205,8 +238,8 @@ public sealed class VoiceConversationService : IVoiceConversationService
     /// Where Twilio posts each turn. TwiML returned from a webhook may use a path; TwiML sent with a
     /// new outbound call has no request to be relative to, so it needs the public URL.
     /// </summary>
-    public string ConversationUrl(string tenantId, string channelKey, int silences, bool absolute)
-        => WebhookUrl(tenantId, "gather", $"channel={Uri.EscapeDataString(channelKey)}&silences={silences}", absolute);
+    public string ConversationUrl(string tenantId, string channelKey, int silences, int turn, bool absolute)
+        => WebhookUrl(tenantId, "gather", $"channel={Uri.EscapeDataString(channelKey)}&silences={silences}&turn={turn}", absolute);
 
     private string WebhookUrl(string tenantId, string action, string query, bool absolute)
     {

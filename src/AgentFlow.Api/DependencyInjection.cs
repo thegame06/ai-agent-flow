@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.DataProtection;
 using AgentFlow.Abstractions;
 using AgentFlow.Api.AuthProfiles;
 using AgentFlow.Api.Commerce;
@@ -53,7 +54,12 @@ public static class DependencyInjection
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        services.AddDataProtection();
+        // Tenant secrets (Twilio, Meta tokens) are encrypted with Data Protection, whose default
+        // discriminator is the app's content root: another folder, container or instance cannot read
+        // them. DataProtection:ApplicationName pins it so every deployment of the API shares them.
+        var dataProtection = services.AddDataProtection();
+        if (configuration["DataProtection:ApplicationName"] is { Length: > 0 } dataProtectionApp)
+            dataProtection.SetApplicationName(dataProtectionApp);
         services.AddHttpClient("workflow-runtime");
         services.AddHttpClient("meta-graph", c => c.Timeout = TimeSpan.FromSeconds(30));
         services.AddHttpClient("inbound-media", c => c.Timeout = TimeSpan.FromSeconds(30));
