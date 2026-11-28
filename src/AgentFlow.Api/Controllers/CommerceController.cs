@@ -19,14 +19,17 @@ public sealed class CommerceController : ControllerBase
     private readonly IChannelGateway _channelGateway;
     private readonly ICommerceStore _commerce;
     private readonly IExtensionRegistry? _extensions;
+    private readonly ISalesService _sales;
 
     public CommerceController(
         ITenantContextAccessor tenantContext,
         IChannelSessionRepository sessionRepo,
         ICommerceStore commerce,
         IChannelGateway channelGateway,
-        IExtensionRegistry? extensions = null)
+        IExtensionRegistry? extensions = null,
+        ISalesService? sales = null)
     {
+        _sales = sales ?? new SalesService(commerce, Microsoft.Extensions.Logging.Abstractions.NullLogger<SalesService>.Instance);
         _tenantContext = tenantContext;
         _sessionRepo = sessionRepo;
         _commerce = commerce;
@@ -519,58 +522,44 @@ public sealed class CommerceController : ControllerBase
         if (activeSessionCheck is not null)
             return activeSessionCheck;
 
-        var party = await _commerce.GetPartyByIdAsync(tenantId, request.PartyId, ct);
-        if (party is null) return NotFound($"Party '{request.PartyId}' not found.");
-
-        foreach (var item in request.Items)
-        {
-            var stock = await _commerce.GetInventoryBySkuAsync(tenantId, item.Sku, ct);
-            if (stock is null) return NotFound($"Inventory SKU '{item.Sku}' not found.");
-            if (!stock.Active) return BadRequest($"Inventory SKU '{item.Sku}' is inactive.");
-            if (stock.TracksInventory && stock.OnHand < (int)Math.Ceiling(item.Quantity))
-                return Conflict(new { message = $"Insufficient stock for SKU '{item.Sku}'.", sku = item.Sku, onHand = stock.OnHand, requested = item.Quantity });
-        }
-
-        var calc = await _commerce.CalculateSaleAsync(
-            tenantId,
-            request.Items.Select(i => new CommerceLineItem { Sku = i.Sku, Name = i.Name, UnitPrice = i.UnitPrice, Quantity = i.Quantity }).ToList(),
-            request.DiscountAmount,
-            request.DiscountPercent,
-            request.ApplyTax,
-            request.TaxRate ?? 0.15m,
-            ct);
-        var storeSettings = await _commerce.GetStoreSettingsAsync(tenantId, ct);
-
-        var doc = new CommerceSaleDocument
+        var result = await _sales.CreateAsync(new NewSale
         {
             TenantId = tenantId,
             PartyId = request.PartyId,
-            Currency = string.IsNullOrWhiteSpace(request.Currency) ? storeSettings.Currency : request.Currency.Trim().ToUpperInvariant(),
+            Lines = request.Items.Select(i => new SaleLine { Sku = i.Sku, Name = i.Name, UnitPrice = i.UnitPrice, Quantity = i.Quantity }).ToList(),
             PaymentMethod = request.PaymentMethod ?? "cash",
+            Installments = request.Installments,
+            Currency = request.Currency,
             SessionId = request.SessionId,
             ThreadId = request.ThreadId,
-            Items = request.Items.Select(i => new CommerceLineItem
-            {
-                Sku = i.Sku,
-                Name = i.Name,
-                UnitPrice = i.UnitPrice,
-                Quantity = i.Quantity
-            }).ToList(),
-            Subtotal = calc.Subtotal,
-            Discount = calc.Discount,
-            Tax = calc.Tax,
-            Total = calc.Total,
-            State = "sale_created"
-        };
+            DiscountAmount = request.DiscountAmount,
+            DiscountPercent = request.DiscountPercent,
+            ApplyTax = request.ApplyTax,
+            TaxRate = request.TaxRate
+        }, ct);
 
-        var saved = await _commerce.CreateSaleAsync(doc, ct);
-        foreach (var item in request.Items)
+        if (!result.Ok)
         {
-            var stock = await _commerce.GetInventoryBySkuAsync(tenantId, item.Sku, ct);
-            if (stock?.TracksInventory == true)
-                await _commerce.AdjustInventoryAsync(tenantId, item.Sku, -(int)Math.Ceiling(item.Quantity), "sale_created", saved.Id, ct);
+            return result.Error switch
+            {
+                SaleError.PartyNotFound or SaleError.SkuNotFound => NotFound(result.Message),
+                SaleError.InsufficientStock => Conflict(new { message = result.Message, sku = result.Sku }),
+                _ => BadRequest(new { message = result.Message })
+            };
         }
-        return Ok(new { saved.Id, saved.PartyId, saved.Total, saved.Currency, saved.CreatedAt });
+
+        var saved = result.Sale!;
+        return Ok(new
+        {
+            saved.Id,
+            saved.PartyId,
+            saved.Total,
+            saved.Currency,
+            saved.PaymentMethod,
+            saved.State,
+            saved.Financing,
+            saved.CreatedAt
+        });
     }
 
     [HttpGet("sales")]
@@ -587,9 +576,26 @@ public sealed class CommerceController : ControllerBase
         if (moduleCheck is not null) return moduleCheck;
         var items = await _commerce.SearchSalesAsync(tenantId, partyId, state, page, pageSize, ct);
         var total = await _commerce.CountSalesAsync(tenantId, partyId, state, ct);
+        var names = new Dictionary<string, string?>();
+        foreach (var id in items.Select(x => x.PartyId).Distinct())
+        {
+            var party = await _commerce.GetPartyByIdAsync(tenantId, id, ct);
+            names[id] = party?.FullName ?? party?.DisplayName ?? party?.Phone;
+        }
         return Ok(new PagedResponse<object>
         {
-            Items = items.Select(x => new { x.Id, x.PartyId, x.State, x.Subtotal, x.Discount, x.Tax, x.Total, x.Currency, x.PaymentMethod, x.CreatedAt }).ToList(),
+            Items = items.Select(x => new
+            {
+                x.Id, x.PartyId, PartyName = names.GetValueOrDefault(x.PartyId), x.State, x.Subtotal, x.Discount, x.Tax, x.Total, x.Currency, x.PaymentMethod,
+                Products = string.Join(", ", x.Items.Select(i => i.Quantity == 1 ? i.Name : $"{i.Quantity:0.##} x {i.Name}")),
+                Financing = x.Financing is null ? null : new
+                {
+                    x.Financing.DownPayment, x.Financing.FinancedAmount, x.Financing.Count, x.Financing.Frequency, x.Financing.CollectionLoanId,
+                    NextDueDate = x.Financing.Installments.FirstOrDefault(i => i.PaidAmount < i.Amount)?.DueDate,
+                    InstallmentAmount = x.Financing.Installments.FirstOrDefault()?.Amount
+                },
+                x.CreatedAt
+            }).ToList(),
             Total = total,
             Page = Math.Max(0, page),
             PageSize = Math.Clamp(pageSize, 1, 100)
@@ -1283,12 +1289,25 @@ public sealed record CreateSaleRequest
     public string? Currency { get; init; }
     public string? SessionId { get; init; }
     public string? ThreadId { get; init; }
+    /// <summary>cash | card | transfer | installments (also "contado" / "cuotas").</summary>
     public string? PaymentMethod { get; init; }
-    public bool ApplyTax { get; init; } = true;
-    public decimal? TaxRate { get; init; } = 0.15m;
+    /// <summary>Required when PaymentMethod is installments.</summary>
+    public InstallmentPlanRequest? Installments { get; init; }
+    /// <summary>The store settings decide when empty.</summary>
+    public bool? ApplyTax { get; init; }
+    public decimal? TaxRate { get; init; }
     public decimal? DiscountAmount { get; init; }
     public decimal? DiscountPercent { get; init; }
-    public required List<CommerceLineItemRequest> Items { get; init; }
+    public required List<SaleLineRequest> Items { get; init; }
+}
+
+/// <summary>A line of a sale: the catalog name and price are used when not given.</summary>
+public sealed record SaleLineRequest
+{
+    public required string Sku { get; init; }
+    public string? Name { get; init; }
+    public decimal? UnitPrice { get; init; }
+    public decimal Quantity { get; init; } = 1;
 }
 
 public sealed record CreateOrderRequest

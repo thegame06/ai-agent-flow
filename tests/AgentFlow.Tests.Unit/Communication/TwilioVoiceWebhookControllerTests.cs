@@ -41,7 +41,7 @@ public class TwilioVoiceWebhookControllerTests
                 SessionState = "active",
                 Closed = false
             });
-        var runtimeRegistry = new Mock<IAgentRuntimeRegistry>();
+        var conversation = new Mock<IVoiceConversationService>();
         var signatureValidator = new Mock<ITwilioWebhookSignatureValidator>();
         var tenantConnectionStore = new Mock<ITenantConnectionStore>();
         tenantConnectionStore.Setup(x => x.GetConnectionsAsync("tenant-a", It.IsAny<CancellationToken>()))
@@ -53,7 +53,7 @@ public class TwilioVoiceWebhookControllerTests
             eventTransport.Object,
             audit.Object,
             orchestrator.Object,
-            runtimeRegistry.Object,
+            conversation.Object,
             signatureValidator.Object,
             tenantConnectionStore.Object,
             NullLogger<TwilioVoiceWebhookController>.Instance);
@@ -103,18 +103,12 @@ public class TwilioVoiceWebhookControllerTests
                 SessionState = "active",
                 Closed = false
             });
-        var runtime = new Mock<IAgentRuntime>();
-        runtime.SetupGet(x => x.Kind).Returns(AgentRuntimeKind.Voice);
-        runtime.Setup(x => x.ExecuteAsync(It.IsAny<AgentRuntimeRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AgentRuntimeResult
-            {
-                RuntimeKind = AgentRuntimeKind.Voice,
-                Status = ExecutionStatus.Completed,
-                SessionId = "sess-2",
-                Response = "Hola desde runtime de voz."
-            });
-        var runtimeRegistry = new Mock<IAgentRuntimeRegistry>();
-        runtimeRegistry.Setup(x => x.GetRequired(AgentRuntimeKind.Voice)).Returns(runtime.Object);
+        var voiceChannel = AgentFlow.Domain.Aggregates.ChannelDefinition.Create("tenant-a", "Voz", AgentFlow.Domain.Aggregates.ChannelType.Voice);
+        voiceChannel.Activate();
+        var conversation = new Mock<IVoiceConversationService>();
+        conversation.Setup(x => x.ResolveChannelAsync("tenant-a", "voice", It.IsAny<CancellationToken>())).ReturnsAsync(voiceChannel);
+        conversation.Setup(x => x.GreetAsync("tenant-a", "voice", It.IsAny<CancellationToken>()))
+            .ReturnsAsync("<Response><Gather input=\"speech\"><Say>Hola</Say></Gather></Response>");
         var signatureValidator = new Mock<ITwilioWebhookSignatureValidator>();
         var tenantConnectionStore = new Mock<ITenantConnectionStore>();
         tenantConnectionStore.Setup(x => x.GetConnectionsAsync("tenant-a", It.IsAny<CancellationToken>()))
@@ -126,7 +120,7 @@ public class TwilioVoiceWebhookControllerTests
             eventTransport.Object,
             audit.Object,
             orchestrator.Object,
-            runtimeRegistry.Object,
+            conversation.Object,
             signatureValidator.Object,
             tenantConnectionStore.Object,
             NullLogger<TwilioVoiceWebhookController>.Instance);
@@ -144,6 +138,7 @@ public class TwilioVoiceWebhookControllerTests
         var content = Assert.IsType<ContentResult>(result);
         Assert.Equal("text/xml", content.ContentType);
         Assert.Contains("<Say", content.Content);
+        Assert.Contains("<Gather", content.Content);
 
         eventTransport.Verify(x => x.PublishAsync(
             It.Is<AgentEvent>(e => e.AgentKey == "voice-runtime" && e.EventType == "connect.call.received"),
@@ -158,7 +153,7 @@ public class TwilioVoiceWebhookControllerTests
             .Returns(Task.CompletedTask);
         var audit = new Mock<IWorkflowAuditService>();
         var orchestrator = new Mock<IVoiceSessionOrchestrator>();
-        var runtimeRegistry = new Mock<IAgentRuntimeRegistry>();
+        var conversation = new Mock<IVoiceConversationService>();
         var signatureValidator = new Mock<ITwilioWebhookSignatureValidator>();
         var tenantConnectionStore = new Mock<ITenantConnectionStore>();
         tenantConnectionStore.Setup(x => x.GetConnectionsAsync("tenant-a", It.IsAny<CancellationToken>()))
@@ -170,7 +165,7 @@ public class TwilioVoiceWebhookControllerTests
             eventTransport.Object,
             audit.Object,
             orchestrator.Object,
-            runtimeRegistry.Object,
+            conversation.Object,
             signatureValidator.Object,
             tenantConnectionStore.Object,
             NullLogger<TwilioVoiceWebhookController>.Instance);
@@ -199,7 +194,7 @@ public class TwilioVoiceWebhookControllerTests
         var eventTransport = new Mock<IAgentEventTransport>();
         var audit = new Mock<IWorkflowAuditService>();
         var orchestrator = new Mock<IVoiceSessionOrchestrator>();
-        var runtimeRegistry = new Mock<IAgentRuntimeRegistry>();
+        var conversation = new Mock<IVoiceConversationService>();
         var signatureValidator = new Mock<ITwilioWebhookSignatureValidator>();
         var tenantConnectionStore = new Mock<ITenantConnectionStore>();
         tenantConnectionStore.Setup(x => x.GetConnectionsAsync("tenant-a", It.IsAny<CancellationToken>()))
@@ -211,7 +206,7 @@ public class TwilioVoiceWebhookControllerTests
             eventTransport.Object,
             audit.Object,
             orchestrator.Object,
-            runtimeRegistry.Object,
+            conversation.Object,
             signatureValidator.Object,
             tenantConnectionStore.Object,
             NullLogger<TwilioVoiceWebhookController>.Instance);

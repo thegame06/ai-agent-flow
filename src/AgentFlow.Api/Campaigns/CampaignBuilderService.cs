@@ -164,9 +164,6 @@ public sealed class CampaignBuilderService : ICampaignBuilderService
         if (string.IsNullOrWhiteSpace(draft.CampaignDraft.Name))
             warnings.Add("El nombre de la campana es requerido.");
         if (draft.CampaignDraft.ChannelAction == CampaignChannelAction.Call &&
-            string.IsNullOrWhiteSpace(draft.CampaignDraft.WorkflowDefinitionId))
-            warnings.Add("Las campanas de llamada requieren workflowDefinitionId en este MVP.");
-        if (draft.CampaignDraft.ChannelAction == CampaignChannelAction.Call &&
             string.IsNullOrWhiteSpace(draft.CampaignDraft.PlaybookId))
             warnings.Add("Las campanas de llamada deben referenciar un playbook de preguntas.");
         if (string.IsNullOrWhiteSpace(draft.CampaignDraft.AudienceFilterJson) && string.IsNullOrWhiteSpace(draft.CampaignDraft.SegmentId))

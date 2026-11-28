@@ -174,27 +174,17 @@ public sealed class TwilioVoiceProviderAdapter : IVoiceCallProviderAdapter, IVoi
             ?? throw new InvalidOperationException("Twilio voice provider requires accountSid.");
         var authToken = GetSecret(connection, "authToken", "token", "secret")
             ?? throw new InvalidOperationException("Twilio voice provider requires authToken secret.");
-        var fromPhone = GetValue(connection, "fromPhoneNumber", "senderPhoneNumber", "from")
-            ?? throw new InvalidOperationException("Twilio voice provider requires fromPhoneNumber.");
+        // A Twilio account often has a WhatsApp sender (the sandbox) that cannot place calls, so the
+        // voice number is its own setting and the generic sender is only the fallback.
+        var fromPhone = GetValue(connection, "voicePhoneNumber", "voiceFromPhoneNumber", "fromPhoneNumber", "senderPhoneNumber", "from")
+            ?? throw new InvalidOperationException("Twilio voice provider requires voicePhoneNumber (or fromPhoneNumber).");
         var statusCallback = request.StatusCallbackUrl
             ?? GetValue(connection, "statusCallbackUrl", "statusCallbackURI");
+        // Twilio rejects relative callback URLs.
+        if (statusCallback is not null && !Uri.TryCreate(statusCallback, UriKind.Absolute, out _))
+            statusCallback = null;
 
-        var twiml = request.Script.Contains("<Say", StringComparison.OrdinalIgnoreCase)
-            ? request.Script
-            : $"<Response><Say language='es-MX' loop='1' voice='Polly.Mia'>{System.Security.SecurityElement.Escape(CleanForAudio(request.Script))}</Say></Response>";
-
-        var form = new Dictionary<string, string>
-        {
-            ["To"] = request.PhoneNumber,
-            ["From"] = fromPhone,
-            ["Twiml"] = twiml
-        };
-
-        if (!string.IsNullOrWhiteSpace(statusCallback))
-        {
-            form["StatusCallback"] = statusCallback!;
-            form["StatusCallbackEvent"] = "initiated ringing answered completed busy no-answer canceled";
-        }
+        var form = BuildCallForm(request, fromPhone, statusCallback);
 
         using var httpClient = new HttpClient();
         using var requestMessage = new HttpRequestMessage(
@@ -258,10 +248,50 @@ public sealed class TwilioVoiceProviderAdapter : IVoiceCallProviderAdapter, IVoi
     private static AuthenticationHeaderValue BuildBasicAuth(string accountSid, string authToken) =>
         new("Basic", Convert.ToBase64String(Encoding.ASCII.GetBytes($"{accountSid}:{authToken}")));
 
-    private static string CleanForAudio(string text)
+    /// <summary>
+    /// The TwiML for an outbound call: the script as given when it is already TwiML; otherwise the
+    /// script spoken, then (with a conversation URL) the customer's answer is heard and sent there.
+    /// </summary>
+    /// <summary>
+    /// Twilio's Calls form: with an answer URL Twilio first tells a person from a voicemail
+    /// (MachineDetection) and asks that URL what to do; otherwise the TwiML goes inline.
+    /// </summary>
+    public static List<KeyValuePair<string, string>> BuildCallForm(ProviderVoiceCallRequest request, string fromPhone, string? statusCallback = null)
     {
-        var firstLine = text.Split('\n')[0];
-        return System.Text.RegularExpressions.Regex.Replace(firstLine, @"\d{3,}", match => string.Join(" ", match.Value.ToCharArray()));
+        var form = new List<KeyValuePair<string, string>> { new("To", request.PhoneNumber), new("From", fromPhone) };
+        if (!string.IsNullOrWhiteSpace(request.AnswerUrl) && Uri.TryCreate(request.AnswerUrl, UriKind.Absolute, out _))
+        {
+            form.Add(new("Url", request.AnswerUrl!));
+            form.Add(new("Method", "POST"));
+            form.Add(new("MachineDetection", "Enable"));
+        }
+        else
+        {
+            form.Add(new("Twiml", BuildCallTwiml(request)));
+        }
+        if (request.TimeLimitSeconds is > 0)
+            form.Add(new("TimeLimit", request.TimeLimitSeconds.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+        if (!string.IsNullOrWhiteSpace(statusCallback))
+        {
+            form.Add(new("StatusCallback", statusCallback!));
+            form.Add(new("StatusCallbackMethod", "POST"));
+            // Twilio takes one parameter per event; busy, no-answer and canceled arrive as "completed".
+            foreach (var evt in new[] { "initiated", "ringing", "answered", "completed" })
+                form.Add(new("StatusCallbackEvent", evt));
+        }
+        return form;
+    }
+
+    public static string BuildCallTwiml(ProviderVoiceCallRequest request)
+    {
+        if (request.Script.TrimStart().StartsWith("<Response", StringComparison.OrdinalIgnoreCase))
+            return request.Script;
+        return string.IsNullOrWhiteSpace(request.ConversationUrl)
+            ? TwilioVoiceTwiml.Response(TwilioVoiceTwiml.Say(request.Script))
+            : TwilioVoiceTwiml.Response(
+                TwilioVoiceTwiml.Gather(request.ConversationUrl!, request.Script),
+                TwilioVoiceTwiml.Say(TwilioVoiceTwiml.Goodbye),
+                TwilioVoiceTwiml.Hangup());
     }
 
     private static string? GetValue(ProviderConnectionProfile connection, string key, params string[] aliases)

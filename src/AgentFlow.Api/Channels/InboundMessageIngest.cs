@@ -49,6 +49,7 @@ public sealed class InboundMessageIngest : IInboundMessageIngest
     private readonly AgentFlow.Api.Collections.ICollectionsAssistantService? _receipts;
     private readonly InboundBatcher? _batcher;
     private readonly IChannelMessageRepository? _messages;
+    private readonly ICampaignStore? _campaigns;
     private readonly TimeSpan _batchWindow;
 
     /// <summary>How long to wait for more messages from the customer before answering them together.</summary>
@@ -74,8 +75,10 @@ public sealed class InboundMessageIngest : IInboundMessageIngest
         IEnumerable<IInboundMediaFetcher>? fetchers = null,
         AgentFlow.Api.Collections.ICollectionsAssistantService? receipts = null,
         InboundBatcher? batcher = null,
-        IChannelMessageRepository? messages = null)
+        IChannelMessageRepository? messages = null,
+        ICampaignStore? campaigns = null)
     {
+        _campaigns = campaigns;
         _receipts = receipts;
         _batcher = batcher;
         _messages = messages;
@@ -177,13 +180,15 @@ public sealed class InboundMessageIngest : IInboundMessageIngest
             UpdatedBy = $"{provider}-ingest"
         }, ct);
 
-        await AttributeAsync(message.TenantId, address.Value, text, channel, ct);
+        var contact = await AttributeAsync(message.TenantId, address.Value, text, channel, ct);
+        await RouteToCampaignAssistantAsync(session, contact, ct);
 
         // The customer's one conversation: bursts are batched and turns serialized per customer, not per channel.
         var customerKey = address.Unresolved ? session.Id : $"{message.TenantId}:{address.Value}";
 
-        // Messages sent seconds apart are answered once, together.
-        if (!inBackground && _batcher is not null && _batchWindow > TimeSpan.Zero)
+        // Messages sent seconds apart are answered once, together. A phone turn is already one
+        // utterance and the caller is waiting on the line, so calls are answered at once.
+        if (!inBackground && _batcher is not null && _batchWindow > TimeSpan.Zero && channel.Type != ChannelType.Voice)
         {
             var version = _batcher.Add(customerKey, incoming);
             await Task.Delay(_batchWindow, CancellationToken.None);
@@ -395,21 +400,69 @@ public sealed class InboundMessageIngest : IInboundMessageIngest
                 incoming.Metadata.TryAdd(kv.Key, kv.Value);
     }
 
-    private async Task AttributeAsync(string tenantId, string address, string text, ChannelDefinition channel, CancellationToken ct)
+    private async Task<CampaignContactExecutionContract?> AttributeAsync(string tenantId, string address, string text, ChannelDefinition channel, CancellationToken ct)
     {
-        if (_campaignOutcomes is null) return;
+        if (_campaignOutcomes is null) return null;
         try
         {
             var answeredByAssistant = !string.IsNullOrWhiteSpace(channel.RouterAgentId) || !string.IsNullOrWhiteSpace(channel.Config.GetValueOrDefault("DefaultAgentId"));
             var contact = await _campaignOutcomes.AttributeReplyAsync(tenantId, address, text, DateTimeOffset.UtcNow, ct, answeredByAssistant);
             if (contact is not null)
                 _logger.LogInformation("Reply attributed to campaign {CampaignId} contact {ContactId}: {Outcome}", contact.CampaignId, contact.Id, contact.Outcome);
+            return contact;
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Could not attribute the customer message to a campaign contact");
+            return null;
         }
     }
+
+    public const string CampaignAgentKey = "agent.campaign_id";
+
+    /// <summary>
+    /// A reply to a campaign is answered by the campaign's assistant (a sales campaign by the sales
+    /// assistant, even on a number whose default is collections). When the customer later replies
+    /// to a campaign without its own assistant, the conversation goes back to the channel's default.
+    /// </summary>
+    private async Task RouteToCampaignAssistantAsync(ChannelSession session, CampaignContactExecutionContract? contact, CancellationToken ct)
+    {
+        if (contact is null || _campaigns is null) return;
+        try
+        {
+            var campaign = await _campaigns.GetCampaignAsync(session.TenantId, contact.CampaignId, ct);
+            if (CampaignAssistantFor(session, campaign) is not { } change) return;
+            if (change.AgentId is null)
+            {
+                session.UnlinkAgent();
+                session.Metadata.Remove(CampaignAgentKey);
+            }
+            else
+            {
+                session.LinkAgent(change.AgentId);
+                session.Metadata[CampaignAgentKey] = campaign!.Id;
+            }
+            await _sessions.UpdateAsync(session, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not route the reply to the campaign's assistant");
+        }
+    }
+
+    /// <summary>The assistant change a campaign reply implies: null for none, (null) to go back to the channel default.</summary>
+    public static AssistantChange? CampaignAssistantFor(ChannelSession session, CampaignContract? campaign)
+    {
+        if (campaign is null) return null;
+        if (!string.IsNullOrWhiteSpace(campaign.AssistantId))
+            return session.AgentId == campaign.AssistantId && session.Metadata.GetValueOrDefault(CampaignAgentKey) == campaign.Id
+                ? null
+                : new AssistantChange(campaign.AssistantId);
+        // Only an assistant a previous campaign put there is undone; one an operator chose stays.
+        return session.Metadata.ContainsKey(CampaignAgentKey) ? new AssistantChange(null) : null;
+    }
+
+    public sealed record AssistantChange(string? AgentId);
 
     private async Task ProcessInScopeAsync(ChannelMessage incoming, string customerKey)
     {

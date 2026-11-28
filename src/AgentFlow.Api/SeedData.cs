@@ -555,6 +555,7 @@ Always be precise and thorough in your responses.",
                 Console.WriteLine("✅ [Seed] System agents already seeded correctly. Skipping.");
             // Agents added after the first seed still have to appear in existing environments.
             await SeedCollectionsAssistantAsync(scope.ServiceProvider, tenantId, systemUser);
+            await SeedSalesAssistantAsync(scope.ServiceProvider, tenantId, systemUser);
             return;
         }
 
@@ -846,6 +847,7 @@ Always be concrete: tell the user EXACTLY what to click or configure."
         await SeedSalesHappyPathAsync(scope.ServiceProvider, tenantId, systemUser);
         await SeedCollectionsAssistantAsync(scope.ServiceProvider, tenantId, systemUser);
         await SeedBusinessStarterPackAsync(scope.ServiceProvider, tenantId, systemUser);
+        await SeedSalesAssistantAsync(scope.ServiceProvider, tenantId, systemUser);
 
         Console.WriteLine("✅ [Seed] System agents seed complete.");
     }
@@ -976,6 +978,52 @@ Always be concrete: tell the user EXACTLY what to click or configure."
             await agentRepo.InsertAsync(agent);
     }
 
+    /// <summary>
+    /// Keeps the sales assistant in sync with what ships: its prompt and its tools (catalog, quote,
+    /// sale), replacing the MCP commerce tools it used to have, which let the model pick the buyer.
+    /// </summary>
+    private static async Task SeedSalesAssistantAsync(IServiceProvider services, string tenantId, string ownerUser)
+    {
+        var agentRepo = services.GetRequiredService<IAgentDefinitionRepository>();
+        var existing = (await agentRepo.GetAllAsync(tenantId, 0, 500))
+            .FirstOrDefault(a => string.Equals(a.Name, AgentFlow.Api.Commerce.SalesAssistantAgent.Name, StringComparison.OrdinalIgnoreCase));
+        if (existing is null) return; // Created by the sales starter seed, then kept in sync here.
+
+        var prompt = AgentFlow.Api.Commerce.SalesAssistantAgent.SystemPrompt;
+        var replaced = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "af_commerce_resolve_party", "af_commerce_assert_active_session", "af_commerce_search_inventory",
+            "af_commerce_calculate_sale", "af_commerce_create_sale", "af_commerce_create_invoice",
+            "af_commerce_send_invoice_whatsapp", "af_commerce_send_conversation_message"
+        };
+        var tools = existing.AuthorizedTools.Where(t => !replaced.Contains(t.ToolName)).ToList();
+        foreach (var toolName in AgentFlow.Api.Commerce.SalesAssistantAgent.Tools)
+            if (tools.All(t => !string.Equals(t.ToolId, toolName, StringComparison.OrdinalIgnoreCase)))
+                tools.Add(CollectionsAssistantToolBinding(toolName));
+
+        var samePrompt = string.Equals(existing.Brain.SystemPromptTemplate?.Trim(), prompt.Trim(), StringComparison.Ordinal);
+        var sameTools = tools.Count == existing.AuthorizedTools.Count &&
+                        tools.All(t => existing.AuthorizedTools.Any(b => string.Equals(b.ToolId, t.ToolId, StringComparison.OrdinalIgnoreCase)));
+        if (samePrompt && sameTools) return;
+
+        var update = existing.Update(
+            name: existing.Name,
+            description: existing.Description,
+            brain: existing.Brain with { SystemPromptTemplate = prompt, RequiresToolExecution = true, Temperature = 0.2f },
+            loopConfig: existing.LoopConfig,
+            memory: existing.Memory,
+            session: existing.Session,
+            workflowSteps: existing.WorkflowSteps,
+            tools: tools.AsReadOnly(),
+            tags: existing.Tags,
+            updatedBy: ownerUser,
+            shadowAgentId: existing.ShadowAgentId,
+            canaryAgentId: existing.CanaryAgentId,
+            canaryWeight: existing.CanaryWeight);
+        if (update.IsSuccess)
+            await agentRepo.UpdateAsync(existing);
+    }
+
     private static ToolBinding CollectionsAssistantToolBinding(string toolName) => new()
     {
         ToolId = toolName,
@@ -990,44 +1038,7 @@ Always be concrete: tell the user EXACTLY what to click or configure."
     {
         var agentRepo = services.GetRequiredService<IAgentDefinitionRepository>();
         var workflowStore = services.GetRequiredService<IWorkflowStudioStore>();
-        const string salesSystemPrompt = @"Eres el asistente de ventas de Annonai.
-
-Objetivo:
-- atender leads que escriben por un canal
-- identificar necesidad real sin repetir preguntas
-- sugerir opciones utiles segun presupuesto/uso
-- convertir a venta y facturacion cuando haya contexto suficiente
-
-Reglas de conversacion:
-- responde en el idioma del cliente
-- evita bucles: no repitas la misma pregunta dos veces seguidas
-- si el cliente escribe mensajes cortos o fragmentados (ej: hola | si | ok | mmm), agrupa contexto y responde con una sola pregunta util
-- si el cliente aun no sabe modelo exacto, ofrece 2-4 opciones concretas por rango de uso/presupuesto en lugar de volver a preguntar lo mismo
-- si el cliente menciona una marca, categoria, modelo o uso, primero busca productos reales en inventario antes de decir que no hay opciones
-- puedes buscar por nombre, SKU, descripcion, categoria, atributos o variaciones del producto
-- maximo 1 pregunta de clarificacion por turno
-- cuando el cliente diga que no desea continuar (ej: ya me voy, nada ya, bye), cierra cordialmente sin insistir
-
-Reglas comerciales:
-- no inventes stock ni precios exactos si no hay herramienta/dato confiable
-- si el cliente pide disponibilidad, precio o alternativas, usa af_commerce_search_inventory antes de responder
-- si una busqueda exacta no da resultados, intenta una segunda busqueda mas amplia con marca, categoria o palabra clave principal
-- si una herramienta no esta disponible, NO muestres error tecnico; ofrece alternativa manual (tomar datos y seguimiento humano)
-- si el cliente pide explicitamente hablar con un humano, o si no puedes continuar confiablemente y se requiere seguimiento humano, NO lo dejes en texto libre
-- en esos casos responde SOLO con JSON valido en una sola linea usando este formato:
-- {""type"":""routing_fallback"",""state"":""escalated_human"",""nextTurn"":0,""requiresHumanReview"":true,""reasonCode"":""agent_requested_human_handoff"",""customerMessage"":""Te conecto con un asesor humano para continuar.""}
-- antes de vender, confirma: producto, presupuesto, datos de contacto
-- antes de facturar, confirma total y metodo de entrega
-
-Herramientas preferidas:
-- af_commerce_resolve_party
-- af_commerce_assert_active_session
-- af_commerce_search_inventory
-- af_commerce_calculate_sale
-- af_commerce_create_sale
-- af_commerce_create_invoice
-- af_commerce_send_invoice_whatsapp
-- af_commerce_send_conversation_message";
+        var salesSystemPrompt = AgentFlow.Api.Commerce.SalesAssistantAgent.SystemPrompt;
 
         var existingAgents = await agentRepo.GetAllAsync(tenantId, 0, 500);
         var salesAssistant = existingAgents.FirstOrDefault(a => string.Equals(a.Name, "Asistente de ventas", StringComparison.OrdinalIgnoreCase));
@@ -1384,19 +1395,7 @@ Herramientas preferidas:
         var salesAgent = await EnsureAgentAsync(
             "Asistente de ventas",
             "Califica prospectos, cotiza productos y cierra ventas.",
-            @"Eres un agente comercial conversacional.
-
-Objetivo:
-- entender la necesidad del cliente sin generar bucles
-- recomendar opciones concretas por uso y presupuesto
-- avanzar a cotizacion/venta cuando haya datos suficientes
-
-Reglas:
-- no repitas la misma pregunta dos veces seguidas
-- si el cliente manda mensajes cortos o fragmentados (hola, si, ok, mmm), espera contexto minimo y responde con una sola pregunta util
-- si no conoce modelo exacto, ofrece 2-4 opciones recomendadas segun uso y presupuesto
-- maximo una pregunta de clarificacion por turno
-- nunca expongas errores tecnicos internos; si falta una herramienta, propone continuar con atencion humana o registro manual",
+            AgentFlow.Api.Commerce.SalesAssistantAgent.SystemPrompt,
             new[] { "seed", "ventas", "commerce" });
         var billingAgent = await EnsureAgentAsync(
             "Asistente de facturacion y cobro",

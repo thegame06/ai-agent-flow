@@ -28,6 +28,7 @@ public sealed class CampaignExecutionService : ICampaignExecutionService
     private readonly IAuditMemory _auditMemory;
     private readonly IRuntimeModelProfileStore _runtimeProfiles;
     private readonly IOutboundMessageSender _outbound;
+    private readonly AgentFlow.Api.Voice.IVoiceConversationService? _voice;
     private readonly ICampaignFollowUpService? _followUps;
     private readonly AgentFlow.Api.Messaging.IWhatsAppTemplateStore? _waTemplates;
     private readonly AgentFlow.Domain.Repositories.IChannelDefinitionRepository? _channels;
@@ -46,8 +47,10 @@ public sealed class CampaignExecutionService : ICampaignExecutionService
         AgentFlow.Api.Messaging.IWhatsAppTemplateStore? waTemplates = null,
         AgentFlow.Domain.Repositories.IChannelDefinitionRepository? channels = null,
         AgentFlow.Domain.Repositories.IChannelSessionRepository? sessions = null,
-        AgentFlow.Api.Channels.IConversationWindow? window = null)
+        AgentFlow.Api.Channels.IConversationWindow? window = null,
+        AgentFlow.Api.Voice.IVoiceConversationService? voice = null)
     {
+        _voice = voice;
         _sessions = sessions;
         _window = window ?? new AgentFlow.Api.Channels.ConversationWindow(campaignStore, sessions);
         _followUps = followUps;
@@ -507,6 +510,9 @@ public sealed class CampaignExecutionService : ICampaignExecutionService
             }, ct))!;
         }
 
+        if (campaign.ChannelAction == CampaignChannelAction.Call && _voice is not null)
+            return await CallAsync(campaign, execution, callOutcome, ct);
+
         return (await _campaignStore.UpdateContactExecutionAsync(execution with
         {
             Status = CampaignContactExecutionStatus.Failed,
@@ -514,6 +520,71 @@ public sealed class CampaignExecutionService : ICampaignExecutionService
             CallOutcomeId = callOutcome?.Id ?? execution.CallOutcomeId,
             UpdatedAt = DateTimeOffset.UtcNow
         }, ct))!;
+    }
+
+    /// <summary>
+    /// A call campaign without a workflow: the contact is called, hears the campaign's opening and
+    /// talks with the assistant of the voice channel, as any inbound or outbound call.
+    /// </summary>
+    private async Task<CampaignContactExecutionContract> CallAsync(
+        CampaignContract campaign,
+        CampaignContactExecutionContract execution,
+        CampaignCallOutcomeContract? callOutcome,
+        CancellationToken ct)
+    {
+        var (script, missing) = CampaignMessageRenderer.Render(
+            campaign.CallScriptDraft ?? campaign.MessageDraft ?? string.Empty, execution.Variables);
+        if (missing.Count > 0)
+        {
+            return (await _campaignStore.UpdateContactExecutionAsync(execution with
+            {
+                Status = CampaignContactExecutionStatus.Failed,
+                SkipReason = "Faltan datos para la llamada: " + string.Join(", ", missing),
+                UpdatedAt = DateTimeOffset.UtcNow
+            }, ct))!;
+        }
+
+        try
+        {
+            var call = await _voice!.PlaceCallAsync(new AgentFlow.Api.Voice.VoiceCallRequest
+            {
+                TenantId = campaign.TenantId,
+                PhoneNumber = execution.Recipient ?? string.Empty,
+                Script = string.IsNullOrWhiteSpace(script) ? null : script,
+                RequestedBy = $"campaign:{campaign.Id}"
+            }, ct);
+            if (callOutcome is not null)
+                await _campaignStore.UpdateCallOutcomeAsync(callOutcome with
+                {
+                    Status = CampaignCallOutcomeStatus.InProgress,
+                    Summary = $"Llamada {call.ProviderCallId} ({call.ProviderStatus}).",
+                    NextAction = "conversation_with_assistant",
+                    UpdatedAt = DateTimeOffset.UtcNow
+                }, ct);
+            return (await _campaignStore.UpdateContactExecutionAsync(execution with
+            {
+                Status = CampaignContactExecutionStatus.Sent,
+                RenderedMessage = script,
+                ChannelMessageId = call.ProviderCallId,
+                UpdatedAt = DateTimeOffset.UtcNow
+            }, ct))!;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
+        {
+            if (callOutcome is not null)
+                await _campaignStore.UpdateCallOutcomeAsync(callOutcome with
+                {
+                    Status = CampaignCallOutcomeStatus.Failed,
+                    Summary = ex.Message,
+                    UpdatedAt = DateTimeOffset.UtcNow
+                }, ct);
+            return (await _campaignStore.UpdateContactExecutionAsync(execution with
+            {
+                Status = CampaignContactExecutionStatus.Failed,
+                SkipReason = ex.Message,
+                UpdatedAt = DateTimeOffset.UtcNow
+            }, ct))!;
+        }
     }
 
     // Schedules are wall-clock times in the campaign's timezone ("09:00" = 9 am in America/Managua),

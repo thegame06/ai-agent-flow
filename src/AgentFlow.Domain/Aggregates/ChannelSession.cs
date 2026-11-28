@@ -44,6 +44,12 @@ public sealed class ChannelSession
         AgentId = agentId;
     }
 
+    /// <summary>Goes back to the channel's own assistant.</summary>
+    public void UnlinkAgent()
+    {
+        AgentId = null;
+    }
+
     public void LinkThread(string threadId)
     {
         ThreadId = threadId;

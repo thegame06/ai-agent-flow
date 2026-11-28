@@ -31,6 +31,9 @@ import { BrandPageHeader } from 'src/aiagentflow/components/BrandPageHeader';
 
 import { Iconify } from 'src/components/iconify';
 
+import { NewSaleDialog } from './NewSaleDialog';
+import { type Frequency, FREQUENCY_LABEL } from './installments';
+
 type PartyRow = {
   id: string;
   kind: string;
@@ -85,6 +88,17 @@ type InventoryMovementRow = {
 type SaleRow = {
   id: string;
   partyId: string;
+  partyName?: string;
+  products?: string;
+  financing?: {
+    downPayment: number;
+    financedAmount: number;
+    count: number;
+    frequency: Frequency;
+    nextDueDate?: string;
+    installmentAmount?: number;
+    collectionLoanId?: string;
+  } | null;
   state: string;
   subtotal: number;
   discount: number;
@@ -295,7 +309,7 @@ const EMPTY_BRANCH: BranchDraft = {
 };
 
 const DEFAULT_STORE_SETTINGS: StoreSettings = {
-  storeName: 'Ventas y cobros',
+  storeName: 'Ventas y facturación',
   storeId: '',
   apiToken: '',
   currency: 'USD',
@@ -419,6 +433,7 @@ export default function CommerceAdminPage() {
   const [salesPage, setSalesPage] = useState(0);
   const [salesPageSize, setSalesPageSize] = useState(25);
   const [salesState, setSalesState] = useState('');
+  const [newSaleOpen, setNewSaleOpen] = useState(false);
 
   const [invoices, setInvoices] = useState<InvoiceRow[]>([]);
   const [invoicesTotal, setInvoicesTotal] = useState(0);
@@ -1177,13 +1192,13 @@ export default function CommerceAdminPage() {
   return (
     <>
       <Helmet>
-        <title>Ventas y cobros | {CONFIG.appName}</title>
+        <title>Ventas y facturación | {CONFIG.appName}</title>
       </Helmet>
 
       <DashboardContent maxWidth="xl">
         <BrandPageHeader
           eyebrow="Operacion comercial"
-          title="Ventas y cobros"
+          title="Ventas y facturación"
           description="Centraliza clientes, catalogo, movimientos, ventas y facturacion en una sola superficie de trabajo conectada con conversaciones y automatizaciones."
           icon="mdi:store-cog-outline"
           meta={
@@ -1663,16 +1678,33 @@ export default function CommerceAdminPage() {
                   </Card>
                 </Grid>
               </Grid>
-              <Grid container spacing={1}>
+              <Grid container spacing={1} alignItems="center">
                 <Grid item xs={12} md={4}>
                   <TextField select size="small" fullWidth label="Estado" value={salesState} onChange={(e) => { setSalesState(e.target.value); setSalesPage(0); }}>
                     <MenuItem value="">Todos</MenuItem>
                     <MenuItem value="sale_created">Creada</MenuItem>
+                    <MenuItem value="financed">En cuotas</MenuItem>
                     <MenuItem value="invoiced">Facturada</MenuItem>
                     <MenuItem value="paid">Pagada</MenuItem>
                   </TextField>
                 </Grid>
+                <Grid item xs={12} md={8} sx={{ display: 'flex', justifyContent: { md: 'flex-end' } }}>
+                  <Button variant="contained" startIcon={<Iconify icon="mingcute:add-line" />} onClick={() => setNewSaleOpen(true)}>
+                    Nueva venta
+                  </Button>
+                </Grid>
               </Grid>
+              <NewSaleDialog
+                tenantId={tenantId}
+                open={newSaleOpen}
+                currency={storeSettings.currency}
+                taxRate={Number(storeSettings.taxRate) || 0}
+                onClose={() => setNewSaleOpen(false)}
+                onCreated={() => {
+                  setSalesPage(0);
+                  loadSales();
+                }}
+              />
               <Box sx={gridCardSx}>
                 <DataGrid
                   rows={sales}
@@ -1685,9 +1717,17 @@ export default function CommerceAdminPage() {
                   }}
                   pageSizeOptions={[10, 25, 50]}
                   columns={[
-                    { field: 'id', headerName: 'Venta', width: 180 },
-                    { field: 'state', headerName: 'Estado', width: 130, renderCell: (params) => <Chip size="small" label={params.value === 'sale_created' ? 'Creada' : params.value === 'invoiced' ? 'Facturada' : params.value === 'paid' ? 'Pagada' : params.value} color={params.value === 'paid' ? 'success' : 'warning'} /> },
-                    { field: 'paymentMethod', headerName: 'Pago', width: 120 },
+                    { field: 'id', headerName: 'Referencia', width: 110, valueGetter: (value) => String(value).slice(0, 8).toUpperCase() },
+                    { field: 'partyName', headerName: 'Cliente', flex: 1, minWidth: 160, valueGetter: (value, row) => value || row.partyId },
+                    { field: 'products', headerName: 'Productos', flex: 1.2, minWidth: 200 },
+                    { field: 'state', headerName: 'Estado', width: 120, renderCell: (params) => <Chip size="small" label={params.value === 'sale_created' ? 'Creada' : params.value === 'financed' ? 'En cuotas' : params.value === 'invoiced' ? 'Facturada' : params.value === 'paid' ? 'Pagada' : params.value} color={params.value === 'paid' ? 'success' : params.value === 'financed' ? 'info' : 'warning'} /> },
+                    { field: 'paymentMethod', headerName: 'Pago', width: 230, valueGetter: (value, row) => {
+                      if (value === 'installments' && row.financing) {
+                        const next = row.financing.nextDueDate ? ` · próxima ${new Date(row.financing.nextDueDate).toLocaleDateString()}` : '';
+                        return `${row.financing.count} cuotas ${FREQUENCY_LABEL[row.financing.frequency]?.toLowerCase() ?? ''}es de ${row.financing.installmentAmount ?? ''}${next}`;
+                      }
+                      return ({ cash: 'Contado', card: 'Tarjeta', transfer: 'Transferencia', installments: 'En cuotas' } as Record<string, string>)[value as string] ?? value;
+                    } },
                     { field: 'total', headerName: 'Total', width: 120, valueGetter: (_, row) => `${row.total} ${row.currency}` },
                     { field: 'createdAt', headerName: 'Creada', width: 180, valueFormatter: (value) => new Date(value as string).toLocaleString() },
                   ]}

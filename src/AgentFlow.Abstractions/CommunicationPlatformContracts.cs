@@ -132,6 +132,18 @@ public sealed record ProviderVoiceCallRequest
     public required string PhoneNumber { get; init; }
     public required string Script { get; init; }
     public string? StatusCallbackUrl { get; init; }
+    /// <summary>
+    /// Where the provider posts what the customer says after the script. With it the call is a
+    /// conversation with the assistant; without it the script is played and the call ends.
+    /// </summary>
+    public string? ConversationUrl { get; init; }
+    /// <summary>
+    /// Where the provider asks what to do once the call is answered (after answering-machine
+    /// detection). When set it replaces the inline script: a voicemail is not talked to.
+    /// </summary>
+    public string? AnswerUrl { get; init; }
+    /// <summary>Longest a call may last, in seconds.</summary>
+    public int? TimeLimitSeconds { get; init; }
     public IReadOnlyDictionary<string, string> Metadata { get; init; } = new Dictionary<string, string>();
 }
 

@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.DataProtection;
 using AgentFlow.Abstractions;
 using AgentFlow.Api.AuthProfiles;
 using AgentFlow.Api.Commerce;
@@ -53,7 +54,12 @@ public static class DependencyInjection
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        services.AddDataProtection();
+        // Tenant secrets (Twilio, Meta tokens) are encrypted with Data Protection, whose default
+        // discriminator is the app's content root: another folder, container or instance cannot read
+        // them. DataProtection:ApplicationName pins it so every deployment of the API shares them.
+        var dataProtection = services.AddDataProtection();
+        if (configuration["DataProtection:ApplicationName"] is { Length: > 0 } dataProtectionApp)
+            dataProtection.SetApplicationName(dataProtectionApp);
         services.AddHttpClient("workflow-runtime");
         services.AddHttpClient("meta-graph", c => c.Timeout = TimeSpan.FromSeconds(30));
         services.AddHttpClient("inbound-media", c => c.Timeout = TimeSpan.FromSeconds(30));
@@ -107,6 +113,8 @@ public static class DependencyInjection
             .AddSingleton<AgentFlow.Api.Channels.IMediaStore, AgentFlow.Api.Channels.MongoMediaStore>()
             .AddSingleton<AgentFlow.Api.Channels.InboundBatcher>()
             .AddScoped<AgentFlow.Api.Voice.ITwilioCredentials, AgentFlow.Api.Voice.TwilioCredentials>()
+            .AddScoped<AgentFlow.Api.Voice.IVoiceConversationService, AgentFlow.Api.Voice.VoiceConversationService>()
+            .AddScoped<AgentFlow.Api.Commerce.ISalesService, AgentFlow.Api.Commerce.SalesService>()
             .AddScoped<AgentFlow.Api.Channels.IInboundMediaFetcher, AgentFlow.Api.Channels.TwilioMediaFetcher>()
             .AddScoped<AgentFlow.Api.Channels.IInboundMediaFetcher, AgentFlow.Api.Channels.MetaMediaFetcher>()
             .AddScoped<AgentFlow.Api.Channels.IConversationWindow>(sp => new AgentFlow.Api.Channels.ConversationWindow(
@@ -141,6 +149,7 @@ public static class DependencyInjection
         services.AddHostedService<WorkflowRuntimeWorker>();
         services.AddHostedService<CampaignSchedulerService>();
         services.AddHostedService<CampaignFollowUpWorker>();
+        services.AddHostedService<AgentFlow.Api.Commerce.InstallmentAgingWorker>();
         services.AddHostedService<AgentFlow.Api.Messaging.WhatsAppTemplateSyncWorker>();
         services.AddHostedService<WorkflowCatalogSeeder>();
         services.AddHostedService<ModelRoutingBootstrapService>();
@@ -172,7 +181,12 @@ public static class DependencyInjection
         services.AddSingleton<IToolPlugin, CollectionsHandoffTool>();
         services.AddSingleton<IToolPlugin, CollectionsPaymentInstructionsTool>();
         services.AddSingleton<IToolPlugin, CollectionsReportPaymentTool>();
+        services.AddSingleton<IToolPlugin, AgentFlow.Api.Commerce.SalesCustomerContextTool>();
+        services.AddSingleton<IToolPlugin, AgentFlow.Api.Commerce.SalesSearchCatalogTool>();
+        services.AddSingleton<IToolPlugin, AgentFlow.Api.Commerce.SalesQuoteTool>();
+        services.AddSingleton<IToolPlugin, AgentFlow.Api.Commerce.SalesCreateSaleTool>();
         services.AddSingleton<AgentFlow.Core.Engine.IChannelReplyTransformer, PaymentInstructionsReplyTransformer>();
+        services.AddSingleton<AgentFlow.Core.Engine.IChannelReplyTransformer, AgentFlow.Api.Commerce.SaleReferenceReplyTransformer>();
 
         return services;
     }
